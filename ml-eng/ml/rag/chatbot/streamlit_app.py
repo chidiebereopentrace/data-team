@@ -242,8 +242,12 @@ from ml.rag.chat_memory import append_turn_and_compact
 st.set_page_config(page_title="OpenTrace RAG (test)", page_icon="🔍", layout="wide")
 st.title("OpenTrace RAG — test interface")
 st.caption(
-    "Decomposition → BQ table match + filtered news + academic → BigQuery (LM Studio NL-to-SQL) → merge → answer (LM Studio)"
+    "Advisory answers from retrieved news, research, and OpenTrace structured data — grounded in sources only."
 )
+
+
+def _show_sql_debug() -> bool:
+    return os.environ.get("RAG_SHOW_SQL_DEBUG", "").strip().lower() in ("1", "true", "on", "yes")
 
 
 def _session_label(sid: str) -> str:
@@ -327,6 +331,7 @@ with st.sidebar:
     news_top_k = st.number_input("News chunks (top_k)", min_value=1, max_value=50, value=20)
     academic_top_k = st.number_input("Academic chunks (top_k)", min_value=1, max_value=50, value=20)
     bq_top_k = st.number_input("BQ rows (top_k)", min_value=1, max_value=100, value=15)
+    ota_top_k = st.number_input("OTA chunks (top_k) — local test only", min_value=1, max_value=30, value=10)
     rerank_top_k = st.number_input("Rerank context size", min_value=1, max_value=50, value=20)
     st.divider()
     geo_override = st.text_input("Geography override (optional)", placeholder="e.g. Nigeria")
@@ -355,6 +360,7 @@ if prompt:
         "news_top_k": int(news_top_k),
         "academic_top_k": int(academic_top_k),
         "bq_top_k": int(bq_top_k),
+        "ota_top_k": int(ota_top_k),
         "rerank_top_k": int(rerank_top_k),
     }
     if geo_override.strip():
@@ -434,7 +440,7 @@ if show_debug and "last_rag_debug" in st.session_state:
         with c1:
             st.metric("BQ table-description matches", len(result.get("bq_table_candidates") or []))
         with c2:
-            st.metric("BQ SQL queries", len(result.get("bq_sql_queries") or []))
+            st.metric("Structured data rows", len(result.get("bq_results") or []))
         with c3:
             st.metric("News chunks", len(result.get("vector_news_results") or []))
         with c4:
@@ -442,27 +448,29 @@ if show_debug and "last_rag_debug" in st.session_state:
         with c5:
             st.metric("Reranked → generator", len(result.get("reranked_context") or []))
 
-        bq_sql_list = result.get("bq_sql_queries") or []
-        if not bq_sql_list:
-            bq_rows = result.get("bq_results") or []
-            seen_sql: set[str] = set()
-            for row in bq_rows:
-                s = str((row.get("metadata") or {}).get("sql") or "").strip()
-                if s and s not in seen_sql:
-                    seen_sql.add(s)
-                    bq_sql_list.append(s)
-        if bq_sql_list:
-            st.subheader(f"BigQuery SQL ({len(bq_sql_list)} queries)")
-            for i, sql in enumerate(bq_sql_list, start=1):
-                st.caption(f"Query {i}")
-                st.code(sql, language="sql")
+        if _show_sql_debug():
+            bq_sql_list = result.get("bq_sql_queries") or []
+            if not bq_sql_list:
+                bq_rows = result.get("bq_results") or []
+                seen_sql: set[str] = set()
+                for row in bq_rows:
+                    s = str((row.get("metadata") or {}).get("sql") or "").strip()
+                    if s and s not in seen_sql:
+                        seen_sql.add(s)
+                        bq_sql_list.append(s)
+            if bq_sql_list:
+                with st.expander(f"Internal: generated SQL ({len(bq_sql_list)})", expanded=False):
+                    st.caption("Not shown to end users. Set RAG_SHOW_SQL_DEBUG=0 to hide.")
+                    for i, sql in enumerate(bq_sql_list, start=1):
+                        st.caption(f"Query {i}")
+                        st.code(sql, language="sql")
 
         st.subheader("Retrieved from each collection")
         tab_news, tab_research, tab_bq_desc, tab_bq_rows, tab_merged, tab_used = st.tabs([
             f"News ({len(result.get('vector_news_results') or [])})",
             f"Research / Policy / Public Report ({len(result.get('vector_academic_results') or [])})",
             f"BQ table descriptions ({len(result.get('bq_table_candidates') or [])})",
-            f"BQ rows ({len(result.get('bq_results') or [])})",
+            f"Structured data ({len(result.get('bq_results') or [])})",
             f"Merged before rerank ({len(result.get('merged_context') or [])})",
             f"Passed to generator ({len(result.get('reranked_context') or [])})",
         ])

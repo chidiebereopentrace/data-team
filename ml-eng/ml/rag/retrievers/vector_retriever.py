@@ -45,6 +45,9 @@ _WORKSPACE_ROOT = Path(__file__).resolve().parents[4]  # data-team workspace roo
 
 
 def _agent_debug_log(location: str, message: str, data: dict, hypothesis_id: str, run_id: str = "pre-fix") -> None:
+    # Gated for production containers (RAG_DEBUG_SESSIONS=1 to enable).
+    if os.environ.get("RAG_DEBUG_SESSIONS", "").strip().lower() not in ("1", "true", "on"):
+        return
     try:
         payload = {
             "sessionId": "6c8b2f",
@@ -217,11 +220,31 @@ def _embed_texts(texts: list[str], *, model_id: str, mode: str) -> list[list[flo
     return [[float(x) for x in row] for row in vecs]
 
 
+def _publication_years_in_range(
+    published_at_from: str | None,
+    published_at_to: str | None,
+    *,
+    max_span: int = 60,
+) -> list[str]:
+    """Year strings for MatchAny on KEYWORD-indexed ``publication_year`` (avoids integer Range)."""
+    from datetime import date
+
+    today_y = date.today().year
+    y0 = int(published_at_from[:4]) if published_at_from and len(published_at_from) >= 4 else 1900
+    y1 = int(published_at_to[:4]) if published_at_to and len(published_at_to) >= 4 else today_y
+    if y1 < y0:
+        y0, y1 = y1, y0
+    if y1 - y0 > max_span:
+        y1 = y0 + max_span
+    return [str(y) for y in range(y0, y1 + 1)]
+
+
 def build_qdrant_filter(
     *,
     doc_kind: str | None = None,
     doc_kinds: list[str] | None = None,
     geo_country: str | None = None,
+    geo_countries: list[str] | None = None,
     published_at_from: str | None = None,
     published_at_to: str | None = None,
     domains_substring: str | None = None,
@@ -251,6 +274,16 @@ def build_qdrant_filter(
     def _allow(field: str) -> bool:
         return indexed_fields is None or field in indexed_fields
 
+    def _geo_should_for_country(gc: str) -> list[Any]:
+        geo_should: list[Any] = []
+        if _allow("geo_country_primary"):
+            geo_should.append(FieldCondition(key="geo_country_primary", match=MatchValue(value=gc)))
+        if _allow("country"):
+            geo_should.append(FieldCondition(key="country", match=MatchValue(value=gc)))
+        if _allow("geo_countries"):
+            geo_should.append(FieldCondition(key="geo_countries", match=MatchText(text=gc)))
+        return geo_should
+
     must: list[Any] = []
     must_not: list[Any] = []
 
@@ -265,20 +298,24 @@ def build_qdrant_filter(
         else:
             must.append(FieldCondition(key="doc_kind", match=MatchAny(any=kinds)))
 
-    if geo_country:
-        gc = geo_country.strip()
-        if gc:
-            geo_should: list[Any] = []
-            if _allow("geo_country_primary"):
-                geo_should.append(
-                    FieldCondition(key="geo_country_primary", match=MatchValue(value=gc))
-                )
-            if _allow("country"):
-                geo_should.append(FieldCondition(key="country", match=MatchValue(value=gc)))
-            if _allow("geo_countries"):
-                geo_should.append(FieldCondition(key="geo_countries", match=MatchText(text=gc)))
+    countries: list[str] = []
+    if geo_countries:
+        countries = [str(c).strip() for c in geo_countries if str(c).strip()]
+    elif geo_country and geo_country.strip():
+        countries = [geo_country.strip()]
+
+    if len(countries) >= 2:
+        country_filters: list[Any] = []
+        for gc in countries:
+            geo_should = _geo_should_for_country(gc)
             if geo_should:
-                must.append(Filter(should=geo_should))
+                country_filters.append(Filter(should=geo_should))
+        if country_filters:
+            must.append(Filter(should=country_filters))
+    elif len(countries) == 1:
+        geo_should = _geo_should_for_country(countries[0])
+        if geo_should:
+            must.append(Filter(should=geo_should))
 
     if (published_at_from or published_at_to) and _allow("published_at"):
         range_args: dict[str, str] = {}
@@ -290,6 +327,11 @@ def build_qdrant_filter(
         must.append(
             FieldCondition(key="published_at", range=Range(**range_args))  # type: ignore[arg-type]
         )
+    elif (published_at_from or published_at_to) and _allow("publication_year"):
+        # Research: publication_year is KEYWORD-indexed — use MatchAny, not numeric Range.
+        years = _publication_years_in_range(published_at_from, published_at_to)
+        if years:
+            must.append(FieldCondition(key="publication_year", match=MatchAny(any=years)))
 
     if domains_substring and _allow("domains"):
         ds = domains_substring.strip()
@@ -443,6 +485,7 @@ class VectorRetriever(BaseRetriever):
         doc_kind: str | None,
         doc_kinds: list[str] | None = None,
         geo_country: str | None,
+        geo_countries: list[str] | None = None,
         published_at_from: str | None,
         published_at_to: str | None,
         domains_substring: str | None,
@@ -465,11 +508,16 @@ class VectorRetriever(BaseRetriever):
             if not matched:
                 return False
 
-        if geo_country:
-            gc = geo_country.strip().lower()
+        geo_list: list[str] = []
+        if geo_countries:
+            geo_list = [str(c).strip().lower() for c in geo_countries if str(c).strip()]
+        elif geo_country:
+            geo_list = [geo_country.strip().lower()]
+
+        if geo_list:
             primary = str(meta.get("geo_country_primary") or meta.get("country") or "").lower()
             blob = str(meta.get("geo_countries") or "").lower()
-            if gc not in primary and gc not in blob:
+            if not any(gc in primary or gc in blob for gc in geo_list):
                 return False
 
         pub = str(meta.get("published_at") or "").strip()[:10]
@@ -478,6 +526,15 @@ class VectorRetriever(BaseRetriever):
                 return False
             if published_at_to and pub > published_at_to:
                 return False
+        elif published_at_from or published_at_to:
+            py_raw = meta.get("publication_year")
+            if py_raw is not None and str(py_raw).strip():
+                py = str(py_raw).strip()[:4]
+                if re.match(r"^\d{4}$", py):
+                    if published_at_from and py < published_at_from[:4]:
+                        return False
+                    if published_at_to and py > published_at_to[:4]:
+                        return False
 
         if domains_substring:
             ds = (meta.get("domains") or meta.get("domain") or "")
@@ -649,6 +706,11 @@ class VectorRetriever(BaseRetriever):
         else:
             geo_country = None
 
+        raw_geo_countries = kwargs.get("geo_countries")
+        geo_countries: list[str] | None = None
+        if isinstance(raw_geo_countries, (list, tuple)):
+            geo_countries = [str(c).strip() for c in raw_geo_countries if str(c).strip()] or None
+
         published_at_from = kwargs.get("published_at_from")
         if not isinstance(published_at_from, str) or not published_at_from.strip():
             published_at_from = None
@@ -661,13 +723,31 @@ class VectorRetriever(BaseRetriever):
         else:
             published_at_to = published_at_to.strip()[:10]
 
+        time_filter_at_qdrant = kwargs.pop("time_filter_at_qdrant", True)
+        post_filter_from = published_at_from
+        post_filter_to = published_at_to
+        if not time_filter_at_qdrant:
+            # Many news points lack published_at; filter dates in Python after vector search.
+            published_at_from = None
+            published_at_to = None
+
         domains_substring = kwargs.get("domains_substring")
         if isinstance(domains_substring, str):
             domains_substring = domains_substring.strip() or None
         else:
             domains_substring = None
 
-        has_filters = any([doc_kind, doc_kinds, geo_country, published_at_from, published_at_to, domains_substring])
+        has_filters = any(
+            [
+                doc_kind,
+                doc_kinds,
+                geo_country,
+                geo_countries,
+                published_at_from,
+                published_at_to,
+                domains_substring,
+            ]
+        )
 
         vector_search_mode = kwargs.pop("vector_search_mode", None)
         if vector_search_mode is None:
@@ -689,11 +769,16 @@ class VectorRetriever(BaseRetriever):
         # Qdrant otherwise rejects the whole query with a 400. Falls back to
         # "no constraint on indexed_fields" if the corpus profile lookup fails.
         try:
-            from ml.rag.scripts.qdrant_collection_specs import indexed_fields_for_corpus
-
-            indexed_fields = indexed_fields_for_corpus(
-                profile_for_collection(collection).corpus
+            from ml.rag.scripts.qdrant_collection_specs import (
+                indexed_fields_for_corpus,
+                indexed_fields_on_collection,
             )
+
+            corpus_key = profile_for_collection(collection).corpus
+            indexed_fields = indexed_fields_for_corpus(corpus_key)
+            live = indexed_fields_on_collection(client, collection)
+            if live is not None:
+                indexed_fields = indexed_fields & live
         except Exception:
             indexed_fields = None
 
@@ -701,7 +786,8 @@ class VectorRetriever(BaseRetriever):
             q_filter = build_qdrant_filter(
                 doc_kind=doc_kind,
                 doc_kinds=doc_kinds,
-                geo_country=geo_country,
+                geo_country=geo_country if not geo_countries else None,
+                geo_countries=geo_countries,
                 published_at_from=published_at_from,
                 published_at_to=published_at_to,
                 domains_substring=domains_substring,
@@ -782,9 +868,10 @@ class VectorRetriever(BaseRetriever):
                 meta,
                 doc_kind=doc_kind,
                 doc_kinds=doc_kinds,
-                geo_country=geo_country,
-                published_at_from=published_at_from,
-                published_at_to=published_at_to,
+                geo_country=geo_country if not geo_countries else None,
+                geo_countries=geo_countries,
+                published_at_from=post_filter_from,
+                published_at_to=post_filter_to,
                 domains_substring=domains_substring,
                 exclude_section_roles=exclude_section_roles,
             ):

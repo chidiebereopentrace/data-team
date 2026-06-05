@@ -2,3 +2,12 @@
   expect_doc_kind: news_article
 - query: "Recent food security developments in Kenya"
   expect_doc_kind: news_article
+
+# Compare / multi-country scenarios (high value for AskADZA)
+- query: "Nigeria and Rwanda rice production and policy trends since 2020"
+  expect_doc_kind: news_article
+  note: "Tests multi-country geo handling (geo_countries + post-filter)"
+
+- query: "Compare agricultural export performance Nigeria vs South Africa 2023-2025"
+  expect_doc_kind: news_article
+  note: "Realistic AskADZA-style compare query"
