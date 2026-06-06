@@ -36,9 +36,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ENV PORT=7860
 EXPOSE $PORT
 
-# Use Railway entrypoint script for GCP credential handling
-COPY scripts/railway-entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
-
-ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["sh", "-c", "uvicorn ml.rag.api:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# Direct startup - bypassing entrypoint for debugging
+CMD ["sh", "-c", "echo '=== Starting RAG API ===' && echo 'QDRANT_URL: '${QDRANT_URL:0:30}'...' && uvicorn ml.rag.api:app --host 0.0.0.0 --port ${PORT:-7860}"]
