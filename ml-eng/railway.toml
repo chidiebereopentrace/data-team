@@ -10,8 +10,6 @@ watchPatterns = ["ml/**", "config/**", "requirements.railway.txt"]
 startCommand = "/app/entrypoint.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
-restartPolicyType = "on-failure"
-restartPolicyMaxRetries = 3
 
 # Memory settings (Railway free tier: 512MB, Hobby: 1GB)
 # Start conservative, Railway will auto-scale within tier limits
