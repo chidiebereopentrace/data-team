@@ -1,0 +1,11 @@
+
+# News ingest output (raw articles + chunks - too large for git)
+data/local/web_news_rss/
+data/local/news_chunks.jsonl
+data/local/news_ingest.log
+
+# RSS probe results (generated, not source controlled)
+ml/web_data_mining/config/rss_probe_results.json
+
+# Deployment documentation (reference only, not needed in repo)
+RAILWAY_DEPLOYMENT.md

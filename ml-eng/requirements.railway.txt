@@ -1,0 +1,32 @@
+# Railway-optimized production dependencies
+# NO torch, transformers, or sentence-transformers (embeddings done locally)
+# API only does: retrieval from Qdrant + LLM generation via HuggingFace API
+
+# Core BigQuery + data access
+google-cloud-bigquery>=3.14.0
+google-cloud-storage>=2.14.0
+db-dtypes>=1.2.0
+pandas>=2.0.0
+pyarrow>=14.0.0
+
+# Lightweight numpy (no need for 2.x without torch)
+numpy>=1.24.0,<2.0
+
+# RAG graph + API
+langgraph>=0.2.0
+langchain-core>=0.3.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+requests>=2.31.0
+PyYAML>=6.0
+
+# Vector DB (Qdrant Cloud - retrieval only, no embeddings)
+qdrant-client>=1.9.0
+# NO fastembed - not needed for retrieval-only
+
+# NO torch, torchvision, transformers, sentence-transformers
+# These are ~2GB+ and only needed for local embedding generation
+# Railway deployment only needs retrieval + LLM API calls
+
+# Optional: If you need tiktoken for token counting
+tiktoken>=0.5.0

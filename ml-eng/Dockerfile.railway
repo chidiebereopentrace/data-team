@@ -1,0 +1,43 @@
+# Railway-optimized RAG API image
+# Ultra-light build: NO torch, transformers, or sentence-transformers
+# Embeddings are pre-computed locally, API only does retrieval + generation
+#
+# Build from data-team/ml-eng directory:
+#   docker build -f Dockerfile.railway -t opentrace-rag-railway:latest .
+
+FROM python:3.11-slim
+
+# Install minimal system dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy and install dependencies (Railway-optimized - no ML libs)
+COPY requirements.railway.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY ml ./ml
+COPY config ./config
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Health check for Railway
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-7860}/health || exit 1
+
+# Railway uses PORT environment variable
+ENV PORT=7860
+EXPOSE $PORT
+
+# Use Railway entrypoint script for GCP credential handling
+COPY scripts/railway-entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["uvicorn", "ml.rag.api:app", "--host", "0.0.0.0", "--port", "7860"]

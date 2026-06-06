@@ -1,0 +1,76 @@
+# Railway build ignore - exclude unnecessary files to speed up builds
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Local data and models (embeddings done locally, not in Railway)
+data/local/
+data/raw/
+data/processed/
+*.pkl
+*.h5
+*.pt
+*.pth
+*.ckpt
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Development only
+requirements-dev.txt
+test/
+tests/
+*.test.py
+
+# Documentation
+*.md
+docs/
+
+# Docker (we only use Dockerfile.railway)
+Dockerfile
+Dockerfile.rag
+docker-compose.yml
+
+# Makefile and local scripts
+Makefile
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Large model files (embeddings/preprocessing only)
+*.bin
+*.safetensors
+models/
+
+# Environment files (use Railway secrets instead)
+.env
+.env.*
+config/.env
+config/*.json
+!config/.env.example

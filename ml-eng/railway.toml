@@ -1,0 +1,22 @@
+# Railway configuration for OpenTrace RAG API
+# https://docs.railway.app/deploy/config-as-code
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.railway"
+watchPatterns = ["ml/**", "config/**", "requirements.railway.txt"]
+
+[deploy]
+startCommand = "/app/entrypoint.sh"
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 3
+
+# Memory settings (Railway free tier: 512MB, Hobby: 1GB)
+# Start conservative, Railway will auto-scale within tier limits
+# If OOM errors occur, upgrade to Hobby ($5/month) for 1GB
+
+[env]
+# Railway auto-injects PORT environment variable
+# Other env vars set via Railway dashboard or CLI
