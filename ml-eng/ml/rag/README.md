@@ -1,41 +1,30 @@
 # RAG pipeline (graph / agentic)
 
-Modular RAG that queries **BigQuery** and a **vector DB**, then merges → reranks → generates an answer. The flow is implemented as a **LangGraph** so you can extend or swap nodes.
+Modular RAG that queries **BigQuery** and **Qdrant** (news, research, BQ table descriptions, OTA), then merges → reranks → generates an answer. Implemented as a **LangGraph** in [`chatbot/graph.py`](chatbot/graph.py).
 
-For a file-by-file map and end-to-end flow, see [ARCHITECTURE.md](ARCHITECTURE.md).
+| Document | Use when |
+|----------|----------|
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | System design, data flow, env matrix, extension points |
+| **[docs/SCRIPTS.md](docs/SCRIPTS.md)** | Every CLI/module: flags, examples, workflows |
+| [docs/BQ_NL2SQL_PLAN.md](docs/BQ_NL2SQL_PLAN.md) | Bronze NL-to-SQL design |
+| [docs/EXPECTED_QUESTIONS.md](docs/EXPECTED_QUESTIONS.md) | Example question types |
 
-## Graph shape
+## Graph shape (current)
 
 ```
-                    ┌─────────────────┐
-                    │  bq_retrieve    │
-                    └────────┬────────┘
-  START ──┬──────────────────┼──────────────────┐
-          │                  │                  │
-          │                  ▼                  ▼
-          │           ┌─────────────┐   ┌─────────────────┐
-          └──────────►│    merge    │◄──│ vector_retrieve  │
-                      └──────┬──────┘   └─────────────────┘
-                             │
-                             ▼
-                      ┌─────────────┐
-                      │   rerank    │
-                      └──────┬──────┘
-                             │
-                             ▼
-                      ┌─────────────┐
-                      │  generate   │
-                      └──────┬──────┘
-                             │
-                             ▼
-                            END
+START → decompose → parallel_retrieve → bq_retrieve → merge → rerank → generate → END
+                         │
+            ┌────────────┼────────────┐
+            ▼            ▼            ▼
+      bq_table_match   news vector   academic vector
 ```
 
-- **bq_retrieve**: runs BigQuery over the **bronze** dataset only (`BQ_DATASET_BRONZE`). Uses **NL-to-SQL** (Llama 3.1 via HF) when no `sql` is passed; validates SELECT-only and allowed datasets. Tuned for agricultural/food-security questions (regions, yields, crops, rainfall, etc.). See [docs/BQ_NL2SQL_PLAN.md](docs/BQ_NL2SQL_PLAN.md) and [docs/EXPECTED_QUESTIONS.md](docs/EXPECTED_QUESTIONS.md).
-- **vector_retrieve**: queries **Qdrant Cloud** (remote vector DB).
-- **merge**: concatenates BQ + vector results into one list.
-- **rerank**: trims and orders context (placeholder; plug in Cohere/Jina/cross-encoder).
-- **generate**: produces the final answer (placeholder; plug in Vertex AI / OpenAI / local LLM).
+- **decompose**: heuristics + optional LLM → geography, time range, entities, domains.
+- **parallel_retrieve**: BQ table-description match + news + research Qdrant search (thread pool).
+- **bq_retrieve**: NL-to-SQL (LM Studio or HF) from table hints → execute bronze SELECTs; up to `RAG_BQ_MAX_SQL_QUERIES` queries.
+- **merge / rerank / generate**: fuse context; optional LLM rerank (`RAG_LLM_RERANK=off` recommended locally); answer via [`llm_chat.py`](llm_chat.py).
+
+Details: [ARCHITECTURE.md §4](ARCHITECTURE.md#4-runtime-pipeline-run_rag).
 
 ## Chat sessions and context memory (summary + verbatim window)
 
@@ -53,11 +42,28 @@ For a file-by-file map and end-to-end flow, see [ARCHITECTURE.md](ARCHITECTURE.m
 | `RAG_SUMMARY_MAX_CHARS` | Max length of the running summary string (default **2000**) |
 | `RAG_SUMMARY_MODEL_ID` | Optional HF model for summarization |
 
+**Redis / scaling (for durable sessions + cross-worker caches)**
+
+| Variable | Meaning |
+|----------|---------|
+| `RAG_REDIS_URL` / `REDIS_URL` | Connection string for Redis (Memorystore, Upstash, sidecar, etc.). When present the session store and BQ/bronze caches become shared and durable. |
+| `RAG_SESSION_TTL_SECONDS` | Expiry for conversation blobs (default **86400** = 24 h). 0 = no expiry. |
+| `RAG_CACHE_TTL_SECONDS` | Default TTL for secondary caches (BQ schema, bronze catalog) (default **3600**). |
+| `RAG_REDIS_CONNECT_TIMEOUT_S` | Socket timeout for initial connect/ping (default **2**). |
+
+See also [`ml/rag/session_store.py`](ml/rag/session_store.py) (the facade) and `ARCHITECTURE.md §12.7`.
+
 See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/chat_history.py`](chatbot/chat_history.py)) for **legacy** `chat_history`-only truncation (no summary).
 
 **Streamlit** ([`chatbot/streamlit_app.py`](ml/rag/chatbot/streamlit_app.py)): multiple **chat sessions** in the sidebar; **pipeline debug** shows the last run’s decomposition and retrieval stats.
 
-**API** (`POST /query`): responses include **`session_id`**. Reuse it for **server-side** `{conversation_summary, recent_turns}` storage (in-process + lock; **single worker**, lost on restart). Send **`conversation_history`** to supply prior turns from the client; history is compacted for that request only and the server store is **not** updated.
+**API** (`POST /query`): responses include **`session_id`**. Reuse it for **server-side** `{conversation_summary, recent_turns}` (plus optional `stakeholder_type`). Backed by Redis when `RAG_REDIS_URL` is set (durable across workers/restarts, required for scaling). Without Redis the store is in-process only (single worker; lost on restart). Send **`conversation_history`** to supply prior turns from the client (fully stateless path); history is compacted for that request only and the server store is **not** updated.
+
+**Redis config** (new in scaling release):
+- `RAG_REDIS_URL` (or `REDIS_URL`): e.g. `redis://host:6379/0` or rediss:// for TLS.
+- `RAG_SESSION_TTL_SECONDS` (default 86400), `RAG_CACHE_TTL_SECONDS` (default 3600 for BQ/bronze caches), `RAG_REDIS_CONNECT_TIMEOUT_S`.
+
+See `session_store.py`, `ARCHITECTURE.md`, and the production deploy guide for details.
 
 ## Env and config
 
@@ -68,8 +74,8 @@ See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/c
 
 | Corpus | Collection | Model (default) | Dim | Qdrant mode |
 |--------|------------|-----------------|-----|-------------|
-| News | `news_data` | `intfloat/multilingual-e5-small` | 384 | `legacy` |
-| Research | `research_other_papers` | `intfloat/multilingual-e5-base` | 768 | `legacy` |
+| News | `news_data` | `intfloat/multilingual-e5-small` | 384 | `dense_named` (hybrid capable) |
+| Research | `research_other_papers` | `intfloat/multilingual-e5-small` | 384 | `dense_named` (RAM-optimized, hybrid capable) |
 | OTA | `OTA_insights` | `BAAI/bge-small-en-v1.5` | 384 | `ota_triple` |
 | BQ descriptions | `BQ_table_descriptions` | `BAAI/bge-small-en-v1.5` | 384 | `sentence_named` |
 
@@ -78,7 +84,12 @@ See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/c
 | `RAG_EMBEDDINGS_MODE` | `local` (default) or `hf_api` (requires **`HF_API_TOKEN`**) |
 | `RAG_EMBEDDING_MODEL_NEWS` / `_RESEARCH` / `_OTA` / `_DATA_DESCRIPTION` | Override per-corpus model ids |
 | `RAG_CHUNK_TARGET_TOKENS_*` / `RAG_CHUNK_OVERLAP_PCT_*` | Override chunk sizes (see `chunking_config.py`) |
-| `RAG_NEWS_GEO_FALLBACK` | Default **`1`**: retry news search without geo if geo filter returns nothing |
+| `RAG_NEWS_GEO_FALLBACK` | Default **`1`**: retry news search without geo if geo filter returns nothing (disabled for multi-country **compare**) |
+| `RAG_NEWS_TIME_FALLBACK` | Default **`1`**: retry news without date filter if still empty |
+| `RAG_NEWS_TIME_QDRANT_FILTER` | Default **off**: apply news dates in Python (keeps articles missing `published_at` payload) |
+| `RAG_NEWS_COMPARE_SEMANTIC_FALLBACK` | Default **on**: for compare + 2 countries, semantic search then post-filter by country name in text |
+| `RAG_RESEARCH_GEO_FALLBACK` | Default **`1`**: same for research corpus |
+| `RAG_RESEARCH_TIME_FALLBACK` | Default **`1`**: retry research without year/date filter if still empty |
 
 **E5 prefixing:** news and research use `query:` at retrieval and `passage:` at index time (automatic in `vector_retriever`).
 
@@ -243,6 +254,13 @@ Response:
 }
 ```
 
+### Observability with Langfuse (optional)
+
+Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST` to emit traces for every `/query` request, LLM generation, retrieval step, and LangGraph node execution. Traces appear in the Langfuse UI (local or Cloud) with full token usage, latency, and metadata (session_id, stakeholder_type, etc.).
+
+- When keys are absent the integration is a silent no-op (safe for HF Spaces that do not need tracing).
+- The same env vars work for local `docker compose`, GCE, and HF (point HOST at your Langfuse instance or cloud).
+
 ### Deploy to Hugging Face Spaces
 
 1. **Create a new Space** at [huggingface.co/spaces](https://huggingface.co/spaces): choose **Docker**, and either push this repo or a copy that includes `ml/rag` and the Dockerfile.
@@ -256,6 +274,7 @@ Response:
    - **Qdrant**: `QDRANT_URL`, `QDRANT_API_KEY`, and collection variables as in [Env and config](#env-and-config)  
    - For BigQuery auth: either attach a **GCP service account key** (e.g. paste JSON as a secret and set `GOOGLE_APPLICATION_CREDENTIALS` to a path you write it to at startup) or use Workload Identity if running on GCP.  
    - `HF_API_TOKEN` (and optional embedding / LLM model ids) as needed.
+   - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` (optional; send traces to Langfuse Cloud or self-hosted instance)
 
 4. **CORS**  
    For production, set **`RAG_CORS_ORIGINS`** to your frontend origin(s), comma-separated (e.g. `https://yourapp.com`). Default is `*`.

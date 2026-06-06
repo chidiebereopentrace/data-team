@@ -1,14 +1,17 @@
 """
 Summarize Qdrant contents for debugging retrieval (doc_kind counts, sample rows).
 
-  PYTHONPATH=ml-eng python -m ml.rag.inspect_vector_db
-  PYTHONPATH=ml-eng python -m ml.rag.inspect_vector_db --collection opentrace_rag --limit 5
+From ``ml-eng`` (PowerShell: ``$env:PYTHONPATH='.'``):
+
+  python -m ml.rag.inspect_vector_db
+  python -m ml.rag.inspect_vector_db --collection news_data --limit 5
 """
 from __future__ import annotations
 
 import argparse
 import json
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 
@@ -18,8 +21,12 @@ def main() -> int:
     p.add_argument("--limit", type=int, default=8, help="Max documents to sample")
     args = p.parse_args()
 
+    from ml.rag.local_env import load_rag_dotenv
     from ml.rag.retrievers.vector_retriever import _get_qdrant_config
     from qdrant_client import QdrantClient
+
+    repo_root = Path(__file__).resolve().parents[2]
+    load_rag_dotenv(repo_root)
 
     url, api_key, _, timeout_s = _get_qdrant_config()
     client = QdrantClient(url=url, api_key=api_key, timeout=int(timeout_s))

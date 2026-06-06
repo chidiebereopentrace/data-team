@@ -17,6 +17,14 @@ import requests
 
 from ml.rag.hf_token import get_hf_api_token
 
+try:
+    from langfuse.decorators import observe
+except Exception:  # pragma: no cover
+    def observe(*args, **kwargs):  # type: ignore
+        def decorator(fn):
+            return fn
+        return decorator
+
 logger = logging.getLogger(__name__)
 
 HF_ROUTER_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
@@ -53,6 +61,7 @@ def llm_uses_hf_router() -> bool:
     return "router.huggingface.co" in url
 
 
+@observe(as_type="generation", capture_input=True, capture_output=True)
 def llm_chat_complete(
     messages: list[dict[str, Any]],
     *,

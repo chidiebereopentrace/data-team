@@ -181,6 +181,22 @@ def indexed_fields_for_corpus(corpus: CorpusKey) -> frozenset[str]:
     return frozenset(name for name, _ in PAYLOAD_INDEXES.get(corpus, []))
 
 
+def indexed_fields_on_collection(client: Any, collection_name: str) -> frozenset[str] | None:
+    """Payload field names that actually have indexes on this Qdrant collection.
+
+    Intersect with ``indexed_fields_for_corpus`` at query time so older collections
+    (created before indexes were added) do not trigger 400 errors.
+    """
+    try:
+        info = client.get_collection(collection_name=collection_name)
+    except Exception:
+        return None
+    schema = getattr(info.config, "payload_schema", None) or getattr(info, "payload_schema", None)
+    if not isinstance(schema, dict) or not schema:
+        return frozenset()
+    return frozenset(str(k) for k in schema.keys())
+
+
 def ensure_payload_indexes(client: Any, collection_name: str, corpus: str) -> list[str]:
     """Create payload indexes for a collection (idempotent). Returns field names created."""
     created: list[str] = []

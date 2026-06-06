@@ -8,9 +8,21 @@ import uuid
 from pathlib import Path
 
 # Always prefer file values for these when loading data/local/.env (avoids stale shell exports).
-_QDRANT_FORCE_KEYS = frozenset({"QDRANT_URL", "QDRANT_API_KEY"})
+_ENV_FORCE_KEYS = frozenset({
+    "QDRANT_URL",
+    "QDRANT_API_KEY",
+    "HF_HOME",
+    "FASTEMBED_CACHE_PATH",
+    "RAG_GENERATE_TEMPERATURE",
+})
+
+# Redis (RAG_REDIS_URL / REDIS_URL etc.) is *never* auto-defaulted here.
+# It is an explicit production opt-in for durable sessions + cross-process caches.
+# See session_store.py and deploy/README.md.
+_QDRANT_FORCE_KEYS = _ENV_FORCE_KEYS  # backwards-compatible alias
 
 _DEFAULT_HF_HOME_REL = Path("data/local/models/chunking/huggingface")
+_DEFAULT_FASTEMBED_CACHE_REL = Path("data/local/models/chunking/fastembed")
 _DEFAULT_GCP_KEY_REL = Path("config/keys/opentrace-bq-key.json")
 
 
@@ -19,6 +31,9 @@ _WORKSPACE_ROOT = Path(__file__).resolve().parents[3]  # data-team workspace roo
 
 
 def _agent_debug_log(location: str, message: str, data: dict, hypothesis_id: str, run_id: str = "pre-fix") -> None:
+    # Gated for production containers. Only enable with RAG_DEBUG_SESSIONS=1 for agent tracing.
+    if os.environ.get("RAG_DEBUG_SESSIONS", "").strip().lower() not in ("1", "true", "on"):
+        return
     try:
         payload = {
             "sessionId": "6c8b2f",
@@ -65,7 +80,7 @@ def load_data_local_dotenv(repo_root: Path, *, force_keys: frozenset[str] | None
     """
     _merge_dotenv_file(
         repo_root / "data" / "local" / ".env",
-        force_keys=force_keys if force_keys is not None else _QDRANT_FORCE_KEYS,
+        force_keys=force_keys if force_keys is not None else _ENV_FORCE_KEYS,
     )
 
 
@@ -108,6 +123,8 @@ def apply_ml_eng_path_defaults(repo_root: Path) -> None:
     Resolve repo-relative paths and apply sensible defaults for local dev.
 
     - ``HF_HOME`` → ``data/local/models/chunking/huggingface`` when that hub cache exists
+    - ``FASTEMBED_CACHE_PATH`` → ``data/local/models/chunking/fastembed`` when unset
+    - ``TRANSFORMERS_CACHE`` is removed when ``HF_HOME`` is set (deprecated; silences warnings)
     - ``GOOGLE_APPLICATION_CREDENTIALS`` → resolved relative to ``repo_root``, with fallback
       to ``config/keys/opentrace-bq-key.json``
     """
@@ -120,6 +137,22 @@ def apply_ml_eng_path_defaults(repo_root: Path) -> None:
         default_hf = (repo_root / _DEFAULT_HF_HOME_REL).resolve()
         if (default_hf / "hub").is_dir():
             os.environ["HF_HOME"] = str(default_hf)
+
+    # Hugging Face deprecated TRANSFORMERS_CACHE in favour of HF_HOME.
+    if os.environ.get("HF_HOME", "").strip():
+        os.environ.pop("TRANSFORMERS_CACHE", None)
+
+    fe_raw = os.environ.get("FASTEMBED_CACHE_PATH", "").strip()
+    if fe_raw:
+        fe_path = Path(fe_raw.strip('"').strip("'"))
+        if not fe_path.is_absolute():
+            fe_path = (repo_root / fe_path).resolve()
+        fe_path.mkdir(parents=True, exist_ok=True)
+        os.environ["FASTEMBED_CACHE_PATH"] = str(fe_path)
+    else:
+        default_fe = (repo_root / _DEFAULT_FASTEMBED_CACHE_REL).resolve()
+        os.environ["FASTEMBED_CACHE_PATH"] = str(default_fe)
+        default_fe.mkdir(parents=True, exist_ok=True)
 
     gcp_raw = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
     if gcp_raw:
@@ -141,6 +174,7 @@ def apply_lm_studio_defaults() -> None:
         ("RAG_LLM_TIMEOUT_S", "300"),
         ("RAG_GENERATE_MAX_TOKENS", "1024"),
         ("RAG_GENERATE_TIMEOUT_S", "300"),
+        ("RAG_GENERATE_TEMPERATURE", "0.5"),
         ("RAG_BQ_NL2SQL_PARALLEL", "off"),
         ("RAG_BQ_SKIP_LIVE_SCHEMA", "on"),
         ("RAG_BQ_NL2SQL_TIMEOUT_S", "300"),

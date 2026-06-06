@@ -214,7 +214,7 @@ def _safe_metadata(meta: dict[str, Any]) -> dict[str, str | int | float | bool]:
 # ---------------------------------------------------------------------------
 
 PAYLOAD_NEWS: Final[frozenset[str]] = frozenset({
-    "content", "doc_kind", "geo_country_primary", "geo_scope",
+    "content", "doc_kind", "geo_country_primary", "geo_countries", "geo_scope",
     "domains", "published_at", "title", "source", "url",
     "chunk_index", "total_chunks", "document_id", "content_hash",
     "section_path", "ingest_version",

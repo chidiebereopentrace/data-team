@@ -14,8 +14,14 @@ from typing import Any
 
 import yaml
 
+from ml.rag.local_env import load_rag_dotenv
 from ml.rag.retrievers.vector_retriever import VectorRetriever
 from ml.rag.text_processors.chunking_config import PROFILES, CorpusKey
+
+# Ensure the unified env (config/.env + data/local for local dev) is loaded
+# before any retriever or Qdrant client is created.
+_repo_root = Path(__file__).resolve().parents[3]   # data-team root (contains ml-eng/)
+load_rag_dotenv(_repo_root / "ml-eng")
 
 EVAL_DIR = Path(__file__).resolve().parent / "questions"
 

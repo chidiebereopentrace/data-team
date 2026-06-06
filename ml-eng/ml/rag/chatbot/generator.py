@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_configured, llm_default_timeout_s, llm_model_id
@@ -24,18 +25,20 @@ def _build_prompt(
     context_block: str,
     decomposition: dict[str, Any] | None = None,
     memory_block: str = "",
+    audience_instructions: str = "",
 ) -> list[dict[str, str]]:
     system = (
-        "You are a helpful data assistant for the OpenTrace team. Questions are often about "
-        "agricultural production, crop productivity, regions, districts, agroecological zones, "
-        "yield gaps, rainfall, irrigation, drought, food supply stability, and trends over time. "
-        "Use the provided context (BigQuery results and/or document snippets) to answer. "
-        "Ground your answer in the context: prefer facts from [News], [Academic], [Policy], "
-        "[Public report], and BigQuery row text. "
-        "For [Academic] snippets, cite the source when metadata is present (authors, year, article title, journal, DOI). "
-        "Cite specific numbers or regions when the context supports it. "
-        "If the context does not fully answer the question, say so and summarize what the data does show. "
-        "Do not invent citations or statistics that are not supported by the context."
+        "You are an agricultural advisory assistant for OpenTrace stakeholders (government, NGOs, "
+        "agribusiness, finance, farmers). Write clear prose for decision-makers — not a database console. "
+        "Answer ONLY using facts in the Context below from retrieved OpenTrace sources: [News], [Academic], "
+        "[Policy], [Public report], and [Structured data] (tabular facts already extracted from OpenTrace data). "
+        "For [Academic] snippets, cite the source when metadata is present (authors, year, title, journal, DOI). "
+        "Cite specific numbers or regions when the context supports them. "
+        "If the context does not fully answer the question, say so and summarize what the sources do show. "
+        "Do not invent citations, statistics, or datasets. "
+        "Never output SQL, query code, table DDL, pipeline steps, or instructions to run BigQuery. "
+        "Never mention bigquery-public-data or other external warehouses. "
+        "Do not suggest example queries the user should run."
     )
     facet_block = ""
     intent_tone = ""
@@ -61,6 +64,10 @@ def _build_prompt(
             facet_block = ""
     if intent_tone:
         system = system + intent_tone
+
+    if audience_instructions:
+        system = system + "\n\nClient-provided audience / tone guidance (follow where it does not conflict with the grounding rules above):\n" + audience_instructions[:3000]
+
     mb = (memory_block.strip() + "\n\n") if memory_block.strip() else ""
     user = f"{facet_block}{mb}Context:\n{context_block}\n\nQuestion: {query}"
     return [
@@ -87,15 +94,36 @@ def _resolve_memory_block(**kwargs: Any) -> str:
     return block
 
 
+def _strip_sql_from_answer(text: str) -> str:
+    """Remove SQL blocks the model may emit despite instructions (advisory UI only)."""
+    if not text:
+        return text
+    out = re.sub(r"```(?:sql)?\s*[\s\S]*?```", "", text, flags=re.IGNORECASE)
+    lines = []
+    for line in out.splitlines():
+        s = line.strip()
+        if re.match(r"^(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|DROP)\b", s, re.IGNORECASE):
+            continue
+        if "bigquery-public-data" in line.lower():
+            continue
+        lines.append(line)
+    cleaned = "\n".join(lines).strip()
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned or text.strip()
+
+
 def _call_llama(messages: list[dict[str, str]]) -> str:
     """Call configured LLM backend; never raises on HTTP errors."""
     gen_timeout = float(os.environ.get("RAG_GENERATE_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
     max_toks = int(os.environ.get("RAG_GENERATE_MAX_TOKENS", "1024") or 1024)
+    # Default 0.5 gives noticeably more natural advisory prose than the old 0.3 while staying grounded.
+    # Lower (0.2–0.3) for very conservative output; higher (0.55–0.65) only with stronger models.
+    temperature = float(os.environ.get("RAG_GENERATE_TEMPERATURE", "0.5") or 0.5)
     return llm_chat_complete(
         messages,
         model=llm_model_id(),
         max_tokens=max_toks,
-        temperature=0.3,
+        temperature=temperature,
         timeout_s=gen_timeout,
     )
 
@@ -117,6 +145,14 @@ def generate(
 
     memory_block = _resolve_memory_block(**kwargs)
 
+    # Client-provided (AskADZA UI owns user profile / tone). Never auto-apply
+    # the static stakeholder_prompts mapping here for the initial handoff.
+    audience_instructions = (
+        kwargs.get("audience_instructions")
+        or kwargs.get("stakeholder_type")
+        or ""
+    ).strip()
+
     if not context_items:
         allow_ungrounded = os.environ.get("RAG_ALLOW_UNGROUNDED", "").strip().lower() in (
             "1",
@@ -130,14 +166,15 @@ def generate(
                 context_block="[No external context]",
                 decomposition=decomposition,
                 memory_block=memory_block,
+                audience_instructions=audience_instructions,
             )
             llama_answer = _call_llama(messages)
             if llama_answer:
-                return llama_answer
+                return _strip_sql_from_answer(llama_answer)
         return (
             "I couldn't find relevant OpenTrace sources (news, research, policy, public reports, "
-            "or BigQuery data) for this question. Try naming a specific country, crop, or dataset, "
-            "or confirm the Qdrant collections are loaded."
+            "or structured agricultural data) for this question. Try naming a specific country or crop, "
+            "or confirm the knowledge bases are loaded."
         )
 
     content_key = "content" if any("content" in c for c in context_items) else "text"
@@ -148,10 +185,15 @@ def generate(
         (c.get(content_key) or c.get("text", str(c)))[:2000] for c in context_items
     )[:ctx_budget]
 
-    messages = _build_prompt(query, context_block, decomposition=decomposition, memory_block=memory_block)
+    messages = _build_prompt(
+        query, context_block,
+        decomposition=decomposition,
+        memory_block=memory_block,
+        audience_instructions=audience_instructions,
+    )
     llama_answer = _call_llama(messages)
     if llama_answer:
-        return llama_answer
+        return _strip_sql_from_answer(llama_answer)
 
     if llm_configured():
         hint = (
