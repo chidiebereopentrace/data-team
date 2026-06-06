@@ -24,8 +24,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ml ./ml
 COPY config ./config
 
-# Set Python path
+# Set Python path and unbuffer output for Railway logs
 ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
 # Health check for Railway
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
