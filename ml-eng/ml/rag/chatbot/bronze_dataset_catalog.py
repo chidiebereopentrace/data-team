@@ -14,12 +14,16 @@ from typing import Any
 
 import yaml
 
+from ml.rag.session_store import get_bronze_catalog_cache, set_bronze_catalog_cache
+
 _DEFAULT_YAML = Path(__file__).resolve().parent / "bronze_dataset_model.yml"
 # Repo root: .../ml/rag/chatbot/this_file.py -> parents[3] == workspace root (e.g. data-team)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _FALLBACK_DBT_SOURCES = _REPO_ROOT / "dbt" / "models" / "sources.yml"
 
-# In-process cache: (cache_key_tuple, table_name -> compact schema string)
+# In-process (L1) + Redis (L2 via session_store) cache.
+# The module-global _cache is the fast per-process mtime check.
+# Redis provides cross-worker / cross-restart sharing for the expensive YAML parse.
 _cache: tuple[tuple[Any, ...], dict[str, str]] | None = None
 
 
@@ -116,6 +120,9 @@ def load_bronze_table_schemas(
     Return mapping table_id -> compact column list string for NL-to-SQL hints.
 
     Reloads when the file mtime changes or ``force_reload`` is True.
+    Uses Redis (when RAG_REDIS_URL configured) as a cross-process L2 cache in addition
+    to the local mtime-based in-process cache. This keeps bq_table_matcher fast across
+    gunicorn workers and container restarts.
 
     Loads ``RAG_BRONZE_MODEL_YAML`` or the default ``chatbot/bronze_dataset_model.yml`` (dbt fragment
     or full ``sources.yml``). If that file is missing, empty, or parses to zero tables,
@@ -135,8 +142,17 @@ def load_bronze_table_schemas(
         mtime_fb = None
 
     cache_key = ("v1", str(path), mtime_primary, str(_FALLBACK_DBT_SOURCES), mtime_fb, source_name)
-    if not force_reload and _cache is not None and _cache[0] == cache_key:
-        return _cache[1]
+    # Stable string key for Redis L2 (includes the components that affect content)
+    redis_cache_key = f"v1:{path}:{mtime_primary}:{_FALLBACK_DBT_SOURCES}:{source_name or ''}"
+
+    if not force_reload:
+        # L2: Redis first (shared, survives restarts)
+        redis_hit = get_bronze_catalog_cache(redis_cache_key)
+        if redis_hit is not None:
+            return redis_hit
+        # L1: local mtime process cache
+        if _cache is not None and _cache[0] == cache_key:
+            return _cache[1]
 
     mapping: dict[str, str] = {}
 
@@ -156,4 +172,5 @@ def load_bronze_table_schemas(
             mapping = _parse_sources_text(fb_text, source_name=source_name)
 
     _cache = (cache_key, mapping)
+    set_bronze_catalog_cache(redis_cache_key, mapping)
     return mapping

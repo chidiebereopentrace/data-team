@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import date
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_model_id
@@ -187,17 +188,51 @@ def normalize_geography_for_filter(geography: list[str] | None) -> list[str]:
 
 def resolve_news_geo(*, geo_override: str, geography: list[str] | None) -> str | None:
     """Pick at most one country for news filtering; skip continents/regions."""
+    countries = resolve_retrieval_geographies(geo_override=geo_override, geography=geography)
+    return countries[0] if countries else None
+
+
+def resolve_retrieval_geographies(
+    *,
+    geo_override: str,
+    geography: list[str] | None,
+) -> list[str]:
+    """Country list for vector/BQ filters (compare queries may include 2+ countries)."""
     if geo_override.strip():
         g = geo_override.strip()
-        return None if g.lower() in _NON_COUNTRY_GEO else g
-    countries = normalize_geography_for_filter(geography)
-    return countries[0] if countries else None
+        return [] if g.lower() in _NON_COUNTRY_GEO else [g]
+    return normalize_geography_for_filter(geography)
+
+
+def _is_open_ended_time(text: str) -> bool:
+    """True when the query asks for a range ending at the present (not a fixed year)."""
+    tl = (text or "").lower()
+    patterns = (
+        r"\btill\s+now\b",
+        r"\buntil\s+now\b",
+        r"\bto\s+date\b",
+        r"\bto\s+present\b",
+        r"\bup\s+to\s+now\b",
+        r"\bas\s+of\s+now\b",
+        r"\bpresent\s+day\b",
+        r"\bcurrently\b",
+    )
+    return any(re.search(p, tl) for p in patterns)
+
+
+def _extract_since_year(text: str) -> int | None:
+    """Parse 'since 2015', 'from 2013', 'starting 2020'."""
+    m = re.search(
+        r"\b(?:since|from|starting|after)\s+(?:the\s+)?(?:year\s+)?((?:19|20)\d{2})\b",
+        (text or "").lower(),
+    )
+    if not m:
+        return None
+    return int(m.group(1))
 
 
 def _extract_relative_year_range(text: str) -> tuple[str | None, str | None]:
     """Parse 'past 7 years', 'last 5 years', etc."""
-    from datetime import date
-
     m = re.search(r"\b(?:past|last)\s+(\d{1,2})\s+years?\b", (text or "").lower())
     if not m:
         return None, None
@@ -212,7 +247,22 @@ def _extract_year_range(text: str) -> tuple[str | None, str | None]:
     rel_start, rel_end = _extract_relative_year_range(text)
     if rel_start and rel_end:
         return rel_start, rel_end
-    years = [int(m.group(0)) for m in re.finditer(r"\b(19|20)\d{2}\b", text)]
+
+    today = date.today().isoformat()
+    tl = (text or "").lower()
+    open_ended = _is_open_ended_time(text)
+    since_y = _extract_since_year(text)
+
+    if since_y is not None:
+        start = f"{since_y}-01-01"
+        end = today if open_ended else None
+        if end:
+            return start, end
+        # "since 2015" without explicit open end still implies ongoing range for trend queries
+        if re.search(r"\b(?:trend|over\s+time|how\s+has|changed|evolution|growth)\b", tl):
+            return start, today
+
+    years = [int(m.group(0)) for m in re.finditer(r"\b(?:19|20)\d{2}\b", text or "")]
     if not years:
         return None, None
     years = sorted(set(years))
@@ -220,6 +270,13 @@ def _extract_year_range(text: str) -> tuple[str | None, str | None]:
         y0, y1 = years[0], years[-1]
         return f"{y0}-01-01", f"{y1}-12-31"
     y = years[0]
+    if open_ended or since_y == y:
+        return f"{y}-01-01", today
+    if re.search(rf"\b(?:in|during|for)\s+{y}\b", tl):
+        return f"{y}-01-01", f"{y}-12-31"
+    # Lone year with trend language → from that year to today
+    if re.search(r"\b(?:trend|since|from|over\s+time|how\s+has)\b", tl):
+        return f"{y}-01-01", today
     return f"{y}-01-01", f"{y}-12-31"
 
 
@@ -339,6 +396,9 @@ def _call_llama_decompose(query: str) -> dict[str, Any] | None:
         "entities (array of strings), geography (array of country names or empty), "
         "domains (array of short topic tags), time_start (YYYY-MM-DD or empty string), "
         "time_end (YYYY-MM-DD or empty string).\n\n"
+        "For time: use time_end = today's date when the question says 'till now', 'to date', "
+        "'until now', or 'since YEAR' with no fixed end year. Use empty time_start/time_end only "
+        "when no time period is implied.\n\n"
         "intent must be one of these values; meanings:\n"
         f"{intent_block}\n\n"
         "No markdown, no extra keys.\n\nQuestion: "
@@ -415,12 +475,22 @@ def decompose_query(query: str) -> dict[str, Any]:
             out["time_start"] = t0.strip()
         if isinstance(t1, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", t1.strip()):
             out["time_end"] = t1.strip()
+        elif isinstance(t0, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", t0.strip()) and not str(t1).strip():
+            if _is_open_ended_time(q) or _extract_since_year(q) is not None:
+                out["time_end"] = date.today().isoformat()
 
-    # Normalize empty time to heuristic if LLM omitted
+    # Fill missing fields from heuristics (do not narrow an open-ended LLM start to one calendar year)
     if not out["time_start"] and ts:
         out["time_start"] = ts
     if not out["time_end"] and te:
         out["time_end"] = te
+    elif (
+        out["time_start"]
+        and out["time_end"]
+        and out["time_end"] == f"{out['time_start'][:4]}-12-31"
+        and (_is_open_ended_time(q) or _extract_since_year(q) is not None)
+    ):
+        out["time_end"] = date.today().isoformat()
 
     out["geography"] = normalize_geography_for_filter(out.get("geography"))
     out["intent"] = _normalize_intent(out.get("intent"))

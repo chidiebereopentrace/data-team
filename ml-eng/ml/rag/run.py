@@ -3,8 +3,8 @@ CLI entrypoint for the RAG pipeline. Usage:
   PYTHONPATH=. python -m ml.rag.run "your question here"
   PYTHONPATH=. python -m ml.rag.run
 
-Prints deduplicated BigQuery SQL used by the BQ retriever on **stderr** (before the answer on
-stdout), unless ``RAG_CLI_SHOW_SQL`` is set to 0/false/off.
+Optional: prints generated BigQuery SQL on **stderr** when ``RAG_CLI_SHOW_SQL=1`` (off by default;
+advisory answers never include SQL).
 
 Set ``RAG_CLI_SHOW_RETRIEVAL=0`` to hide a one-line retrieval summary on stderr (counts of
 BQ rows, catalog chunks, news, academic, merged). When merged is 0, the model sees no context —
@@ -48,8 +48,8 @@ def _dedupe_bq_sql(bq_results: list[Any] | None) -> list[str]:
 
 
 def _should_print_bq_sql() -> bool:
-    raw = os.environ.get("RAG_CLI_SHOW_SQL", "1").strip().lower()
-    return raw not in ("0", "false", "no", "off", "n")
+    raw = os.environ.get("RAG_CLI_SHOW_SQL", "0").strip().lower()
+    return raw in ("1", "true", "on", "yes")
 
 
 def _print_bq_sql_stderr(result: dict[str, Any]) -> None:

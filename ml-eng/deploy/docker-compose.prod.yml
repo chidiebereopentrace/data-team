@@ -1,0 +1,69 @@
+# Local "production-like" testing of the exact Docker image
+# that will run on GCE / Cloud Run.
+#
+# Usage:
+#   cd ml-eng/deploy
+#   docker compose -f docker-compose.prod.yml up --build
+#
+# Then call http://localhost:8080
+
+version: "3.9"
+
+services:
+  rag-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: opentrace-rag-api:local-prod
+    ports:
+      - "8080:8080"
+    environment:
+      # === REQUIRED - replace with real values or use .env ===
+      QDRANT_URL: ${QDRANT_URL:-https://your-cluster.qdrant.io}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      RAG_LLM_BASE_URL: ${RAG_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+      RAG_LLM_MODEL_ID: ${RAG_LLM_MODEL_ID:-meta-llama-3.1-8b-instruct}
+      RAG_GENERATE_TEMPERATURE: ${RAG_GENERATE_TEMPERATURE:-0.5}
+      RAG_GENERATE_MAX_TOKENS: "1024"
+
+      # BQ (use ADC or mounted key)
+      BQ_PROJECT: ${BQ_PROJECT:-opentrace-prod-5ga4}
+      # GOOGLE_APPLICATION_CREDENTIALS: /secrets/key.json   # mount below if needed
+
+      # Redis for durable chat memory + shared caches (recommended for any scaled / multi-worker test)
+      # RAG_REDIS_URL: ${RAG_REDIS_URL:-redis://redis:6379/0}
+      # RAG_SESSION_TTL_SECONDS: "86400"
+      # RAG_CACHE_TTL_SECONDS: "3600"
+
+      # Optional but recommended
+      RAG_SHOW_SQL_DEBUG: "0"   # set to 1 only for local debugging
+      LOG_LEVEL: "info"
+
+    # Example volume for model caches (highly recommended)
+    # volumes:
+    #   - rag-caches:/root/.cache
+    #   - ./secrets:/secrets:ro
+
+    # depends_on:
+    #   - redis
+
+    restart: unless-stopped
+
+  # Optional Redis for local "prod-like" testing of the scaled session/cache story.
+  # Uncomment the service, the RAG_REDIS_URL above, and the depends_on to use it.
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
+
+# volumes:
+#   rag-caches:
+#   redis-data:

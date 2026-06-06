@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments (never copy)
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Local data and huge model caches (do NOT bake these into the image)
+data/local/models/
+data/local/**/*.env
+data/local/gdrive_cache/
+data/local/*.json
+*.log
+debug-*.log
+
+# Git / VCS
+.git/
+.gitignore
+.gitattributes
+
+# IDE and editor
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation and non-runtime
+*.md
+!README.md
+docs/
+eval/
+tests/
+bq_tables_yaml_files/*TODO*.yml
+helpers/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Any local secrets or keys that should never be in the image
+config/keys/
+*.pem
+*.key
+secrets/

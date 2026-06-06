@@ -12,27 +12,27 @@ from pathlib import Path
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
+from ml.rag.local_env import load_rag_dotenv
 from ml.rag.retrievers.base import BaseRetriever
+from ml.rag.session_store import get_bq_schema_cache, set_bq_schema_cache
 
 logger = logging.getLogger(__name__)
 
-# Load .env when used from repo root
+# Production note: The main API (app/api.py) calls load_rag_dotenv early using the
+# unified loader (respecting config/.env and pure env vars for GCE).
+# This private helper is retained for direct script usage / backward compat only.
+# It now delegates to the standard loader so there is no separate data/local logic
+# in production code paths.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_ENV_FILE = _REPO_ROOT / "data" / "local" / ".env"
 
 
 def _load_dotenv() -> None:
-    if not _ENV_FILE.exists():
-        return
-    for line in _ENV_FILE.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip().replace("export ", "", 1).strip()
-        value = value.strip().strip("'\"")
-        if key and key not in os.environ:
-            os.environ[key] = value
+    """Delegate to the single RAG env loader. Safe to call multiple times."""
+    try:
+        load_rag_dotenv(_REPO_ROOT)
+    except Exception:
+        # Never break callers; vars may already be present via container env.
+        pass
 
 
 def _get_datasets_config() -> dict[str, str]:
@@ -91,6 +91,7 @@ _QUERY_SPLIT_RE = re.compile(r"\n---+\s*(?:QUERY)?\s*---+\n", re.IGNORECASE)
 def _format_query_constraints(
     *,
     geo_country: str | None,
+    geo_countries: list[str] | None = None,
     time_start: str | None,
     time_end: str | None,
     entities: list[str] | None,
@@ -98,9 +99,18 @@ def _format_query_constraints(
 ) -> str:
     """Structured filters from query decomposition (must appear in generated SQL)."""
     lines: list[str] = []
-    if geo_country:
+    countries = [str(c).strip() for c in (geo_countries or []) if str(c).strip()]
+    if not countries and geo_country:
+        countries = [geo_country.strip()]
+    if len(countries) >= 2:
         lines.append(
-            f"- REQUIRED country/area filter: {geo_country!r} "
+            f"- REQUIRED: include rows for ALL of these countries {countries!r} "
+            "(use IN (...) or OR on country, country_name, area, adm0_name, geographic_unit_name; "
+            "GROUP BY country when comparing)"
+        )
+    elif len(countries) == 1:
+        lines.append(
+            f"- REQUIRED country/area filter: {countries[0]!r} "
             "(use country, country_name, area, Area, adm0_name, or geographic_unit_name per schema)"
         )
     if time_start or time_end:
@@ -202,7 +212,6 @@ class BQRetriever(BaseRetriever):
         else:
             self.nl2sql_enabled = os.environ.get("RAG_BQ_NL2SQL_ENABLED", "1").strip().lower() in ("1", "true", "on")
         self._client = None
-        self._schema_cache: str | None = None
 
     def _get_client(self):
         if self._client is None:
@@ -210,10 +219,21 @@ class BQRetriever(BaseRetriever):
             self._client = bigquery.Client(project=self.project_id)
         return self._client
 
+    def _schema_cache_key(self) -> str:
+        """Stable key for the shared (Redis or fallback) schema cache."""
+        parts = [self.project_id or "no-project"]
+        for k, v in sorted(self.datasets_config.items()):
+            parts.append(f"{k}={v or ''}")
+        return ":".join(parts)
+
     def _get_schema(self) -> str:
-        """Build a compact schema summary for configured datasets (bronze only); cached."""
-        if self._schema_cache is not None:
-            return self._schema_cache
+        """Build a compact schema summary for configured datasets (bronze only); cached across processes via Redis when configured."""
+        cache_key = self._schema_cache_key()
+        cached = get_bq_schema_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        schema_text: str
         try:
             from google.cloud.bigquery import DatasetReference, TableReference
             client = self._get_client()
@@ -237,10 +257,12 @@ class BQRetriever(BaseRetriever):
                     except Exception:
                         table_desc.append(t.table_id)
                 lines.append(f"[{layer}] dataset = {dataset_id}. Tables: " + "; ".join(table_desc))
-            self._schema_cache = "\n".join(lines) if lines else "[No schema]"
+            schema_text = "\n".join(lines) if lines else "[No schema]"
         except Exception:
-            self._schema_cache = "[Schema unavailable]"
-        return self._schema_cache
+            schema_text = "[Schema unavailable]"
+
+        set_bq_schema_cache(cache_key, schema_text)
+        return schema_text
 
     def _schema_for_nl2sql(self, table_hints: list[str] | None) -> str:
         """Compact schema text; skip live BQ catalog when rich per-table hints are present."""
@@ -264,6 +286,7 @@ class BQRetriever(BaseRetriever):
         table_hints: list[str] | None,
         *,
         geo_country: str | None,
+        geo_countries: list[str] | None = None,
         time_start: str | None,
         time_end: str | None,
         entities: list[str] | None,
@@ -274,6 +297,7 @@ class BQRetriever(BaseRetriever):
         schema_text = self._schema_for_nl2sql(table_hints)
         constraints_block = _format_query_constraints(
             geo_country=geo_country,
+            geo_countries=geo_countries,
             time_start=time_start,
             time_end=time_end,
             entities=entities,
@@ -331,6 +355,7 @@ class BQRetriever(BaseRetriever):
         table_hints: list[str] | None = None,
         *,
         geo_country: str | None = None,
+        geo_countries: list[str] | None = None,
         time_start: str | None = None,
         time_end: str | None = None,
         entities: list[str] | None = None,
@@ -341,6 +366,7 @@ class BQRetriever(BaseRetriever):
             question,
             table_hints,
             geo_country=geo_country,
+            geo_countries=geo_countries,
             time_start=time_start,
             time_end=time_end,
             entities=entities,
@@ -360,6 +386,7 @@ class BQRetriever(BaseRetriever):
         table_hints: list[str] | None = None,
         *,
         geo_country: str | None = None,
+        geo_countries: list[str] | None = None,
         time_start: str | None = None,
         time_end: str | None = None,
         entities: list[str] | None = None,
@@ -381,6 +408,7 @@ class BQRetriever(BaseRetriever):
                 question,
                 cleaned_hints[:max_queries],
                 geo_country=geo_country,
+                geo_countries=geo_countries,
                 time_start=time_start,
                 time_end=time_end,
                 entities=entities,
@@ -407,6 +435,7 @@ class BQRetriever(BaseRetriever):
                 question,
                 table_hints=[hint] if hint else None,
                 geo_country=geo_country,
+                geo_countries=geo_countries,
                 time_start=time_start,
                 time_end=time_end,
                 entities=entities,
@@ -508,6 +537,13 @@ class BQRetriever(BaseRetriever):
         else:
             geo_country = None
 
+        raw_geo_countries = kwargs.get("geo_countries")
+        geo_countries: list[str] | None = None
+        if isinstance(raw_geo_countries, (list, tuple)):
+            geo_countries = [str(c).strip() for c in raw_geo_countries if str(c).strip()] or None
+        if geo_countries and len(geo_countries) >= 2:
+            geo_country = None
+
         time_start = kwargs.get("time_start")
         if not isinstance(time_start, str) or not time_start.strip():
             time_start = None
@@ -539,6 +575,7 @@ class BQRetriever(BaseRetriever):
                 query,
                 table_hints=hint_list,
                 geo_country=geo_country,
+                geo_countries=geo_countries,
                 time_start=time_start,
                 time_end=time_end,
                 entities=entities,
@@ -564,12 +601,42 @@ class BQRetriever(BaseRetriever):
             limit = min(rows_per_query, budget)
             validated = _validate_sql(raw_sql, allowed, limit)
             if validated is None:
+                logger.warning(
+                    "BQ NL2SQL: validation rejected SQL #%d (first 300 chars): %s",
+                    idx + 1, (raw_sql or "")[:300]
+                )
+                # Still surface the attempted SQL for debugging (software team handoff)
+                items.append({
+                    "content": "[BQ validation failed for this query]",
+                    "source": "bigquery",
+                    "metadata": {
+                        "sql": raw_sql,
+                        "sql_index": idx + 1,
+                        "sql_count": len(sql_queries),
+                        "validation_failed": True,
+                    },
+                })
                 continue
             try:
                 job = client.query(validated)
                 rows = list(job.result())
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "BQ execution failed for validated SQL #%d: %s (sql: %s)",
+                    idx + 1, str(exc)[:200], validated[:200]
+                )
+                items.append({
+                    "content": f"[BQ execution error: {str(exc)[:200]}]",
+                    "source": "bigquery",
+                    "metadata": {
+                        "sql": validated,
+                        "sql_index": idx + 1,
+                        "sql_count": len(sql_queries),
+                        "execution_error": str(exc)[:500],
+                    },
+                })
                 continue
+
             for row in rows[:limit]:
                 d = dict(row)
                 items.append({
