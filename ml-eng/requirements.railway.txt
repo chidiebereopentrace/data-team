@@ -24,6 +24,9 @@ PyYAML>=6.0
 qdrant-client>=1.9.0
 # NO fastembed - not needed for retrieval-only
 
+# Session storage (with in-memory fallback if unavailable)
+redis>=5.0.0
+
 # NO torch, torchvision, transformers, sentence-transformers
 # These are ~2GB+ and only needed for local embedding generation
 # Railway deployment only needs retrieval + LLM API calls
