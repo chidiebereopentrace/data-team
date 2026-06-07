@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY ml ./ml
-COPY config ./config
+# Note: config/ is not copied - Railway uses environment variables only
 
 # Set Python path and unbuffer output for Railway logs
 ENV PYTHONPATH=/app
