@@ -30,5 +30,10 @@ redis>=5.0.0
 # Local embedding models (Railway Pro has sufficient RAM)
 sentence-transformers>=2.2.0
 
+# Local LLM for text generation (Llama 3.1 8B)
+transformers>=4.35.0
+torch>=2.1.0
+accelerate>=0.24.0
+
 # Optional: If you need tiktoken for token counting
 tiktoken>=0.5.0
