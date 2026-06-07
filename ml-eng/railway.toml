@@ -7,7 +7,6 @@ dockerfilePath = "Dockerfile.railway"
 watchPatterns = ["ml/**", "config/**", "requirements.railway.txt"]
 
 [deploy]
-startCommand = "/app/entrypoint.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
 
