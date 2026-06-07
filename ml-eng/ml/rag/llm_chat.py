@@ -2,6 +2,7 @@
 Unified chat-completions client for the RAG stack.
 
 Supports:
+- Local transformers models (when transformers is installed and no API URL set)
 - Hugging Face router (default when ``HF_API_TOKEN`` is set)
 - OpenAI-compatible local servers (LM Studio, vLLM) via ``RAG_LLM_BASE_URL``
 
@@ -16,6 +17,10 @@ from typing import Any
 import requests
 
 from ml.rag.hf_token import get_hf_api_token
+
+# Local model support
+_LOCAL_MODEL_CACHE: dict[str, Any] = {}
+_LOCAL_TOKENIZER_CACHE: dict[str, Any] = {}
 
 try:
     from langfuse.decorators import observe
@@ -61,6 +66,107 @@ def llm_uses_hf_router() -> bool:
     return "router.huggingface.co" in url
 
 
+def _use_local_model() -> bool:
+    """Check if we should use local transformers instead of API."""
+    # If there's an explicit API URL or HF token, use API
+    if os.environ.get("RAG_LLM_BASE_URL", "").strip():
+        return False
+    if os.environ.get("RAG_LLM_PROVIDER", "").strip().lower() in ("openai", "hf_api"):
+        return False
+    # Try to use local model if transformers is available
+    try:
+        import transformers  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _load_local_model(model_id: str) -> Any:
+    """Load local transformers model with caching."""
+    if model_id in _LOCAL_MODEL_CACHE:
+        return _LOCAL_MODEL_CACHE[model_id]
+    
+    try:
+        from transformers import AutoModelForCausalLM
+        import torch
+        
+        logger.info("Loading local model: %s (this may take 2-3 minutes on first call)", model_id)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16,
+            device_map="auto",
+            low_cpu_mem_usage=True,
+        )
+        _LOCAL_MODEL_CACHE[model_id] = model
+        logger.info("Local model loaded successfully: %s", model_id)
+        return model
+    except Exception as e:
+        logger.exception("Failed to load local model %s: %s", model_id, e)
+        return None
+
+
+def _load_local_tokenizer(model_id: str) -> Any:
+    """Load local tokenizer with caching."""
+    if model_id in _LOCAL_TOKENIZER_CACHE:
+        return _LOCAL_TOKENIZER_CACHE[model_id]
+    
+    try:
+        from transformers import AutoTokenizer
+        
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        _LOCAL_TOKENIZER_CACHE[model_id] = tokenizer
+        return tokenizer
+    except Exception as e:
+        logger.exception("Failed to load tokenizer for %s: %s", model_id, e)
+        return None
+
+
+def _local_model_generate(
+    messages: list[dict[str, Any]],
+    model_id: str,
+    max_tokens: int = 512,
+    temperature: float = 0.0,
+) -> str:
+    """Generate text using local transformers model."""
+    model = _load_local_model(model_id)
+    tokenizer = _load_local_tokenizer(model_id)
+    
+    if model is None or tokenizer is None:
+        logger.warning("Local model or tokenizer not available for %s", model_id)
+        return ""
+    
+    try:
+        # Apply chat template
+        prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        
+        # Tokenize
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        
+        # Generate
+        with model.device:
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                temperature=temperature if temperature > 0 else 0.1,
+                do_sample=temperature > 0,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+        
+        # Decode
+        generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Extract only the assistant's response (remove prompt)
+        if prompt in generated:
+            response = generated[len(prompt):].strip()
+        else:
+            response = generated.strip()
+        
+        return response
+    except Exception as e:
+        logger.exception("Local model generation failed for %s: %s", model_id, e)
+        return ""
+
+
 @observe(as_type="generation", capture_input=True, capture_output=True)
 def llm_chat_complete(
     messages: list[dict[str, Any]],
@@ -76,6 +182,13 @@ def llm_chat_complete(
     Use OpenAI-style ``system`` / ``user`` messages — do not embed Llama chat templates
     inside ``user`` content when calling LM Studio (it applies the template itself).
     """
+    # Check if we should use local transformers model
+    if _use_local_model():
+        model_id = model or llm_model_id()
+        logger.info("Using local transformers model: %s", model_id)
+        return _local_model_generate(messages, model_id, max_tokens, temperature)
+    
+    # Otherwise use API (HuggingFace router or local server)
     url = llm_chat_completions_url()
     if not url:
         logger.warning("llm_chat_complete: no backend (set RAG_LLM_BASE_URL or HF_API_TOKEN)")
