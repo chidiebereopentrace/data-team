@@ -101,13 +101,17 @@ def _load_local_model(model_id: str) -> Any:
         hf_token = get_hf_api_token()
         
         logger.info("Loading local model: %s (this may take 2-3 minutes on first call)", model_id)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            torch_dtype=torch.float16,
-            device_map="auto",
-            low_cpu_mem_usage=True,
-            token=hf_token,  # Pass HF token for authentication
-        )
+        
+        # Build kwargs, only include token if it exists
+        model_kwargs = {
+            "torch_dtype": torch.float16,
+            "device_map": "auto",
+            "low_cpu_mem_usage": True,
+        }
+        if hf_token:  # Only pass token if it exists and is not empty
+            model_kwargs["token"] = hf_token
+        
+        model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
         _LOCAL_MODEL_CACHE[model_id] = model
         logger.info("Local model loaded successfully: %s", model_id)
         return model
@@ -127,7 +131,12 @@ def _load_local_tokenizer(model_id: str) -> Any:
         # Get HF token for authentication (needed for gated models)
         hf_token = get_hf_api_token()
         
-        tokenizer = AutoTokenizer.from_pretrained(model_id, token=hf_token)
+        # Build kwargs, only include token if it exists
+        tokenizer_kwargs = {}
+        if hf_token:  # Only pass token if it exists and is not empty
+            tokenizer_kwargs["token"] = hf_token
+        
+        tokenizer = AutoTokenizer.from_pretrained(model_id, **tokenizer_kwargs)
         _LOCAL_TOKENIZER_CACHE[model_id] = tokenizer
         return tokenizer
     except Exception as e:
