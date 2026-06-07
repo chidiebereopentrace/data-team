@@ -68,12 +68,19 @@ def llm_uses_hf_router() -> bool:
 
 def _use_local_model() -> bool:
     """Check if we should use local transformers instead of API."""
-    # If there's an explicit API URL or HF token, use API
+    # Explicit provider setting takes precedence
+    provider = os.environ.get("RAG_LLM_PROVIDER", "").strip().lower()
+    if provider == "local":
+        return True
+    if provider in ("openai", "hf_api"):
+        return False
+    
+    # If there's an explicit API URL, use API
     if os.environ.get("RAG_LLM_BASE_URL", "").strip():
         return False
-    if os.environ.get("RAG_LLM_PROVIDER", "").strip().lower() in ("openai", "hf_api"):
-        return False
-    # Try to use local model if transformers is available
+    
+    # If transformers is available, use local
+    # (HF token can be used to download models)
     try:
         import transformers  # noqa: F401
         return True
@@ -90,12 +97,16 @@ def _load_local_model(model_id: str) -> Any:
         from transformers import AutoModelForCausalLM
         import torch
         
+        # Get HF token for authentication (needed for gated models)
+        hf_token = get_hf_api_token()
+        
         logger.info("Loading local model: %s (this may take 2-3 minutes on first call)", model_id)
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             torch_dtype=torch.float16,
             device_map="auto",
             low_cpu_mem_usage=True,
+            token=hf_token,  # Pass HF token for authentication
         )
         _LOCAL_MODEL_CACHE[model_id] = model
         logger.info("Local model loaded successfully: %s", model_id)
@@ -113,7 +124,10 @@ def _load_local_tokenizer(model_id: str) -> Any:
     try:
         from transformers import AutoTokenizer
         
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        # Get HF token for authentication (needed for gated models)
+        hf_token = get_hf_api_token()
+        
+        tokenizer = AutoTokenizer.from_pretrained(model_id, token=hf_token)
         _LOCAL_TOKENIZER_CACHE[model_id] = tokenizer
         return tokenizer
     except Exception as e:
