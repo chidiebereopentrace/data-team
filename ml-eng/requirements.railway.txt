@@ -1,5 +1,5 @@
 # Railway-optimized production dependencies
-# Slim image: NO torch / sentence-transformers (dense query embeddings via HF API)
+# Slim image: NO torch / sentence-transformers (dense query embeddings via fastembed ONNX)
 # Hybrid retrieval: fastembed for BM25 sparse vectors + Qdrant RRF fusion
 
 # Core BigQuery + data access
@@ -22,7 +22,7 @@ PyYAML>=6.0
 
 # Vector DB + hybrid sparse (BM25 via fastembed)
 qdrant-client>=1.9.0
-fastembed>=0.4.0
+fastembed>=0.5.0
 
 # Session storage (in-memory fallback when RAG_REDIS_URL unset)
 redis>=5.0.0
