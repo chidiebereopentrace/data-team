@@ -97,9 +97,6 @@ class QueryResponse(BaseModel):
     answer: str
     session_id: str = Field(..., description="Pass on the next request for chat continuity")
     error: str | None = None
-    has_bq_results: bool = False
-    has_vector_results: bool = False
-    bq_sql: str | None = None
     trace: dict | None = None
 
 
@@ -221,19 +218,6 @@ async def query(request: QueryRequest):
                     kwargs[key] = val
 
         result = run_rag(request.query, **kwargs)
-        # Try to extract the SQL used for BQ retrieval (if any)
-        bq_sql: str | None = None
-        valid_bq_items = 0
-        for item in result.get("bq_results") or []:
-            meta = item.get("metadata") or {}
-            if meta.get("validation_failed"):
-                continue
-            valid_bq_items += 1
-            sql = meta.get("sql")
-            if isinstance(sql, str) and sql.strip() and sql.strip().upper().startswith("SELECT"):
-                if bq_sql is None:
-                    bq_sql = sql.strip()
-        has_bq_results = valid_bq_items > 0
         trace: dict | None = None
         if request.include_trace:
             trace = {
@@ -253,9 +237,6 @@ async def query(request: QueryRequest):
             answer=answer,
             session_id=session_id,
             error=result.get("error"),
-            has_bq_results=has_bq_results,
-            has_vector_results=bool(result.get("vector_results")),
-            bq_sql=bq_sql,
             trace=trace,
         )
     except Exception as e:

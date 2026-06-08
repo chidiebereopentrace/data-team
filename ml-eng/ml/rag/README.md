@@ -249,9 +249,7 @@ Response:
 {
   "answer": "...",
   "session_id": "abc123...",
-  "error": null,
-  "has_bq_results": true,
-  "has_vector_results": false
+  "error": null
 }
 ```
 
