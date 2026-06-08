@@ -104,7 +104,7 @@ def _load_local_model(model_id: str) -> Any:
         
         # Build kwargs, only include token if it exists
         model_kwargs = {
-            "torch_dtype": torch.float16,
+            "dtype": torch.float16,  # Updated from deprecated torch_dtype
             "device_map": "auto",
             "low_cpu_mem_usage": True,
         }
