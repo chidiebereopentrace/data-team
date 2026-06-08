@@ -17,14 +17,6 @@ import requests
 
 from ml.rag.hf_token import get_hf_api_token
 
-try:
-    from langfuse.decorators import observe  # pyright: ignore[reportMissingImports]
-except Exception:  # pragma: no cover
-    def observe(*args, **kwargs):  # type: ignore
-        def decorator(fn):
-            return fn
-        return decorator
-
 logger = logging.getLogger(__name__)
 
 HF_ROUTER_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
@@ -87,7 +79,6 @@ def _openrouter_extra_headers() -> dict[str, str]:
     return headers
 
 
-@observe(as_type="generation", capture_input=True, capture_output=True)
 def llm_chat_complete(
     messages: list[dict[str, Any]],
     *,
