@@ -176,44 +176,43 @@ def _load_sentence_transformer(model_id: str) -> Any:
         return SentenceTransformer(model_id)
 
 
+def _sentence_transformers_available() -> bool:
+    try:
+        import sentence_transformers  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def _resolve_embed_backend(mode: str) -> str:
+    """
+    Map RAG_EMBEDDINGS_MODE to an in-container implementation (no HF inference API).
+
+    - fastembed: ONNX dense via fastembed (Railway / slim images)
+    - local: sentence_transformers when torch is installed; else fastembed
+    - hf_api (legacy): redirected to fastembed with a warning
+    """
+    raw = (mode or "local").strip().lower()
+    if raw == "hf_api":
+        logger.warning(
+            "RAG_EMBEDDINGS_MODE=hf_api is deprecated; using in-container fastembed instead"
+        )
+        return "fastembed"
+    if raw == "fastembed":
+        return "fastembed"
+    if raw == "local":
+        return "local" if _sentence_transformers_available() else "fastembed"
+    logger.warning("Unknown RAG_EMBEDDINGS_MODE=%r; using fastembed", raw)
+    return "fastembed"
+
+
 def _embed_texts(texts: list[str], *, model_id: str, mode: str) -> list[list[float]]:
-    mode = (mode or "local").strip().lower()
-    if mode == "hf_api":
-        token = _env("HF_API_TOKEN")
-        if not token:
-            raise RuntimeError("RAG_EMBEDDINGS_MODE=hf_api requires HF_API_TOKEN")
-        import requests
+    backend = _resolve_embed_backend(mode)
+    if backend == "fastembed":
+        from ml.rag.dense_embeddings import embed_dense_texts
 
-        url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_id}"
-        headers = {"Authorization": f"Bearer {token}"}
-        out: list[list[float]] = []
-        for t in texts:
-            r = requests.post(url, headers=headers, json={"inputs": t}, timeout=120)
-            r.raise_for_status()
-            data = r.json()
-
-            if isinstance(data, list) and data and isinstance(data[0], list):
-                first = data[0]
-                if first and isinstance(first[0], (int, float)):
-                    dim = len(first)
-                    sums = [0.0] * dim
-                    n = 0
-                    for row in data:
-                        if not isinstance(row, list) or len(row) != dim:
-                            continue
-                        for i, x in enumerate(row):
-                            sums[i] += float(x)
-                        n += 1
-                    vec = [s / max(1, n) for s in sums]
-                else:
-                    raise RuntimeError("Unexpected HF embedding response")
-            elif isinstance(data, list) and data and isinstance(data[0], (int, float)):
-                vec = [float(x) for x in data]
-            else:
-                raise RuntimeError("Unexpected HF embedding response")
-
-            out.append(vec)
-        return out
+        return embed_dense_texts(texts, model_id=model_id)
 
     m = _load_sentence_transformer(model_id)
     vecs = m.encode(texts, normalize_embeddings=True)
@@ -424,7 +423,7 @@ class VectorRetriever(BaseRetriever):
 
     Env:
       - QDRANT_URL / QDRANT_API_KEY / QDRANT_COLLECTION
-      - RAG_EMBEDDINGS_MODE=local|hf_api (optional, default local)
+      - RAG_EMBEDDINGS_MODE=local|fastembed (in-container only; fastembed on Railway)
       - RAG_EMBEDDING_MODEL_ID (default BAAI/bge-m3)
       - RAG_QDRANT_VECTOR_SEARCH_MODE=legacy|dual|sentence_named|research_dual|ota_triple|bq_triple
       - RAG_QDRANT_DUAL_QUERY_USING=sentence|semantic|both (only for mode dual; default both)

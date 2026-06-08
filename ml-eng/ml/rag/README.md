@@ -82,7 +82,7 @@ See `session_store.py`, `ARCHITECTURE.md`, and the production deploy guide for d
 
 | Variable | Meaning |
 |----------|---------|
-| `RAG_EMBEDDINGS_MODE` | `local` (default) or `hf_api` (requires **`HF_API_TOKEN`**) |
+| `RAG_EMBEDDINGS_MODE` | `fastembed` (Railway, in-container ONNX) or `local` (dev with torch) |
 | `RAG_EMBEDDING_MODEL_NEWS` / `_RESEARCH` / `_OTA` / `_DATA_DESCRIPTION` | Override per-corpus model ids |
 | `RAG_CHUNK_TARGET_TOKENS_*` / `RAG_CHUNK_OVERLAP_PCT_*` | Override chunk sizes (see `chunking_config.py`) |
 | `RAG_NEWS_GEO_FALLBACK` | Default **`1`**: retry news search without geo if geo filter returns nothing (disabled for multi-country **compare**) |
@@ -294,12 +294,12 @@ Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST`
 | `RAG_LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
 | `RAG_LLM_API_KEY` | Your OpenRouter API key |
 | `RAG_LLM_MODEL_ID` | `openrouter/owl-alpha` |
-| `HF_API_TOKEN` | Hugging Face token (**dense embeddings only**) |
+| `RAG_EMBEDDINGS_MODE` | `fastembed` (recommended on Railway) |
 | `QDRANT_URL` / `QDRANT_API_KEY` | Qdrant Cloud |
 | `BQ_PROJECT` / `BQ_DATASET_BRONZE` | BigQuery bronze |
 | `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | Base64 of GCP service account JSON |
 
-4. **Recommended:** `RAG_LLM_RERANK=off`, `RAG_LLM_TIMEOUT_S=300`, `RAG_EMBEDDINGS_MODE=hf_api`.
+4. **Recommended:** `RAG_LLM_RERANK=off`, `RAG_LLM_TIMEOUT_S=300`, `RAG_EMBEDDINGS_MODE=fastembed` (or `local` — auto-falls back to fastembed without torch).
 5. **Do not set** `RAG_LLM_BASE_URL` to a LAN IP. Remove stale `GOOGLE_APPLICATION_CREDENTIALS=config/keys/...`.
 6. **Optional:** `OPENROUTER_HTTP_REFERER=https://opentrace.africa`, `OPENROUTER_APP_TITLE=Ask ADZA`.
 7. **Smoke test:** `GET /health`, `GET /ready`, `POST /query` with `{"query":"Who are you?"}`.

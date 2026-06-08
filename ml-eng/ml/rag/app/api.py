@@ -131,10 +131,6 @@ async def ready():
     if not llm_ready:
         missing.append("RAG_LLM_BASE_URL+RAG_LLM_API_KEY (or HF_API_TOKEN)")
 
-    embed_mode = os.environ.get("RAG_EMBEDDINGS_MODE", "local").strip().lower()
-    if embed_mode == "hf_api" and not os.environ.get("HF_API_TOKEN", "").strip():
-        missing.append("HF_API_TOKEN (required when RAG_EMBEDDINGS_MODE=hf_api)")
-
     redis_info: dict[str, Any] | None = None
     if os.environ.get("RAG_REDIS_URL") or os.environ.get("REDIS_URL"):
         try:
