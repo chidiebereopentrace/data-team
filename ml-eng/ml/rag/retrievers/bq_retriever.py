@@ -135,12 +135,22 @@ def _extract_single_select(raw: str) -> str:
     if not raw:
         return ""
     text = raw.strip()
+    # Strip Llama chat template tokens that may appear in NL2SQL output
+    text = re.sub(r"\[/?INST\]", "", text, flags=re.IGNORECASE).strip()
     if "```" in text:
         for block in re.findall(r"```(?:\w+)?\s*([\s\S]*?)```", text):
             if block.strip().upper().startswith("SELECT"):
                 return block.strip().rstrip(";")
         text = re.sub(r"```[\s\S]*?```", "", text).strip()
-    return text.rstrip(";")
+    # Accept a leading SELECT or the first SELECT embedded after template/prose noise
+    if text.upper().startswith("SELECT"):
+        return text.rstrip(";")
+    match = re.search(r"(SELECT\b[\s\S]*)", text, flags=re.IGNORECASE)
+    if match:
+        candidate = match.group(1).strip().rstrip(";")
+        if candidate.upper().startswith("SELECT"):
+            return candidate
+    return ""
 
 
 def _parse_sql_queries(raw: str, max_queries: int) -> list[str]:

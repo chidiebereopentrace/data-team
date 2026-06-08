@@ -119,8 +119,17 @@ async def ready():
     does not affect the ready status (sessions gracefully fall back to in-memory).
     """
     # Critical keys for the current production scope (News/Research + BQ via NL2SQL path)
-    critical = ["QDRANT_URL", "QDRANT_API_KEY", "RAG_LLM_BASE_URL"]
+    critical = ["QDRANT_URL", "QDRANT_API_KEY"]
     missing = [k for k in critical if not os.environ.get(k, "").strip()]
+    llm_ready = bool(
+        (os.environ.get("RAG_LLM_BASE_URL", "").strip() and (
+            os.environ.get("RAG_LLM_API_KEY", "").strip()
+            or os.environ.get("OPENROUTER_API_KEY", "").strip()
+        ))
+        or os.environ.get("HF_API_TOKEN", "").strip()
+    )
+    if not llm_ready:
+        missing.append("RAG_LLM_BASE_URL+RAG_LLM_API_KEY (or HF_API_TOKEN)")
 
     redis_info: dict[str, Any] | None = None
     if os.environ.get("RAG_REDIS_URL") or os.environ.get("REDIS_URL"):
@@ -214,12 +223,17 @@ async def query(request: QueryRequest):
         result = run_rag(request.query, **kwargs)
         # Try to extract the SQL used for BQ retrieval (if any)
         bq_sql: str | None = None
+        valid_bq_items = 0
         for item in result.get("bq_results") or []:
             meta = item.get("metadata") or {}
+            if meta.get("validation_failed"):
+                continue
+            valid_bq_items += 1
             sql = meta.get("sql")
-            if isinstance(sql, str) and sql.strip():
-                bq_sql = sql.strip()
-                break
+            if isinstance(sql, str) and sql.strip() and sql.strip().upper().startswith("SELECT"):
+                if bq_sql is None:
+                    bq_sql = sql.strip()
+        has_bq_results = valid_bq_items > 0
         trace: dict | None = None
         if request.include_trace:
             trace = {
@@ -239,7 +253,7 @@ async def query(request: QueryRequest):
             answer=answer,
             session_id=session_id,
             error=result.get("error"),
-            has_bq_results=bool(result.get("bq_results")),
+            has_bq_results=has_bq_results,
             has_vector_results=bool(result.get("vector_results")),
             bq_sql=bq_sql,
             trace=trace,

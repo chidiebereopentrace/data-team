@@ -100,3 +100,8 @@ def embed_sparse_query(text: str) -> SparseVector:
     q = (text or "").strip() or " "
     emb = next(iter(model.query_embed(q)))
     return _to_sparse_vector(emb)
+
+
+def warmup_sparse_model() -> None:
+    """Download/load BM25 model into FASTEMBED_CACHE_PATH (Docker build or startup)."""
+    embed_sparse_query("warmup")

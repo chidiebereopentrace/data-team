@@ -27,7 +27,10 @@ import threading
 import time
 from typing import Any
 
-import redis
+try:
+    import redis
+except ImportError:  # optional at dev time; required in production requirements
+    redis = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +41,7 @@ _SESSION_TTL_S: int = int(os.environ.get("RAG_SESSION_TTL_SECONDS", "86400") or 
 _CACHE_TTL_S: int = int(os.environ.get("RAG_CACHE_TTL_SECONDS", "3600") or 3600)
 
 # Redis client (lazy, thread-safe init)
-_redis_client: redis.Redis | None = None
+_redis_client: Any | None = None
 _redis_lock = threading.Lock()
 
 # In-memory fallback (thread-safe). Stores (value, expiry_ts or None)
@@ -46,9 +49,15 @@ _fallback: dict[str, tuple[Any, float | None]] = {}
 _fallback_lock = threading.Lock()
 
 
-def _get_client() -> redis.Redis | None:
+def _get_client() -> Any | None:
     """Return a validated Redis client or None (triggers fallback)."""
     global _redis_client
+    if redis is None:
+        if _REDIS_URL:
+            logger.warning(
+                "session_store: redis package not installed; using in-process memory fallback"
+            )
+        return None
     if not _REDIS_URL:
         return None
     if _redis_client is not None:

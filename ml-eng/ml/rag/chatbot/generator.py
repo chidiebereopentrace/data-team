@@ -1,7 +1,7 @@
 """
 Generator node: takes query + reranked context and produces the final answer (LLM).
-Uses Hugging Face router API (chat completions) with
-`meta-llama/Llama-3.1-8B-Instruct` by default.
+
+Uses the configured chat backend (OpenRouter, LM Studio, or Hugging Face router) via ``llm_chat``.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from ml.rag.chat_memory import (
     default_summary_max_chars,
     default_verbatim_max_chars,
 )
+from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
 
 
 def _build_prompt(
@@ -40,7 +41,6 @@ def _build_prompt(
         "Never mention bigquery-public-data or other external warehouses. "
         "Do not suggest example queries the user should run."
     )
-    facet_block = ""
     intent_tone = ""
     if decomposition:
         intent = str(decomposition.get("intent") or "").strip().lower()
@@ -54,14 +54,6 @@ def _build_prompt(
                 " The user's primary intent asks why or what drives outcomes: do not claim causation "
                 "unless the context explicitly supports it; distinguish correlation from causation."
             )
-        try:
-            facet_block = (
-                "\nExtracted query facets (for alignment; may be incomplete):\n"
-                + json.dumps(decomposition, ensure_ascii=False)[:2000]
-                + "\n"
-            )
-        except Exception:
-            facet_block = ""
     if intent_tone:
         system = system + intent_tone
 
@@ -69,7 +61,7 @@ def _build_prompt(
         system = system + "\n\nClient-provided audience / tone guidance (follow where it does not conflict with the grounding rules above):\n" + audience_instructions[:3000]
 
     mb = (memory_block.strip() + "\n\n") if memory_block.strip() else ""
-    user = f"{facet_block}{mb}Context:\n{context_block}\n\nQuestion: {query}"
+    user = f"{mb}Context:\n{context_block}\n\nQuestion: {query}"
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
@@ -112,6 +104,71 @@ def _strip_sql_from_answer(text: str) -> str:
     return cleaned or text.strip()
 
 
+def _clean_answer(text: str) -> str:
+    """Remove Llama chat template echoes and other non-answer artifacts from LLM output."""
+    if not text:
+        return text
+    # Remove everything before the last [/INST] if the model echoed the prompt
+    if "[/INST]" in text:
+        text = text.split("[/INST]")[-1].strip()
+    # Remove leading Context:/Question: blocks the model may have echoed
+    text = re.sub(r"^(Context:|Question:).*$", "", text, flags=re.MULTILINE | re.IGNORECASE).strip()
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return _strip_sql_from_answer(text) or text.strip()
+
+
+def _append_structured_citations(answer: str, context_items: list[dict[str, Any]]) -> str:
+    """Append a clean Citations block when usable metadata exists in context_items."""
+    if not context_items:
+        return answer
+
+    seen: set[str] = set()
+    lines: list[str] = []
+
+    for item in context_items:
+        meta = item.get("metadata") or {}
+        if not isinstance(meta, dict):
+            continue
+
+        kind = str(meta.get("doc_kind") or item.get("_context_kind") or "").lower()
+        label = ""
+        text = ""
+
+        if kind in ("academic_article", "policy_document", "public_report"):
+            cite = format_academic_citation(meta)
+            if cite and cite not in seen:
+                seen.add(cite)
+                label = "[Academic]" if "academic" in kind else "[Policy/Public]"
+                text = f"{label} {cite}"
+        elif kind == "news_article":
+            title = str(meta.get("title") or meta.get("source_file") or "").strip()
+            src = str(meta.get("source") or meta.get("publisher") or "").strip()
+            date = str(meta.get("published_at") or meta.get("date") or "").strip()[:10]
+            if title:
+                entry = f"{title} — {src}" if src else title
+                if date:
+                    entry += f" ({date})"
+                if entry not in seen:
+                    seen.add(entry)
+                    text = f"[News] {entry}"
+        elif kind in ("ota_insight", "ota_metric"):
+            name = str(meta.get("metric_text") or meta.get("title") or meta.get("label") or "").strip()
+            if name:
+                entry = f"{name} — OpenTrace OTA"
+                if entry not in seen:
+                    seen.add(entry)
+                    text = f"[OTA Insight] {entry}"
+
+        if text:
+            lines.append(text)
+
+    if not lines:
+        return answer
+
+    citations_block = "\n\nCitations\n" + "\n".join(f"- {line}" for line in lines)
+    return (answer.rstrip() + citations_block).strip()
+
+
 def _call_llama(messages: list[dict[str, str]]) -> str:
     """Call configured LLM backend; never raises on HTTP errors."""
     gen_timeout = float(os.environ.get("RAG_GENERATE_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
@@ -136,7 +193,7 @@ def generate(
     """
     Produce an answer from query and context.
 
-    - If HF_API_TOKEN is set, calls LLM via Hugging Face router (chat completions).
+    - If an LLM backend is configured (``RAG_LLM_BASE_URL`` or ``HF_API_TOKEN``), calls chat completions.
     - Otherwise, falls back to a simple debug-style answer that echoes the context.
     """
     decomposition = kwargs.get("decomposition")
@@ -170,7 +227,8 @@ def generate(
             )
             llama_answer = _call_llama(messages)
             if llama_answer:
-                return _strip_sql_from_answer(llama_answer)
+                cleaned = _clean_answer(llama_answer)
+                return _append_structured_citations(cleaned, context_items)
         return (
             "I couldn't find relevant OpenTrace sources (news, research, policy, public reports, "
             "or structured agricultural data) for this question. Try naming a specific country or crop, "
@@ -193,7 +251,8 @@ def generate(
     )
     llama_answer = _call_llama(messages)
     if llama_answer:
-        return _strip_sql_from_answer(llama_answer)
+        cleaned = _clean_answer(llama_answer)
+        return _append_structured_citations(cleaned, context_items)
 
     if llm_configured():
         hint = (
@@ -203,7 +262,7 @@ def generate(
         )
     else:
         hint = (
-            "[LLM unavailable — set RAG_LLM_BASE_URL (e.g. http://127.0.0.1:1234/v1) for LM Studio, "
+            "[LLM unavailable — set RAG_LLM_BASE_URL + RAG_LLM_API_KEY (OpenRouter, LM Studio, etc.) "
             "or HF_API_TOKEN for the Hugging Face router. Showing retrieved context only.]\n\n"
         )
     return hint + f"Context:\n{context_block[:3000]}\n\nQuery: {query}"

@@ -8,8 +8,9 @@ import json
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
+from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.bq_table_matcher import match_bq_tables_from_descriptions
 from ml.rag.chatbot.generator import generate
 from ml.rag.chatbot.query_decomposer import (
@@ -20,7 +21,6 @@ from ml.rag.chatbot.query_decomposer import (
 from ml.rag.chatbot.reranker import rerank
 from ml.rag.retrievers.bq_retriever import BQRetriever
 from ml.rag.retrievers.vector_retriever import VectorRetriever
-from typing import Any, cast
 
 from langchain_core.runnables import RunnableConfig
 
@@ -270,11 +270,13 @@ class RAGGraphState(TypedDict, total=False):
     conversation_summary: str | None
     recent_turns: list[dict[str, Any]] | None
     chat_history: list[dict[str, Any]] | None  # legacy: verbatim-only, no summary
+    is_meta_query: bool | None
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
-    return {"decomposition": decompose_query(q)}
+    meta = is_meta_query(q)
+    return {"decomposition": decompose_query(q), "is_meta_query": meta}
 
 
 def _tag_vector(item: dict[str, Any], kind: str) -> dict[str, Any]:
@@ -641,6 +643,28 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
     return {"answer": answer}
 
 
+def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
+    """Short-circuit node for identity / product meta questions. No retrieval."""
+    from ml.rag.chatbot.assistant_identity import generate_meta_answer
+
+    query = state.get("query") or ""
+    gkw: dict[str, Any] = {}
+    cs = state.get("conversation_summary")
+    rt = state.get("recent_turns")
+    has_mem = (isinstance(cs, str) and cs.strip()) or (isinstance(rt, list) and len(rt) > 0)
+    if has_mem:
+        gkw["conversation_summary"] = cs if isinstance(cs, str) else ""
+        gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
+    elif state.get("chat_history"):
+        gkw["chat_history"] = state.get("chat_history")
+    if state.get("stakeholder_type"):
+        gkw["stakeholder_type"] = state.get("stakeholder_type")
+    if state.get("audience_instructions"):
+        gkw["audience_instructions"] = state.get("audience_instructions")
+    answer = generate_meta_answer(query, **gkw)
+    return {"answer": answer}
+
+
 def build_graph():
     """Build and compile the LangGraph RAG graph. Requires langgraph."""
     try:
@@ -656,14 +680,20 @@ def build_graph():
     graph.add_node("merge", node_merge)
     graph.add_node("rerank", node_rerank)
     graph.add_node("generate", node_generate)
+    graph.add_node("generate_meta", node_generate_meta)
 
     graph.add_edge(START, "decompose")
-    graph.add_edge("decompose", "parallel_retrieve")
+
+    def _route_after_decompose(state: RAGGraphState) -> str:
+        return "generate_meta" if state.get("is_meta_query") else "parallel_retrieve"
+
+    graph.add_conditional_edges("decompose", _route_after_decompose)
     graph.add_edge("parallel_retrieve", "bq_retrieve")
     graph.add_edge("bq_retrieve", "merge")
     graph.add_edge("merge", "rerank")
     graph.add_edge("rerank", "generate")
     graph.add_edge("generate", END)
+    graph.add_edge("generate_meta", END)
 
     return graph.compile()
 
@@ -691,6 +721,8 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
         "bq_top_k",
         "rerank_top_k",
         "chat_history",
+        "stakeholder_type",
+        "audience_instructions",
     ):
         if key in kwargs and kwargs[key] is not None:
             initial[key] = kwargs[key]  # type: ignore[assignment]

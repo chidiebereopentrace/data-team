@@ -1,9 +1,20 @@
 # Railway-optimized RAG API image
-# Ultra-light build: NO torch, transformers, or sentence-transformers
-# Embeddings are pre-computed locally, API only does retrieval + generation
+# Slim build: NO torch / sentence-transformers
+# - Dense query embeddings: RAG_EMBEDDINGS_MODE=fastembed (ONNX via fastembed, no torch)
+# - Hybrid retrieval: fastembed (BM25 sparse) + Qdrant RRF (RAG_SPARSE_EMBEDDINGS=on)
+# - Vectors in Qdrant must be ingested with sparse vectors enabled
 #
-# Build from data-team/ml-eng directory:
+# Build from ml-eng/ (Railway root directory should be ml-eng):
 #   docker build -f Dockerfile.railway -t opentrace-rag-railway:latest .
+#
+# Railway secrets (minimum):
+#   RAG_LLM_BASE_URL=https://openrouter.ai/api/v1
+#   RAG_LLM_API_KEY=<OPENROUTER_API_KEY>
+#   RAG_LLM_MODEL_ID=openrouter/owl-alpha
+#   No HF_API_TOKEN needed for embeddings (models baked into image via fastembed)
+#   QDRANT_URL, QDRANT_API_KEY, BQ_PROJECT, BQ_DATASET_BRONZE
+#   GOOGLE_APPLICATION_CREDENTIALS_BASE64 (base64 of GCP service account JSON)
+# Do NOT set RAG_LLM_BASE_URL to a local/LAN IP. Remove HF-only router vars if using OpenRouter.
 
 FROM python:3.11-slim
 
@@ -27,6 +38,18 @@ COPY ml ./ml
 # Set Python path and unbuffer output for Railway logs
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+
+# Railway defaults: in-container ONNX dense + BM25 sparse (no HF inference API)
+ENV FASTEMBED_CACHE_PATH=/app/models/fastembed
+ENV RAG_EMBEDDINGS_MODE=fastembed
+ENV RAG_SPARSE_EMBEDDINGS=on
+ENV RAG_QDRANT_HYBRID_SEARCH=on
+ENV RAG_SPARSE_MODEL=Qdrant/bm25
+ENV RAG_EMBEDDING_MODEL_ID=intfloat/multilingual-e5-small
+
+# Bake embedding models into the image (avoids Hub download on first user query)
+RUN mkdir -p /app/models/fastembed \
+    && python -c "from ml.rag.dense_embeddings import warmup_dense_model; from ml.rag.sparse_embeddings import warmup_sparse_model; warmup_dense_model('intfloat/multilingual-e5-small'); warmup_sparse_model(); print('Embedding models cached in image')"
 
 # Health check for Railway
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
