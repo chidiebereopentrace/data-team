@@ -17,6 +17,10 @@ import requests
 
 from ml.rag.hf_token import get_hf_api_token
 
+# Local model support
+_LOCAL_MODEL_CACHE: dict[str, Any] = {}
+_LOCAL_TOKENIZER_CACHE: dict[str, Any] = {}
+
 try:
     from langfuse.decorators import observe  # pyright: ignore[reportMissingImports]
 except Exception:  # pragma: no cover
@@ -102,6 +106,13 @@ def llm_chat_complete(
     Use OpenAI-style ``system`` / ``user`` messages — do not embed Llama chat templates
     inside ``user`` content when calling LM Studio (it applies the template itself).
     """
+    # Check if we should use local transformers model
+    if _use_local_model():
+        model_id = model or llm_model_id()
+        logger.info("Using local transformers model: %s", model_id)
+        return _local_model_generate(messages, model_id, max_tokens, temperature)
+    
+    # Otherwise use API (HuggingFace router or local server)
     url = llm_chat_completions_url()
     if not url:
         logger.warning("llm_chat_complete: no backend (set RAG_LLM_BASE_URL or HF_API_TOKEN)")
