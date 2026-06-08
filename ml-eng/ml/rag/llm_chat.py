@@ -2,9 +2,8 @@
 Unified chat-completions client for the RAG stack.
 
 Supports:
-- Local transformers models (when transformers is installed and no API URL set)
-- Hugging Face router (default when ``HF_API_TOKEN`` is set)
-- OpenAI-compatible local servers (LM Studio, vLLM) via ``RAG_LLM_BASE_URL``
+- OpenAI-compatible servers via ``RAG_LLM_BASE_URL`` (OpenRouter, DeepInfra, LM Studio, vLLM)
+- Hugging Face router (fallback when ``HF_API_TOKEN`` is set and ``RAG_LLM_BASE_URL`` is unset)
 
 Never raises on HTTP/API errors — returns empty string so callers can fall back.
 """
@@ -23,7 +22,7 @@ _LOCAL_MODEL_CACHE: dict[str, Any] = {}
 _LOCAL_TOKENIZER_CACHE: dict[str, Any] = {}
 
 try:
-    from langfuse.decorators import observe
+    from langfuse.decorators import observe  # pyright: ignore[reportMissingImports]
 except Exception:  # pragma: no cover
     def observe(*args, **kwargs):  # type: ignore
         def decorator(fn):
@@ -66,128 +65,30 @@ def llm_uses_hf_router() -> bool:
     return "router.huggingface.co" in url
 
 
-def _use_local_model() -> bool:
-    """Check if we should use local transformers instead of API."""
-    # Explicit provider setting takes precedence
-    provider = os.environ.get("RAG_LLM_PROVIDER", "").strip().lower()
-    if provider == "local":
-        return True
-    if provider in ("openai", "hf_api"):
-        return False
-    
-    # If there's an explicit API URL, use API
-    if os.environ.get("RAG_LLM_BASE_URL", "").strip():
-        return False
-    
-    # If transformers is available, use local
-    # (HF token can be used to download models)
-    try:
-        import transformers  # noqa: F401
-        return True
-    except ImportError:
-        return False
+def llm_uses_openrouter() -> bool:
+    url = llm_chat_completions_url() or ""
+    return "openrouter.ai" in url
 
 
-def _load_local_model(model_id: str) -> Any:
-    """Load local transformers model with caching."""
-    if model_id in _LOCAL_MODEL_CACHE:
-        return _LOCAL_MODEL_CACHE[model_id]
-    
-    try:
-        from transformers import AutoModelForCausalLM
-        import torch
-        
-        # Get HF token for authentication (needed for gated models)
-        hf_token = get_hf_api_token()
-        
-        logger.info("Loading local model: %s (this may take 2-3 minutes on first call)", model_id)
-        
-        # Build kwargs, only include token if it exists
-        model_kwargs = {
-            "dtype": torch.float16,  # Updated from deprecated torch_dtype
-            "device_map": "auto",
-            "low_cpu_mem_usage": True,
-        }
-        if hf_token:  # Only pass token if it exists and is not empty
-            model_kwargs["token"] = hf_token
-        
-        model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
-        _LOCAL_MODEL_CACHE[model_id] = model
-        logger.info("Local model loaded successfully: %s", model_id)
-        return model
-    except Exception as e:
-        logger.exception("Failed to load local model %s: %s", model_id, e)
-        return None
+def _llm_api_key() -> str:
+    """Bearer token for OpenAI-compatible backends (OpenRouter, DeepInfra, LM Studio)."""
+    for key in ("RAG_LLM_API_KEY", "OPENROUTER_API_KEY"):
+        v = os.environ.get(key, "").strip()
+        if v:
+            return v
+    return ""
 
 
-def _load_local_tokenizer(model_id: str) -> Any:
-    """Load local tokenizer with caching."""
-    if model_id in _LOCAL_TOKENIZER_CACHE:
-        return _LOCAL_TOKENIZER_CACHE[model_id]
-    
-    try:
-        from transformers import AutoTokenizer
-        
-        # Get HF token for authentication (needed for gated models)
-        hf_token = get_hf_api_token()
-        
-        # Build kwargs, only include token if it exists
-        tokenizer_kwargs = {}
-        if hf_token:  # Only pass token if it exists and is not empty
-            tokenizer_kwargs["token"] = hf_token
-        
-        tokenizer = AutoTokenizer.from_pretrained(model_id, **tokenizer_kwargs)
-        _LOCAL_TOKENIZER_CACHE[model_id] = tokenizer
-        return tokenizer
-    except Exception as e:
-        logger.exception("Failed to load tokenizer for %s: %s", model_id, e)
-        return None
-
-
-def _local_model_generate(
-    messages: list[dict[str, Any]],
-    model_id: str,
-    max_tokens: int = 512,
-    temperature: float = 0.0,
-) -> str:
-    """Generate text using local transformers model."""
-    model = _load_local_model(model_id)
-    tokenizer = _load_local_tokenizer(model_id)
-    
-    if model is None or tokenizer is None:
-        logger.warning("Local model or tokenizer not available for %s", model_id)
-        return ""
-    
-    try:
-        # Apply chat template
-        prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        
-        # Tokenize
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        
-        # Generate
-        with model.device:
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                temperature=temperature if temperature > 0 else 0.1,
-                do_sample=temperature > 0,
-                pad_token_id=tokenizer.eos_token_id,
-            )
-        
-        # Decode
-        generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        
-        # Extract only the assistant's response (remove prompt)
-        if prompt in generated:
-            response = generated[len(prompt):].strip()
-        else:
-            response = generated.strip()
-        
-        return response
-    except Exception as e:
-        logger.exception("Local model generation failed for %s: %s", model_id, e)
-        return ""
+def _openrouter_extra_headers() -> dict[str, str]:
+    """Optional OpenRouter attribution headers (not required for API to work)."""
+    headers: dict[str, str] = {}
+    referer = os.environ.get("OPENROUTER_HTTP_REFERER", "").strip()
+    title = os.environ.get("OPENROUTER_APP_TITLE", "").strip()
+    if referer:
+        headers["HTTP-Referer"] = referer
+    if title:
+        headers["X-OpenRouter-Title"] = title
+    return headers
 
 
 @observe(as_type="generation", capture_input=True, capture_output=True)
@@ -228,9 +129,10 @@ def llm_chat_complete(
             return ""
         headers["Authorization"] = f"Bearer {token}"
     else:
-        local_key = os.environ.get("RAG_LLM_API_KEY", "").strip()
+        local_key = _llm_api_key()
         if local_key:
             headers["Authorization"] = f"Bearer {local_key}"
+        headers.update(_openrouter_extra_headers())
 
     payload = {
         "model": model or llm_model_id(),

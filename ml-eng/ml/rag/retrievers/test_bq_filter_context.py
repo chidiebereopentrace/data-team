@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ml.rag.chatbot.query_decomposer import _extract_countries
 from ml.rag.retrievers.bq_retriever import (
+    _extract_single_select,
     _format_query_constraints,
     _parse_sql_queries,
 )
@@ -35,3 +36,19 @@ def test_parse_sql_queries() -> None:
     assert len(queries) == 2
     assert "t1" in queries[0]
     assert "t2" in queries[1]
+
+
+def test_extract_single_select_strips_inst_tokens() -> None:
+    raw = "[INST] You are a BigQuery expert... [/INST] SELECT * FROM `proj.ds.t1` LIMIT 5"
+    sql = _extract_single_select(raw)
+    assert sql.startswith("SELECT")
+
+
+def test_extract_single_select_prose_returns_empty() -> None:
+    raw = "Here is a helpful explanation of the query you asked."
+    assert _extract_single_select(raw) == ""
+
+
+def test_extract_single_select_plain_select_unchanged() -> None:
+    raw = "SELECT country, year FROM `proj.ds.t1` LIMIT 10"
+    assert _extract_single_select(raw).startswith("SELECT")

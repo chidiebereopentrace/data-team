@@ -97,6 +97,10 @@ data-eng/airflow/**/__pycache__/
 data-eng/airflow/logs/
 data-eng/airflow/plugins/**/__pycache__/
 
+# Langfuse
+langfuse/
+ml-eng/langfuse/
+
 # dbt artifacts (generated)
 data-eng/dbt/target/
 data-eng/dbt/dbt_packages/
