@@ -101,19 +101,33 @@ def _load_local_model(model_id: str) -> Any:
         hf_token = get_hf_api_token()
         
         logger.info("Loading local model: %s (this may take 2-3 minutes on first call)", model_id)
+        logger.info("Downloading model weights if not cached locally...")
+        
+        # Check if CUDA is available
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info("Using device: %s", device)
         
         # Build kwargs, only include token if it exists
         model_kwargs = {
-            "dtype": torch.float16,  # Updated from deprecated torch_dtype
-            "device_map": "auto",
             "low_cpu_mem_usage": True,
         }
+        
+        # Only use float16 on GPU, use float32 on CPU
+        if device == "cuda":
+            model_kwargs["torch_dtype"] = torch.float16
+            model_kwargs["device_map"] = "auto"
+        
         if hf_token:  # Only pass token if it exists and is not empty
             model_kwargs["token"] = hf_token
         
         model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+        
+        # Move to device if not using device_map
+        if device == "cpu":
+            model = model.to(device)
+        
         _LOCAL_MODEL_CACHE[model_id] = model
-        logger.info("Local model loaded successfully: %s", model_id)
+        logger.info("Local model loaded successfully: %s on %s", model_id, device)
         return model
     except Exception as e:
         logger.exception("Failed to load local model %s: %s", model_id, e)
@@ -159,16 +173,26 @@ def _local_model_generate(
         return ""
     
     try:
+        import torch
+        
+        logger.info("Generating response with local model: %s", model_id)
+        
         # Apply chat template
         prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        logger.info("Prompt length: %d characters", len(prompt))
         
-        # Tokenize
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        # Tokenize and move to correct device
+        inputs = tokenizer(prompt, return_tensors="pt")
+        input_ids = inputs.input_ids.to(model.device)
+        attention_mask = inputs.attention_mask.to(model.device)
         
-        # Generate
-        with model.device:
+        logger.info("Input tokens: %d, generating up to %d new tokens...", input_ids.shape[1], max_tokens)
+        
+        # Generate (no context manager needed - model.device is just a device object)
+        with torch.no_grad():  # Save memory
             outputs = model.generate(
-                **inputs,
+                input_ids=input_ids,
+                attention_mask=attention_mask,
                 max_new_tokens=max_tokens,
                 temperature=temperature if temperature > 0 else 0.1,
                 do_sample=temperature > 0,
@@ -184,6 +208,7 @@ def _local_model_generate(
         else:
             response = generated.strip()
         
+        logger.info("Generated response length: %d characters", len(response))
         return response
     except Exception as e:
         logger.exception("Local model generation failed for %s: %s", model_id, e)
