@@ -1,6 +1,6 @@
 # Railway-optimized production dependencies
-# NO torch, transformers, or sentence-transformers (embeddings done locally)
-# API only does: retrieval from Qdrant + LLM generation via HuggingFace API
+# Slim image: NO torch / sentence-transformers (dense query embeddings via HF API)
+# Hybrid retrieval: fastembed for BM25 sparse vectors + Qdrant RRF fusion
 
 # Core BigQuery + data access
 google-cloud-bigquery>=3.14.0
@@ -9,7 +9,7 @@ db-dtypes>=1.2.0
 pandas>=2.0.0
 pyarrow>=14.0.0
 
-# Lightweight numpy (no need for 2.x without torch)
+# Lightweight numpy (no torch stack)
 numpy>=1.24.0,<2.0
 
 # RAG graph + API
@@ -20,15 +20,15 @@ uvicorn[standard]>=0.32.0
 requests>=2.31.0
 PyYAML>=6.0
 
-# Vector DB (Qdrant Cloud - retrieval only, no embeddings)
+# Vector DB + hybrid sparse (BM25 via fastembed)
 qdrant-client>=1.9.0
-# NO fastembed - not needed for retrieval-only
+fastembed>=0.4.0
 
-# Session storage (with in-memory fallback if unavailable)
+# Session storage (in-memory fallback when RAG_REDIS_URL unset)
 redis>=5.0.0
 
-# Local embedding models (Railway Pro has sufficient RAM)
-sentence-transformers>=2.2.0
+# Optional observability (no-op when LANGFUSE_* unset)
+langfuse>=2.0
 
-# Optional: If you need tiktoken for token counting
+# Token counting (optional)
 tiktoken>=0.5.0

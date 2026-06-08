@@ -1,0 +1,12 @@
+{
+  "venvPath": "ml-eng",
+  "venv": "venv",
+  "extraPaths": ["ml-eng"],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/venv",
+    "**/.venv",
+    "**/data/local"
+  ]
+}

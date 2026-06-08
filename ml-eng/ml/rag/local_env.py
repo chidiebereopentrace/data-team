@@ -166,9 +166,12 @@ def apply_ml_eng_path_defaults(repo_root: Path) -> None:
 
 
 def apply_lm_studio_defaults() -> None:
-    """When ``RAG_LLM_BASE_URL`` is set, apply safe defaults for local LM Studio dev."""
-    if not os.environ.get("RAG_LLM_BASE_URL", "").strip():
+    """When ``RAG_LLM_BASE_URL`` is set, apply safe RAG defaults (LM Studio, OpenRouter, etc.)."""
+    base = os.environ.get("RAG_LLM_BASE_URL", "").strip().rstrip("/")
+    if not base:
         return
+    if "openrouter.ai" in base and not os.environ.get("RAG_LLM_MODEL_ID", "").strip():
+        os.environ["RAG_LLM_MODEL_ID"] = "openrouter/owl-alpha"
     for key, value in (
         ("RAG_LLM_RERANK", "off"),
         ("RAG_LLM_TIMEOUT_S", "300"),

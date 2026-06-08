@@ -58,6 +58,7 @@ See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/c
 **Streamlit** ([`chatbot/streamlit_app.py`](ml/rag/chatbot/streamlit_app.py)): multiple **chat sessions** in the sidebar; **pipeline debug** shows the last run’s decomposition and retrieval stats.
 
 **API** (`POST /query`): responses include **`session_id`**. Reuse it for **server-side** `{conversation_summary, recent_turns}` (plus optional `stakeholder_type`). Backed by Redis when `RAG_REDIS_URL` is set (durable across workers/restarts, required for scaling). Without Redis the store is in-process only (single worker; lost on restart). Send **`conversation_history`** to supply prior turns from the client (fully stateless path); history is compacted for that request only and the server store is **not** updated.
+Meta / identity questions ("who are you", "tell me about OpenTrace", etc.) short-circuit retrieval and return clean answers with a static attribution footer. Agricultural RAG answers include a structured "Citations" block when source metadata is available.
 
 **Redis config** (new in scaling release):
 - `RAG_REDIS_URL` (or `REDIS_URL`): e.g. `redis://host:6379/0` or rediss:// for TLS.
@@ -281,6 +282,27 @@ Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST`
 
 5. **Port**  
    The app listens on **7860** (required by Hugging Face Spaces).
+
+### Deploy to Railway
+
+1. **Service root directory:** `ml-eng/` (uses `Dockerfile.railway` + `railway.toml`).
+2. **Redeploy with build cache cleared** after dependency changes (e.g. `fastembed`).
+3. **Required variables** (Railway dashboard):
+
+| Variable | Value |
+|----------|--------|
+| `RAG_LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
+| `RAG_LLM_API_KEY` | Your OpenRouter API key |
+| `RAG_LLM_MODEL_ID` | `openrouter/owl-alpha` |
+| `HF_API_TOKEN` | Hugging Face token (**dense embeddings only**) |
+| `QDRANT_URL` / `QDRANT_API_KEY` | Qdrant Cloud |
+| `BQ_PROJECT` / `BQ_DATASET_BRONZE` | BigQuery bronze |
+| `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | Base64 of GCP service account JSON |
+
+4. **Recommended:** `RAG_LLM_RERANK=off`, `RAG_LLM_TIMEOUT_S=300`, `RAG_EMBEDDINGS_MODE=hf_api`.
+5. **Do not set** `RAG_LLM_BASE_URL` to a LAN IP. Remove stale `GOOGLE_APPLICATION_CREDENTIALS=config/keys/...`.
+6. **Optional:** `OPENROUTER_HTTP_REFERER=https://opentrace.africa`, `OPENROUTER_APP_TITLE=Ask ADZA`.
+7. **Smoke test:** `GET /health`, `GET /ready`, `POST /query` with `{"query":"Who are you?"}`.
 
 ### Local API (same interface as HF)
 

@@ -2,8 +2,8 @@
 Unified chat-completions client for the RAG stack.
 
 Supports:
-- Hugging Face router (default when ``HF_API_TOKEN`` is set)
-- OpenAI-compatible local servers (LM Studio, vLLM) via ``RAG_LLM_BASE_URL``
+- OpenAI-compatible servers via ``RAG_LLM_BASE_URL`` (OpenRouter, DeepInfra, LM Studio, vLLM)
+- Hugging Face router (fallback when ``HF_API_TOKEN`` is set and ``RAG_LLM_BASE_URL`` is unset)
 
 Never raises on HTTP/API errors — returns empty string so callers can fall back.
 """
@@ -18,7 +18,7 @@ import requests
 from ml.rag.hf_token import get_hf_api_token
 
 try:
-    from langfuse.decorators import observe
+    from langfuse.decorators import observe  # pyright: ignore[reportMissingImports]
 except Exception:  # pragma: no cover
     def observe(*args, **kwargs):  # type: ignore
         def decorator(fn):
@@ -61,6 +61,32 @@ def llm_uses_hf_router() -> bool:
     return "router.huggingface.co" in url
 
 
+def llm_uses_openrouter() -> bool:
+    url = llm_chat_completions_url() or ""
+    return "openrouter.ai" in url
+
+
+def _llm_api_key() -> str:
+    """Bearer token for OpenAI-compatible backends (OpenRouter, DeepInfra, LM Studio)."""
+    for key in ("RAG_LLM_API_KEY", "OPENROUTER_API_KEY"):
+        v = os.environ.get(key, "").strip()
+        if v:
+            return v
+    return ""
+
+
+def _openrouter_extra_headers() -> dict[str, str]:
+    """Optional OpenRouter attribution headers (not required for API to work)."""
+    headers: dict[str, str] = {}
+    referer = os.environ.get("OPENROUTER_HTTP_REFERER", "").strip()
+    title = os.environ.get("OPENROUTER_APP_TITLE", "").strip()
+    if referer:
+        headers["HTTP-Referer"] = referer
+    if title:
+        headers["X-OpenRouter-Title"] = title
+    return headers
+
+
 @observe(as_type="generation", capture_input=True, capture_output=True)
 def llm_chat_complete(
     messages: list[dict[str, Any]],
@@ -92,9 +118,10 @@ def llm_chat_complete(
             return ""
         headers["Authorization"] = f"Bearer {token}"
     else:
-        local_key = os.environ.get("RAG_LLM_API_KEY", "").strip()
+        local_key = _llm_api_key()
         if local_key:
             headers["Authorization"] = f"Bearer {local_key}"
+        headers.update(_openrouter_extra_headers())
 
     payload = {
         "model": model or llm_model_id(),
