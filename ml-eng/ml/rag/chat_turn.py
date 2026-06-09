@@ -22,6 +22,8 @@ from ml.rag.observability import get_langfuse
 class ChatTurnResult:
     answer: str
     session_id: str
+    citations: list[dict[str, Any]] | None = None
+    usage: dict[str, int] | None = None
     pipeline_error: str | None = None
     raw_result: dict[str, Any] | None = None
 
@@ -98,20 +100,24 @@ def execute_chat_turn(
     query: str,
     *,
     session_id: str | None = None,
+    chat_history: list[dict[str, str]] | None = None,
     conversation_history: list[dict[str, str]] | None = None,
     stakeholder_type: str | None = None,
+    audience_instructions: str | None = None,
+    user_profile: dict[str, Any] | None = None,
     persist_to_session: bool = True,
     **rag_kwargs: Any,
 ) -> ChatTurnResult:
     """
     Run one user query through run_rag with optional server session memory.
 
-    stakeholder_type: when conversation_history is set, used if valid (or loaded from
-    session_id if that session exists). When using server memory only, explicit value
-    overrides session blob when valid.
+    stakeholder_type: resolved by caller (user_profile → legacy → session). When
+    chat_history is set, server session is not updated unless persist_to_session is True
+    and chat_history is absent.
     """
+    history = chat_history if chat_history is not None else conversation_history
     sid, prior_summary, prior_recent, st = _resolve_prior_and_stakeholder(
-        session_id, conversation_history, stakeholder_type
+        session_id, history, stakeholder_type
     )
 
     # Optional Langfuse span for session/memory resolution
@@ -126,6 +132,10 @@ def execute_chat_turn(
         kwargs["recent_turns"] = prior_recent
     if st:
         kwargs["stakeholder_type"] = st
+    if audience_instructions:
+        kwargs["audience_instructions"] = audience_instructions
+    if user_profile is not None:
+        kwargs["user_profile"] = user_profile
 
     from ml.rag.chatbot.graph import run_rag  # defer heavy graph / torch imports
 
@@ -136,12 +146,19 @@ def execute_chat_turn(
     if err_s == "":
         err_s = None
 
-    if persist_to_session and conversation_history is None:
+    if persist_to_session and history is None:
         persist_session_turn(sid, query.strip(), answer)
+
+    raw_citations = result.get("citations")
+    citations = list(raw_citations) if isinstance(raw_citations, list) else []
+    raw_usage = result.get("usage")
+    usage = dict(raw_usage) if isinstance(raw_usage, dict) else {}
 
     return ChatTurnResult(
         answer=answer,
         session_id=sid,
+        citations=citations,
+        usage=usage,
         pipeline_error=err_s,
         raw_result=dict(result),
     )

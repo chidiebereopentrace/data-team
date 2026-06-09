@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+from dataclasses import dataclass
 from typing import Any
 
 import requests
@@ -23,6 +25,55 @@ HF_ROUTER_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
 
 # Billing, auth, capacity — treat as soft failures (no exception to LangGraph).
 _SOFT_FAIL_HTTP = frozenset({401, 402, 403, 410, 429, 502, 503})
+
+_usage_lock = threading.Lock()
+_request_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens,
+            "input_tokens": self.prompt_tokens,
+            "output_tokens": self.completion_tokens,
+        }
+
+
+def reset_llm_usage() -> None:
+    """Clear per-request token accumulator (call at start of run_rag)."""
+    with _usage_lock:
+        _request_usage["prompt_tokens"] = 0
+        _request_usage["completion_tokens"] = 0
+        _request_usage["total_tokens"] = 0
+
+
+def get_llm_usage() -> TokenUsage:
+    with _usage_lock:
+        return TokenUsage(
+            prompt_tokens=_request_usage["prompt_tokens"],
+            completion_tokens=_request_usage["completion_tokens"],
+            total_tokens=_request_usage["total_tokens"],
+        )
+
+
+def add_llm_usage(raw: dict[str, Any] | None) -> None:
+    """Accumulate OpenAI-style usage from a chat completion response."""
+    if not raw or not isinstance(raw, dict):
+        return
+    prompt = int(raw.get("prompt_tokens") or raw.get("input_tokens") or 0)
+    completion = int(raw.get("completion_tokens") or raw.get("output_tokens") or 0)
+    total = int(raw.get("total_tokens") or (prompt + completion))
+    with _usage_lock:
+        _request_usage["prompt_tokens"] += prompt
+        _request_usage["completion_tokens"] += completion
+        _request_usage["total_tokens"] += total
 
 
 def llm_model_id() -> str:
@@ -132,6 +183,7 @@ def llm_chat_complete(
             return ""
         resp.raise_for_status()
         data = resp.json()
+        add_llm_usage(data.get("usage") if isinstance(data, dict) else None)
         choices = data.get("choices") or []
         if not choices:
             logger.warning("llm_chat_complete: empty choices from %s", url)

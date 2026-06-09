@@ -54,6 +54,14 @@ class SourceRef:
     citation_line: str
 
 
+@dataclass(frozen=True)
+class GenerationResult:
+    """Structured generator output for API responses."""
+
+    answer: str
+    citations: list[dict[str, Any]]
+
+
 def _generate_max_tokens() -> int:
     return int(os.environ.get("RAG_GENERATE_MAX_TOKENS", "2048") or 2048)
 
@@ -74,6 +82,15 @@ def _citations_mode() -> str:
     if raw == "all":
         return "all"
     return "referenced"
+
+
+def _append_sources_to_answer() -> bool:
+    return os.environ.get("RAG_APPEND_SOURCES_TO_ANSWER", "").strip().lower() in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    )
 
 
 def _source_kind(item: dict[str, Any]) -> str:
@@ -421,27 +438,91 @@ def _clean_answer(text: str) -> str:
     return _strip_model_sources_appendix(text)
 
 
-def _append_structured_citations(answer: str, source_registry: list[SourceRef]) -> str:
-    """Append Sources block for referenced (or all) sources with bibliographic detail."""
-    answer = _strip_model_sources_appendix(answer)
-    if not source_registry:
-        return answer
+def _citation_kind_normalized(kind: str) -> str:
+    k = kind.lower()
+    if k == "bigquery":
+        return "structured_data"
+    if k in ("news_article",):
+        return "news"
+    if k in ("academic_article",):
+        return "academic"
+    if k in ("policy_document", "public_report"):
+        return "policy"
+    if k in ("ota_insight", "ota_metric"):
+        return "ota"
+    return k or "context"
 
+
+def _citation_url(kind: str, meta: dict[str, Any]) -> str | None:
+    k = kind.lower()
+    if k in ("web_wikipedia", "web_search"):
+        url = str(meta.get("url") or "").strip()
+        return url or None
+    if k in ("news_article", "news"):
+        for key in ("url", "link", "source_url"):
+            url = str(meta.get(key) or "").strip()
+            if url.startswith("http"):
+                return url
+    if k in ("academic_article", "academic", "policy_document", "policy", "public_report"):
+        doi = str(meta.get("doi") or "").strip()
+        if doi.startswith("http"):
+            return doi
+        if doi:
+            return f"https://doi.org/{doi.lstrip('doi:').strip()}"
+    return None
+
+
+def _source_ref_to_citation_dict(ref: SourceRef) -> dict[str, Any]:
+    meta = _item_metadata(ref.item)
+    kind = _source_kind(ref.item)
+    return {
+        "id": ref.source_id,
+        "kind": _citation_kind_normalized(kind),
+        "text": ref.citation_line,
+        "url": _citation_url(kind, meta),
+    }
+
+
+def _referenced_source_refs(answer: str, source_registry: list[SourceRef]) -> list[SourceRef]:
+    if not source_registry:
+        return []
     mode = _citations_mode()
     if mode == "referenced":
         cited_ids = extract_referenced_source_ids(answer)
         if not cited_ids:
-            return answer
-        refs = [r for r in source_registry if r.source_id in cited_ids]
-    else:
-        refs = list(source_registry)
+            return []
+        return [r for r in source_registry if r.source_id in cited_ids]
+    return list(source_registry)
 
-    if not refs:
+
+def referenced_citations(answer: str, source_registry: list[SourceRef]) -> list[dict[str, Any]]:
+    """Build structured citation objects for referenced (or all) sources."""
+    prose = _strip_model_sources_appendix(answer)
+    refs = _referenced_source_refs(prose, source_registry)
+    return [_source_ref_to_citation_dict(r) for r in refs]
+
+
+def _append_structured_citations(answer: str, source_registry: list[SourceRef]) -> str:
+    """Append Sources block for referenced (or all) sources with bibliographic detail."""
+    answer = _strip_model_sources_appendix(answer)
+    cites = referenced_citations(answer, source_registry)
+    if not cites:
         return answer
-
-    lines = [f"{r.source_id}. {r.citation_line}" for r in refs]
+    lines = [f"{c['id']}. {c['text']}" for c in cites]
     block = "\n\nSources\n" + "\n".join(lines)
     return (answer.rstrip() + block).strip()
+
+
+def _finalize_generation_result(
+    answer: str,
+    source_registry: list[SourceRef],
+) -> GenerationResult:
+    prose = _strip_model_sources_appendix(answer)
+    citations = referenced_citations(prose, source_registry)
+    if _append_sources_to_answer() and citations:
+        lines = [f"{c['id']}. {c['text']}" for c in citations]
+        prose = (prose.rstrip() + "\n\nSources\n" + "\n".join(lines)).strip()
+    return GenerationResult(answer=prose, citations=citations)
 
 
 def _call_llama(messages: list[dict[str, str]]) -> str:
@@ -462,7 +543,7 @@ def generate(
     query: str,
     context_items: list[dict[str, Any]],
     **kwargs: Any,
-) -> str:
+) -> GenerationResult:
     """
     Produce an answer from query and context.
 
@@ -499,11 +580,14 @@ def generate(
             llama_answer = _call_llama(messages)
             if llama_answer:
                 cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
-                return _append_structured_citations(cleaned, [])
-        return (
-            "I couldn't find relevant OpenTrace sources (news, research, policy, public reports, "
-            "or structured agricultural data) for this question. Try naming a specific country or crop, "
-            "or confirm the knowledge bases are loaded."
+                return _finalize_generation_result(cleaned, [])
+        return GenerationResult(
+            answer=(
+                "I couldn't find relevant OpenTrace sources (news, research, policy, public reports, "
+                "or structured agricultural data) for this question. Try naming a specific country or crop, "
+                "or confirm the knowledge bases are loaded."
+            ),
+            citations=[],
         )
 
     usable_context = filter_context_items(context_items)
@@ -521,7 +605,7 @@ def generate(
     llama_answer = _call_llama(messages)
     if llama_answer:
         cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
-        return _append_structured_citations(cleaned, source_registry)
+        return _finalize_generation_result(cleaned, source_registry)
 
     if llm_configured():
         hint = (
@@ -534,4 +618,7 @@ def generate(
             "[LLM unavailable — set RAG_LLM_BASE_URL + RAG_LLM_API_KEY (OpenRouter, etc.) "
             "or HF_API_TOKEN for the Hugging Face router. Showing retrieved context only.]\n\n"
         )
-    return hint + f"Context:\n{context_block[:3000]}\n\nQuery: {query}"
+    return GenerationResult(
+        answer=hint + f"Context:\n{context_block[:3000]}\n\nQuery: {query}",
+        citations=[],
+    )

@@ -492,6 +492,11 @@ def decompose_query(query: str) -> dict[str, Any]:
     ):
         out["time_end"] = date.today().isoformat()
 
+    # Open-ended / since-year: heuristics win over LLM stale or single-year end dates.
+    if (_is_open_ended_time(q) or _extract_since_year(q) is not None) and ts and te:
+        out["time_start"] = ts
+        out["time_end"] = te
+
     out["geography"] = normalize_geography_for_filter(out.get("geography"))
     out["intent"] = _normalize_intent(out.get("intent"))
     return out

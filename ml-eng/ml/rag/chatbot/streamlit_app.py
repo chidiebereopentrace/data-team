@@ -334,7 +334,22 @@ with st.sidebar:
     ota_top_k = st.number_input("OTA chunks (top_k) — local test only", min_value=1, max_value=30, value=10)
     rerank_top_k = st.number_input("Rerank context size", min_value=1, max_value=50, value=20)
     st.divider()
-    geo_override = st.text_input("Geography override (optional)", placeholder="e.g. Nigeria")
+    from ml.rag.chatbot.geo_policy import FARMER_STAKEHOLDER
+    from ml.rag.chatbot.stakeholder_prompts import STAKEHOLDER_TYPES
+
+    stakeholder_options = [""] + [s["id"] for s in STAKEHOLDER_TYPES]
+    stakeholder_type = st.selectbox(
+        "Stakeholder type (optional)",
+        stakeholder_options,
+        format_func=lambda x: x or "(none)",
+    )
+    profile_country = ""
+    if stakeholder_type == FARMER_STAKEHOLDER:
+        profile_country = st.text_input(
+            "Profile country (farmers only)",
+            placeholder="e.g. Nigeria",
+            help="Used as retrieval geo filter for farmers_communities only.",
+        )
     t_start = st.text_input("Time start YYYY-MM-DD (optional)", placeholder="2020-01-01")
     t_end = st.text_input("Time end YYYY-MM-DD (optional)", placeholder="2025-12-31")
     show_debug = st.checkbox("Show pipeline debug (last run)", value=False)
@@ -363,8 +378,10 @@ if prompt:
         "ota_top_k": int(ota_top_k),
         "rerank_top_k": int(rerank_top_k),
     }
-    if geo_override.strip():
-        kwargs["geo_override"] = geo_override.strip()
+    if stakeholder_type:
+        kwargs["stakeholder_type"] = stakeholder_type
+    if profile_country.strip():
+        kwargs["user_profile"] = {"country": profile_country.strip()}
     if t_start.strip():
         kwargs["time_start_override"] = t_start.strip()[:10]
     if t_end.strip():
@@ -379,9 +396,14 @@ if prompt:
 
             result = run_rag(prompt.strip(), **kwargs)
             answer = result.get("answer") or ""
+            citations = result.get("citations") or []
             err = result.get("error")
             if err:
                 answer = f"**Error:** {err}\n\n{answer}".strip()
+            if citations and "Sources" not in answer:
+                cite_lines = [f"{c.get('id')}. {c.get('text')}" for c in citations if isinstance(c, dict)]
+                if cite_lines:
+                    answer = (answer.rstrip() + "\n\nSources\n" + "\n".join(cite_lines)).strip()
 
             messages.append({"role": "user", "content": prompt.strip()})
             messages.append({"role": "assistant", "content": answer})

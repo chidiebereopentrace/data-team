@@ -32,7 +32,9 @@ from pydantic import BaseModel, Field
 
 import logging
 
+from ml.rag.api_schemas import CitationItem, UsageStats, UserProfile
 from ml.rag.chat_history import normalize_messages
+from ml.rag.request_context import resolve_request_context
 
 logger = logging.getLogger("ml.rag.api")
 from ml.rag.chat_memory import append_turn_and_compact, flat_messages_to_memory
@@ -68,11 +70,22 @@ class QueryRequest(BaseModel):
         None,
         description="Omit to start a new session; reuse for multi-turn chat (server-side memory)",
     )
+    chat_history: list[ChatMessage] | None = Field(
+        None,
+        description="Prior turns for this request (canonical). Server session is not updated when set.",
+    )
     conversation_history: list[ChatMessage] | None = Field(
         None,
-        description="If set, used as prior turns instead of server session store for this request",
+        description="Deprecated alias for chat_history.",
     )
-    geo_override: str | None = None
+    geo_override: str | None = Field(
+        None,
+        description="Deprecated and ignored. Use user_profile.country for farmers_communities retrieval geo.",
+    )
+    user_profile: UserProfile | None = Field(
+        None,
+        description="User profile: country (farmers retrieval geo), stakeholder_type, audience_instructions.",
+    )
     time_start_override: str | None = None
     time_end_override: str | None = None
     news_top_k: int | None = None
@@ -81,21 +94,23 @@ class QueryRequest(BaseModel):
     rerank_top_k: int | None = None
     ota_top_k: int | None = None
 
-    # --- AskADZA / client-driven audience support (client owns profile & tone) ---
+    # Deprecated: prefer user_profile.stakeholder_type / user_profile.audience_instructions
     stakeholder_type: str | None = Field(
         None,
-        description="Optional audience/persona identifier (e.g. government_public, private_sector, farmers_communities). The AskADZA client decides the value and meaning.",
+        description="Deprecated. Use user_profile.stakeholder_type.",
     )
     audience_instructions: str | None = Field(
         None,
-        description="Optional free-form instructions or tone guidance supplied by the client UI. If present, the RAG generator should incorporate this (client overrides server-side defaults).",
+        description="Deprecated. Use user_profile.audience_instructions.",
         max_length=4000,
     )
 
 
 class QueryResponse(BaseModel):
     answer: str
+    citations: list[CitationItem] = Field(default_factory=list)
     session_id: str = Field(..., description="Pass on the next request for chat continuity")
+    usage: UsageStats = Field(default_factory=lambda: UsageStats())
     error: str | None = None
     trace: dict | None = None
 
@@ -179,27 +194,55 @@ def _persist_session_turn(session_id: str, user_msg: str, assistant_msg: str) ->
 async def query(request: QueryRequest):
     """Run the RAG pipeline and return the answer for the frontend chatbot."""
     try:
-        logger.info("query request received (len=%d, has_history=%s, stakeholder=%s)",
-                    len(request.query or ""), bool(request.conversation_history), bool(request.stakeholder_type))
+        try:
+            ctx = resolve_request_context(
+                user_profile=request.user_profile,
+                chat_history=request.chat_history,
+                conversation_history=request.conversation_history,
+                legacy_stakeholder_type=request.stakeholder_type,
+                legacy_audience_instructions=request.audience_instructions,
+                session_id=request.session_id,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+
+        logger.info(
+            "query request received (len=%d, has_history=%s, stakeholder=%s)",
+            len(request.query or ""),
+            ctx.has_client_history,
+            bool(ctx.stakeholder_type),
+        )
 
         from ml.rag.graph import run_rag
 
-        session_id, prior_summary, prior_recent = _resolve_prior_memory(request)
+        session_id, prior_summary, prior_recent = _resolve_prior_memory(
+            request.session_id,
+            ctx.history_messages,
+        )
 
-        # Optional Langfuse root trace (groups the LangGraph spans + LLM calls)
         create_trace(
             "rag.query",
             session_id=session_id,
-            stakeholder_type=request.stakeholder_type,
+            stakeholder_type=ctx.stakeholder_type,
             query=request.query,
-            has_history=bool(request.conversation_history),
+            has_history=ctx.has_client_history,
         )
+        if request.geo_override and str(request.geo_override).strip():
+            logger.debug(
+                "geo_override is deprecated and ignored; use user_profile.country for farmers_communities"
+            )
+
         kwargs: dict = {}
         if prior_summary.strip() or prior_recent:
             kwargs["conversation_summary"] = prior_summary
             kwargs["recent_turns"] = prior_recent
+        if ctx.user_profile is not None:
+            kwargs["user_profile"] = ctx.user_profile
+        if ctx.stakeholder_type:
+            kwargs["stakeholder_type"] = ctx.stakeholder_type
+        if ctx.audience_instructions:
+            kwargs["audience_instructions"] = ctx.audience_instructions
         for key in (
-            "geo_override",
             "time_start_override",
             "time_end_override",
             "news_top_k",
@@ -207,8 +250,6 @@ async def query(request: QueryRequest):
             "bq_top_k",
             "rerank_top_k",
             "ota_top_k",
-            "stakeholder_type",
-            "audience_instructions",
         ):
             val = getattr(request, key, None)
             if val is not None:
@@ -230,12 +271,18 @@ async def query(request: QueryRequest):
             }
 
         answer = result.get("answer", "") or ""
-        if request.conversation_history is None:
+        if not ctx.has_client_history:
             _persist_session_turn(session_id, request.query.strip(), answer)
+
+        raw_citations = result.get("citations") or []
+        citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]
+        usage = UsageStats.from_usage_dict(result.get("usage") if isinstance(result.get("usage"), dict) else None)
 
         return QueryResponse(
             answer=answer,
+            citations=citations,
             session_id=session_id,
+            usage=usage,
             error=result.get("error"),
             trace=trace,
         )

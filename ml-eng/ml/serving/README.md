@@ -9,7 +9,27 @@ Public, versioned HTTP API for the OpenTrace chatbot. Retrieval internals (`bq_s
 | GET | `/v1/health` | Liveness |
 | GET | `/v1/meta` | `api_version`, `schema_version`, optional `build`, `stakeholder_types` catalog |
 | POST | `/v1/sessions` | Body: `stakeholder_type` → `session_id` |
-| POST | `/v1/chat` | Body: `message` + `session_id`, or bootstrap with `stakeholder_type` only (no `session_id`) |
+| POST | `/v1/chat` | Body: `query` or `message` + `session_id`, nested `user_profile`, optional `chat_history` |
+
+**Canonical `POST /v1/chat` request** (same nesting as `/query`; user text via **`query`** or **`message`**):
+
+```json
+{
+  "query": "What are rice yield trends?",
+  "session_id": "abc123...",
+  "user_profile": {
+    "country": "Ghana",
+    "audience_instructions": null,
+    "stakeholder_type": "farmers_communities"
+  },
+  "chat_history": [
+    { "role": "user", "content": "Previous question" },
+    { "role": "assistant", "content": "Previous answer" }
+  ]
+}
+```
+
+`user_profile.country` filters retrieval **only** for **`farmers_communities`**. Deprecated: top-level `stakeholder_type` (bootstrap only), `conversation_history` (use `chat_history`).
 
 OpenAPI: `/docs` on the same app.
 

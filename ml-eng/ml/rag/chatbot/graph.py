@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, TypedDict, cast
 
 from ml.rag.chatbot.assistant_identity import is_meta_query
+from ml.rag.chatbot.geo_policy import effective_geo_override
 from ml.rag.chatbot.product_knowledge import is_product_query
 from ml.rag.chatbot.bq_table_matcher import match_bq_tables_from_descriptions
 from ml.rag.chatbot.generator import filter_context_items, generate, is_usable_context_item
@@ -22,6 +23,7 @@ from ml.rag.chatbot.query_decomposer import (
 from ml.rag.chatbot.reranker import rerank
 from ml.rag.retrievers.bq_retriever import BQRetriever
 from ml.rag.retrievers.vector_retriever import VectorRetriever
+from ml.rag.llm_chat import get_llm_usage, reset_llm_usage
 from ml.rag.retrievers.web_retriever import (
     format_web_chunk_for_context,
     needs_web_fallback,
@@ -265,6 +267,8 @@ class RAGGraphState(TypedDict, total=False):
     reranked_context: list[dict[str, Any]]
     web_results: list[dict[str, Any]]
     answer: str
+    citations: list[dict[str, Any]]
+    usage: dict[str, int]
     error: str | None
     # Optional UI / API overrides (see run_rag)
     geo_override: str | None
@@ -684,8 +688,8 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
     elif state.get("chat_history"):
         gkw["chat_history"] = state.get("chat_history")
-    answer = generate(query, context, **gkw)
-    return {"answer": answer}
+    gen_result = generate(query, context, **gkw)
+    return {"answer": gen_result.answer, "citations": gen_result.citations}
 
 
 def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
@@ -707,7 +711,7 @@ def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
     if state.get("audience_instructions"):
         gkw["audience_instructions"] = state.get("audience_instructions")
     answer = generate_meta_answer(query, **gkw)
-    return {"answer": answer}
+    return {"answer": answer, "citations": []}
 
 
 def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
@@ -785,10 +789,16 @@ def _get_compiled_graph():
 
 def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
     """Run the RAG pipeline and return the state (including answer)."""
+    reset_llm_usage()
     graph = _get_compiled_graph()
     initial: RAGGraphState = {"query": query}
+    profile_geo = effective_geo_override(
+        kwargs.get("stakeholder_type"),
+        kwargs.get("user_profile") if isinstance(kwargs.get("user_profile"), dict) else None,
+    )
+    if profile_geo:
+        initial["geo_override"] = profile_geo  # type: ignore[assignment]
     for key in (
-        "geo_override",
         "time_start_override",
         "time_end_override",
         "news_top_k",
@@ -814,4 +824,7 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
             cbs.append(handler)
         cfg = cast(RunnableConfig, {**base, "callbacks": cbs})
     result = graph.invoke(initial, config=cfg)
-    return dict(result)
+    out = dict(result)
+    out.setdefault("citations", [])
+    out["usage"] = get_llm_usage().to_dict()
+    return out

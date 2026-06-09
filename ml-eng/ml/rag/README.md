@@ -61,8 +61,52 @@ See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/c
 
 **Streamlit** ([`chatbot/streamlit_app.py`](ml/rag/chatbot/streamlit_app.py)): multiple **chat sessions** in the sidebar; **pipeline debug** shows the last run’s decomposition and retrieval stats.
 
-**API** (`POST /query`): responses include **`session_id`**. Reuse it for **server-side** `{conversation_summary, recent_turns}` (plus optional `stakeholder_type`). Backed by Redis when `RAG_REDIS_URL` is set (durable across workers/restarts, required for scaling). Without Redis the store is in-process only (single worker; lost on restart). Send **`conversation_history`** to supply prior turns from the client (fully stateless path); history is compacted for that request only and the server store is **not** updated.
-Meta / identity and product questions short-circuit retrieval (see `assistant_identity.py`, `product_knowledge.py`). Full RAG answers use numbered context sources (`[Source N]` in the LLM context) with Wikipedia-style inline footnotes (`[1]`, `[5]`) in prose and a single **Sources** block with full bibliographic detail for referenced items by default (`RAG_CITATIONS_MODE=referenced`; set `all` for every packed source). BQ validation/execution failures are dropped before generation; model-written Sources appendices are stripped; table names and SQL are not shown to users.
+**API** (`POST /query` and `POST /v1/chat`): responses include **`session_id`**, structured **`citations`**, and aggregated LLM **`usage`** (sum of all LLM calls in the request: decompose, BQ NL2SQL, memory fold, rerank if on, generation). Example shape:
+
+```json
+{
+  "answer": "Prose with inline footnotes [14][18] only",
+  "citations": [
+    { "id": 14, "kind": "academic", "text": "[Academic] ...", "url": null },
+    { "id": 18, "kind": "news", "text": "[News] ...", "url": "https://..." }
+  ],
+  "session_id": "...",
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
+```
+
+By default **`answer`** is prose-only (no trailing **Sources** markdown block); clients should render `citations`. Set **`RAG_APPEND_SOURCES_TO_ANSWER=1`** for legacy embedded Sources in `answer` (e.g. Streamlit during transition).
+
+Reuse **`session_id`** for **server-side** `{conversation_summary, recent_turns}`. Backed by Redis when `RAG_REDIS_URL` is set (durable across workers/restarts, required for scaling). Without Redis the store is in-process only (single worker; lost on restart). Send **`chat_history`** to supply prior turns from the client (fully stateless path); history is compacted for that request only and the server store is **not** updated. Deprecated alias: **`conversation_history`**.
+
+**Canonical `POST /query` request** (backend contract):
+
+```json
+{
+  "query": "What are rice yield trends?",
+  "session_id": "abc123...",
+  "user_profile": {
+    "country": "Ghana",
+    "audience_instructions": null,
+    "stakeholder_type": "farmers_communities"
+  },
+  "chat_history": [
+    { "role": "user", "content": "Previous question" },
+    { "role": "assistant", "content": "Previous answer" }
+  ],
+  "include_trace": false
+}
+```
+
+**`user_profile`**: `stakeholder_type` and `audience_instructions` drive generation tone; **`country`** is a **retrieval geo filter only** for **`farmers_communities`**. Other personas use geography from query decomposition. Deprecated top-level `stakeholder_type`, `audience_instructions`, and **`geo_override`** (ignored).
+
+Meta / identity and product questions short-circuit retrieval (see `assistant_identity.py`, `product_knowledge.py`). Full RAG answers use numbered context sources (`[Source N]` in the LLM context) with Wikipedia-style inline footnotes (`[1]`, `[5]`) in prose. Referenced sources appear in **`citations`** by default (`RAG_CITATIONS_MODE=referenced`; set `all` for every packed source). BQ validation/execution failures are dropped before generation; model-written Sources appendices are stripped; table names and SQL are not shown to users.
 
 **Redis config** (new in scaling release):
 - `RAG_REDIS_URL` (or `REDIS_URL`): e.g. `redis://host:6379/0` or rediss:// for TLS.

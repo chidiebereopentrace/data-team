@@ -6,6 +6,7 @@ import os
 from unittest import mock
 
 from ml.rag.chatbot.generator import (
+    GenerationResult,
     SourceRef,
     _append_structured_citations,
     _build_context_block,
@@ -16,7 +17,9 @@ from ml.rag.chatbot.generator import (
     _strip_model_sources_appendix,
     extract_referenced_source_ids,
     filter_context_items,
+    generate,
     is_usable_context_item,
+    referenced_citations,
 )
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
 
@@ -239,3 +242,36 @@ def test_append_citations_no_refs_when_unreferenced() -> None:
     with mock.patch.dict(os.environ, {"RAG_CITATIONS_MODE": "referenced"}):
         out = _append_structured_citations(answer, registry)
     assert "Sources" not in out
+
+
+def test_referenced_citations_structured_shape() -> None:
+    registry = [
+        SourceRef(1, _news_item(), "[News] Senegal rice policy shift — AgriNews (2023)"),
+        SourceRef(2, _bq_item(), "[Structured data] OpenTrace agricultural data"),
+    ]
+    answer = "Production trends improved [1] in recent seasons."
+    with mock.patch.dict(os.environ, {"RAG_CITATIONS_MODE": "referenced"}):
+        cites = referenced_citations(answer, registry)
+    assert len(cites) == 1
+    assert cites[0]["id"] == 1
+    assert cites[0]["kind"] == "news"
+    assert cites[0]["text"].startswith("[News]")
+    assert cites[0]["url"] is None
+
+
+def test_generate_returns_generation_result_without_sources_block() -> None:
+    registry_items = [_news_item(), _bq_item()]
+    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
+        mock_llm.return_value = "Rice policy shifted.[1]"
+        with mock.patch.dict(
+            os.environ,
+            {"RAG_CITATIONS_MODE": "referenced", "RAG_APPEND_SOURCES_TO_ANSWER": ""},
+            clear=False,
+        ):
+            os.environ.pop("RAG_APPEND_SOURCES_TO_ANSWER", None)
+            result = generate("What about rice?", registry_items)
+    assert isinstance(result, GenerationResult)
+    assert "Sources" not in result.answer
+    assert "[1]" in result.answer
+    assert len(result.citations) == 1
+    assert result.citations[0]["id"] == 1
