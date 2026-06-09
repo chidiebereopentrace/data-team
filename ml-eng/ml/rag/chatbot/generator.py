@@ -209,10 +209,18 @@ def _source_kind_display(kind: str) -> str:
     return kind or "Context"
 
 
-def _source_header_label(item: dict[str, Any], source_id: int) -> str:
-    """Minimal context header — bibliographic detail lives in the Sources block only."""
+def _source_header_label(
+    item: dict[str, Any],
+    source_id: int,
+    *,
+    cite_line: str | None = None,
+) -> str:
+    """Context header with type and optional bibliographic citation line for prose attribution."""
     kind = _source_kind(item)
-    return f"[Source {source_id}]\nType: {_source_kind_display(kind)}"
+    header = f"[Source {source_id}]\nType: {_source_kind_display(kind)}"
+    if cite_line:
+        header += f"\nCitation: {cite_line}"
+    return header
 
 
 def _chunk_allocations(
@@ -272,7 +280,8 @@ def _build_context_block(
         if take <= 0:
             continue
 
-        header = _source_header_label(item, source_id)
+        cite_line = _format_source_citation(item)
+        header = _source_header_label(item, source_id, cite_line=cite_line)
         body_trunc = body[: max(0, take - len(header) - 2)]
         if not body_trunc.strip():
             continue
@@ -281,7 +290,6 @@ def _build_context_block(
         parts.append(block)
         used += len(block) + 2
 
-        cite_line = _format_source_citation(item)
         if cite_line:
             registry.append(SourceRef(source_id=source_id, item=item, citation_line=cite_line))
 
@@ -333,14 +341,16 @@ def _build_prompt(
         "You are an agricultural advisory assistant for OpenTrace stakeholders (government, NGOs, "
         "agribusiness, finance, farmers). Write clear prose for decision-makers — not a database console. "
         "Answer ONLY using facts in the Context below from numbered OpenTrace sources "
-        "(each chunk is labeled [Source N] with a Type line). "
+        "(each chunk is labeled [Source N] with Type and Citation lines when available). "
         "Synthesize evidence across all numbered sources — do not rely on a single snippet. "
-        "When stating a specific fact, number, or claim from the context, cite it inline as a bare "
-        "footnote number like [1] or [5] — the same N as [Source N] in the Context. "
-        "Never put author names, titles, source types, or context headers in the answer body; "
-        "do not use (Author et al., year) citations — use footnote numbers only. "
+        "When stating a specific fact, number, or claim from the context, name the source in readable "
+        "prose using the Citation line (author or organization, title or outlet, and year when present), "
+        "then add the matching footnote number [N] — the same N as [Source N]. "
+        "Never cite with a bare number alone (wrong: 'According to [6]'; right: 'According to Branca et al. "
+        "(2012), agriculture's GDP share rose.[6]'). "
+        "Do not paste raw context headers, Type lines, Citation lines, or pipe-delimited "
+        "[Source N | ...] strings into the answer. "
         "Do not output a Sources, References, or Bibliography section; the system appends one. "
-        "Example: 'Rice yields rose in the north.[3]' — not 'From [Source 3 | Academic | Author (2019)]'. "
         "Sources labeled Type: Wikipedia or Type: Web search are supplemental external context — "
         "prefer OpenTrace news, research, and structured data when available; treat web sources as "
         "partial background and state limits when relying on them. "

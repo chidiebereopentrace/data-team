@@ -79,6 +79,7 @@ def test_build_context_block_respects_budget() -> None:
     assert len(block) <= 5000 + 50
     assert "[Source 1]" in block
     assert "Type:" in block
+    assert "Citation:" in block
     assert "Unknown authors" not in block
     assert len(registry) >= 2
 
@@ -172,6 +173,17 @@ def test_normalize_verbose_inline_citations() -> None:
     assert "[3]" in out
     assert "[9]" in out
     assert extract_referenced_source_ids(out) == {3, 5, 9}
+
+
+def test_normalize_preserves_named_prose_citations() -> None:
+    raw = (
+        "According to Branca et al. (2012), agriculture's GDP share rose.[6] "
+        "Business News Nigeria (2025) reports regional price gaps.[9]"
+    )
+    out = _normalize_inline_citations(raw)
+    assert "Branca et al. (2012)" in out
+    assert "Business News Nigeria (2025)" in out
+    assert extract_referenced_source_ids(out) == {6, 9}
 
 
 def test_format_academic_citation_prefers_title_over_unknown_authors() -> None:
