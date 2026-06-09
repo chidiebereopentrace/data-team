@@ -22,7 +22,7 @@ START → decompose ─┬─ identity meta? ──→ generate_meta ──→ E
 ```
 
 - **decompose**: heuristics + optional LLM → geography, time range, entities, domains; routes identity meta (`who are you`), product KB (`what is the aim of OpenTrace`), or full RAG.
-- **generate_meta** / **generate_product**: short-circuit paths with no retrieval; product answers use [`data/opentrace_product.json`](data/opentrace_product.json).
+- **generate_meta** / **generate_product**: short-circuit paths with no retrieval; product answers use [`chatbot/data/opentrace_product.json`](chatbot/data/opentrace_product.json).
 - **parallel_retrieve**: BQ table-description match + news + research Qdrant search (thread pool).
 - **bq_retrieve**: NL-to-SQL (LM Studio or HF) from table hints → execute bronze SELECTs; up to `RAG_BQ_MAX_SQL_QUERIES` queries.
 - **merge / rerank / generate**: fuse context; optional LLM rerank (`RAG_LLM_RERANK=off` recommended locally); answer via [`llm_chat.py`](llm_chat.py).
@@ -61,7 +61,7 @@ See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/c
 **Streamlit** ([`chatbot/streamlit_app.py`](ml/rag/chatbot/streamlit_app.py)): multiple **chat sessions** in the sidebar; **pipeline debug** shows the last run’s decomposition and retrieval stats.
 
 **API** (`POST /query`): responses include **`session_id`**. Reuse it for **server-side** `{conversation_summary, recent_turns}` (plus optional `stakeholder_type`). Backed by Redis when `RAG_REDIS_URL` is set (durable across workers/restarts, required for scaling). Without Redis the store is in-process only (single worker; lost on restart). Send **`conversation_history`** to supply prior turns from the client (fully stateless path); history is compacted for that request only and the server store is **not** updated.
-Meta / identity and product questions short-circuit retrieval (see `assistant_identity.py`, `product_knowledge.py`). Full RAG answers use numbered context sources (`[Source N]`) with inline citations in prose and a **Sources** block listing only referenced items by default (`RAG_CITATIONS_MODE=referenced`; set `all` for every packed source).
+Meta / identity and product questions short-circuit retrieval (see `assistant_identity.py`, `product_knowledge.py`). Full RAG answers use numbered context sources (`[Source N]` in the LLM context) with Wikipedia-style inline footnotes (`[1]`, `[5]`) in prose and a **Sources** block with full bibliographic detail for referenced items by default (`RAG_CITATIONS_MODE=referenced`; set `all` for every packed source).
 
 **Redis config** (new in scaling release):
 - `RAG_REDIS_URL` (or `REDIS_URL`): e.g. `redis://host:6379/0` or rediss:// for TLS.

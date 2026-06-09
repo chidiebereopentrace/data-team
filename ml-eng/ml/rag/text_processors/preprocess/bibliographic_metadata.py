@@ -320,20 +320,25 @@ def resolve_bibliographic_metadata(
 
 
 def format_academic_citation(meta: dict[str, Any]) -> str:
-    """Compact citation string for RAG context labels."""
+    """Compact citation string for the Sources block (not inline footnotes)."""
     authors = str(meta.get("authors") or "").strip()
     year = str(meta.get("publication_year") or meta.get("year") or "").strip()
     title = str(meta.get("article_title") or meta.get("title") or "").strip()
     journal = str(meta.get("journal") or "").strip()
     doi = str(meta.get("doi") or "").strip()
 
-    lead = authors or "Unknown authors"
-    if year:
-        lead = f"{lead} ({year})"
-    parts = [lead]
-    if title:
-        parts.append(title)
-    if journal:
+    if authors:
+        lead = f"{authors} ({year})" if year else authors
+        parts = [lead]
+        if title:
+            parts.append(title)
+    elif title:
+        parts = [f"{title} ({year})" if year else title]
+    else:
+        lead = journal or (f"DOI {doi}" if doi else "Document")
+        parts = [f"{lead} ({year})" if year else lead]
+
+    if journal and journal not in parts[0]:
         parts.append(journal)
     if doi:
         parts.append(f"DOI {doi}")

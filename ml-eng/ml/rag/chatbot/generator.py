@@ -24,7 +24,13 @@ _BQ_TABLE_RE = re.compile(
     r"FROM\s+`?(?:[\w-]+\.)*([\w-]+)`?",
     re.IGNORECASE,
 )
-_SOURCE_REF_RE = re.compile(r"\[Source\s+(\d+)\]|\bSource\s+(\d+)\b", re.IGNORECASE)
+_SOURCE_REF_RE = re.compile(
+    r"\[Source\s+(\d+)\]"
+    r"|\[(?!\s*Source\s)(\d+)\]"
+    r"|\bSource\s+(\d+)\b",
+    re.IGNORECASE,
+)
+_VERBOSE_INLINE_REF_RE = re.compile(r"\[Source\s+(\d+)\s*\|[^\]]*\]", re.IGNORECASE)
 _BQ_ROW_HINT_KEYS = ("country", "product", "fnid", "planting_year", "harvest_year", "year", "region")
 
 _BQ_MIN_CHARS = 800
@@ -135,37 +141,24 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
     return None
 
 
-def _source_header_label(item: dict[str, Any], source_id: int) -> str:
-    """Short header for the context block: [Source N | kind | detail]."""
-    kind = _source_kind(item)
-    meta = _item_metadata(item)
-
+def _source_kind_display(kind: str) -> str:
     if kind == "bigquery":
-        table = _bq_table_from_meta(meta)
-        detail = table or "structured data"
-        return f"[Source {source_id} | Structured data | {detail}]"
-
+        return "Structured data"
     if kind in ("academic_article", "academic"):
-        cite = format_academic_citation(meta)
-        short = cite[:120] + "…" if len(cite) > 120 else cite
-        return f"[Source {source_id} | Academic | {short or 'research'}]"
-
+        return "Academic"
     if kind in ("policy_document", "public_report", "policy"):
-        cite = format_academic_citation(meta)
-        short = cite[:120] + "…" if len(cite) > 120 else cite
-        return f"[Source {source_id} | Policy/Public | {short or 'document'}]"
-
+        return "Policy/Public"
     if kind in ("news_article", "news"):
-        title = str(meta.get("title") or meta.get("source_file") or "news").strip()
-        date = str(meta.get("published_at") or meta.get("date") or "").strip()[:10]
-        detail = f"{title} ({date})" if date else title
-        return f"[Source {source_id} | News | {detail}]"
-
+        return "News"
     if kind in ("ota_insight", "ota_metric"):
-        name = str(meta.get("metric_text") or meta.get("title") or "OTA insight").strip()
-        return f"[Source {source_id} | OTA Insight | {name}]"
+        return "OTA Insight"
+    return kind or "Context"
 
-    return f"[Source {source_id} | {kind or 'context'}]"
+
+def _source_header_label(item: dict[str, Any], source_id: int) -> str:
+    """Minimal context header — bibliographic detail lives in the Sources block only."""
+    kind = _source_kind(item)
+    return f"[Source {source_id}]\nType: {_source_kind_display(kind)}"
 
 
 def _chunk_allocations(
@@ -241,14 +234,25 @@ def _build_context_block(
     return "\n\n".join(parts), registry
 
 
+def _normalize_inline_citations(text: str) -> str:
+    """Collapse verbose model citations to Wikipedia-style footnote numbers [N]."""
+    if not text:
+        return text
+    text = _VERBOSE_INLINE_REF_RE.sub(lambda m: f"[{m.group(1)}]", text)
+    text = re.sub(r"\[Source\s+(\d+)\]", r"[\1]", text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<!\[)\bSource\s+(\d+)\b(?!\])", r"[\1]", text, flags=re.IGNORECASE)
+    return text
+
+
 def extract_referenced_source_ids(answer: str) -> set[int]:
-    """Return source IDs cited inline in the answer ([Source N] or Source N)."""
+    """Return source IDs cited inline in the answer ([N], [Source N], or Source N)."""
+    normalized = _normalize_inline_citations(answer)
     ids: set[int] = set()
-    for m in _SOURCE_REF_RE.finditer(answer):
-        g1, g2 = m.group(1), m.group(2)
-        val = g1 or g2
-        if val:
-            ids.add(int(val))
+    for m in _SOURCE_REF_RE.finditer(normalized):
+        for g in m.groups():
+            if g:
+                ids.add(int(g))
+                break
     return ids
 
 
@@ -263,11 +267,13 @@ def _build_prompt(
         "You are an agricultural advisory assistant for OpenTrace stakeholders (government, NGOs, "
         "agribusiness, finance, farmers). Write clear prose for decision-makers — not a database console. "
         "Answer ONLY using facts in the Context below from numbered OpenTrace sources "
-        "([Source N | News], [Source N | Academic], [Source N | Policy/Public], "
-        "[Source N | Structured data], [Source N | OTA Insight]). "
+        "(each chunk is labeled [Source N] with a Type line). "
         "Synthesize evidence across all numbered sources — do not rely on a single snippet. "
-        "When stating a specific fact, number, or claim from the context, cite it inline as [Source N] "
-        "matching the Context labels. "
+        "When stating a specific fact, number, or claim from the context, cite it inline as a bare "
+        "footnote number like [1] or [5] — the same N as [Source N] in the Context. "
+        "Never put author names, titles, source types, or context headers in the answer body; "
+        "reserve all bibliographic detail for the Sources section appended after your answer. "
+        "Example: 'Rice yields rose in the north.[3]' — not 'From [Source 3 | Academic | Author (2019)]'. "
         "When the context supports it, write a substantive multi-paragraph answer "
         "(roughly 4–8 paragraphs for complex questions). "
         "Structure complex answers: (1) direct answer, (2) supporting evidence by theme, region, or time period, "
@@ -378,7 +384,7 @@ def _append_structured_citations(answer: str, source_registry: list[SourceRef]) 
     if not refs:
         return answer
 
-    lines = [f"- [Source {r.source_id}] {r.citation_line}" for r in refs]
+    lines = [f"{r.source_id}. {r.citation_line}" for r in refs]
     block = "\n\nSources\n" + "\n".join(lines)
     return (answer.rstrip() + block).strip()
 
@@ -437,7 +443,7 @@ def generate(
             )
             llama_answer = _call_llama(messages)
             if llama_answer:
-                cleaned = _clean_answer(llama_answer)
+                cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
                 return _append_structured_citations(cleaned, [])
         return (
             "I couldn't find relevant OpenTrace sources (news, research, policy, public reports, "
@@ -458,7 +464,7 @@ def generate(
     )
     llama_answer = _call_llama(messages)
     if llama_answer:
-        cleaned = _clean_answer(llama_answer)
+        cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
         return _append_structured_citations(cleaned, source_registry)
 
     if llm_configured():

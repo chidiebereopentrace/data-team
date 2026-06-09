@@ -17,7 +17,7 @@ from typing import Any
 from ml.rag.chatbot.assistant_identity import META_ANSWER_FOOTER, _append_footer
 from ml.rag.chatbot.stakeholder_prompts import instruction_for_stakeholder
 
-_DEFAULT_KB_PATH = Path(__file__).resolve().parent.parent / "data" / "opentrace_product.json"
+_DEFAULT_KB_PATH = Path(__file__).resolve().parent / "data" / "opentrace_product.json"
 
 # Brand / product tokens
 _BRAND_PATTERNS: tuple[str, ...] = (
@@ -110,9 +110,32 @@ def format_product_kb_for_prompt(kb: dict[str, Any] | None = None) -> str:
     sections: list[str] = []
 
     tagline = kb.get("tagline") or ""
+    subtitle = kb.get("subtitle") or ""
     mission = kb.get("mission") or ""
-    if tagline or mission:
-        sections.append(f"## OpenTrace Africa\n{tagline}\n{mission}")
+    aim = kb.get("aim") or ""
+    if tagline or mission or aim:
+        block = f"## OpenTrace Africa\n{tagline}"
+        if subtitle:
+            block += f"\n{subtitle}"
+        if aim:
+            block += f"\nAim: {aim}"
+        if mission:
+            block += f"\n{mission}"
+        sections.append(block)
+
+    current = kb.get("current_state") or {}
+    if isinstance(current, dict) and current.get("summary"):
+        sections.append(f"## Current state\n{current.get('summary', '')}")
+
+    core = kb.get("core_problem") or {}
+    if isinstance(core, dict) and core.get("headline"):
+        sections.append(f"## Core problem\n{core.get('headline')}\n{core.get('summary', '')}")
+
+    opportunity = kb.get("opportunity") or {}
+    if isinstance(opportunity, dict) and opportunity.get("headline"):
+        sections.append(
+            f"## The opportunity\n{opportunity.get('headline')}\n{opportunity.get('summary', '')}"
+        )
 
     challenge = kb.get("challenge") or {}
     if isinstance(challenge, dict) and challenge.get("headline"):
@@ -125,7 +148,34 @@ def format_product_kb_for_prompt(kb: dict[str, Any] | None = None) -> str:
         costs = why.get("systemic_costs") or []
         if costs:
             lines = [f"- {c.get('name', '')}: {c.get('description', '')}" for c in costs if isinstance(c, dict)]
-            sections.append(f"## Why it persists\n{why.get('summary', '')}\n" + "\n".join(lines))
+            block = f"## Why it persists\n{why.get('headline', '')}\n{why.get('summary', '')}\n" + "\n".join(lines)
+            without = why.get("without_reliable_intelligence") or []
+            if without:
+                block += "\nWithout reliable intelligence: " + "; ".join(str(x) for x in without)
+            sections.append(block)
+
+    gap = kb.get("agricultural_data_gap") or {}
+    if isinstance(gap, dict) and gap.get("headline"):
+        sections.append(f"## Agricultural data gap\n{gap.get('headline')}\n{gap.get('summary', '')}")
+
+    connects = kb.get("what_opentrace_connects") or {}
+    if isinstance(connects, dict):
+        domains = connects.get("data_domains") or []
+        if domains:
+            sections.append(
+                "## What OpenTrace connects\n"
+                + connects.get("summary", "")
+                + "\n"
+                + ", ".join(str(d) for d in domains)
+            )
+
+    trusted = kb.get("trusted_intelligence") or {}
+    if isinstance(trusted, dict):
+        principles = trusted.get("principles") or []
+        if principles:
+            sections.append(
+                "## Trusted intelligence\n" + "\n".join(f"- {p}" for p in principles)
+            )
 
     pillars = kb.get("pillars") or {}
     if isinstance(pillars, dict):
@@ -143,6 +193,22 @@ def format_product_kb_for_prompt(kb: dict[str, Any] | None = None) -> str:
             does_not = p.get("does_not")
             if isinstance(does_not, list) and does_not:
                 block += "\nDoes not: " + "; ".join(str(x) for x in does_not)
+            sections.append(block)
+
+    capabilities = kb.get("capabilities") or {}
+    if isinstance(capabilities, dict):
+        for cap_key in ("data_reconstruction", "system_intelligence"):
+            cap = capabilities.get(cap_key)
+            if not isinstance(cap, dict):
+                continue
+            name = cap.get("name") or cap_key
+            block = f"### {name}\n{cap.get('summary', '')}"
+            does = cap.get("does") or cap.get("domains") or []
+            if does:
+                block += "\n" + "\n".join(f"- {d}" for d in does)
+            examples = cap.get("examples") or []
+            if examples:
+                block += "\nExamples: " + "; ".join(str(e) for e in examples)
             sections.append(block)
 
     tiers = kb.get("acf_tiers") or []
@@ -195,6 +261,31 @@ def format_product_kb_for_prompt(kb: dict[str, Any] | None = None) -> str:
         ]
         sections.append("## Who this is for\n" + "\n".join(aud_lines))
 
+    details = kb.get("stakeholder_details") or {}
+    if isinstance(details, dict) and details:
+        detail_blocks: list[str] = []
+        for _key, detail in details.items():
+            if not isinstance(detail, dict):
+                continue
+            pts = detail.get("points") or []
+            if not pts:
+                continue
+            detail_blocks.append(
+                f"### {detail.get('headline', _key)}\n"
+                + "\n".join(f"- {p}" for p in pts)
+            )
+        if detail_blocks:
+            sections.append("## Stakeholder use cases\n" + "\n\n".join(detail_blocks))
+
+    biz = kb.get("business_model") or {}
+    if isinstance(biz, dict):
+        streams = biz.get("revenue_streams") or []
+        if streams:
+            sections.append(
+                f"## Business model\n{biz.get('summary', '')}\n"
+                + "\n".join(f"- {s}" for s in streams)
+            )
+
     traction = kb.get("traction") or {}
     if isinstance(traction, dict):
         stats = traction.get("stats") or {}
@@ -222,15 +313,43 @@ def format_product_kb_for_prompt(kb: dict[str, Any] | None = None) -> str:
         ]
         sections.append("## Why partner\n" + "\n".join(wp_lines))
 
+    ecosystem = kb.get("partnership_ecosystem") or {}
+    if isinstance(ecosystem, dict):
+        types = ecosystem.get("partner_types") or []
+        if types:
+            sections.append(
+                f"## Partnership ecosystem\n{ecosystem.get('summary', '')}\n"
+                + "\n".join(f"- {t}" for t in types)
+            )
+
+    advantage = kb.get("competitive_advantage") or {}
+    if isinstance(advantage, dict):
+        factors = advantage.get("factors") or []
+        if factors:
+            sections.append(
+                f"## Competitive advantage\n{advantage.get('summary', '')}\n"
+                + "\n".join(f"- {f}" for f in factors)
+            )
+
+    vision = kb.get("vision") or {}
+    if isinstance(vision, dict) and vision.get("headline"):
+        sections.append(f"## Vision\n{vision.get('headline')}\n{vision.get('summary', '')}")
+
     contact = kb.get("contact") or {}
     if isinstance(contact, dict):
-        sections.append(
-            f"## Contact\nWebsite: {contact.get('website', '')} | "
-            f"Product: {contact.get('product_website', '')} | "
-            f"Email: {contact.get('email', '')}"
-        )
+        sites = [
+            contact.get("website", ""),
+            contact.get("product_website", ""),
+            contact.get("product_website_alt", ""),
+        ]
+        site_str = " | ".join(s for s in sites if s)
+        sections.append(f"## Contact\n{site_str} | Email: {contact.get('email', '')}")
 
-    return "\n\n".join(s for s in sections if s.strip())
+    text = "\n\n".join(s for s in sections if s.strip())
+    cap = int(os.environ.get("RAG_PRODUCT_KB_PROMPT_MAX_CHARS", "24000") or 24000)
+    if len(text) > cap:
+        return text[:cap] + "\n\n[Product knowledge truncated for context budget.]"
+    return text
 
 
 def _has_ag_data_intent(query: str) -> bool:

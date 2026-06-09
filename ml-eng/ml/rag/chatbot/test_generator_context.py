@@ -12,8 +12,10 @@ from ml.rag.chatbot.generator import (
     _context_max_chars,
     _format_source_citation,
     _generate_max_tokens,
+    _normalize_inline_citations,
     extract_referenced_source_ids,
 )
+from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
 
 
 def _bq_item() -> dict:
@@ -69,7 +71,9 @@ def test_build_context_block_respects_budget() -> None:
     ]
     block, registry = _build_context_block(items, budget=5000, chunk_cap=2000)
     assert len(block) <= 5000 + 50
-    assert "[Source 1" in block
+    assert "[Source 1]" in block
+    assert "Type:" in block
+    assert "Unknown authors" not in block
     assert len(registry) >= 2
 
 
@@ -92,8 +96,31 @@ def test_bq_citation_format() -> None:
 
 
 def test_extract_referenced_source_ids() -> None:
-    text = "Rice yields rose [Source 1] while policy shifted per Source 3."
+    text = "Rice yields rose [1] while policy shifted per Source 3."
     assert extract_referenced_source_ids(text) == {1, 3}
+
+
+def test_normalize_verbose_inline_citations() -> None:
+    raw = (
+        "From [Source 5 | Academic | Unknown authors (2019)], yields rose [Source 3] "
+        "and policy shifted per Source 9."
+    )
+    out = _normalize_inline_citations(raw)
+    assert "Unknown authors" not in out
+    assert "[Source 5" not in out
+    assert "[5]" in out
+    assert "[3]" in out
+    assert "[9]" in out
+    assert extract_referenced_source_ids(out) == {3, 5, 9}
+
+
+def test_format_academic_citation_prefers_title_over_unknown_authors() -> None:
+    cite = format_academic_citation(
+        {"publication_year": "2019", "article_title": "Rice market dynamics in Nigeria"}
+    )
+    assert "Unknown authors" not in cite
+    assert "Rice market dynamics" in cite
+    assert "2019" in cite
 
 
 def test_append_citations_referenced_only() -> None:
@@ -101,12 +128,12 @@ def test_append_citations_referenced_only() -> None:
         SourceRef(1, _news_item(), "[News] Senegal rice policy shift — AgriNews (2023)"),
         SourceRef(2, _bq_item(), "[Structured data] yield_raw_data (country=Senegal)"),
     ]
-    answer = "Production trends improved [Source 1] in recent seasons."
+    answer = "Production trends improved [1] in recent seasons."
     with mock.patch.dict(os.environ, {"RAG_CITATIONS_MODE": "referenced"}):
         out = _append_structured_citations(answer, registry)
     assert "Sources" in out
-    assert "[Source 1]" in out
-    assert "[Source 2]" not in out
+    assert "1. [News]" in out
+    assert "2. [Structured data]" not in out
 
 
 def test_append_citations_all_mode() -> None:
@@ -117,8 +144,8 @@ def test_append_citations_all_mode() -> None:
     answer = "Production trends improved."
     with mock.patch.dict(os.environ, {"RAG_CITATIONS_MODE": "all"}):
         out = _append_structured_citations(answer, registry)
-    assert "[Source 1]" in out
-    assert "[Source 2]" in out
+    assert "1. [News]" in out
+    assert "2. [Structured data]" in out
 
 
 def test_append_citations_no_refs_when_unreferenced() -> None:

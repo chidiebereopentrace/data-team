@@ -1,0 +1,400 @@
+{
+  "version": "2026.2",
+  "source": "partnership_briefing_2026_and_investor_deck",
+  "updated": "2026-06-08",
+  "tagline": "Africa's agricultural intelligence layer.",
+  "subtitle": "Transforming agricultural decision-making through integrated data and AI-powered insights.",
+  "mission": "The shared infrastructure that turns Africa's fragmented agricultural data into decisions institutions can trust.",
+  "aim": "Building Africa's agricultural intelligence layer — defragmenting and federating agricultural intelligence across Africa so decision-makers get usable intelligence, not just more data.",
+  "current_state": {
+    "summary": "Africa is the fastest-growing continent with more than 1.4 billion people and the youngest population in the world. Agriculture is the largest employer but remains one of the least efficient sectors due to poor data infrastructure.",
+    "stats": {
+      "population": "1.4B+",
+      "median_age_note": "youngest population globally",
+      "workforce_in_agriculture_pct": "60%+"
+    }
+  },
+  "core_problem": {
+    "headline": "Agricultural data exists but decision-makers lack clear intelligence.",
+    "summary": "Data exists across governments, institutions, research bodies, and private organizations — but it is fragmented, inconsistent, and difficult to access when decisions need to be made."
+  },
+  "challenge": {
+    "headline": "Africa doesn't have a data problem. It has an intelligence problem.",
+    "summary": "Agriculture is the backbone of the continent, yet the decisions that shape it are made without a clear view of the system. The data exists. It just can't be used when it's needed.",
+    "stats": {
+      "people_fed_by_african_food_systems": "1.4B",
+      "workforce_in_agriculture_pct": "60%+",
+      "median_age": 19
+    }
+  },
+  "opportunity": {
+    "headline": "Agriculture is becoming one of the most data-intensive sectors in the global economy.",
+    "summary": "Driven by food security, climate resilience, and supply chain stability — yet most decision-makers still struggle to translate fragmented information into actionable intelligence. OpenTrace combines harmonised datasets with AI-powered interfaces to transform agricultural data into decision intelligence."
+  },
+  "why_it_persists": {
+    "headline": "An impact failure, not a data failure.",
+    "summary": "The system cannot see itself clearly; well-intentioned investments underperform. Data is fragmented across authority levels, inconsistent across countries, siloed by sector, and rarely designed to be used together.",
+    "systemic_costs": [
+      {
+        "name": "Reactive policy",
+        "description": "Governments design reactive policies without a real-time view of production or risk."
+      },
+      {
+        "name": "Late climate response",
+        "description": "Climate responses are ineffective; interventions miss regions and seasons that need them most."
+      },
+      {
+        "name": "Agriculture priced as high-risk",
+        "description": "Banks, insurers, and investors treat agriculture as high risk; insurance penetration remains low."
+      },
+      {
+        "name": "A generation excluded",
+        "description": "Data is abstract and technical, closed to the young people meant to inherit the sector."
+      }
+    ],
+    "without_reliable_intelligence": [
+      "Governments design reactive policies",
+      "Climate responses are ineffective",
+      "Insurance penetration remains low",
+      "Financial institutions treat agriculture as high risk",
+      "The entire system operates below potential"
+    ]
+  },
+  "agricultural_data_gap": {
+    "headline": "Information overload but insight scarcity.",
+    "summary": "Africa lacks a unified platform that integrates agricultural datasets across institutions, countries, and systems."
+  },
+  "what_we_are": {
+    "headline": "We are an infrastructure company.",
+    "summary": "Ask ADZA is what you see. OFIA and ACF are why it works. We build infrastructure, not reports — infrastructure that persists beyond projects, improves with use, and creates shared understanding across institutions."
+  },
+  "what_opentrace_connects": {
+    "data_domains": [
+      "Agricultural data",
+      "Nutritional data (health)",
+      "Climate data",
+      "Economic development data"
+    ],
+    "summary": "All integrated into one structured intelligence platform."
+  },
+  "pillars": {
+    "ask_adza": {
+      "name": "Ask ADZA",
+      "role": "The interface",
+      "description": "OpenTrace's machine-learning-powered natural language interface. Users ask questions in plain language across web, mobile, and WhatsApp; institutions connect via API. No dashboards, no SQL, no analyst in the middle — validated, structured answers backed by reliable integrated agricultural intelligence.",
+      "channels": ["Web", "Mobile", "WhatsApp", "Enterprise API"]
+    },
+    "acf": {
+      "name": "ACF",
+      "full_name": "ADZA Confidence Framework",
+      "role": "The confidence and transparency layer",
+      "description": "Attaches confidence signals to analytical outputs based on triangulation across three tiers of evidence. Rather than uniform AI certainty, users see where evidence is strong, partial, or uncertain. Confidence levels increase as global, national/regional, and local field validation align.",
+      "tagline": "OFIA makes intelligence possible. ACF makes it honest."
+    },
+    "ofia": {
+      "name": "OFIA",
+      "full_name": "OpenTrace Federated Intelligence Architecture",
+      "role": "The infrastructure layer",
+      "description": "Core infrastructure that structures, harmonises, and version-controls agricultural datasets across global, national, and sub-national levels, making heterogeneous data usable together as decision intelligence.",
+      "does": [
+        "Federates data across global, national, and sub-national levels",
+        "Enables comparability across time and geography",
+        "Powers consistent querying through Ask ADZA",
+        "Separates source data from derived intelligence"
+      ],
+      "does_not": [
+        "Does not own or enclose datasets",
+        "Does not relicense third-party data",
+        "Does not replace institutional systems",
+        "Does not function as a data marketplace"
+      ],
+      "ip_note": "The IP sits in the architecture, integration logic, and intelligence layer, not in the underlying data."
+    }
+  },
+  "capabilities": {
+    "data_reconstruction": {
+      "name": "Data reconstruction",
+      "summary": "Mimicking natural systems to close agricultural data gaps by reconstructing patterns across multiple sources when ground-level data is sparse.",
+      "does": [
+        "Integrate fragmented climate, production, market, and research systems into a structured analytical layer",
+        "Triangulate signals across data layers instead of relying on a single dataset",
+        "Close critical gaps by combining global, national, and community-level sources",
+        "Reveal system-level patterns: production shifts, climate exposure, market dynamics"
+      ],
+      "examples": [
+        "Crop production trends using climate, yield, and market datasets",
+        "Climate stress patterns linked to declining yields",
+        "Production changes connected with food price movements",
+        "Emerging agricultural risks across districts and value chains"
+      ]
+    },
+    "system_intelligence": {
+      "name": "System-level intelligence",
+      "summary": "Connects agriculture with broader systems for holistic understanding.",
+      "domains": ["Climate change", "Market dynamics", "Nutrition outcomes", "Economic opportunities"]
+    }
+  },
+  "acf_tiers": [
+    {
+      "tier": 1,
+      "weight_pct": 25,
+      "label": "Global & continental",
+      "examples": "Cross-country datasets, satellite systems, continental research, global agricultural institutions"
+    },
+    {
+      "tier": 2,
+      "weight_pct": 40,
+      "label": "Regional & national",
+      "examples": "Government databases, ministries, national statistics, regional networks"
+    },
+    {
+      "tier": 3,
+      "weight_pct": 35,
+      "label": "Ground & community",
+      "examples": "Local validation networks, cooperatives, NGO field reports, community data"
+    }
+  ],
+  "federation": {
+    "vertical_levels": [
+      "Global & continental",
+      "Regional & national",
+      "Sub-national",
+      "Community & ground-level"
+    ],
+    "horizontal_sectors": ["Climate", "Production", "Markets", "Nutrition"],
+    "summary": "OpenTrace defragments and federates agricultural intelligence by connecting data vertically across levels and horizontally across sectors — harmonised, versioned, and queryable."
+  },
+  "trusted_intelligence": {
+    "principles": [
+      "OpenTrace does not generate speculative answers",
+      "Transparency and reliability are core principles",
+      "All insights come from verified integrated datasets within the OpenTrace system",
+      "Every insight can carry a measurable confidence level via ACF"
+    ]
+  },
+  "data_sources": {
+    "summary": "OpenTrace aggregates and harmonises data from multiple sources into a standardised framework.",
+    "sources": [
+      "Global agricultural institutions",
+      "Government databases",
+      "Satellite and climate systems",
+      "Private sector market data",
+      "Local validation networks"
+    ]
+  },
+  "platform_architecture": {
+    "summary": "Cloud-based intelligence infrastructure enabling real-time analysis at continental scale.",
+    "components": [
+      "Automated data pipelines",
+      "Centralised data warehouse",
+      "Validation and governance layers",
+      "Machine-learning-powered insight interface (Ask ADZA)"
+    ]
+  },
+  "trust_and_sovereignty": {
+    "headline": "Your data stays yours.",
+    "summary": "OpenTrace respects African data ownership and governance. Partners retain control of their datasets while OpenTrace provides infrastructure to integrate and interpret them responsibly.",
+    "commitments": [
+      "Partners retain ownership and attribution",
+      "Source data stays under its original licence",
+      "Data stays where it lives — we federate, not enclose",
+      "Derived intelligence is kept separate from source data"
+    ],
+    "never_do": [
+      "Sell or monetise raw data access",
+      "Relicense or alter open datasets",
+      "Build black-box scores you can't interrogate",
+      "Lock you into proprietary dependencies"
+    ],
+    "monetization": "We monetize intelligence, never data."
+  },
+  "how_we_work": {
+    "headline": "A system you plug into, not a one-off project.",
+    "summary": "Our role is narrow and disciplined: receive data where shared, integrate into OFIA, generate intelligence through Ask ADZA. Infrastructure, not consultancy.",
+    "steps": [
+      {
+        "step": 1,
+        "name": "Receive",
+        "description": "Data shared on your terms; where, when, and if you choose."
+      },
+      {
+        "step": 2,
+        "name": "Integrate",
+        "description": "Harmonised and version-controlled inside OFIA, never enclosed."
+      },
+      {
+        "step": 3,
+        "name": "Generate",
+        "description": "Intelligence on top, every output scored by ACF confidence."
+      }
+    ],
+    "pricing_model": "Free to contribute. Pay to leverage. Individuals use Ask ADZA; institutions connect via API."
+  },
+  "business_model": {
+    "summary": "OpenTrace monetizes intelligence, not raw data.",
+    "revenue_streams": [
+      "Institutional subscriptions",
+      "Enterprise licenses",
+      "API integrations",
+      "Premium analytics access"
+    ]
+  },
+  "audiences": [
+    {
+      "segment": "Governments & public institutions",
+      "value": "Sharper, evidence-based policy and food-security planning."
+    },
+    {
+      "segment": "Foundations & development partners",
+      "value": "Target programmes and monitor field conditions continuously."
+    },
+    {
+      "segment": "Agribusiness & financial institutions",
+      "value": "Assess production, market, and regional risk with confidence."
+    },
+    {
+      "segment": "Farmers, cooperatives & communities",
+      "value": "Local insight in plain language, no spreadsheets required."
+    },
+    {
+      "segment": "Entrepreneurs & ecosystem builders",
+      "value": "An accessible entry point into Africa's agricultural data."
+    }
+  ],
+  "stakeholder_details": {
+    "government": {
+      "headline": "Decision intelligence for evidence-based policy",
+      "points": [
+        "Monitor agricultural production, climate exposure, and market conditions across regions",
+        "Identify districts vulnerable to climate variability and food security pressures",
+        "Design better agricultural and food security policies combining climate, production, and market intelligence",
+        "Target investments (irrigation, extension, climate adaptation) more effectively",
+        "Explore patterns via Ask ADZA without manually reconciling fragmented data"
+      ]
+    },
+    "development_partners": {
+      "headline": "From static reporting to continuous evidence-informed programming",
+      "points": [
+        "Identify regions where climate, production, and food security risks overlap",
+        "Monitor how conditions evolve in programme regions",
+        "Target interventions toward greatest vulnerability in productivity, resilience, or food security",
+        "Communicate priorities and impact with stronger evidence via Ask ADZA"
+      ]
+    },
+    "private_sector": {
+      "headline": "Risk awareness and market intelligence for agribusiness and finance",
+      "points": [
+        "Understand climate variability, production volatility, and supply disruptions by region",
+        "Analyze production trends, yield stability, and regional supply for sourcing and supply chain planning",
+        "Assess agricultural exposure for banks, insurers, and lenders",
+        "Evaluate where production is expanding, stabilizing, or facing structural risk"
+      ]
+    },
+    "farmers_communities": {
+      "headline": "Local agricultural visibility in plain language",
+      "points": [
+        "Understand how production, rainfall, and growing conditions evolve locally",
+        "Track drought patterns and seasonal variability over time",
+        "See how market prices change across regions and seasons",
+        "Help cooperatives coordinate planting, aggregation, and market engagement",
+        "Examples: cooperatives tracking regional prices; farmer groups comparing rainfall; extension networks with localized insights"
+      ]
+    },
+    "entrepreneurs": {
+      "headline": "Ecosystem intelligence for agri-entrepreneurs",
+      "points": [
+        "See where crop production is expanding, stabilizing, or declining",
+        "Identify how climate variability affects productivity and supply",
+        "Understand demand, supply, and value chain evolution",
+        "Design innovations in logistics, inputs, finance, storage, and climate tech",
+        "Examples: storage startups spotting post-harvest challenge regions; logistics mapping production hubs; climate-tech analyzing regional risks"
+      ]
+    }
+  },
+  "traction": {
+    "stats": {
+      "data_points_ingested": "2B+",
+      "countries_in_scope": 54,
+      "priority_markets": 8,
+      "indicator_domains": "12+"
+    },
+    "partnerships": "Research: IITA, CGIAR (formalising). Government: multiple conversations advancing. In conversation: multiple foundations, AGRA.",
+    "feedback": "Testing in-house with agricultural specialists ahead of V1.0; strong early feedback on usability, traceability, and decision relevance."
+  },
+  "partnership_ecosystem": {
+    "summary": "OpenTrace operates through strategic partnerships for data quality, coverage, and credibility.",
+    "partner_types": [
+      "Public institutions — evidence-based agricultural policies",
+      "Academic research bodies — agricultural research and innovation",
+      "Private sector contributors — data accessibility and utility",
+      "Community networks — ground-level data and actionable insights"
+    ]
+  },
+  "growth": {
+    "strategy": "Deliberate, country by country. Deepen coverage and trust market by market before widening.",
+    "priority_markets": [
+      "Nigeria",
+      "Kenya",
+      "Ethiopia",
+      "Rwanda",
+      "Sierra Leone",
+      "Senegal",
+      "Mozambique",
+      "South Africa"
+    ],
+    "phases": [
+      {
+        "phase": 1,
+        "name": "Credibility",
+        "description": "Anchor in priority markets and validate with research partners like IITA and CGIAR."
+      },
+      {
+        "phase": 2,
+        "name": "Depth",
+        "description": "Deepen data per country and formalise government partnerships."
+      },
+      {
+        "phase": 3,
+        "name": "Scale",
+        "description": "Cross-border intelligence and continental coverage."
+      }
+    ]
+  },
+  "why_partner": [
+    {
+      "title": "Systems change, not point solutions",
+      "description": "We build the shared layer everyone plugs into, not another standalone tool."
+    },
+    {
+      "title": "Durable beyond any grant cycle",
+      "description": "The platform persists across projects and improves with every use."
+    },
+    {
+      "title": "Aligned with open-data mandates",
+      "description": "We respect existing licences and funder requirements by design."
+    },
+    {
+      "title": "African-led, for African realities",
+      "description": "Built for the continent's data, languages, and institutions."
+    }
+  ],
+  "competitive_advantage": {
+    "summary": "Trust compounds over time.",
+    "factors": [
+      "Deep institutional partnerships",
+      "Proprietary confidence scoring (ACF)",
+      "Long-term data integration depth (OFIA)",
+      "Africa-specific agricultural AI models"
+    ]
+  },
+  "vision": {
+    "headline": "Africa's agricultural future depends on intelligence, not just productivity.",
+    "summary": "OpenTrace aims to become the trusted intelligence backbone for agriculture across the continent — transparent, scalable, and designed for Africa's future."
+  },
+  "contact": {
+    "website": "opentrace.africa",
+    "product_website": "askadza.africa",
+    "product_website_alt": "askadza.com",
+    "email": "contact@opentrace.africa"
+  }
+}

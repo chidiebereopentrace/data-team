@@ -14,8 +14,11 @@ from ml.rag.chatbot.product_knowledge import (
 
 
 def test_load_product_kb_has_expected_keys() -> None:
+    load_product_kb.cache_clear()
     kb = load_product_kb()
-    assert kb.get("source") == "partnership_briefing_2026"
+    assert "partnership_briefing" in str(kb.get("source", ""))
+    assert "aim" in kb
+    assert "capabilities" in kb
     assert "pillars" in kb
     assert "ask_adza" in kb["pillars"]
     assert "acf" in kb["pillars"]
@@ -24,11 +27,13 @@ def test_load_product_kb_has_expected_keys() -> None:
 
 
 def test_format_product_kb_under_budget() -> None:
+    load_product_kb.cache_clear()
     text = format_product_kb_for_prompt()
     assert "OpenTrace Africa" in text
     assert "OFIA" in text or "ofia" in text.lower()
     assert "ACF" in text or "acf" in text.lower()
-    assert len(text) < 8000
+    assert "data reconstruction" in text.lower() or "Data reconstruction" in text
+    assert len(text) < 25000
 
 
 def test_is_product_query_positive() -> None:
