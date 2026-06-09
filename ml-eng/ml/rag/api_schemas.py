@@ -21,8 +21,8 @@ class UsageStats(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
-    input_tokens: int = Field(0, description="Alias for prompt_tokens")
-    output_tokens: int = Field(0, description="Alias for completion_tokens")
+    input_tokens: int = Field(default=0, description="Alias for prompt_tokens")
+    output_tokens: int = Field(default=0, description="Alias for completion_tokens")
 
     @classmethod
     def from_usage_dict(cls, raw: dict | None) -> UsageStats:

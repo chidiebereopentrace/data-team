@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ml.rag.api_schemas import UserProfile
-from ml.rag.app.api import ChatMessage, QueryRequest
+from ml.rag.app.api import ChatMessage, QueryRequest, _resolve_prior_memory
 from ml.rag.request_context import (
     bootstrap_stakeholder_type,
     effective_chat_history_messages,
@@ -99,6 +99,25 @@ def test_chat_request_query_or_message() -> None:
 def test_chat_request_rejects_missing_user_text() -> None:
     with pytest.raises(ValueError, match="query or message is required"):
         ChatRequest.model_validate({"session_id": "x"})
+
+
+def test_resolve_prior_memory_accepts_history_messages() -> None:
+    sid, summary, recent = _resolve_prior_memory(
+        "sess-1",
+        [
+            {"role": "user", "content": "Prior question"},
+            {"role": "assistant", "content": "Prior answer"},
+        ],
+    )
+    assert sid == "sess-1"
+    assert len(recent) == 2
+
+
+def test_resolve_prior_memory_no_history_uses_empty_summary() -> None:
+    sid, summary, recent = _resolve_prior_memory(None, None)
+    assert sid
+    assert summary == ""
+    assert recent == []
 
 
 def test_chat_request_allows_profile_stakeholder_with_session() -> None:

@@ -160,19 +160,18 @@ async def ready():
     return payload
 
 
-def _resolve_prior_memory(request: QueryRequest) -> tuple[str, str, list[dict[str, str]]]:
+def _resolve_prior_memory(
+    session_id: str | None,
+    history_messages: list[dict[str, str]] | None,
+) -> tuple[str, str, list[dict[str, str]]]:
     """Return (session_id, conversation_summary, recent_turns) before the current user message."""
-    if request.conversation_history is not None:
-        sid = (request.session_id or "").strip() or uuid.uuid4().hex
-        raw_msgs = [
-            m.model_dump() if hasattr(m, "model_dump") else m.dict()
-            for m in request.conversation_history
-        ]
-        prior = normalize_messages(raw_msgs)
+    if history_messages is not None:
+        sid = (session_id or "").strip() or uuid.uuid4().hex
+        prior = normalize_messages(history_messages)
         summary, recent = flat_messages_to_memory(prior)
         return sid, summary, recent
 
-    sid = (request.session_id or "").strip() or uuid.uuid4().hex
+    sid = (session_id or "").strip() or uuid.uuid4().hex
     blob = get_session_blob(sid) or {"conversation_summary": "", "recent_turns": []}
     summary = str(blob.get("conversation_summary") or "")
     recent = normalize_messages(blob.get("recent_turns"))
