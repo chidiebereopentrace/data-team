@@ -707,11 +707,16 @@ def build_graph():
     graph.add_node("rerank", node_rerank)
     graph.add_node("generate", node_generate)
     graph.add_node("generate_meta", node_generate_meta)
+    graph.add_node("generate_product", node_generate_product)
 
     graph.add_edge(START, "decompose")
 
     def _route_after_decompose(state: RAGGraphState) -> str:
-        return "generate_meta" if state.get("is_meta_query") else "parallel_retrieve"
+        if state.get("is_meta_query"):
+            return "generate_meta"
+        if state.get("is_product_query"):
+            return "generate_product"
+        return "parallel_retrieve"
 
     graph.add_conditional_edges("decompose", _route_after_decompose)
     graph.add_edge("parallel_retrieve", "bq_retrieve")
