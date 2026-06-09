@@ -5,6 +5,7 @@ Modular RAG that queries **BigQuery** and **Qdrant** (news, research, BQ table d
 | Document | Use when |
 |----------|----------|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | System design, data flow, env matrix, extension points |
+| **[docs/API.md](docs/API.md)** | HTTP API reference (`POST /query`, `POST /v1/chat`, schemas, errors) |
 | **[docs/SCRIPTS.md](docs/SCRIPTS.md)** | Every CLI/module: flags, examples, workflows |
 | [docs/BQ_NL2SQL_PLAN.md](docs/BQ_NL2SQL_PLAN.md) | Bronze NL-to-SQL design |
 | [docs/EXPECTED_QUESTIONS.md](docs/EXPECTED_QUESTIONS.md) | Example question types |

@@ -1,6 +1,6 @@
 # Serving (exposition API)
 
-Public, versioned HTTP API for the OpenTrace chatbot. Retrieval internals (`bq_sql`, trace fields, tuning knobs) stay on the internal app [`ml/rag/app/api.py`](../rag/app/api.py) (served as `ml.rag.api:app`, `POST /query`).
+Public, versioned HTTP API for the OpenTrace chatbot. Retrieval internals (`bq_sql`, trace fields, tuning knobs) stay on the internal app [`ml/rag/app/api.py`](../rag/app/api.py) (served as `ml.rag.api:app`, `POST /query`). Full endpoint reference: [`ml/rag/docs/API.md`](../rag/docs/API.md).
 
 ## Endpoints (v1)
 
