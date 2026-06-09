@@ -265,13 +265,25 @@ Returns one candidate per table with `content` suitable for `BQRetriever` `table
 
 Output trimmed to `rerank_top_k` (default 20 in Streamlit).
 
+### 7.2.1 Web fallback ([`retrievers/web_retriever.py`](retrievers/web_retriever.py))
+
+Conditional node after rerank (`RAG_WEB_FALLBACK_ENABLED=1`, off by default).
+
+| Trigger | When |
+|---------|------|
+| Low chunk count | Usable reranked chunks &lt; `RAG_WEB_FALLBACK_MIN_CHUNKS` (default 3) |
+| No news + no BQ | Only academic/OTA (or other) usable chunks remain |
+| Low rerank score | Optional: top `_rerank_score` &lt; `RAG_WEB_FALLBACK_MIN_RERANK_SCORE` when `RAG_LLM_RERANK` on |
+
+**Tier 1:** Wikipedia search + REST summary (no API key). **Tier 2:** Tavily news search if Wikipedia empty and `TAVILY_API_KEY` set (optional `langchain-tavily`). Chunks append to `reranked_context` with `_context_kind` `web_wikipedia` or `web_search`. Fail-soft: timeouts/errors return no web chunks.
+
 ### 7.3 Generate ([`chatbot/generator.py`](chatbot/generator.py))
 
 - Builds **system + user** messages for OpenRouter / OpenAI-compatible APIs.
 - **Context packing:** numbered `[Source N | kind | detail]` labels; rank-weighted char budget (default **12000** total, **3000** per chunk); BQ structured-data chunks get a minimum floor.
 - **Prompt:** multi-paragraph synthesis; inline `[Source N]` citations when stating facts from context.
 - Calls `llm_chat_complete` with `RAG_GENERATE_MAX_TOKENS` (default **2048**), `RAG_GENERATE_TEMPERATURE` (default 0.5).
-- **Sources block:** appended after generation when `RAG_CITATIONS_MODE=referenced` (default) — only sources the model cited inline; set `all` to list every packed source. Covers news, academic, policy/public, OTA, and BigQuery structured data.
+- **Sources block:** appended after generation when `RAG_CITATIONS_MODE=referenced` (default) — only sources the model cited inline; set `all` to list every packed source. Covers news, academic, policy/public, OTA, BigQuery structured data, Wikipedia, and Tavily web search.
 - On failure: returns OpenRouter-oriented timeout hint + context excerpt.
 
 ### 7.4 Chat memory ([`chatbot/chat_memory.py`](chatbot/chat_memory.py))
@@ -423,6 +435,19 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_GENERATE_TIMEOUT_S` | Generator timeout |
 | `RAG_CITATIONS_MODE` | `referenced` (default) or `all` for Sources block |
 | `HF_API_TOKEN` | HF router (if no local URL) |
+
+### 12.4.1 Web fallback
+
+| Variable | Purpose |
+|----------|---------|
+| `RAG_WEB_FALLBACK_ENABLED` | `1` to enable post-rerank Wikipedia/Tavily fallback (default off) |
+| `RAG_WEB_FALLBACK_MIN_CHUNKS` | Trigger when usable chunks below this (default 3) |
+| `RAG_WEB_WIKI_TOP_K` | Max Wikipedia summaries (default 2) |
+| `RAG_WEB_TAVILY_TOP_K` | Max Tavily results when wiki empty (default 2) |
+| `RAG_WEB_TOP_K` | Cap total web chunks appended (default 3) |
+| `RAG_WEB_TIMEOUT_S` | HTTP timeout per provider (default 8) |
+| `RAG_WEB_FALLBACK_MIN_RERANK_SCORE` | Optional rerank score gate (default -1 = disabled) |
+| `TAVILY_API_KEY` | Enables tier-2 Tavily (optional; needs `langchain-tavily` for runtime) |
 
 ### 12.5 BQ NL-to-SQL
 

@@ -31,7 +31,16 @@ _SOURCE_REF_RE = re.compile(
     re.IGNORECASE,
 )
 _VERBOSE_INLINE_REF_RE = re.compile(r"\[Source\s+(\d+)\s*\|[^\]]*\]", re.IGNORECASE)
+_MODEL_SOURCES_APPENDIX_RE = re.compile(
+    r"\n+(?:Sources|References|Bibliography)\s*:?\s*\n[\s\S]*\Z",
+    re.IGNORECASE,
+)
+_BQ_FAILURE_MARKERS = (
+    "[bq execution error",
+    "[bq validation failed",
+)
 _BQ_ROW_HINT_KEYS = ("country", "product", "fnid", "planting_year", "harvest_year", "year", "region")
+_BQ_PUBLIC_LABEL = "OpenTrace agricultural data"
 
 _BQ_MIN_CHARS = 800
 
@@ -100,18 +109,32 @@ def _item_metadata(item: dict[str, Any]) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def is_usable_context_item(item: dict[str, Any]) -> bool:
+    """Return False for BQ failure/debug chunks that must not reach users."""
+    meta = _item_metadata(item)
+    if meta.get("validation_failed") or meta.get("execution_error"):
+        return False
+    raw = str(item.get("content") or item.get("text") or "").strip().lower()
+    return not any(marker in raw for marker in _BQ_FAILURE_MARKERS)
+
+
+def filter_context_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop BQ error and validation-failure chunks before generation."""
+    return [item for item in items if is_usable_context_item(item)]
+
+
 def _format_source_citation(item: dict[str, Any]) -> str | None:
     """Build a citation line for a context item (all source kinds)."""
     meta = _item_metadata(item)
     kind = _source_kind(item)
 
     if kind == "bigquery":
-        table = _bq_table_from_meta(meta)
+        if not is_usable_context_item(item):
+            return None
         hint = _bq_row_hint(meta)
-        label = table or "OpenTrace bronze dataset"
         if hint:
-            return f"[Structured data] {label} ({hint})"
-        return f"[Structured data] {label}"
+            return f"[Structured data] {_BQ_PUBLIC_LABEL} ({hint})"
+        return f"[Structured data] {_BQ_PUBLIC_LABEL}"
 
     if kind in ("academic_article", "academic"):
         cite = format_academic_citation(meta)
@@ -138,6 +161,16 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
             return f"[OTA Insight] {name} — OpenTrace OTA"
         return None
 
+    if kind == "web_wikipedia":
+        title = str(meta.get("title") or "Wikipedia").strip()
+        url = str(meta.get("url") or "").strip()
+        return f"[Wikipedia] {title} — {url}" if url else f"[Wikipedia] {title}"
+
+    if kind == "web_search":
+        title = str(meta.get("title") or "Web source").strip()
+        url = str(meta.get("url") or "").strip()
+        return f"[Web] {title} — {url}" if url else f"[Web] {title}"
+
     return None
 
 
@@ -152,6 +185,10 @@ def _source_kind_display(kind: str) -> str:
         return "News"
     if kind in ("ota_insight", "ota_metric"):
         return "OTA Insight"
+    if kind == "web_wikipedia":
+        return "Wikipedia"
+    if kind == "web_search":
+        return "Web search"
     return kind or "Context"
 
 
@@ -234,6 +271,18 @@ def _build_context_block(
     return "\n\n".join(parts), registry
 
 
+def _strip_model_sources_appendix(text: str) -> str:
+    """Remove model-written Sources/References blocks that poison footnote extraction."""
+    if not text:
+        return text
+    return _MODEL_SOURCES_APPENDIX_RE.sub("", text).strip()
+
+
+def _answer_for_citation_extraction(answer: str) -> str:
+    """Prose-only text used to detect which footnote numbers the model actually cited."""
+    return _normalize_inline_citations(_strip_model_sources_appendix(answer))
+
+
 def _normalize_inline_citations(text: str) -> str:
     """Collapse verbose model citations to Wikipedia-style footnote numbers [N]."""
     if not text:
@@ -245,8 +294,8 @@ def _normalize_inline_citations(text: str) -> str:
 
 
 def extract_referenced_source_ids(answer: str) -> set[int]:
-    """Return source IDs cited inline in the answer ([N], [Source N], or Source N)."""
-    normalized = _normalize_inline_citations(answer)
+    """Return source IDs cited inline in answer prose ([N], [Source N], or Source N)."""
+    normalized = _answer_for_citation_extraction(answer)
     ids: set[int] = set()
     for m in _SOURCE_REF_RE.finditer(normalized):
         for g in m.groups():
@@ -272,8 +321,12 @@ def _build_prompt(
         "When stating a specific fact, number, or claim from the context, cite it inline as a bare "
         "footnote number like [1] or [5] — the same N as [Source N] in the Context. "
         "Never put author names, titles, source types, or context headers in the answer body; "
-        "reserve all bibliographic detail for the Sources section appended after your answer. "
+        "do not use (Author et al., year) citations — use footnote numbers only. "
+        "Do not output a Sources, References, or Bibliography section; the system appends one. "
         "Example: 'Rice yields rose in the north.[3]' — not 'From [Source 3 | Academic | Author (2019)]'. "
+        "Sources labeled Type: Wikipedia or Type: Web search are supplemental external context — "
+        "prefer OpenTrace news, research, and structured data when available; treat web sources as "
+        "partial background and state limits when relying on them. "
         "When the context supports it, write a substantive multi-paragraph answer "
         "(roughly 4–8 paragraphs for complex questions). "
         "Structure complex answers: (1) direct answer, (2) supporting evidence by theme, region, or time period, "
@@ -364,11 +417,13 @@ def _clean_answer(text: str) -> str:
         text = text.split("[/INST]")[-1].strip()
     text = re.sub(r"^(Context:|Question:).*$", "", text, flags=re.MULTILINE | re.IGNORECASE).strip()
     text = re.sub(r"\n{3,}", "\n\n", text)
-    return _strip_sql_from_answer(text) or text.strip()
+    text = _strip_sql_from_answer(text) or text.strip()
+    return _strip_model_sources_appendix(text)
 
 
 def _append_structured_citations(answer: str, source_registry: list[SourceRef]) -> str:
     """Append Sources block for referenced (or all) sources with bibliographic detail."""
+    answer = _strip_model_sources_appendix(answer)
     if not source_registry:
         return answer
 
@@ -451,9 +506,10 @@ def generate(
             "or confirm the knowledge bases are loaded."
         )
 
+    usable_context = filter_context_items(context_items)
     ctx_budget = _context_max_chars(memory_block)
     chunk_cap = _chunk_max_chars()
-    context_block, source_registry = _build_context_block(context_items, ctx_budget, chunk_cap)
+    context_block, source_registry = _build_context_block(usable_context, ctx_budget, chunk_cap)
 
     messages = _build_prompt(
         query,
