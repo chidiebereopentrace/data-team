@@ -746,6 +746,7 @@ def build_graph():
     graph.add_node("bq_retrieve", node_bq_retrieve)
     graph.add_node("merge", node_merge)
     graph.add_node("rerank", node_rerank)
+    graph.add_node("web_fallback", node_web_fallback)
     graph.add_node("generate", node_generate)
     graph.add_node("generate_meta", node_generate_meta)
     graph.add_node("generate_product", node_generate_product)
