@@ -267,11 +267,12 @@ Output trimmed to `rerank_top_k` (default 20 in Streamlit).
 
 ### 7.3 Generate ([`chatbot/generator.py`](chatbot/generator.py))
 
-- Builds **system + user** messages (not raw Llama template tokens — LM Studio applies chat template).
-- Context budget: ~6000 chars total, ~2000 per chunk (truncated).
-- Calls `llm_chat_complete` with `RAG_GENERATE_MAX_TOKENS` (default 1024) and `RAG_GENERATE_TEMPERATURE` (default 0.5). The higher default (vs. the old 0.3) produces clearer, more natural advisory prose for decision-makers while the strict grounding rules in the prompt keep answers factual.
-- Controlled by the `RAG_GENERATE_TEMPERATURE` environment variable (also set automatically to 0.5 by `apply_lm_studio_defaults()` when using a local LLM server).
-- On failure: returns “LLM unavailable / timed out” message + context excerpt.
+- Builds **system + user** messages for OpenRouter / OpenAI-compatible APIs.
+- **Context packing:** numbered `[Source N | kind | detail]` labels; rank-weighted char budget (default **12000** total, **3000** per chunk); BQ structured-data chunks get a minimum floor.
+- **Prompt:** multi-paragraph synthesis; inline `[Source N]` citations when stating facts from context.
+- Calls `llm_chat_complete` with `RAG_GENERATE_MAX_TOKENS` (default **2048**), `RAG_GENERATE_TEMPERATURE` (default 0.5).
+- **Sources block:** appended after generation when `RAG_CITATIONS_MODE=referenced` (default) — only sources the model cited inline; set `all` to list every packed source. Covers news, academic, policy/public, OTA, and BigQuery structured data.
+- On failure: returns OpenRouter-oriented timeout hint + context excerpt.
 
 ### 7.4 Chat memory ([`chatbot/chat_memory.py`](chatbot/chat_memory.py))
 
@@ -416,8 +417,11 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_LLM_MODEL_ID` | Must match server model id |
 | `RAG_LLM_TIMEOUT_S` | Default HTTP timeout (e.g. 300) |
 | `RAG_LLM_RERANK` | `off` recommended locally |
-| `RAG_GENERATE_MAX_TOKENS` | Answer length cap |
+| `RAG_GENERATE_MAX_TOKENS` | Answer length cap (default 2048) |
+| `RAG_GENERATE_CONTEXT_MAX_CHARS` | Total context chars to LLM (default 12000) |
+| `RAG_GENERATE_CHUNK_MAX_CHARS` | Per-chunk cap before global trim (default 3000) |
 | `RAG_GENERATE_TIMEOUT_S` | Generator timeout |
+| `RAG_CITATIONS_MODE` | `referenced` (default) or `all` for Sources block |
 | `HF_API_TOKEN` | HF router (if no local URL) |
 
 ### 12.5 BQ NL-to-SQL

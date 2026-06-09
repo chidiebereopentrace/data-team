@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, TypedDict, cast
 
 from ml.rag.chatbot.assistant_identity import is_meta_query
+from ml.rag.chatbot.product_knowledge import is_product_query
 from ml.rag.chatbot.bq_table_matcher import match_bq_tables_from_descriptions
 from ml.rag.chatbot.generator import generate
 from ml.rag.chatbot.query_decomposer import (
@@ -271,12 +272,15 @@ class RAGGraphState(TypedDict, total=False):
     recent_turns: list[dict[str, Any]] | None
     chat_history: list[dict[str, Any]] | None  # legacy: verbatim-only, no summary
     is_meta_query: bool | None
+    is_product_query: bool | None
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
+    dec = decompose_query(q)
     meta = is_meta_query(q)
-    return {"decomposition": decompose_query(q), "is_meta_query": meta}
+    product = (not meta) and is_product_query(q, dec)
+    return {"decomposition": dec, "is_meta_query": meta, "is_product_query": product}
 
 
 def _tag_vector(item: dict[str, Any], kind: str) -> dict[str, Any]:
@@ -644,7 +648,7 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
 
 
 def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
-    """Short-circuit node for identity / product meta questions. No retrieval."""
+    """Short-circuit node for identity meta questions. No retrieval."""
     from ml.rag.chatbot.assistant_identity import generate_meta_answer
 
     query = state.get("query") or ""
@@ -662,6 +666,28 @@ def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
     if state.get("audience_instructions"):
         gkw["audience_instructions"] = state.get("audience_instructions")
     answer = generate_meta_answer(query, **gkw)
+    return {"answer": answer}
+
+
+def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
+    """Short-circuit node for OpenTrace product questions. Uses product KB, no retrieval."""
+    from ml.rag.chatbot.product_knowledge import generate_product_answer
+
+    query = state.get("query") or ""
+    gkw: dict[str, Any] = {}
+    cs = state.get("conversation_summary")
+    rt = state.get("recent_turns")
+    has_mem = (isinstance(cs, str) and cs.strip()) or (isinstance(rt, list) and len(rt) > 0)
+    if has_mem:
+        gkw["conversation_summary"] = cs if isinstance(cs, str) else ""
+        gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
+    elif state.get("chat_history"):
+        gkw["chat_history"] = state.get("chat_history")
+    if state.get("stakeholder_type"):
+        gkw["stakeholder_type"] = state.get("stakeholder_type")
+    if state.get("audience_instructions"):
+        gkw["audience_instructions"] = state.get("audience_instructions")
+    answer = generate_product_answer(query, **gkw)
     return {"answer": answer}
 
 
@@ -694,6 +720,7 @@ def build_graph():
     graph.add_edge("rerank", "generate")
     graph.add_edge("generate", END)
     graph.add_edge("generate_meta", END)
+    graph.add_edge("generate_product", END)
 
     return graph.compile()
 

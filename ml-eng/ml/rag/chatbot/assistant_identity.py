@@ -14,22 +14,13 @@ from typing import Any
 
 from ml.rag.chatbot.stakeholder_prompts import instruction_for_stakeholder
 
-# Canonical meta-query patterns (case-insensitive, word-boundary aware)
+# Canonical identity-only patterns (product/OpenTrace questions use product_knowledge.py)
 _META_PATTERNS: tuple[str, ...] = (
     r"\bwho are you\b",
     r"\bwhat(?:'s| is) your name\b",
     r"\bwhat are you\b",
     r"\bwhat do you do\b",
     r"\bwhat are you doing\b",
-    r"\btell me about opentrace\b",
-    r"\bwhat is opentrace\b",
-    r"\bwhat is ask adza\b",
-    r"\bwho is ask adza\b",
-    # Pillar explainers (LLM path in hybrid mode)
-    r"\bwhat is ofia\b",
-    r"\bwhat is acf\b",
-    r"\bexplain.*confidence framework\b",
-    r"\bexplain.*pillars?\b",
 )
 
 _META_RE = re.compile("|".join(_META_PATTERNS), re.IGNORECASE)
@@ -45,7 +36,7 @@ def is_meta_query(query: str) -> bool:
 def classify_meta_query(query: str) -> str | None:
     """
     Classify a meta query into a bucket for static answer selection or LLM routing.
-    Returns one of: identity, name, role, opentrace, ask_adza, pillar, or None.
+    Returns one of: identity, name, role, or None.
     """
     if not query:
         return None
@@ -56,12 +47,6 @@ def classify_meta_query(query: str) -> str | None:
         return "name"
     if re.search(r"\bwhat do you do\b|\bwhat are you doing\b", q):
         return "role"
-    if re.search(r"\btell me about opentrace\b|\bwhat is opentrace\b", q):
-        return "opentrace"
-    if re.search(r"\bwhat is ask adza\b|\bwho is ask adza\b", q):
-        return "ask_adza"
-    if re.search(r"\bwhat is ofia\b|\bwhat is acf\b|\bexplain.*confidence framework\b|\bexplain.*pillars?\b", q):
-        return "pillar"
     return None
 
 
@@ -84,21 +69,6 @@ _STATIC_ANSWERS: dict[str, str | None] = {
         "I summarise what the sources show, cite where possible, and flag when evidence is partial or uncertain. "
         "For data-heavy questions I may also use structured OpenTrace datasets; I do not invent statistics or present projections as facts."
     ),
-    "opentrace": (
-        "OpenTrace Africa builds Africa's agricultural intelligence layer. Agricultural data exists across governments, "
-        "research, climate systems, and markets, but it is fragmented and hard to use together. OpenTrace federates and "
-        "harmonises those sources so decision-makers get usable intelligence, not just more data. "
-        "The platform rests on four pillars: OFIA (federated infrastructure), ACF (confidence and transparency on every insight), "
-        "data reconstruction (structured gap-filling that mirrors how agricultural systems behave), and predictive intelligence "
-        "(forward-looking trends and risk signals, always confidence-weighted). Ask ADZA is the natural-language interface to that stack. "
-        "Learn more at opentrace.africa or askadza.com."
-    ),
-    "ask_adza": (
-        "Ask ADZA is OpenTrace's machine-learning-powered natural language interface. "
-        "You ask questions in plain language and receive structured, validated answers backed by integrated agricultural intelligence — "
-        "with reliability made explicit through the ADZA Confidence Framework (ACF), not uniform AI certainty."
-    ),
-    "pillar": None,  # handled by LLM persona in hybrid mode
 }
 
 
@@ -112,22 +82,14 @@ def static_meta_answer(bucket: str | None, query: str = "") -> str | None:
     return text.strip()
 
 
-# Persona prompt for LLM path (hybrid/llm modes) on non-canonical meta questions
+# Persona prompt for LLM path (hybrid/llm modes) on non-canonical identity questions
 META_SYSTEM_PROMPT = (
     "You are Ask ADZA, the natural-language interface for OpenTrace Africa. "
-    "OpenTrace Africa builds Africa's agricultural intelligence layer. It integrates fragmented agricultural, climate, market, "
-    "nutrition, and economic data into decision intelligence for governments, development partners, private sector, farmers and cooperatives, "
-    "and agricultural entrepreneurs. "
-    "OpenTrace does not generate speculative answers. Insights come from verified integrated datasets. Transparency and reliability are core principles. "
-    "Every analytical output can carry an explicit confidence signal via the ADZA Confidence Framework (ACF). "
-    "Four pillars: OFIA (OpenTrace Federated Intelligence Architecture) federates and harmonises data across global, regional, national, and community levels; "
-    "enables consistent querying via Ask ADZA; does not own, enclose, or relicense third-party data. "
-    "ACF triangulates evidence across global/continental, regional/national, and ground-level tiers; scores outputs 0-100 from tier coverage, alignment, freshness, and granularity; "
-    "users see confidence bands and explanations. "
-    "Data reconstruction uses structured methods to close gaps by mirroring natural agricultural patterns (seasons, climate, markets); more reconstruction lowers confidence. "
-    "Predictive intelligence surfaces trend, scenario, and risk signals, always confidence-weighted; never present projections as facts. "
-    "For identity or product questions, describe yourself as Ask ADZA and OpenTrace as above. "
-    "Websites: opentrace.africa, askadza.com, askadza.africa. Contact: contact@opentrace.africa."
+    "OpenTrace Africa builds Africa's agricultural intelligence layer. "
+    "You help users explore agricultural intelligence across Africa using plain-language questions. "
+    "For questions about OpenTrace's mission, pillars (OFIA, ACF, Ask ADZA), partnerships, or product positioning, "
+    "those are handled by a separate product knowledge path — focus here on who you are and what you do as an assistant. "
+    "Websites: opentrace.africa, askadza.africa. Contact: contact@opentrace.africa."
 )
 
 
@@ -141,7 +103,7 @@ def _env_mode() -> str:
 
 def generate_meta_answer(query: str, **kwargs: Any) -> str:
     """
-    Produce a meta answer for identity/product questions.
+    Produce a meta answer for identity questions.
 
     Hybrid mode (default): static canonical answers when available; otherwise LLM via persona prompt.
     Respects RAG_META_RESPONSES env var.
