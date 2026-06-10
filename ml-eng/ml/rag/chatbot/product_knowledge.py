@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 from ml.rag.chatbot.assistant_identity import META_ANSWER_FOOTER, _append_footer
-from ml.rag.chatbot.stakeholder_prompts import instruction_for_stakeholder
 
 _DEFAULT_KB_PATH = Path(__file__).resolve().parent / "data" / "opentrace_product.json"
 
@@ -417,15 +416,18 @@ def generate_product_answer(query: str, **kwargs: Any) -> str:
 
     kb_block = format_product_kb_for_prompt()
     memory_block = _resolve_memory_block(**kwargs)
-    audience = (kwargs.get("audience_instructions") or "").strip()
-    stakeholder = (kwargs.get("stakeholder_type") or "").strip()
-    tone = instruction_for_stakeholder(stakeholder) if stakeholder else ""
+    from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
+
+    category = (kwargs.get("category") or "").strip()
+    plan_type = (kwargs.get("plan_type") or "").strip()
+    tone = instruction_for_category(category) if category else ""
+    plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
 
     system = PRODUCT_SYSTEM_PROMPT
     if tone:
         system = system + "\n\n" + tone
-    if audience:
-        system = system + "\n\nClient-provided audience / tone guidance:\n" + audience[:3000]
+    if plan_addendum:
+        system = system + "\n\n" + plan_addendum
 
     user_parts: list[str] = []
     if memory_block.strip():

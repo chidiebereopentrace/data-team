@@ -28,9 +28,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from ml.rag.chat_turn import create_session, execute_chat_turn
-from ml.rag.chatbot.stakeholder_prompts import STAKEHOLDER_TYPES
+from ml.rag.chatbot.plan_policy import PLAN_TYPES
+from ml.rag.chatbot.stakeholder_prompts import CATEGORIES
 from ml.rag.api_schemas import CitationItem, UsageStats
-from ml.rag.request_context import bootstrap_stakeholder_type, resolve_request_context
+from ml.rag.request_context import bootstrap_category, resolve_request_context
 from ml.serving.chat.schemas import (
     ChatRequest,
     ChatSuccessResponse,
@@ -40,7 +41,7 @@ from ml.serving.chat.schemas import (
 
 app = FastAPI(
     title="OpenTrace Chatbot API",
-    description="Public v1 API for the OpenTrace chatbot (sessions, stakeholder-aware answers).",
+    description="Public v1 API for the OpenTrace chatbot (sessions, plan-aware answers).",
     version="1.0.0",
 )
 
@@ -65,22 +66,23 @@ async def v1_health():
 async def v1_meta():
     return {
         "api_version": "1.0",
-        "schema_version": "1",
+        "schema_version": "2",
         "build": os.environ.get("CHATBOT_BUILD_ID", "").strip() or None,
-        "stakeholder_types": list(STAKEHOLDER_TYPES),
+        "plan_types": list(PLAN_TYPES),
+        "categories": list(CATEGORIES),
     }
 
 
 @router.post("/sessions", response_model=SessionCreateResponse)
 async def v1_create_session(body: SessionCreateRequest):
     try:
-        sid = create_session(body.stakeholder_type)
+        sid = create_session(body.category)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return SessionCreateResponse(
         session_id=sid,
         created_at=datetime.now(timezone.utc).isoformat(),
-        stakeholder_type=body.stakeholder_type,
+        category=body.category,
     )
 
 
@@ -93,7 +95,6 @@ async def v1_chat(body: ChatRequest):
             user_profile=body.user_profile,
             chat_history=body.chat_history,
             conversation_history=body.conversation_history,
-            legacy_stakeholder_type=body.stakeholder_type,
             session_id=body.session_id,
         )
     except ValueError as e:
@@ -103,37 +104,37 @@ async def v1_chat(body: ChatRequest):
     if hist is not None and len(hist) == 0:
         raise HTTPException(status_code=422, detail="chat_history, if sent, must be non-empty")
 
-    bootstrap_st = bootstrap_stakeholder_type(body.user_profile, body.stakeholder_type)
+    bootstrap_cat = bootstrap_category(body.user_profile)
     sid = (body.session_id or "").strip() or None
 
     if hist is not None:
-        if not sid and bootstrap_st is None:
+        if not sid and bootstrap_cat is None:
             raise HTTPException(
                 status_code=422,
-                detail="chat_history requires session_id or user_profile.stakeholder_type",
+                detail="chat_history requires session_id or user_profile.category",
             )
 
     try:
         if hist is None:
             if not sid:
-                if bootstrap_st is None:
+                if bootstrap_cat is None:
                     raise HTTPException(
                         status_code=422,
                         detail=(
                             "Send session_id from POST /v1/sessions, or omit session_id and send "
-                            "user_profile.stakeholder_type to bootstrap"
+                            "user_profile with plan_type and category to bootstrap"
                         ),
                     )
-                sid = create_session(bootstrap_st)
-        elif not sid and bootstrap_st is not None:
-            sid = create_session(bootstrap_st)
+                sid = create_session(bootstrap_cat)
+        elif not sid and bootstrap_cat is not None:
+            sid = create_session(bootstrap_cat)
 
         turn = execute_chat_turn(
             body.user_text(),
             session_id=sid,
             chat_history=hist,
-            stakeholder_type=ctx.stakeholder_type,
-            audience_instructions=ctx.audience_instructions,
+            plan_type=ctx.plan_type,
+            category=ctx.category,
             user_profile=ctx.user_profile,
             persist_to_session=(hist is None),
         )
@@ -186,3 +187,4 @@ async def root():
         "sessions": "POST /v1/sessions",
         "chat": "POST /v1/chat",
     }
+

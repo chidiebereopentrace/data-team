@@ -94,8 +94,8 @@ Reuse **`session_id`** for **server-side** `{conversation_summary, recent_turns}
   "session_id": "abc123...",
   "user_profile": {
     "country": "Ghana",
-    "audience_instructions": null,
-    "stakeholder_type": "farmers_communities"
+    "plan_type": "Farmers",
+    "category": "Farmers"
   },
   "chat_history": [
     { "role": "user", "content": "Previous question" },
@@ -105,7 +105,7 @@ Reuse **`session_id`** for **server-side** `{conversation_summary, recent_turns}
 }
 ```
 
-**`user_profile`**: `stakeholder_type` and `audience_instructions` drive generation tone; **`country`** is a **retrieval geo filter only** for **`farmers_communities`**. Other personas use geography from query decomposition. Deprecated top-level `stakeholder_type`, `audience_instructions`, and **`geo_override`** (ignored).
+**`user_profile`**: `plan_type` (access tier + retrieval gates) and `category` (generation persona) are required when the profile is sent; **`country`** is a **retrieval geo filter only** for **`plan_type: Farmers`**. Other plans use geography from query decomposition. Legacy `stakeholder_type`, `audience_instructions`, and top-level `geo_override` are rejected.
 
 Meta / identity and product questions short-circuit retrieval (see `assistant_identity.py`, `product_knowledge.py`). Full RAG answers use numbered context sources (`[Source N]` in the LLM context) with Wikipedia-style inline footnotes (`[1]`, `[5]`) in prose. Referenced sources appear in **`citations`** by default (`RAG_CITATIONS_MODE=referenced`; set `all` for every packed source). BQ validation/execution failures are dropped before generation; model-written Sources appendices are stripped; table names and SQL are not shown to users.
 
@@ -304,7 +304,7 @@ Response:
 
 ### Observability with Langfuse (optional)
 
-Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST` to emit traces for every `/query` request, LLM generation, retrieval step, and LangGraph node execution. Traces appear in the Langfuse UI (local or Cloud) with full token usage, latency, and metadata (session_id, stakeholder_type, etc.).
+Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST` to emit traces for every `/query` request, LLM generation, retrieval step, and LangGraph node execution. Traces appear in the Langfuse UI (local or Cloud) with full token usage, latency, and metadata (session_id, plan_type, category, etc.).
 
 - When keys are absent the integration is a silent no-op (safe for HF Spaces that do not need tracing).
 - The same env vars work for local `docker compose`, GCE, and HF (point HOST at your Langfuse instance or cloud).

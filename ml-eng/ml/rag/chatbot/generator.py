@@ -18,6 +18,7 @@ from ml.rag.chat_memory import (
     default_summary_max_chars,
     default_verbatim_max_chars,
 )
+from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
 
 _BQ_TABLE_RE = re.compile(
@@ -335,7 +336,8 @@ def _build_prompt(
     context_block: str,
     decomposition: dict[str, Any] | None = None,
     memory_block: str = "",
-    audience_instructions: str = "",
+    category: str = "",
+    plan_type: str = "",
 ) -> list[dict[str, str]]:
     system = (
         "You are an agricultural advisory assistant for OpenTrace stakeholders (government, NGOs, "
@@ -389,8 +391,12 @@ def _build_prompt(
     if intent_tone:
         system = system + intent_tone
 
-    if audience_instructions:
-        system = system + "\n\nClient-provided audience / tone guidance (follow where it does not conflict with the grounding rules above):\n" + audience_instructions[:3000]
+    cat_tone = instruction_for_category(category) if category else ""
+    if cat_tone:
+        system = system + "\n\n" + cat_tone
+    plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
+    if plan_addendum:
+        system = system + "\n\n" + plan_addendum
 
     mb = (memory_block.strip() + "\n\n") if memory_block.strip() else ""
     user = f"{mb}Context:\n{context_block}\n\nQuestion: {query}"
@@ -566,11 +572,8 @@ def generate(
 
     memory_block = _resolve_memory_block(**kwargs)
 
-    audience_instructions = (
-        kwargs.get("audience_instructions")
-        or kwargs.get("stakeholder_type")
-        or ""
-    ).strip()
+    category = str(kwargs.get("category") or "").strip()
+    plan_type = str(kwargs.get("plan_type") or "").strip()
 
     if not context_items:
         allow_ungrounded = os.environ.get("RAG_ALLOW_UNGROUNDED", "").strip().lower() in (
@@ -585,7 +588,8 @@ def generate(
                 context_block="[No external context]",
                 decomposition=decomposition,
                 memory_block=memory_block,
-                audience_instructions=audience_instructions,
+                category=category,
+                plan_type=plan_type,
             )
             llama_answer = _call_llama(messages)
             if llama_answer:
@@ -610,7 +614,8 @@ def generate(
         context_block,
         decomposition=decomposition,
         memory_block=memory_block,
-        audience_instructions=audience_instructions,
+        category=category,
+        plan_type=plan_type,
     )
     llama_answer = _call_llama(messages)
     if llama_answer:

@@ -12,7 +12,7 @@ import os
 import re
 from typing import Any
 
-from ml.rag.chatbot.stakeholder_prompts import instruction_for_stakeholder
+from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 
 # Canonical identity-only patterns (product/OpenTrace questions use product_knowledge.py)
 _META_PATTERNS: tuple[str, ...] = (
@@ -107,7 +107,7 @@ def generate_meta_answer(query: str, **kwargs: Any) -> str:
 
     Hybrid mode (default): static canonical answers when available; otherwise LLM via persona prompt.
     Respects RAG_META_RESPONSES env var.
-    Optionally appends stakeholder tone instruction when stakeholder_type is provided.
+    Optionally appends category tone and plan-tier guidance when provided.
     """
     bucket = classify_meta_query(query)
     mode = _env_mode()
@@ -116,8 +116,8 @@ def generate_meta_answer(query: str, **kwargs: Any) -> str:
     if mode in ("hybrid", "static"):
         static = static_meta_answer(bucket, query)
         if static:
-            stakeholder = kwargs.get("stakeholder_type") or ""
-            tone = instruction_for_stakeholder(stakeholder) if stakeholder else ""
+            category = kwargs.get("category") or ""
+            tone = instruction_for_category(category) if category else ""
             if tone:
                 static = static.rstrip() + "\n\n" + tone
             return _append_footer(static)
@@ -126,15 +126,16 @@ def generate_meta_answer(query: str, **kwargs: Any) -> str:
     from ml.rag.chatbot.generator import _call_llama, _resolve_memory_block  # local import to avoid circular
 
     memory_block = _resolve_memory_block(**kwargs)
-    audience = (kwargs.get("audience_instructions") or "").strip()
-    stakeholder = (kwargs.get("stakeholder_type") or "").strip()
-    tone = instruction_for_stakeholder(stakeholder) if stakeholder else ""
+    category = (kwargs.get("category") or "").strip()
+    plan_type = (kwargs.get("plan_type") or "").strip()
+    tone = instruction_for_category(category) if category else ""
+    plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
 
     system = META_SYSTEM_PROMPT
     if tone:
         system = system + "\n\n" + tone
-    if audience:
-        system = system + "\n\nClient-provided audience / tone guidance:\n" + audience[:3000]
+    if plan_addendum:
+        system = system + "\n\n" + plan_addendum
 
     user = (memory_block.strip() + "\n\n" if memory_block.strip() else "") + f"Question: {query}"
     messages = [

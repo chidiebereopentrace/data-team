@@ -7,8 +7,8 @@ Public, versioned HTTP API for the OpenTrace chatbot. Retrieval internals (`bq_s
 | Method | Path | Purpose |
 |--------|------|--------|
 | GET | `/v1/health` | Liveness |
-| GET | `/v1/meta` | `api_version`, `schema_version`, optional `build`, `stakeholder_types` catalog |
-| POST | `/v1/sessions` | Body: `stakeholder_type` → `session_id` |
+| GET | `/v1/meta` | `api_version`, `schema_version`, optional `build`, `plan_types` + `categories` catalogs |
+| POST | `/v1/sessions` | Body: `category` → `session_id` |
 | POST | `/v1/chat` | Body: `query` or `message` + `session_id`, nested `user_profile`, optional `chat_history` |
 
 **Canonical `POST /v1/chat` request** (same nesting as `/query`; user text via **`query`** or **`message`**):
@@ -19,8 +19,8 @@ Public, versioned HTTP API for the OpenTrace chatbot. Retrieval internals (`bq_s
   "session_id": "abc123...",
   "user_profile": {
     "country": "Ghana",
-    "audience_instructions": null,
-    "stakeholder_type": "farmers_communities"
+    "plan_type": "Farmers",
+    "category": "Farmers"
   },
   "chat_history": [
     { "role": "user", "content": "Previous question" },
@@ -103,7 +103,7 @@ curl -sS "$YOUR_SPACE_URL/v1/health"
 curl -sS "$YOUR_SPACE_URL/v1/meta"
 curl -sS -X POST "$YOUR_SPACE_URL/v1/sessions" \
   -H "Content-Type: application/json" \
-  -d '{"stakeholder_type":"government_public"}'
+  -d '{"category":"Government"}'
 # Use session_id from the response:
 curl -sS -X POST "$YOUR_SPACE_URL/v1/chat" \
   -H "Content-Type: application/json" \

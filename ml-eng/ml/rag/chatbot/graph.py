@@ -12,6 +12,7 @@ from typing import Any, TypedDict, cast
 
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.geo_policy import effective_geo_override
+from ml.rag.chatbot.plan_policy import apply_plan_decomposition_gates
 from ml.rag.chatbot.product_knowledge import is_product_query
 from ml.rag.chatbot.bq_table_matcher import match_bq_tables_from_descriptions
 from ml.rag.chatbot.generator import filter_context_items, generate, is_usable_context_item
@@ -284,11 +285,17 @@ class RAGGraphState(TypedDict, total=False):
     chat_history: list[dict[str, Any]] | None  # legacy: verbatim-only, no summary
     is_meta_query: bool | None
     is_product_query: bool | None
+    plan_type: str | None
+    category: str | None
+    user_profile: dict[str, Any] | None
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
     dec = decompose_query(q)
+    profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
+    country = str((profile or {}).get("country") or "").strip() or None
+    dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
     meta = is_meta_query(q)
     product = (not meta) and is_product_query(q, dec)
     return {"decomposition": dec, "is_meta_query": meta, "is_product_query": product}
@@ -688,6 +695,10 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
     elif state.get("chat_history"):
         gkw["chat_history"] = state.get("chat_history")
+    if state.get("plan_type"):
+        gkw["plan_type"] = state.get("plan_type")
+    if state.get("category"):
+        gkw["category"] = state.get("category")
     gen_result = generate(query, context, **gkw)
     return {"answer": gen_result.answer, "citations": gen_result.citations}
 
@@ -706,10 +717,10 @@ def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
         gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
     elif state.get("chat_history"):
         gkw["chat_history"] = state.get("chat_history")
-    if state.get("stakeholder_type"):
-        gkw["stakeholder_type"] = state.get("stakeholder_type")
-    if state.get("audience_instructions"):
-        gkw["audience_instructions"] = state.get("audience_instructions")
+    if state.get("plan_type"):
+        gkw["plan_type"] = state.get("plan_type")
+    if state.get("category"):
+        gkw["category"] = state.get("category")
     answer = generate_meta_answer(query, **gkw)
     return {"answer": answer, "citations": []}
 
@@ -728,10 +739,10 @@ def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
         gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
     elif state.get("chat_history"):
         gkw["chat_history"] = state.get("chat_history")
-    if state.get("stakeholder_type"):
-        gkw["stakeholder_type"] = state.get("stakeholder_type")
-    if state.get("audience_instructions"):
-        gkw["audience_instructions"] = state.get("audience_instructions")
+    if state.get("plan_type"):
+        gkw["plan_type"] = state.get("plan_type")
+    if state.get("category"):
+        gkw["category"] = state.get("category")
     answer = generate_product_answer(query, **gkw)
     return {"answer": answer}
 
@@ -792,12 +803,17 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
     reset_llm_usage()
     graph = _get_compiled_graph()
     initial: RAGGraphState = {"query": query}
-    profile_geo = effective_geo_override(
-        kwargs.get("stakeholder_type"),
-        kwargs.get("user_profile") if isinstance(kwargs.get("user_profile"), dict) else None,
-    )
+    user_profile = kwargs.get("user_profile") if isinstance(kwargs.get("user_profile"), dict) else None
+    plan_type = kwargs.get("plan_type")
+    profile_geo = effective_geo_override(plan_type, user_profile)
     if profile_geo:
         initial["geo_override"] = profile_geo  # type: ignore[assignment]
+    if plan_type:
+        initial["plan_type"] = plan_type  # type: ignore[assignment]
+    if kwargs.get("category"):
+        initial["category"] = kwargs["category"]  # type: ignore[assignment]
+    if user_profile is not None:
+        initial["user_profile"] = user_profile  # type: ignore[assignment]
     for key in (
         "time_start_override",
         "time_end_override",
@@ -806,8 +822,6 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
         "bq_top_k",
         "rerank_top_k",
         "chat_history",
-        "stakeholder_type",
-        "audience_instructions",
     ):
         if key in kwargs and kwargs[key] is not None:
             initial[key] = kwargs[key]  # type: ignore[assignment]

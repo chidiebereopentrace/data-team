@@ -28,7 +28,7 @@ load_rag_dotenv(_ml_eng)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 import logging
 
@@ -64,6 +64,8 @@ class ChatMessage(BaseModel):
 
 
 class QueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     query: str = Field(..., min_length=1, description="Natural language question for the RAG")
     include_trace: bool = Field(False, description="Include decomposition and retrieval counts in response")
     session_id: str | None = Field(
@@ -78,13 +80,9 @@ class QueryRequest(BaseModel):
         None,
         description="Deprecated alias for chat_history.",
     )
-    geo_override: str | None = Field(
-        None,
-        description="Deprecated and ignored. Use user_profile.country for farmers_communities retrieval geo.",
-    )
     user_profile: UserProfile | None = Field(
         None,
-        description="User profile: country (farmers retrieval geo), stakeholder_type, audience_instructions.",
+        description="User profile: country, plan_type (access/geo), category (generation persona).",
     )
     time_start_override: str | None = None
     time_end_override: str | None = None
@@ -93,17 +91,6 @@ class QueryRequest(BaseModel):
     bq_top_k: int | None = None
     rerank_top_k: int | None = None
     ota_top_k: int | None = None
-
-    # Deprecated: prefer user_profile.stakeholder_type / user_profile.audience_instructions
-    stakeholder_type: str | None = Field(
-        None,
-        description="Deprecated. Use user_profile.stakeholder_type.",
-    )
-    audience_instructions: str | None = Field(
-        None,
-        description="Deprecated. Use user_profile.audience_instructions.",
-        max_length=4000,
-    )
 
 
 class QueryResponse(BaseModel):
@@ -198,18 +185,17 @@ async def query(request: QueryRequest):
                 user_profile=request.user_profile,
                 chat_history=request.chat_history,
                 conversation_history=request.conversation_history,
-                legacy_stakeholder_type=request.stakeholder_type,
-                legacy_audience_instructions=request.audience_instructions,
                 session_id=request.session_id,
             )
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
 
         logger.info(
-            "query request received (len=%d, has_history=%s, stakeholder=%s)",
+            "query request received (len=%d, has_history=%s, plan_type=%s, category=%s)",
             len(request.query or ""),
             ctx.has_client_history,
-            bool(ctx.stakeholder_type),
+            ctx.plan_type,
+            ctx.category,
         )
 
         from ml.rag.graph import run_rag
@@ -222,14 +208,11 @@ async def query(request: QueryRequest):
         create_trace(
             "rag.query",
             session_id=session_id,
-            stakeholder_type=ctx.stakeholder_type,
+            plan_type=ctx.plan_type,
+            category=ctx.category,
             query=request.query,
             has_history=ctx.has_client_history,
         )
-        if request.geo_override and str(request.geo_override).strip():
-            logger.debug(
-                "geo_override is deprecated and ignored; use user_profile.country for farmers_communities"
-            )
 
         kwargs: dict = {}
         if prior_summary.strip() or prior_recent:
@@ -237,10 +220,10 @@ async def query(request: QueryRequest):
             kwargs["recent_turns"] = prior_recent
         if ctx.user_profile is not None:
             kwargs["user_profile"] = ctx.user_profile
-        if ctx.stakeholder_type:
-            kwargs["stakeholder_type"] = ctx.stakeholder_type
-        if ctx.audience_instructions:
-            kwargs["audience_instructions"] = ctx.audience_instructions
+        if ctx.plan_type:
+            kwargs["plan_type"] = ctx.plan_type
+        if ctx.category:
+            kwargs["category"] = ctx.category
         for key in (
             "time_start_override",
             "time_end_override",

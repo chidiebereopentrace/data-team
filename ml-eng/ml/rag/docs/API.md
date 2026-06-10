@@ -27,11 +27,13 @@ PYTHONPATH=ml-eng uvicorn ml.serving.chat.app:app --host 0.0.0.0 --port 7861
 
 ### `UserProfile`
 
+When `user_profile` is sent, **`plan_type`** and **`category`** are required. Unknown keys (e.g. legacy `stakeholder_type`) → **422**.
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `country` | `string \| null` | No | Retrieval geo filter **only** when `stakeholder_type` is `farmers_communities`. Ignored for other personas (geography comes from query decomposition). |
-| `stakeholder_type` | `string \| null` | No | Audience persona for generation tone. Must be one of the [stakeholder IDs](#stakeholder-types). |
-| `audience_instructions` | `string \| null` | No | Extra tone/guidance for the generator (max 4000 chars). |
+| `country` | `string \| null` | No | Retrieval geo filter **only** when `plan_type` is `Farmers`. Ignored for other plans (geography comes from query decomposition). |
+| `plan_type` | `string` | **Yes** (if profile sent) | Access tier and retrieval gates. One of the [plan types](#plan-types). |
+| `category` | `string` | **Yes** (if profile sent) | Generation persona / tone. One of the [categories](#categories). |
 
 ### `ChatMessage`
 
@@ -57,29 +59,45 @@ Aggregated LLM token usage for **one request** (decomposer, BQ NL→SQL, reranke
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `prompt_tokens` | `integer` | Input tokens (OpenAI-style) |
-| `completion_tokens` | `integer` | Output tokens |
+| `input_tokens` | `integer` | Input / prompt tokens |
+| `output_tokens` | `integer` | Output / completion tokens |
 | `total_tokens` | `integer` | Total reported by provider |
-| `input_tokens` | `integer` | Alias of `prompt_tokens` |
-| `output_tokens` | `integer` | Alias of `completion_tokens` |
 
 ---
 
-## Stakeholder types
+## Plan types
 
-Valid `stakeholder_type` values (also returned by `GET /v1/meta`):
+`plan_type` controls access tier, retrieval gates, and generation depth. Returned by `GET /v1/meta` as `plan_types`.
+
+| ID | Retrieval / generation gates |
+|----|------------------------------|
+| `Free` | Single country; no cross-country compare; brief answers |
+| `Farmers` | Profile `country` geo filter; single country; plain-language framing |
+| `Government` | National/sub-national + historical trends; no cross-country |
+| `NGOs` | Government-tier depth + multi-region overlap framing |
+| `Agribusinesses` | Cross-country comparison allowed; market/volatility framing |
+| `Integrated` | No artificial plan caps beyond category persona |
+
+Invalid values → **422** with `invalid plan_type: '…'`.
+
+---
+
+## Categories
+
+`category` controls generation persona (tone and framing). Returned by `GET /v1/meta` as `categories`.
 
 | ID | Label |
 |----|-------|
-| `government_public` | Government & Public Institutions |
-| `development_partners` | Development Partners & Foundations |
-| `private_sector` | Private Sector Actors |
-| `farmers_communities` | Farmers, Cooperatives & Communities |
-| `entrepreneurs_ecosystem` | Entrepreneurs & Ecosystem Builders |
+| `Government` | Government & Public Institutions |
+| `NGOs` | Foundations, NGOs & Development Partners |
+| `Agribusinesses` | Agribusinesses & Financial Institutions |
+| `Farmers` | Farmers, Cooperatives & Communities |
 
-**Resolution order** (both APIs): `user_profile.stakeholder_type` → deprecated top-level `stakeholder_type` → session blob (if `session_id` is set).
+**Resolution order** (both APIs): `user_profile.plan_type` + `user_profile.category` → session `category` fallback (when `session_id` is set and category omitted).
 
-Invalid values → **422** with `invalid stakeholder_type: '…'`.
+Invalid values → **422** with `invalid category: '…'`.
+
+Legacy fields `stakeholder_type`, `audience_instructions`, and top-level `geo_override` are **rejected** (no fallback).
 
 ---
 
@@ -176,7 +194,7 @@ Main RAG endpoint. Runs the full graph: decomposition → BigQuery + vector retr
 |-------|------|----------|---------|-------------|
 | `query` | `string` | **Yes** | — | Natural-language question (min length 1). |
 | `session_id` | `string \| null` | No | new UUID | Reuse for server-side multi-turn memory. |
-| `user_profile` | `UserProfile \| null` | No | `null` | Persona, audience, farmer geo. |
+| `user_profile` | `UserProfile \| null` | No | `null` | `country`, `plan_type`, `category` (all three when sent). |
 | `chat_history` | `ChatMessage[] \| null` | No | `null` | Prior turns (canonical). |
 | `conversation_history` | `ChatMessage[] \| null` | No | `null` | Deprecated alias for `chat_history`. |
 | `include_trace` | `boolean` | No | `false` | Include retrieval/debug counts in response. |
@@ -187,9 +205,8 @@ Main RAG endpoint. Runs the full graph: decomposition → BigQuery + vector retr
 | `bq_top_k` | `integer \| null` | No | `null` | Max BigQuery result rows/chunks. |
 | `rerank_top_k` | `integer \| null` | No | `null` | Chunks after reranking. |
 | `ota_top_k` | `integer \| null` | No | `null` | Max OTA insight chunks. |
-| `stakeholder_type` | `string \| null` | No | `null` | **Deprecated.** Use `user_profile.stakeholder_type`. |
-| `audience_instructions` | `string \| null` | No | `null` | **Deprecated.** Use `user_profile.audience_instructions`. |
-| `geo_override` | `string \| null` | No | `null` | **Deprecated and ignored.** Use `user_profile.country` for farmers. |
+
+Unknown top-level keys (e.g. `stakeholder_type`, `audience_instructions`, `geo_override`) → **422**.
 
 ### Canonical request example
 
@@ -199,8 +216,8 @@ Main RAG endpoint. Runs the full graph: decomposition → BigQuery + vector retr
   "session_id": "abc123...",
   "user_profile": {
     "country": "Ghana",
-    "stakeholder_type": "farmers_communities",
-    "audience_instructions": null
+    "plan_type": "Farmers",
+    "category": "Farmers"
   },
   "chat_history": [
     { "role": "user", "content": "Previous question" },
@@ -250,11 +267,9 @@ Main RAG endpoint. Runs the full graph: decomposition → BigQuery + vector retr
   ],
   "session_id": "787a6c2201104ad9a704068cf525c1d4",
   "usage": {
-    "prompt_tokens": 6977,
-    "completion_tokens": 653,
-    "total_tokens": 7630,
     "input_tokens": 6977,
-    "output_tokens": 653
+    "output_tokens": 653,
+    "total_tokens": 7630
   },
   "error": null,
   "trace": null
@@ -278,12 +293,14 @@ Main RAG endpoint. Runs the full graph: decomposition → BigQuery + vector retr
 
 | Status | When | Body |
 |--------|------|------|
-| **422** | Invalid `stakeholder_type`, validation errors | `{"detail": "invalid stakeholder_type: 'foo'"}` |
+| **422** | Invalid `plan_type` / `category`, unknown fields, validation errors | `{"detail": "invalid plan_type: 'foo'"}` |
 | **500** | Unhandled exception | `{"detail": "error message"}`; full traceback if `RAG_DEBUG=1` |
 
 ### Behavior notes
 
-- **Geo:** `user_profile.country` applies as retrieval filter only for `farmers_communities`.
+- **Geo:** `user_profile.country` applies as retrieval filter only when `plan_type` is `Farmers`.
+- **Plan gates:** Cross-country retrieval/compare is limited to `Agribusinesses` and `Integrated` plans.
+- **Omit `user_profile`:** Minimal queries (e.g. `"Who are you?"`) work with generic tone and no plan gates.
 - **Meta questions** (“Who are you?”, product FAQs) may short-circuit retrieval without full RAG.
 - **Citations in UI:** Map `[N]` in `answer` to `citations` where `id === N`.
 - **Legacy Sources in answer:** Set server env `RAG_APPEND_SOURCES_TO_ANSWER=1` to append a markdown Sources block to `answer`.
@@ -349,17 +366,17 @@ API catalog and stakeholder list.
 
 ## `POST /v1/sessions`
 
-Create a server-side session with a fixed stakeholder persona.
+Create a server-side session with a fixed category persona.
 
 ### Request (`SessionCreateRequest`)
 
 | Field | Type | Required |
 |-------|------|----------|
-| `stakeholder_type` | `StakeholderType` | **Yes** |
+| `category` | `Category` | **Yes** |
 
 ```json
 {
-  "stakeholder_type": "government_public"
+  "category": "Government"
 }
 ```
 
@@ -369,7 +386,7 @@ Create a server-side session with a fixed stakeholder persona.
 {
   "session_id": "a1b2c3d4e5f6...",
   "created_at": "2026-06-08T12:00:00+00:00",
-  "stakeholder_type": "government_public"
+  "category": "Government"
 }
 ```
 
@@ -377,7 +394,7 @@ Create a server-side session with a fixed stakeholder persona.
 
 | Status | When |
 |--------|------|
-| **422** | Invalid `stakeholder_type` |
+| **422** | Invalid `category` |
 
 ---
 
@@ -413,8 +430,8 @@ Single chat turn through the same RAG pipeline as `/query`, with v1 response sha
   "session_id": "abc123...",
   "user_profile": {
     "country": "Ghana",
-    "stakeholder_type": "farmers_communities",
-    "audience_instructions": null
+    "plan_type": "Farmers",
+    "category": "Farmers"
   },
   "chat_history": [
     { "role": "user", "content": "Previous question" },
@@ -440,11 +457,9 @@ Single chat turn through the same RAG pipeline as `/query`, with v1 response sha
   "citations": [{ "id": 3, "kind": "academic", "text": "...", "url": "https://..." }],
   "session_id": "abc123...",
   "usage": {
-    "prompt_tokens": 1200,
-    "completion_tokens": 400,
-    "total_tokens": 1600,
     "input_tokens": 1200,
-    "output_tokens": 400
+    "output_tokens": 400,
+    "total_tokens": 1600
   },
   "request_id": "f4e2...",
   "created_at": "2026-06-08T12:00:00+00:00"
@@ -490,11 +505,11 @@ Both use the same RAG graph, `UserProfile`, `chat_history`, `citations`, and `us
 
 ```json
 // Turn 1
-{ "query": "Rice trends in Nigeria?", "user_profile": { "stakeholder_type": "government_public" } }
+{ "query": "Rice trends in Nigeria?", "user_profile": { "plan_type": "Government", "category": "Government" } }
 // → session_id: "xyz"
 
 // Turn 2
-{ "query": "What about Ghana?", "session_id": "xyz", "user_profile": { "stakeholder_type": "government_public" } }
+{ "query": "What about Ghana?", "session_id": "xyz", "user_profile": { "plan_type": "Government", "category": "Government" } }
 ```
 
 ### Multi-turn with client history
@@ -502,7 +517,7 @@ Both use the same RAG graph, `UserProfile`, `chat_history`, `citations`, and `us
 ```json
 {
   "query": "What about Ghana?",
-  "user_profile": { "stakeholder_type": "government_public" },
+  "user_profile": { "plan_type": "Government", "category": "Government" },
   "chat_history": [
     { "role": "user", "content": "Rice trends in Nigeria?" },
     { "role": "assistant", "content": "..." }

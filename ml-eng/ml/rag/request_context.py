@@ -5,14 +5,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from ml.rag.api_schemas import UserProfile
-from ml.rag.chatbot.stakeholder_prompts import is_valid_stakeholder_type
+from ml.rag.chatbot.plan_policy import is_valid_category, is_valid_plan_type
 from ml.rag.session_store import get_session_blob
 
 
 @dataclass(frozen=True)
 class ResolvedRequestContext:
-    stakeholder_type: str | None
-    audience_instructions: str | None
+    plan_type: str | None
+    category: str | None
     user_profile: dict[str, Any] | None
     history_messages: list[dict[str, str]] | None
 
@@ -21,14 +21,25 @@ class ResolvedRequestContext:
         return self.history_messages is not None
 
 
-def _normalize_stakeholder(raw: str | None) -> str | None:
+def _normalize_plan_type(raw: str | None) -> str | None:
     if raw is None:
         return None
     s = str(raw).strip()
     if not s:
         return None
-    if not is_valid_stakeholder_type(s):
-        raise ValueError(f"invalid stakeholder_type: {s!r}")
+    if not is_valid_plan_type(s):
+        raise ValueError(f"invalid plan_type: {s!r}")
+    return s
+
+
+def _normalize_category(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    if not is_valid_category(s):
+        raise ValueError(f"invalid category: {s!r}")
     return s
 
 
@@ -68,59 +79,50 @@ def resolve_request_context(
     user_profile: UserProfile | dict[str, Any] | None = None,
     chat_history: list[Any] | None = None,
     conversation_history: list[Any] | None = None,
-    legacy_stakeholder_type: str | None = None,
-    legacy_audience_instructions: str | None = None,
     session_id: str | None = None,
-    use_session_stakeholder_fallback: bool = True,
+    use_session_category_fallback: bool = True,
 ) -> ResolvedRequestContext:
     """
-    Resolve persona, audience, geo profile, and client history from a request.
+    Resolve plan tier, category persona, geo profile, and client history from a request.
 
-    stakeholder_type precedence: user_profile.stakeholder_type → legacy top-level → session blob.
+    plan_type and category come from user_profile when present.
+    category fallback: session blob when plan fields omitted but session_id is set.
     """
     profile = _profile_dict(user_profile)
     country = str(profile.get("country") or "").strip() or None
 
-    st = _normalize_stakeholder(profile.get("stakeholder_type"))
-    if st is None:
-        st = _normalize_stakeholder(legacy_stakeholder_type)
-    if st is None and use_session_stakeholder_fallback:
+    plan_type = _normalize_plan_type(profile.get("plan_type"))
+    category = _normalize_category(profile.get("category"))
+
+    if category is None and use_session_category_fallback:
         sid = (session_id or "").strip()
         if sid:
             blob = get_session_blob(sid) or {}
-            raw = blob.get("stakeholder_type")
-            if isinstance(raw, str) and is_valid_stakeholder_type(raw):
-                st = raw.strip()
-
-    aud_raw = profile.get("audience_instructions")
-    if aud_raw is None:
-        aud_raw = legacy_audience_instructions
-    audience = str(aud_raw).strip() if aud_raw is not None else ""
-    audience_instructions = audience or None
+            raw = blob.get("category")
+            if isinstance(raw, str) and is_valid_category(raw):
+                category = raw.strip()
 
     geo_profile: dict[str, Any] | None = None
-    if country is not None:
-        geo_profile = {"country": country}
-    elif profile:
-        geo_profile = {}
+    if plan_type is not None or category is not None or country is not None:
+        geo_profile = {
+            "country": country,
+            "plan_type": plan_type,
+            "category": category,
+        }
 
     history_messages = effective_chat_history_messages(chat_history, conversation_history)
 
     return ResolvedRequestContext(
-        stakeholder_type=st,
-        audience_instructions=audience_instructions,
+        plan_type=plan_type,
+        category=category,
         user_profile=geo_profile,
         history_messages=history_messages,
     )
 
 
-def bootstrap_stakeholder_type(
+def bootstrap_category(
     user_profile: UserProfile | dict[str, Any] | None,
-    legacy_stakeholder_type: str | None,
 ) -> str | None:
-    """Stakeholder for session bootstrap (no session_id yet)."""
+    """Category for session bootstrap (no session_id yet)."""
     profile = _profile_dict(user_profile)
-    st = _normalize_stakeholder(profile.get("stakeholder_type"))
-    if st is not None:
-        return st
-    return _normalize_stakeholder(legacy_stakeholder_type)
+    return _normalize_category(profile.get("category"))
