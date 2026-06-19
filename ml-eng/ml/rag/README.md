@@ -73,8 +73,6 @@ See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/c
   ],
   "session_id": "...",
   "usage": {
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
     "total_tokens": 0,
     "input_tokens": 0,
     "output_tokens": 0
