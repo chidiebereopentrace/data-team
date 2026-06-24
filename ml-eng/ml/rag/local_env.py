@@ -173,7 +173,12 @@ def apply_lm_studio_defaults() -> None:
     if "openrouter.ai" in base and not os.environ.get("RAG_LLM_MODEL_ID", "").strip():
         os.environ["RAG_LLM_MODEL_ID"] = "openrouter/owl-alpha"
     for key, value in (
-        ("RAG_LLM_RERANK", "off"),
+        # Note: RAG_LLM_RERANK is intentionally not seeded here anymore.
+        # The reranker now defaults to a cross-encoder backend (see
+        # chatbot/reranker.py) that is independent of the LLM backend, so
+        # forcing it off whenever an LLM base URL is configured silently
+        # disabled real reranking. RAG_RERANKER_MODE / RAG_RERANKER_MODEL
+        # are the new controls.
         ("RAG_LLM_TIMEOUT_S", "300"),
         ("RAG_GENERATE_MAX_TOKENS", "2048"),
         ("RAG_GENERATE_CONTEXT_MAX_CHARS", "12000"),
