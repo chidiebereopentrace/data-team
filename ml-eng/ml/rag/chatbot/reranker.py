@@ -1,30 +1,264 @@
 """
-Reranker node: takes merged retrieval results and reranks them (e.g. cross-encoder or LLM)
-before passing to the generator.
+Reranker node: takes merged retrieval results and reranks them before passing
+to the generator.
 
-Uses configured LLM backend (HF router or RAG_LLM_BASE_URL). If unavailable, pass-through top_k.
+Three modes, selected via ``RAG_RERANKER_MODE``:
+
+- ``cross_encoder`` (default, production):
+    Batch-scores all candidates in a single cross-encoder pass.
+    Fast, accurate, no per-token LLM cost. Uses fastembed when available
+    (already a project dependency for the fastembed embeddings mode),
+    falling back to sentence-transformers if installed. Model is
+    configurable via ``RAG_RERANKER_MODEL``
+    (default ``Xenova/ms-marco-MiniLM-L-6-v2``).
+
+- ``llm``:
+    One LLM call per candidate (legacy behavior). Retained for back-compat
+    / A-B testing, but expensive and slow under load.
+
+- ``off``:
+    Dev-only pass-through. Uses the original source-priority boost so
+    results stay deterministic without any model call.
+
+Back-compat shim: the previous ``RAG_LLM_RERANK`` env var still works.
+``RAG_LLM_RERANK=on`` is mapped to ``RAG_RERANKER_MODE=llm`` if and only if
+``RAG_RERANKER_MODE`` is unset, so existing deployments keep their behavior.
+
+Failure handling: never raises. If the configured backend is unavailable we
+degrade gracefully — cross_encoder -> llm (when LLM is configured) -> off —
+so the graph always receives a usable, ordered list of context chunks.
 """
 from __future__ import annotations
 
+import logging
 import os
+import threading
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_model_id
+
+logger = logging.getLogger(__name__)
+
+# Static source priority — applied additively on top of any model score so a
+# BigQuery row that scores near a news chunk still wins the tie-break (BQ
+# rows are higher-trust ground truth than free-text news).
+_SOURCE_BOOST: dict[str, float] = {
+    "bigquery": 0.12,
+    "academic": 0.06,
+    "policy": 0.06,
+    "public_report": 0.06,
+    "ota_insight": 0.05,
+    "news": 0.04,
+    "web_wikipedia": 0.0,
+    "web_search": 0.0,
+}
+
+
+# --- env helpers --------------------------------------------------------------
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(0, int(os.environ.get(name, str(default)) or default))
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, str(default)) or default)
+    except ValueError:
+        return default
 
 
 def _llm_configured() -> bool:
     return bool(os.environ.get("HF_API_TOKEN") or os.environ.get("RAG_LLM_BASE_URL", "").strip())
 
 
+def _reranker_mode() -> str:
+    """Resolve the configured reranker mode with back-compat handling.
+
+    Order of precedence:
+    1. ``RAG_RERANKER_MODE`` if explicitly set (cross_encoder | llm | off)
+    2. Legacy ``RAG_LLM_RERANK`` (any truthy value -> ``llm``, falsy -> ``off``)
+    3. Default: ``cross_encoder``
+    """
+    explicit = os.environ.get("RAG_RERANKER_MODE", "").strip().lower()
+    if explicit in {"cross_encoder", "llm", "off"}:
+        return explicit
+    legacy = os.environ.get("RAG_LLM_RERANK", "").strip().lower()
+    if legacy in {"on", "1", "true", "yes"}:
+        return "llm"
+    if legacy in {"off", "0", "false", "no"}:
+        # Operator explicitly turned the old flag off — honour that but log
+        # so we notice during rollout.
+        logger.info(
+            "Legacy RAG_LLM_RERANK=off detected; using mode='off'. "
+            "Set RAG_RERANKER_MODE=cross_encoder to enable the new reranker."
+        )
+        return "off"
+    return "cross_encoder"
+
+
+def _reranker_model_id() -> str:
+    return (
+        os.environ.get("RAG_RERANKER_MODEL", "").strip()
+        or "Xenova/ms-marco-MiniLM-L-6-v2"
+    )
+
+
+def _max_text_chars() -> int:
+    """Cap per-chunk characters fed to the cross-encoder.
+
+    Cross-encoders have small context windows (typically 512 tokens for
+    MiniLM). 2000 chars is a safe upper bound after the tokenizer truncates
+    internally; we set it explicitly so very long news/academic chunks do not
+    dominate the model's truncation behavior.
+    """
+    return _env_int("RAG_RERANKER_MAX_TEXT_CHARS", 2000)
+
+
+# --- cross-encoder backend ---------------------------------------------------
+
+
+_ce_lock = threading.Lock()
+_ce_cache: dict[str, Any] = {}
+
+
+def _load_cross_encoder(model_id: str) -> Any | None:
+    """Lazy-load and cache a cross-encoder. Tries fastembed first, then
+    sentence-transformers. Returns None if neither is available so callers
+    can fall back gracefully."""
+    with _ce_lock:
+        if model_id in _ce_cache:
+            return _ce_cache[model_id]
+
+        # 1. fastembed (already used by the project for ONNX embeddings on Railway)
+        try:
+            from fastembed.rerank.cross_encoder import (  # type: ignore[import-not-found]
+                TextCrossEncoder,
+            )
+        except Exception:  # pragma: no cover - exercised when fastembed missing
+            TextCrossEncoder = None  # type: ignore[assignment]
+
+        if TextCrossEncoder is not None:
+            try:
+                encoder = TextCrossEncoder(model_id)
+                _ce_cache[model_id] = ("fastembed", encoder)
+                logger.info("Cross-encoder loaded via fastembed: %s", model_id)
+                return _ce_cache[model_id]
+            except Exception as exc:
+                logger.warning(
+                    "fastembed cross-encoder %s failed to load: %s", model_id, exc
+                )
+
+        # 2. sentence-transformers fallback (dev machines that already have it)
+        try:
+            from sentence_transformers import CrossEncoder  # type: ignore[import-not-found]
+
+            encoder = CrossEncoder(model_id)
+            _ce_cache[model_id] = ("sentence_transformers", encoder)
+            logger.info(
+                "Cross-encoder loaded via sentence-transformers: %s", model_id
+            )
+            return _ce_cache[model_id]
+        except Exception as exc:
+            logger.warning(
+                "sentence-transformers cross-encoder %s unavailable: %s",
+                model_id,
+                exc,
+            )
+
+        _ce_cache[model_id] = None
+        return None
+
+
+def _ce_score(encoder: tuple[str, Any], query: str, passages: list[str]) -> list[float] | None:
+    """Score a batch of (query, passage) pairs.
+
+    Returns ``None`` on backend error so the caller can fall back.
+    """
+    backend, model = encoder
+    try:
+        if backend == "fastembed":
+            # fastembed TextCrossEncoder.rerank returns a generator of floats
+            return [float(s) for s in model.rerank(query, passages)]
+        # sentence-transformers CrossEncoder.predict accepts list[tuple]
+        scored = model.predict([(query, p) for p in passages])
+        return [float(s) for s in scored]
+    except Exception as exc:
+        logger.warning("Cross-encoder scoring failed: %s", exc)
+        return None
+
+
+def _normalize_scores(scores: list[float]) -> list[float]:
+    """Min-max normalize to [0, 1] so the source boost has a comparable scale.
+
+    Cross-encoders emit logits that can be wildly different ranges between
+    models (ms-marco MiniLM emits roughly [-10, 10]; BGE rerankers emit [0, 1]
+    already). Without normalization the static source boost would either be
+    drowned out or completely dominate.
+    """
+    if not scores:
+        return scores
+    lo, hi = min(scores), max(scores)
+    if hi - lo < 1e-9:
+        return [0.5 for _ in scores]
+    return [(s - lo) / (hi - lo) for s in scores]
+
+
+def _rerank_cross_encoder(
+    query: str,
+    context_items: list[dict[str, Any]],
+    top_k: int,
+    content_key: str,
+) -> list[dict[str, Any]] | None:
+    """Cross-encoder reranking. Returns ``None`` if the backend is unavailable
+    so the public ``rerank()`` can degrade to LLM or off."""
+    model_id = _reranker_model_id()
+    encoder = _load_cross_encoder(model_id)
+    if encoder is None:
+        return None
+
+    max_chars = _max_text_chars()
+    passages = [
+        (item.get(content_key) or item.get("text", str(item)))[:max_chars]
+        for item in context_items
+    ]
+    raw_scores = _ce_score(encoder, query, passages)
+    if raw_scores is None or len(raw_scores) != len(context_items):
+        return None
+
+    norm = _normalize_scores(raw_scores)
+    scored = []
+    for i, (item, raw, ns) in enumerate(zip(context_items, raw_scores, norm)):
+        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
+        boost = _SOURCE_BOOST.get(kind, 0.0)
+        scored.append(
+            {
+                **item,
+                "content": passages[i],
+                "_order": i,
+                "_ce_score_raw": raw,
+                "_ce_score": ns,
+                "_source_boost": boost,
+                "_rerank_score": ns + boost,
+            }
+        )
+    scored.sort(key=lambda x: x["_rerank_score"], reverse=True)
+    return scored[:top_k]
+
+
+# --- llm backend (legacy, kept for back-compat) -------------------------------
+
+
 def _score_with_llama(query: str, text: str) -> float:
-    """
-    Ask Llama to score how relevant `text` is to `query` on [0, 1].
-    This is a simple, low-throughput reranker: one call per chunk.
-    """
+    """Ask the configured LLM to score one (query, text) pair on [0, 1]."""
     prompt = (
         "You are a ranking model. Given a user question and a context chunk, "
-        "return a single floating point number between 0 and 1 indicating how relevant "
-        "the context is to answering the question. Respond with ONLY the number.\n\n"
+        "return a single floating point number between 0 and 1 indicating how "
+        "relevant the context is to answering the question. Respond with ONLY "
+        "the number.\n\n"
         f"Question: {query}\n\n"
         f"Context:\n{text}\n\n"
         "Relevance score (0-1):"
@@ -39,10 +273,76 @@ def _score_with_llama(query: str, text: str) -> float:
     if not raw:
         return -1.0
     try:
-        token = raw.split()[0]
-        return float(token)
+        return float(raw.split()[0])
     except Exception:
         return -1.0
+
+
+def _rerank_llm(
+    query: str,
+    context_items: list[dict[str, Any]],
+    top_k: int,
+    content_key: str,
+) -> list[dict[str, Any]]:
+    max_chars = _max_text_chars()
+    scored = []
+    for i, item in enumerate(context_items):
+        text = (item.get(content_key) or item.get("text", str(item)))[:max_chars]
+        raw = _score_with_llama(query, text)
+        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
+        boost = _SOURCE_BOOST.get(kind, 0.0)
+        adjusted = (raw + boost) if raw >= 0 else raw
+        scored.append(
+            {
+                **item,
+                "content": text,
+                "_order": i,
+                "_llm_score": raw,
+                "_source_boost": boost,
+                "_rerank_score": adjusted,
+            }
+        )
+    scored.sort(
+        key=lambda x: x.get("_rerank_score", x.get("_llm_score", -1.0)),
+        reverse=True,
+    )
+    return scored[:top_k]
+
+
+# --- off (pass-through) -------------------------------------------------------
+
+
+def _rerank_off(
+    context_items: list[dict[str, Any]],
+    top_k: int,
+    content_key: str,
+) -> list[dict[str, Any]]:
+    """Pass-through ordering using only the static source boost.
+
+    Kept for dev / debugging — the failure mode internal testing surfaced was
+    that no real reranking was happening at all, so operators should not run
+    production on this mode.
+    """
+    scored = []
+    for i, item in enumerate(context_items):
+        text = item.get(content_key) or item.get("text", str(item))
+        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
+        boost = _SOURCE_BOOST.get(kind, 0.0)
+        scored.append(
+            {
+                **item,
+                "content": text,
+                "_order": i,
+                "_llm_score": -1.0,
+                "_source_boost": boost,
+                "_rerank_score": boost,
+            }
+        )
+    scored.sort(key=lambda x: x["_rerank_score"], reverse=True)
+    return scored[:top_k]
+
+
+# --- public entry point -------------------------------------------------------
 
 
 def rerank(
@@ -51,62 +351,54 @@ def rerank(
     top_k: int = 5,
     **kwargs: Any,
 ) -> list[dict[str, Any]]:
-    """
-    Rerank context_items by relevance to query. Each item should have "content" (or "text").
+    """Rerank ``context_items`` by relevance to ``query``.
 
-    - If an LLM backend is configured and RAG_LLM_RERANK != \"off\", scores each chunk.
-    - Otherwise, returns first top_k items (original order).
+    Each item should expose ``content`` (or ``text``) and optionally
+    ``_context_kind`` / ``source`` so the static source boost applies.
+
+    Mode is selected by :func:`_reranker_mode`. When the chosen backend is
+    unavailable at runtime the function degrades safely:
+        cross_encoder unavailable -> llm if configured -> off
+        llm unavailable           -> off
+
+    Top-k cap respected from the ``top_k`` argument and (when set) the
+    ``RAG_RERANKER_TOP_K`` env override.
     """
     if not context_items:
         return []
 
-    use_llm = os.environ.get("RAG_LLM_RERANK", "off").lower() not in {"off", "0", "false"}
+    # Allow env to clamp top_k (matches existing rerank_top_k state field).
+    env_top_k = _env_int("RAG_RERANKER_TOP_K", 0)
+    if env_top_k > 0:
+        top_k = min(top_k, env_top_k)
+
     content_key = "content" if any("content" in c for c in context_items) else "text"
+    mode = _reranker_mode()
+    logger.debug("Reranker mode=%s top_k=%d candidates=%d", mode, top_k, len(context_items))
 
-    _SOURCE_BOOST = {
-        "bigquery": 0.12,
-        "news": 0.04,
-        "academic": 0.06,
-        "web_wikipedia": 0.0,
-        "web_search": 0.0,
-    }
-
-    if not use_llm or not _llm_configured():
-        scored = []
-        for i, item in enumerate(context_items):
-            text = item.get(content_key) or item.get("text", str(item))
-            kind = item.get("_context_kind") or item.get("source") or ""
-            boost = _SOURCE_BOOST.get(str(kind).lower(), 0.0)
-            scored.append(
-                {
-                    **item,
-                    "content": text,
-                    "_order": i,
-                    "_llm_score": -1.0,
-                    "_source_boost": boost,
-                    "_rerank_score": boost,
-                }
-            )
-        scored.sort(key=lambda x: x.get("_rerank_score", 0.0), reverse=True)
-        return scored[:top_k]
-
-    scored = []
-    for i, item in enumerate(context_items):
-        text = (item.get(content_key) or item.get("text", str(item)))[:2000]
-        score = _score_with_llama(query, text)
-        kind = item.get("_context_kind") or item.get("source") or ""
-        boost = _SOURCE_BOOST.get(str(kind).lower(), 0.0)
-        adjusted = score + boost if score >= 0 else score
-        scored.append(
-            {
-                **item,
-                "content": text,
-                "_order": i,
-                "_llm_score": score,
-                "_source_boost": boost,
-                "_rerank_score": adjusted,
-            }
+    if mode == "cross_encoder":
+        result = _rerank_cross_encoder(query, context_items, top_k, content_key)
+        if result is not None:
+            return result
+        logger.warning(
+            "Cross-encoder unavailable; degrading. Install fastembed or "
+            "sentence-transformers and set RAG_RERANKER_MODEL accordingly."
         )
+        mode = "llm" if _llm_configured() else "off"
 
-    scored.sort(key=lambda x: x.get("_rerank_score", x.get("_llm_score", -1.0)), reverse=True)
-    return scored[:top_k]
+    if mode == "llm":
+        if not _llm_configured():
+            logger.warning(
+                "RAG_RERANKER_MODE=llm but no LLM backend configured; "
+                "degrading to off."
+            )
+            return _rerank_off(context_items, top_k, content_key)
+        return _rerank_llm(query, context_items, top_k, content_key)
+
+    return _rerank_off(context_items, top_k, content_key)
+
+
+# TODO(v0.2): optional Cohere cloud reranker as a third backend
+# (RAG_RERANKER_MODE=cohere + RAG_RERANKER_COHERE_API_KEY). Skipped for v0.1
+# to keep the dependency footprint and runtime cost predictable on the
+# Railway free tier. See TASKS.md "Post-launch".
