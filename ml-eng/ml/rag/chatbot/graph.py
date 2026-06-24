@@ -28,7 +28,7 @@ from ml.rag.llm_chat import get_llm_usage, reset_llm_usage
 from ml.rag.retrievers.web_retriever import (
     format_web_chunk_for_context,
     needs_web_fallback,
-    retrieve_web_fallback,
+    retrieve_web_fallback_detailed,
     route_after_rerank,
 )
 
@@ -267,6 +267,9 @@ class RAGGraphState(TypedDict, total=False):
     merged_context: list[dict[str, Any]]
     reranked_context: list[dict[str, Any]]
     web_results: list[dict[str, Any]]
+    web_fallback_status: str | None
+    web_fallback_reason: str | None
+    insufficient_context: bool | None
     answer: str
     citations: list[dict[str, Any]]
     usage: dict[str, int]
@@ -648,8 +651,28 @@ def node_rerank(state: RAGGraphState) -> dict[str, Any]:
     return {"reranked_context": top}
 
 
+def _has_usable_internal_context(reranked: list[dict[str, Any]]) -> bool:
+    """Did internal retrieval produce anything trustworthy on its own?
+
+    Mirrors the existing "min usable chunks" gate used by ``needs_web_fallback``.
+    """
+    usable = filter_context_items(reranked or [])
+    min_chunks = max(1, int(os.environ.get("RAG_WEB_FALLBACK_MIN_CHUNKS", "3") or 3))
+    # Internal context is "usable on its own" only when we cleared the same bar
+    # that would have skipped the web fallback in the first place.
+    return len(usable) >= min_chunks
+
+
 def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
-    """Append Wikipedia / Tavily chunks when internal retrieval is weak."""
+    """Append Wikipedia / Tavily chunks when internal retrieval is weak.
+
+    Guardrails:
+    - If supplemental web search is rate-limited or errors out AND we don't
+      already have enough usable internal context, set
+      ``insufficient_context=True`` so the graph routes to the "I don't have
+      enough information" branch instead of letting the generator fabricate
+      around stale / tangential internal chunks.
+    """
     reranked = list(state.get("reranked_context") or [])
     if not needs_web_fallback(reranked):
         return {}
@@ -659,7 +682,7 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
     ts = (state.get("time_start_override") or (dec or {}).get("time_start") or "").strip()[:10]
     te = (state.get("time_end_override") or (dec or {}).get("time_end") or "").strip()[:10]
     try:
-        raw = retrieve_web_fallback(
+        result = retrieve_web_fallback_detailed(
             q,
             dec,
             geo_override=str(state.get("geo_override") or ""),
@@ -667,17 +690,74 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
             time_end=te or None,
         )
     except Exception:
-        logger.exception("Web fallback retrieval failed; continuing without web context")
-        return {}
+        logger.exception("Web fallback retrieval raised; treating as error")
+        result = None  # type: ignore[assignment]
 
-    if not raw:
-        return {}
+    out: dict[str, Any] = {}
 
-    web_chunks = [format_web_chunk_for_context(item) for item in raw]
+    if result is None:
+        out["web_fallback_status"] = "error"
+        out["web_fallback_reason"] = "exception in retrieve_web_fallback_detailed"
+        if not _has_usable_internal_context(reranked):
+            out["insufficient_context"] = True
+        return out
+
+    out["web_fallback_status"] = result.status
+    out["web_fallback_reason"] = result.reason
+
+    if result.items:
+        web_chunks = [format_web_chunk_for_context(item) for item in result.items]
+        out["web_results"] = web_chunks
+        out["reranked_context"] = reranked + web_chunks
+        return out
+
+    # No web items recovered the query. Only proceed to the standard generator
+    # if internal context was already strong enough on its own — otherwise mark
+    # the turn as insufficient so we don't hallucinate around tangential chunks.
+    if result.status in ("rate_limited", "error", "disabled", "empty") and not _has_usable_internal_context(reranked):
+        logger.info(
+            "Web fallback status=%s with weak internal context — routing to insufficient_context. reason=%s",
+            result.status,
+            result.reason,
+        )
+        out["insufficient_context"] = True
+
+    return out
+
+
+_INSUFFICIENT_CONTEXT_ANSWER = (
+    "I don't have enough reliable information to answer that confidently right now. "
+    "My internal knowledge base didn't return a strong match and supplemental web "
+    "search wasn't available for this query. Could you try rephrasing, narrowing the "
+    "country or time range, or asking a related question I can ground in available "
+    "sources?"
+)
+
+
+def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
+    """Deterministic, non-hallucinating response when grounding is unavailable.
+
+    Returns the canned answer plus an empty ``citations`` list — explicitly NOT
+    surfacing the weak internal chunks as if they answered the question.
+    """
+    status = state.get("web_fallback_status") or "unknown"
+    reason = state.get("web_fallback_reason") or ""
+    logger.info(
+        "Returning insufficient_context response (web_fallback_status=%s reason=%s)",
+        status,
+        reason,
+    )
     return {
-        "web_results": web_chunks,
-        "reranked_context": reranked + web_chunks,
+        "answer": _INSUFFICIENT_CONTEXT_ANSWER,
+        "citations": [],
     }
+
+
+def _route_after_web_fallback(state: RAGGraphState) -> str:
+    """Route post-web_fallback: either explicit 'insufficient' branch or normal generate."""
+    if state.get("insufficient_context"):
+        return "insufficient_context"
+    return "generate"
 
 
 def node_generate(state: RAGGraphState) -> dict[str, Any]:
@@ -762,6 +842,7 @@ def build_graph():
     graph.add_node("merge", node_merge)
     graph.add_node("rerank", node_rerank)
     graph.add_node("web_fallback", node_web_fallback)
+    graph.add_node("insufficient_context", node_insufficient_context)
     graph.add_node("generate", node_generate)
     graph.add_node("generate_meta", node_generate_meta)
     graph.add_node("generate_product", node_generate_product)
@@ -780,8 +861,9 @@ def build_graph():
     graph.add_edge("bq_retrieve", "merge")
     graph.add_edge("merge", "rerank")
     graph.add_conditional_edges("rerank", route_after_rerank)
-    graph.add_edge("web_fallback", "generate")
+    graph.add_conditional_edges("web_fallback", _route_after_web_fallback)
     graph.add_edge("generate", END)
+    graph.add_edge("insufficient_context", END)
     graph.add_edge("generate_meta", END)
     graph.add_edge("generate_product", END)
 

@@ -277,6 +277,12 @@ Conditional node after rerank (`RAG_WEB_FALLBACK_ENABLED=1`, off by default).
 
 **Tier 1:** Wikipedia search + REST summary (no API key). **Tier 2:** Tavily news search if Wikipedia empty and `TAVILY_API_KEY` set (optional `langchain-tavily`). Chunks append to `reranked_context` with `_context_kind` `web_wikipedia` or `web_search`. Fail-soft: timeouts/errors return no web chunks.
 
+**Guardrails (free-tier Tavily protection + no-hallucination contract):**
+- Per-UTC-day call counter (`RAG_TAVILY_DAILY_LIMIT`, default **900**) stays under the free-tier ~1k/day cap. Set to `0` as an operational kill-switch.
+- Rate-limit detection: `tavily_tools._wrap_error` flags 429 / quota errors with a `RATE_LIMIT:` prefix; `_retrieve_tavily` returns `status="rate_limited"` and **does not retry**.
+- Transient (non-rate-limit) errors are retried once after `RAG_TAVILY_BACKOFF_S` (default 2 s).
+- `retrieve_web_fallback_detailed` returns a `WebFallbackResult(items, status, reason)`. When the status is `rate_limited` / `error` / `disabled` / `empty` AND the existing reranked context is below `RAG_WEB_FALLBACK_MIN_CHUNKS`, the graph routes to `node_insufficient_context` (deterministic "I don't have enough information" answer, no citations) instead of letting `node_generate` fabricate around stale internal chunks.
+
 ### 7.3 Generate ([`chatbot/generator.py`](chatbot/generator.py))
 
 - Builds **system + user** messages for OpenRouter / OpenAI-compatible APIs.
@@ -444,6 +450,8 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_WEB_FALLBACK_MIN_CHUNKS` | Trigger when usable chunks below this (default 3) |
 | `RAG_WEB_WIKI_TOP_K` | Max Wikipedia summaries (default 2) |
 | `RAG_WEB_TAVILY_TOP_K` | Max Tavily results when wiki empty (default 2) |
+| `RAG_TAVILY_DAILY_LIMIT` | Per-UTC-day cap on Tavily calls (default 900; `0` = disable Tavily) |
+| `RAG_TAVILY_BACKOFF_S` | Backoff seconds before single retry on transient Tavily errors (default 2; never retries on 429) |
 | `RAG_WEB_TOP_K` | Cap total web chunks appended (default 3) |
 | `RAG_WEB_TIMEOUT_S` | HTTP timeout per provider (default 8) |
 | `RAG_WEB_FALLBACK_MIN_RERANK_SCORE` | Optional rerank score gate (default -1 = disabled) |
