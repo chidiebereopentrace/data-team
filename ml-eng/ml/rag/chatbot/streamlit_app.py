@@ -324,8 +324,29 @@ with st.sidebar:
     st.caption(f"URL: {llm_url}")
     st.caption(f"Model: {llm_model_id()}")
     st.caption(f"Configured: {llm_configured()}")
-    rerank_on = os.environ.get("RAG_LLM_RERANK", "off").strip().lower() not in ("off", "0", "false")
-    st.caption(f"LLM rerank: {'on' if rerank_on else 'off (pass-through order)'}")
+    # Reranker mode resolution mirrors chatbot.reranker._reranker_mode:
+    # explicit RAG_RERANKER_MODE wins; legacy RAG_LLM_RERANK still honoured;
+    # default is cross_encoder.
+    _reranker_mode_env = os.environ.get("RAG_RERANKER_MODE", "").strip().lower()
+    _legacy_rerank = os.environ.get("RAG_LLM_RERANK", "").strip().lower()
+    if _reranker_mode_env in {"cross_encoder", "llm", "off"}:
+        reranker_mode = _reranker_mode_env
+    elif _legacy_rerank in {"on", "1", "true", "yes"}:
+        reranker_mode = "llm"
+    elif _legacy_rerank in {"off", "0", "false", "no"}:
+        reranker_mode = "off"
+    else:
+        reranker_mode = "cross_encoder"
+    _reranker_model = (
+        os.environ.get("RAG_RERANKER_MODEL", "").strip()
+        or "Xenova/ms-marco-MiniLM-L-6-v2"
+    )
+    if reranker_mode == "cross_encoder":
+        st.caption(f"Reranker: cross_encoder ({_reranker_model})")
+    elif reranker_mode == "llm":
+        st.caption("Reranker: llm (per-chunk LLM scoring — slow)")
+    else:
+        st.caption("Reranker: off (pass-through with source boost)")
     if not llm_configured():
         st.warning("Set RAG_LLM_BASE_URL in ml-eng/config/.env and restart Streamlit.")
 
