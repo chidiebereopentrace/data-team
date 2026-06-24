@@ -71,6 +71,40 @@ def _plain(text: str, max_len: int = 120_000) -> str:
     return t[:max_len] if len(t) > max_len else t
 
 
+# Rate-limit error sentinel.
+# Callers can test ``err.startswith(TAVILY_RATE_LIMIT_PREFIX)`` to detect a 429
+# / usage-limit response and skip retries (retrying just burns quota).
+TAVILY_RATE_LIMIT_PREFIX = "RATE_LIMIT:"
+
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    """
+    Best-effort detector for Tavily / langchain-tavily rate-limit signals.
+
+    langchain-tavily raises generic exceptions whose ``str`` form embeds the
+    underlying HTTP status and body — that is currently the only stable handle
+    we have, so we match on textual markers.
+    """
+    msg = str(exc).lower()
+    markers = (
+        "429",
+        "too many requests",
+        "rate limit",
+        "rate-limit",
+        "rate_limit",
+        "usage limit",
+        "usage_limit",
+        "quota",
+    )
+    return any(m in msg for m in markers)
+
+
+def _wrap_error(exc: BaseException) -> str:
+    if _is_rate_limit_error(exc):
+        return f"{TAVILY_RATE_LIMIT_PREFIX} {exc}"
+    return str(exc)
+
+
 def tavily_extract_urls(urls: list[str], *, extract_depth: str = "basic") -> tuple[str | None, str | None]:
     """
     Extract main text from publisher URLs via Tavily Extract API.
@@ -92,7 +126,7 @@ def tavily_extract_urls(urls: list[str], *, extract_depth: str = "basic") -> tup
         tool: Any = TavilyExtract(extract_depth=extract_depth)
         out = tool.invoke({"urls": clean[:3]})
     except Exception as exc:
-        return None, str(exc)
+        return None, _wrap_error(exc)
 
     results = (out or {}).get("results") or []
     for row in results:
@@ -140,7 +174,7 @@ def tavily_search_news(
             payload["end_date"] = end_date
         out = tool.invoke(payload)
     except Exception as exc:
-        return None, [], str(exc)
+        return None, [], _wrap_error(exc)
 
     results = (out or {}).get("results") or []
     chunks: list[str] = []
