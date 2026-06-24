@@ -4,13 +4,30 @@ Supplemental web retrieval for RAG when internal corpora are weak.
 Tier 1: Wikipedia (free, requests only).
 Tier 2: Tavily news search (optional, requires TAVILY_API_KEY + langchain-tavily).
 
-Fail-soft: timeouts and API errors return empty lists; never raise through the graph.
+Guardrails:
+- Per-UTC-day call counter for Tavily (``RAG_TAVILY_DAILY_LIMIT``, default 900)
+  to stay under the free-tier ~1k/day cap. Counter is in-process only; a
+  single replica that survives a day is sufficient for the freemium scale we
+  ship at launch. Multi-replica enforcement is a post-launch task (use Redis).
+- Rate-limit detection: when Tavily returns a 429 / quota error we stop
+  immediately, do **not** retry, and surface a structured ``rate_limited``
+  status so the graph can route to an "insufficient context" response
+  instead of papering over with a stale internal document.
+- Single short backoff (``RAG_TAVILY_BACKOFF_S``, default 2s) on transient
+  network errors only — never on rate-limit responses.
+
+Fail-soft: timeouts and unknown API errors return an ``error`` status with
+empty items; the graph never sees a raised exception.
 """
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+import threading
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Literal
 from urllib.parse import quote
 
 import requests
@@ -22,6 +39,25 @@ logger = logging.getLogger(__name__)
 
 _WIKI_API = "https://en.wikipedia.org/w/api.php"
 _WIKI_REST = "https://en.wikipedia.org/api/rest_v1/page/summary"
+
+WebFallbackStatus = Literal["ok", "empty", "rate_limited", "disabled", "error"]
+
+
+@dataclass
+class WebFallbackResult:
+    """Outcome of a supplemental web retrieval attempt.
+
+    ``items`` holds usable web chunks (may be empty even when ``status == "ok"``
+    if every result failed length / quality checks).
+
+    ``status`` lets the graph distinguish "tried and got nothing usable" from
+    "tried and got rate-limited / errored", which is what drives the
+    "insufficient information" branch.
+    """
+
+    items: list[dict[str, Any]] = field(default_factory=list)
+    status: WebFallbackStatus = "empty"
+    reason: str = ""
 
 
 def _env_on(name: str, *, default: bool = False) -> bool:
@@ -49,6 +85,57 @@ def web_fallback_enabled() -> bool:
 
 def _web_timeout_s() -> float:
     return _env_float("RAG_WEB_TIMEOUT_S", 8.0)
+
+
+# --- Tavily daily quota counter (in-process, per UTC day) ---
+_quota_lock = threading.Lock()
+_quota_state: dict[str, Any] = {"date": "", "count": 0}
+
+
+def _utc_today() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _tavily_daily_limit() -> int:
+    """Hard ceiling for Tavily calls per UTC day.
+
+    Default 900 keeps us safely under the free tier's ~1000/day cap.
+    Set ``RAG_TAVILY_DAILY_LIMIT`` to tune. Set to 0 to disable Tavily
+    entirely (operational kill switch).
+    """
+    return _env_int("RAG_TAVILY_DAILY_LIMIT", 900)
+
+
+def _tavily_backoff_s() -> float:
+    return _env_float("RAG_TAVILY_BACKOFF_S", 2.0)
+
+
+def _tavily_quota_available() -> bool:
+    limit = _tavily_daily_limit()
+    if limit <= 0:
+        return False
+    today = _utc_today()
+    with _quota_lock:
+        if _quota_state["date"] != today:
+            _quota_state["date"] = today
+            _quota_state["count"] = 0
+        return int(_quota_state["count"]) < limit
+
+
+def _tavily_record_call() -> None:
+    today = _utc_today()
+    with _quota_lock:
+        if _quota_state["date"] != today:
+            _quota_state["date"] = today
+            _quota_state["count"] = 0
+        _quota_state["count"] = int(_quota_state["count"]) + 1
+
+
+def reset_tavily_quota() -> None:
+    """Test helper: clear the in-process daily counter."""
+    with _quota_lock:
+        _quota_state["date"] = ""
+        _quota_state["count"] = 0
 
 
 def _context_kind(item: dict[str, Any]) -> str:
@@ -208,32 +295,7 @@ def _retrieve_wikipedia(
     return items
 
 
-def _retrieve_tavily(
-    search_query: str,
-    *,
-    top_k: int,
-    time_start: str | None,
-    time_end: str | None,
-) -> list[dict[str, Any]]:
-    try:
-        from ml.web_data_mining.agentic.tavily_tools import is_tavily_configured, tavily_search_news
-    except ImportError:
-        logger.warning("Tavily tools unavailable (ml.web_data_mining not importable)")
-        return []
-
-    if not is_tavily_configured():
-        return []
-
-    _text, results, err = tavily_search_news(
-        search_query,
-        max_results=top_k,
-        start_date=time_start[:10] if time_start else None,
-        end_date=time_end[:10] if time_end else None,
-    )
-    if err:
-        logger.warning("Tavily search failed: %s", err)
-        return []
-
+def _tavily_results_to_items(results: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for row in results[:top_k]:
         title = str(row.get("title") or "").strip()
@@ -257,6 +319,156 @@ def _retrieve_tavily(
     return items
 
 
+def _retrieve_tavily(
+    search_query: str,
+    *,
+    top_k: int,
+    time_start: str | None,
+    time_end: str | None,
+) -> tuple[list[dict[str, Any]], WebFallbackStatus, str]:
+    """Tier-2 Tavily news search with quota + rate-limit guardrails.
+
+    Returns ``(items, status, reason)``.  Status values:
+    - ``ok``           : got at least one usable item
+    - ``empty``        : called Tavily, got zero usable items (or no API key)
+    - ``rate_limited`` : 429 / quota signal, OR daily quota exhausted locally
+    - ``disabled``     : Tavily tools not importable / not configured
+    - ``error``        : transient error after backoff retry
+    """
+    try:
+        from ml.web_data_mining.agentic.tavily_tools import (
+            TAVILY_RATE_LIMIT_PREFIX,
+            is_tavily_configured,
+            tavily_search_news,
+        )
+    except ImportError:
+        logger.warning("Tavily tools unavailable (ml.web_data_mining not importable)")
+        return [], "disabled", "tavily tools not importable"
+
+    if not is_tavily_configured():
+        return [], "disabled", "TAVILY_API_KEY not set"
+
+    if not _tavily_quota_available():
+        logger.warning(
+            "Tavily daily quota exhausted (limit=%d, count=%d). Skipping web search.",
+            _tavily_daily_limit(),
+            int(_quota_state.get("count") or 0),
+        )
+        return [], "rate_limited", "local daily quota exhausted"
+
+    started = time.monotonic()
+    _tavily_record_call()
+    _text, results, err = tavily_search_news(
+        search_query,
+        max_results=top_k,
+        start_date=time_start[:10] if time_start else None,
+        end_date=time_end[:10] if time_end else None,
+    )
+    latency_ms = int((time.monotonic() - started) * 1000)
+
+    if err:
+        if err.startswith(TAVILY_RATE_LIMIT_PREFIX):
+            logger.warning(
+                "Tavily rate-limited (no retry, no fallback to stale doc). latency_ms=%d err=%s",
+                latency_ms,
+                err,
+            )
+            return [], "rate_limited", err
+        # Single short backoff for transient errors; do NOT retry on rate-limit.
+        backoff = _tavily_backoff_s()
+        if backoff > 0:
+            logger.info(
+                "Tavily transient error (will retry once after %.1fs): %s", backoff, err
+            )
+            time.sleep(backoff)
+            _tavily_record_call()
+            started = time.monotonic()
+            _text, results, err = tavily_search_news(
+                search_query,
+                max_results=top_k,
+                start_date=time_start[:10] if time_start else None,
+                end_date=time_end[:10] if time_end else None,
+            )
+            latency_ms = int((time.monotonic() - started) * 1000)
+            if err:
+                if err.startswith(TAVILY_RATE_LIMIT_PREFIX):
+                    logger.warning("Tavily rate-limited on retry: %s", err)
+                    return [], "rate_limited", err
+                logger.warning(
+                    "Tavily search failed after retry. latency_ms=%d err=%s",
+                    latency_ms,
+                    err,
+                )
+                return [], "error", err
+        else:
+            logger.warning(
+                "Tavily search failed (no backoff configured). latency_ms=%d err=%s",
+                latency_ms,
+                err,
+            )
+            return [], "error", err
+
+    items = _tavily_results_to_items(results, top_k)
+    logger.info(
+        "Tavily search ok: query_len=%d results=%d usable=%d latency_ms=%d",
+        len(search_query),
+        len(results or []),
+        len(items),
+        latency_ms,
+    )
+    return items, ("ok" if items else "empty"), ""
+
+
+def retrieve_web_fallback_detailed(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+    *,
+    geo_override: str = "",
+    time_start: str | None = None,
+    time_end: str | None = None,
+) -> WebFallbackResult:
+    """
+    Fetch supplemental web chunks with structured status reporting.
+
+    Tries Wikipedia first (free). If Wikipedia returns nothing usable, escalates
+    to Tavily — gated by the per-day quota and respecting rate-limit signals.
+
+    The returned ``WebFallbackResult.status`` is what the graph uses to decide
+    whether to fall through to the standard generator (``ok``) or to route to
+    the "insufficient context" branch (``rate_limited``, ``error``, ``empty``,
+    or ``disabled``).
+    """
+    if not web_fallback_enabled():
+        return WebFallbackResult(status="disabled", reason="RAG_WEB_FALLBACK_ENABLED is off")
+
+    search_query = _build_wiki_search_query(
+        query, decomposition, geo_override=geo_override
+    )
+    if len(search_query) < 5:
+        return WebFallbackResult(status="empty", reason="search query too short")
+
+    timeout_s = _web_timeout_s()
+    wiki_top_k = _env_int("RAG_WEB_WIKI_TOP_K", 2)
+    tavily_top_k = _env_int("RAG_WEB_TAVILY_TOP_K", 2)
+    total_cap = _env_int("RAG_WEB_TOP_K", 3)
+
+    wiki_items = _retrieve_wikipedia(search_query, top_k=wiki_top_k, timeout_s=timeout_s)
+    if wiki_items:
+        return WebFallbackResult(items=wiki_items[:total_cap], status="ok", reason="wikipedia")
+
+    tavily_items, status, reason = _retrieve_tavily(
+        search_query,
+        top_k=tavily_top_k,
+        time_start=time_start,
+        time_end=time_end,
+    )
+    if status == "ok":
+        return WebFallbackResult(items=tavily_items[:total_cap], status="ok", reason="tavily")
+    # Wikipedia returned nothing and Tavily didn't recover us — propagate the
+    # underlying status so the graph can refuse to fabricate an answer.
+    return WebFallbackResult(items=[], status=status, reason=reason or "no usable web results")
+
+
 def retrieve_web_fallback(
     query: str,
     decomposition: dict[str, Any] | None = None,
@@ -266,32 +478,19 @@ def retrieve_web_fallback(
     time_end: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Fetch supplemental web chunks: Wikipedia first, then Tavily if Wikipedia is empty.
+    Backwards-compatible wrapper: returns only the items list.
+
+    New callers should prefer :func:`retrieve_web_fallback_detailed` so they
+    can inspect ``status`` and route to an "insufficient context" response
+    instead of running generation on stale internal context.
     """
-    if not web_fallback_enabled():
-        return []
-
-    search_query = _build_wiki_search_query(
-        query, decomposition, geo_override=geo_override
-    )
-    if len(search_query) < 5:
-        return []
-
-    timeout_s = _web_timeout_s()
-    wiki_top_k = _env_int("RAG_WEB_WIKI_TOP_K", 2)
-    tavily_top_k = _env_int("RAG_WEB_TAVILY_TOP_K", 2)
-    total_cap = _env_int("RAG_WEB_TOP_K", 3)
-
-    items = _retrieve_wikipedia(search_query, top_k=wiki_top_k, timeout_s=timeout_s)
-    if not items:
-        items = _retrieve_tavily(
-            search_query,
-            top_k=tavily_top_k,
-            time_start=time_start,
-            time_end=time_end,
-        )
-
-    return items[:total_cap]
+    return retrieve_web_fallback_detailed(
+        query,
+        decomposition,
+        geo_override=geo_override,
+        time_start=time_start,
+        time_end=time_end,
+    ).items
 
 
 def format_web_chunk_for_context(item: dict[str, Any]) -> dict[str, Any]:

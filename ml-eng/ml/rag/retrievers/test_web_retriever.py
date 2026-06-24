@@ -6,10 +6,14 @@ import os
 from unittest import mock
 
 from ml.rag.retrievers.web_retriever import (
+    WebFallbackResult,
     _build_wiki_search_query,
+    _retrieve_tavily,
     _retrieve_wikipedia,
     needs_web_fallback,
+    reset_tavily_quota,
     retrieve_web_fallback,
+    retrieve_web_fallback_detailed,
     route_after_rerank,
 )
 
@@ -142,10 +146,123 @@ def test_retrieve_web_fallback_tavily_when_wiki_empty() -> None:
         ):
             with mock.patch(
                 "ml.rag.retrievers.web_retriever._retrieve_tavily",
-                return_value=tavily_items,
+                return_value=(tavily_items, "ok", ""),
             ) as tavily_mock:
                 out = retrieve_web_fallback("rice policy Senegal", None)
 
     assert len(out) == 1
     assert out[0]["_context_kind"] == "web_search"
     tavily_mock.assert_called_once()
+
+
+# --- Guardrail tests (rate limit, quota, structured result) ---
+
+
+def test_retrieve_tavily_rate_limit_no_retry(monkeypatch) -> None:
+    """A 429 / quota error must surface as ``rate_limited`` and NOT trigger backoff retry."""
+    reset_tavily_quota()
+    monkeypatch.setenv("RAG_TAVILY_DAILY_LIMIT", "100")
+    # Make backoff non-zero so we'd notice an accidental retry on a rate-limit.
+    monkeypatch.setenv("RAG_TAVILY_BACKOFF_S", "0.01")
+
+    rate_limited = mock.Mock(return_value=(None, [], "RATE_LIMIT: 429 Too Many Requests"))
+    with mock.patch(
+        "ml.web_data_mining.agentic.tavily_tools.is_tavily_configured",
+        return_value=True,
+    ):
+        with mock.patch(
+            "ml.web_data_mining.agentic.tavily_tools.tavily_search_news",
+            rate_limited,
+        ):
+            items, status, reason = _retrieve_tavily(
+                "rice senegal", top_k=2, time_start=None, time_end=None
+            )
+
+    assert items == []
+    assert status == "rate_limited"
+    assert "RATE_LIMIT" in reason
+    # Critical: do NOT retry on a rate-limit signal — that would just burn quota.
+    assert rate_limited.call_count == 1
+
+
+def test_retrieve_tavily_transient_error_retries_once(monkeypatch) -> None:
+    """Transient (non-rate-limit) errors should retry exactly once after backoff."""
+    reset_tavily_quota()
+    monkeypatch.setenv("RAG_TAVILY_DAILY_LIMIT", "100")
+    monkeypatch.setenv("RAG_TAVILY_BACKOFF_S", "0.01")
+
+    good_results = [
+        {"title": "T", "content": "Some news content about rice in Senegal.", "url": "https://x"}
+    ]
+    side_effect = [
+        (None, [], "connection reset"),  # first call: transient
+        ("ok", good_results, None),       # retry: succeeds
+    ]
+    call = mock.Mock(side_effect=side_effect)
+    with mock.patch(
+        "ml.web_data_mining.agentic.tavily_tools.is_tavily_configured",
+        return_value=True,
+    ):
+        with mock.patch(
+            "ml.web_data_mining.agentic.tavily_tools.tavily_search_news",
+            call,
+        ):
+            items, status, _reason = _retrieve_tavily(
+                "rice senegal", top_k=2, time_start=None, time_end=None
+            )
+
+    assert call.call_count == 2
+    assert status == "ok"
+    assert len(items) == 1
+
+
+def test_retrieve_tavily_local_quota_exhausted_skips_call(monkeypatch) -> None:
+    """When the in-process daily counter has hit the limit, do not call Tavily at all."""
+    reset_tavily_quota()
+    monkeypatch.setenv("RAG_TAVILY_DAILY_LIMIT", "1")
+
+    call = mock.Mock(return_value=("x", [{"title": "T", "content": "x" * 50, "url": "https://x"}], None))
+    with mock.patch(
+        "ml.web_data_mining.agentic.tavily_tools.is_tavily_configured",
+        return_value=True,
+    ):
+        with mock.patch(
+            "ml.web_data_mining.agentic.tavily_tools.tavily_search_news",
+            call,
+        ):
+            # First call consumes the only quota slot
+            _items1, status1, _r1 = _retrieve_tavily(
+                "q1", top_k=1, time_start=None, time_end=None
+            )
+            # Second call must be blocked locally
+            items2, status2, reason2 = _retrieve_tavily(
+                "q2", top_k=1, time_start=None, time_end=None
+            )
+
+    assert status1 == "ok"
+    assert call.call_count == 1  # only the first attempt actually hit Tavily
+    assert items2 == []
+    assert status2 == "rate_limited"
+    assert "quota" in reason2.lower()
+
+
+def test_retrieve_web_fallback_detailed_propagates_rate_limit(monkeypatch) -> None:
+    """Wiki empty + Tavily rate-limited must surface rate_limited (not ok) so the graph
+    can refuse to answer instead of papering over with stale internal docs."""
+    reset_tavily_quota()
+    monkeypatch.setenv("RAG_WEB_FALLBACK_ENABLED", "1")
+
+    with mock.patch(
+        "ml.rag.retrievers.web_retriever._retrieve_wikipedia",
+        return_value=[],
+    ):
+        with mock.patch(
+            "ml.rag.retrievers.web_retriever._retrieve_tavily",
+            return_value=([], "rate_limited", "RATE_LIMIT: 429"),
+        ):
+            result = retrieve_web_fallback_detailed("rice policy senegal", None)
+
+    assert isinstance(result, WebFallbackResult)
+    assert result.items == []
+    assert result.status == "rate_limited"
+    assert "RATE_LIMIT" in result.reason
