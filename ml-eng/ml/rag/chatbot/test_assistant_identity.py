@@ -8,6 +8,7 @@ from ml.rag.chatbot.assistant_identity import (
     is_meta_query,
     static_meta_answer,
 )
+from ml.rag.chatbot.product_knowledge import is_product_query
 
 
 def test_is_meta_query_identity() -> None:
@@ -16,9 +17,13 @@ def test_is_meta_query_identity() -> None:
     assert is_meta_query("What are you doing?")
 
 
-def test_is_meta_query_product() -> None:
-    assert is_meta_query("Tell me about OpenTrace")
-    assert is_meta_query("what is ask adza")
+def test_is_meta_query_product_moved_to_product_knowledge() -> None:
+    assert not is_meta_query("Tell me about OpenTrace")
+    assert not is_meta_query("what is ask adza")
+    assert not is_meta_query("what is OFIA")
+    assert is_product_query("Tell me about OpenTrace")
+    assert is_product_query("what is ask adza")
+    assert is_product_query("what is OFIA")
 
 
 def test_is_meta_query_non_meta() -> None:
@@ -30,9 +35,8 @@ def test_classify_meta_query_buckets() -> None:
     assert classify_meta_query("Who are you?") == "identity"
     assert classify_meta_query("what is your name") == "name"
     assert classify_meta_query("what do you do") == "role"
-    assert classify_meta_query("Tell me about OpenTrace") == "opentrace"
-    assert classify_meta_query("what is ask adza") == "ask_adza"
-    assert classify_meta_query("what is OFIA") == "pillar"
+    assert classify_meta_query("Tell me about OpenTrace") is None
+    assert classify_meta_query("what is OFIA") is None
 
 
 def test_static_meta_answer_identity() -> None:
@@ -43,7 +47,6 @@ def test_static_meta_answer_identity() -> None:
 
 
 def test_meta_answer_includes_footer() -> None:
-    # generate_meta_answer is the public entry point that appends the footer
     from ml.rag.chatbot.assistant_identity import generate_meta_answer
 
     ans = generate_meta_answer("Who are you?")

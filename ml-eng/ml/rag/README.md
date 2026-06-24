@@ -5,6 +5,7 @@ Modular RAG that queries **BigQuery** and **Qdrant** (news, research, BQ table d
 | Document | Use when |
 |----------|----------|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | System design, data flow, env matrix, extension points |
+| **[docs/API.md](docs/API.md)** | HTTP API reference (`POST /query`, `POST /v1/chat`, schemas, errors) |
 | **[docs/SCRIPTS.md](docs/SCRIPTS.md)** | Every CLI/module: flags, examples, workflows |
 | [docs/BQ_NL2SQL_PLAN.md](docs/BQ_NL2SQL_PLAN.md) | Bronze NL-to-SQL design |
 | [docs/EXPECTED_QUESTIONS.md](docs/EXPECTED_QUESTIONS.md) | Example question types |
@@ -12,17 +13,21 @@ Modular RAG that queries **BigQuery** and **Qdrant** (news, research, BQ table d
 ## Graph shape (current)
 
 ```
-START → decompose → parallel_retrieve → bq_retrieve → merge → rerank → generate → END
-                         │
-            ┌────────────┼────────────┐
-            ▼            ▼            ▼
-      bq_table_match   news vector   academic vector
+START → decompose ─┬─ identity meta? ──→ generate_meta ──→ END
+                   ├─ product query? ──→ generate_product ──→ END
+                   └─ else → parallel_retrieve → bq_retrieve → merge → rerank ─┬─ weak context? → web_fallback → generate → END
+                                                                              └─ else ───────────────────────────────→ generate → END
+                                         │
+                        ┌────────────────┼────────────────┐
+                        ▼                ▼                ▼
+                  bq_table_match    news vector    academic vector
 ```
 
-- **decompose**: heuristics + optional LLM → geography, time range, entities, domains.
+- **decompose**: heuristics + optional LLM → geography, time range, entities, domains; routes identity meta (`who are you`), product KB (`what is the aim of OpenTrace`), or full RAG.
+- **generate_meta** / **generate_product**: short-circuit paths with no retrieval; product answers use [`chatbot/data/opentrace_product.json`](chatbot/data/opentrace_product.json).
 - **parallel_retrieve**: BQ table-description match + news + research Qdrant search (thread pool).
 - **bq_retrieve**: NL-to-SQL (LM Studio or HF) from table hints → execute bronze SELECTs; up to `RAG_BQ_MAX_SQL_QUERIES` queries.
-- **merge / rerank / generate**: fuse context; optional LLM rerank (`RAG_LLM_RERANK=off` recommended locally); answer via [`llm_chat.py`](llm_chat.py).
+- **merge / rerank / web_fallback / generate**: fuse context; optional LLM rerank (`RAG_LLM_RERANK=off` recommended locally); when `RAG_WEB_FALLBACK_ENABLED=1` and internal context is weak, fetch Wikipedia (then Tavily if wiki empty) via [`retrievers/web_retriever.py`](retrievers/web_retriever.py); answer via [`llm_chat.py`](llm_chat.py).
 
 Details: [ARCHITECTURE.md §4](ARCHITECTURE.md#4-runtime-pipeline-run_rag).
 
@@ -57,8 +62,50 @@ See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/c
 
 **Streamlit** ([`chatbot/streamlit_app.py`](ml/rag/chatbot/streamlit_app.py)): multiple **chat sessions** in the sidebar; **pipeline debug** shows the last run’s decomposition and retrieval stats.
 
-**API** (`POST /query`): responses include **`session_id`**. Reuse it for **server-side** `{conversation_summary, recent_turns}` (plus optional `stakeholder_type`). Backed by Redis when `RAG_REDIS_URL` is set (durable across workers/restarts, required for scaling). Without Redis the store is in-process only (single worker; lost on restart). Send **`conversation_history`** to supply prior turns from the client (fully stateless path); history is compacted for that request only and the server store is **not** updated.
-Meta / identity questions ("who are you", "tell me about OpenTrace", etc.) short-circuit retrieval and return clean answers with a static attribution footer. Agricultural RAG answers include a structured "Citations" block when source metadata is available.
+**API** (`POST /query` and `POST /v1/chat`): responses include **`session_id`**, structured **`citations`**, and aggregated LLM **`usage`** (sum of all LLM calls in the request: decompose, BQ NL2SQL, memory fold, rerank if on, generation). Example shape:
+
+```json
+{
+  "answer": "Prose with inline footnotes [14][18] only",
+  "citations": [
+    { "id": 14, "kind": "academic", "text": "[Academic] ...", "url": null },
+    { "id": 18, "kind": "news", "text": "[News] ...", "url": "https://..." }
+  ],
+  "session_id": "...",
+  "usage": {
+    "total_tokens": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
+```
+
+By default **`answer`** is prose-only (no trailing **Sources** markdown block); clients should render `citations`. Set **`RAG_APPEND_SOURCES_TO_ANSWER=1`** for legacy embedded Sources in `answer` (e.g. Streamlit during transition).
+
+Reuse **`session_id`** for **server-side** `{conversation_summary, recent_turns}`. Backed by Redis when `RAG_REDIS_URL` is set (durable across workers/restarts, required for scaling). Without Redis the store is in-process only (single worker; lost on restart). Send **`chat_history`** to supply prior turns from the client (fully stateless path); history is compacted for that request only and the server store is **not** updated. Deprecated alias: **`conversation_history`**.
+
+**Canonical `POST /query` request** (backend contract):
+
+```json
+{
+  "query": "What are rice yield trends?",
+  "session_id": "abc123...",
+  "user_profile": {
+    "country": "Ghana",
+    "plan_type": "Farmers",
+    "category": "Farmers"
+  },
+  "chat_history": [
+    { "role": "user", "content": "Previous question" },
+    { "role": "assistant", "content": "Previous answer" }
+  ],
+  "include_trace": false
+}
+```
+
+**`user_profile`**: `plan_type` (access tier + retrieval gates) and `category` (generation persona) are required when the profile is sent; **`country`** is a **retrieval geo filter only** for **`plan_type: Farmers`**. Other plans use geography from query decomposition. Legacy `stakeholder_type`, `audience_instructions`, and top-level `geo_override` are rejected.
+
+Meta / identity and product questions short-circuit retrieval (see `assistant_identity.py`, `product_knowledge.py`). Full RAG answers use numbered context sources (`[Source N]` in the LLM context) with Wikipedia-style inline footnotes (`[1]`, `[5]`) in prose. Referenced sources appear in **`citations`** by default (`RAG_CITATIONS_MODE=referenced`; set `all` for every packed source). BQ validation/execution failures are dropped before generation; model-written Sources appendices are stripped; table names and SQL are not shown to users.
 
 **Redis config** (new in scaling release):
 - `RAG_REDIS_URL` (or `REDIS_URL`): e.g. `redis://host:6379/0` or rediss:// for TLS.
@@ -249,15 +296,13 @@ Response:
 {
   "answer": "...",
   "session_id": "abc123...",
-  "error": null,
-  "has_bq_results": true,
-  "has_vector_results": false
+  "error": null
 }
 ```
 
 ### Observability with Langfuse (optional)
 
-Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST` to emit traces for every `/query` request, LLM generation, retrieval step, and LangGraph node execution. Traces appear in the Langfuse UI (local or Cloud) with full token usage, latency, and metadata (session_id, stakeholder_type, etc.).
+Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST` to emit traces for every `/query` request, LLM generation, retrieval step, and LangGraph node execution. Traces appear in the Langfuse UI (local or Cloud) with full token usage, latency, and metadata (session_id, plan_type, category, etc.).
 
 - When keys are absent the integration is a silent no-op (safe for HF Spaces that do not need tracing).
 - The same env vars work for local `docker compose`, GCE, and HF (point HOST at your Langfuse instance or cloud).

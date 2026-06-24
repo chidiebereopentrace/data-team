@@ -1,15 +1,35 @@
 # Serving (exposition API)
 
-Public, versioned HTTP API for the OpenTrace chatbot. Retrieval internals (`bq_sql`, trace fields, tuning knobs) stay on the internal app [`ml/rag/app/api.py`](../rag/app/api.py) (served as `ml.rag.api:app`, `POST /query`).
+Public, versioned HTTP API for the OpenTrace chatbot. Retrieval internals (`bq_sql`, trace fields, tuning knobs) stay on the internal app [`ml/rag/app/api.py`](../rag/app/api.py) (served as `ml.rag.api:app`, `POST /query`). Full endpoint reference: [`ml/rag/docs/API.md`](../rag/docs/API.md).
 
 ## Endpoints (v1)
 
 | Method | Path | Purpose |
 |--------|------|--------|
 | GET | `/v1/health` | Liveness |
-| GET | `/v1/meta` | `api_version`, `schema_version`, optional `build`, `stakeholder_types` catalog |
-| POST | `/v1/sessions` | Body: `stakeholder_type` → `session_id` |
-| POST | `/v1/chat` | Body: `message` + `session_id`, or bootstrap with `stakeholder_type` only (no `session_id`) |
+| GET | `/v1/meta` | `api_version`, `schema_version`, optional `build`, `plan_types` + `categories` catalogs |
+| POST | `/v1/sessions` | Body: `category` → `session_id` |
+| POST | `/v1/chat` | Body: `query` or `message` + `session_id`, nested `user_profile`, optional `chat_history` |
+
+**Canonical `POST /v1/chat` request** (same nesting as `/query`; user text via **`query`** or **`message`**):
+
+```json
+{
+  "query": "What are rice yield trends?",
+  "session_id": "abc123...",
+  "user_profile": {
+    "country": "Ghana",
+    "plan_type": "Farmers",
+    "category": "Farmers"
+  },
+  "chat_history": [
+    { "role": "user", "content": "Previous question" },
+    { "role": "assistant", "content": "Previous answer" }
+  ]
+}
+```
+
+`user_profile.country` filters retrieval **only** for **`farmers_communities`**. Deprecated: top-level `stakeholder_type` (bootstrap only), `conversation_history` (use `chat_history`).
 
 OpenAPI: `/docs` on the same app.
 
@@ -83,7 +103,7 @@ curl -sS "$YOUR_SPACE_URL/v1/health"
 curl -sS "$YOUR_SPACE_URL/v1/meta"
 curl -sS -X POST "$YOUR_SPACE_URL/v1/sessions" \
   -H "Content-Type: application/json" \
-  -d '{"stakeholder_type":"government_public"}'
+  -d '{"category":"Government"}'
 # Use session_id from the response:
 curl -sS -X POST "$YOUR_SPACE_URL/v1/chat" \
   -H "Content-Type: application/json" \

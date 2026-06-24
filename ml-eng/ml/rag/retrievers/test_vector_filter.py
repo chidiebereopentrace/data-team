@@ -1,6 +1,10 @@
 """Unit tests for Qdrant filter building."""
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("qdrant_client")
+
 from ml.rag.retrievers.vector_retriever import _publication_years_in_range, build_qdrant_filter
 
 

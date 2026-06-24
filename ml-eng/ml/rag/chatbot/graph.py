@@ -11,8 +11,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, TypedDict, cast
 
 from ml.rag.chatbot.assistant_identity import is_meta_query
+from ml.rag.chatbot.geo_policy import effective_geo_override
+from ml.rag.chatbot.plan_policy import apply_plan_decomposition_gates
+from ml.rag.chatbot.product_knowledge import is_product_query
 from ml.rag.chatbot.bq_table_matcher import match_bq_tables_from_descriptions
-from ml.rag.chatbot.generator import generate
+from ml.rag.chatbot.generator import filter_context_items, generate, is_usable_context_item
 from ml.rag.chatbot.query_decomposer import (
     decompose_query,
     normalize_geography_for_filter,
@@ -21,6 +24,13 @@ from ml.rag.chatbot.query_decomposer import (
 from ml.rag.chatbot.reranker import rerank
 from ml.rag.retrievers.bq_retriever import BQRetriever
 from ml.rag.retrievers.vector_retriever import VectorRetriever
+from ml.rag.llm_chat import get_llm_usage, reset_llm_usage
+from ml.rag.retrievers.web_retriever import (
+    format_web_chunk_for_context,
+    needs_web_fallback,
+    retrieve_web_fallback,
+    route_after_rerank,
+)
 
 from langchain_core.runnables import RunnableConfig
 
@@ -256,7 +266,10 @@ class RAGGraphState(TypedDict, total=False):
     bq_sql_queries: list[str]
     merged_context: list[dict[str, Any]]
     reranked_context: list[dict[str, Any]]
+    web_results: list[dict[str, Any]]
     answer: str
+    citations: list[dict[str, Any]]
+    usage: dict[str, int]
     error: str | None
     # Optional UI / API overrides (see run_rag)
     geo_override: str | None
@@ -271,12 +284,21 @@ class RAGGraphState(TypedDict, total=False):
     recent_turns: list[dict[str, Any]] | None
     chat_history: list[dict[str, Any]] | None  # legacy: verbatim-only, no summary
     is_meta_query: bool | None
+    is_product_query: bool | None
+    plan_type: str | None
+    category: str | None
+    user_profile: dict[str, Any] | None
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
+    dec = decompose_query(q)
+    profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
+    country = str((profile or {}).get("country") or "").strip() or None
+    dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
     meta = is_meta_query(q)
-    return {"decomposition": decompose_query(q), "is_meta_query": meta}
+    product = (not meta) and is_product_query(q, dec)
+    return {"decomposition": dec, "is_meta_query": meta, "is_product_query": product}
 
 
 def _tag_vector(item: dict[str, Any], kind: str) -> dict[str, Any]:
@@ -556,6 +578,8 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
 def node_merge(state: RAGGraphState) -> dict[str, Any]:
     merged: list[dict[str, Any]] = []
     for r in state.get("bq_results") or []:
+        if not is_usable_context_item(r):
+            continue
         text = str(r.get("content") or "").strip()
         merged.append(
             {
@@ -624,9 +648,41 @@ def node_rerank(state: RAGGraphState) -> dict[str, Any]:
     return {"reranked_context": top}
 
 
+def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
+    """Append Wikipedia / Tavily chunks when internal retrieval is weak."""
+    reranked = list(state.get("reranked_context") or [])
+    if not needs_web_fallback(reranked):
+        return {}
+
+    q = (state.get("query") or "").strip()
+    dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
+    ts = (state.get("time_start_override") or (dec or {}).get("time_start") or "").strip()[:10]
+    te = (state.get("time_end_override") or (dec or {}).get("time_end") or "").strip()[:10]
+    try:
+        raw = retrieve_web_fallback(
+            q,
+            dec,
+            geo_override=str(state.get("geo_override") or ""),
+            time_start=ts or None,
+            time_end=te or None,
+        )
+    except Exception:
+        logger.exception("Web fallback retrieval failed; continuing without web context")
+        return {}
+
+    if not raw:
+        return {}
+
+    web_chunks = [format_web_chunk_for_context(item) for item in raw]
+    return {
+        "web_results": web_chunks,
+        "reranked_context": reranked + web_chunks,
+    }
+
+
 def node_generate(state: RAGGraphState) -> dict[str, Any]:
     query = state.get("query") or ""
-    context = state.get("reranked_context") or []
+    context = filter_context_items(state.get("reranked_context") or [])
     dec = state.get("decomposition")
     gkw: dict[str, Any] = {"decomposition": dec if isinstance(dec, dict) else None}
     cs = state.get("conversation_summary")
@@ -639,12 +695,16 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
     elif state.get("chat_history"):
         gkw["chat_history"] = state.get("chat_history")
-    answer = generate(query, context, **gkw)
-    return {"answer": answer}
+    if state.get("plan_type"):
+        gkw["plan_type"] = state.get("plan_type")
+    if state.get("category"):
+        gkw["category"] = state.get("category")
+    gen_result = generate(query, context, **gkw)
+    return {"answer": gen_result.answer, "citations": gen_result.citations}
 
 
 def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
-    """Short-circuit node for identity / product meta questions. No retrieval."""
+    """Short-circuit node for identity meta questions. No retrieval."""
     from ml.rag.chatbot.assistant_identity import generate_meta_answer
 
     query = state.get("query") or ""
@@ -657,11 +717,33 @@ def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
         gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
     elif state.get("chat_history"):
         gkw["chat_history"] = state.get("chat_history")
-    if state.get("stakeholder_type"):
-        gkw["stakeholder_type"] = state.get("stakeholder_type")
-    if state.get("audience_instructions"):
-        gkw["audience_instructions"] = state.get("audience_instructions")
+    if state.get("plan_type"):
+        gkw["plan_type"] = state.get("plan_type")
+    if state.get("category"):
+        gkw["category"] = state.get("category")
     answer = generate_meta_answer(query, **gkw)
+    return {"answer": answer, "citations": []}
+
+
+def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
+    """Short-circuit node for OpenTrace product questions. Uses product KB, no retrieval."""
+    from ml.rag.chatbot.product_knowledge import generate_product_answer
+
+    query = state.get("query") or ""
+    gkw: dict[str, Any] = {}
+    cs = state.get("conversation_summary")
+    rt = state.get("recent_turns")
+    has_mem = (isinstance(cs, str) and cs.strip()) or (isinstance(rt, list) and len(rt) > 0)
+    if has_mem:
+        gkw["conversation_summary"] = cs if isinstance(cs, str) else ""
+        gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
+    elif state.get("chat_history"):
+        gkw["chat_history"] = state.get("chat_history")
+    if state.get("plan_type"):
+        gkw["plan_type"] = state.get("plan_type")
+    if state.get("category"):
+        gkw["category"] = state.get("category")
+    answer = generate_product_answer(query, **gkw)
     return {"answer": answer}
 
 
@@ -679,21 +761,29 @@ def build_graph():
     graph.add_node("bq_retrieve", node_bq_retrieve)
     graph.add_node("merge", node_merge)
     graph.add_node("rerank", node_rerank)
+    graph.add_node("web_fallback", node_web_fallback)
     graph.add_node("generate", node_generate)
     graph.add_node("generate_meta", node_generate_meta)
+    graph.add_node("generate_product", node_generate_product)
 
     graph.add_edge(START, "decompose")
 
     def _route_after_decompose(state: RAGGraphState) -> str:
-        return "generate_meta" if state.get("is_meta_query") else "parallel_retrieve"
+        if state.get("is_meta_query"):
+            return "generate_meta"
+        if state.get("is_product_query"):
+            return "generate_product"
+        return "parallel_retrieve"
 
     graph.add_conditional_edges("decompose", _route_after_decompose)
     graph.add_edge("parallel_retrieve", "bq_retrieve")
     graph.add_edge("bq_retrieve", "merge")
     graph.add_edge("merge", "rerank")
-    graph.add_edge("rerank", "generate")
+    graph.add_conditional_edges("rerank", route_after_rerank)
+    graph.add_edge("web_fallback", "generate")
     graph.add_edge("generate", END)
     graph.add_edge("generate_meta", END)
+    graph.add_edge("generate_product", END)
 
     return graph.compile()
 
@@ -710,10 +800,21 @@ def _get_compiled_graph():
 
 def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
     """Run the RAG pipeline and return the state (including answer)."""
+    reset_llm_usage()
     graph = _get_compiled_graph()
     initial: RAGGraphState = {"query": query}
+    user_profile = kwargs.get("user_profile") if isinstance(kwargs.get("user_profile"), dict) else None
+    plan_type = kwargs.get("plan_type")
+    profile_geo = effective_geo_override(plan_type, user_profile)
+    if profile_geo:
+        initial["geo_override"] = profile_geo  # type: ignore[assignment]
+    if plan_type:
+        initial["plan_type"] = plan_type  # type: ignore[assignment]
+    if kwargs.get("category"):
+        initial["category"] = kwargs["category"]  # type: ignore[assignment]
+    if user_profile is not None:
+        initial["user_profile"] = user_profile  # type: ignore[assignment]
     for key in (
-        "geo_override",
         "time_start_override",
         "time_end_override",
         "news_top_k",
@@ -721,8 +822,6 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
         "bq_top_k",
         "rerank_top_k",
         "chat_history",
-        "stakeholder_type",
-        "audience_instructions",
     ):
         if key in kwargs and kwargs[key] is not None:
             initial[key] = kwargs[key]  # type: ignore[assignment]
@@ -739,4 +838,7 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
             cbs.append(handler)
         cfg = cast(RunnableConfig, {**base, "callbacks": cbs})
     result = graph.invoke(initial, config=cfg)
-    return dict(result)
+    out = dict(result)
+    out.setdefault("citations", [])
+    out["usage"] = get_llm_usage().to_dict()
+    return out

@@ -175,7 +175,9 @@ def apply_lm_studio_defaults() -> None:
     for key, value in (
         ("RAG_LLM_RERANK", "off"),
         ("RAG_LLM_TIMEOUT_S", "300"),
-        ("RAG_GENERATE_MAX_TOKENS", "1024"),
+        ("RAG_GENERATE_MAX_TOKENS", "2048"),
+        ("RAG_GENERATE_CONTEXT_MAX_CHARS", "12000"),
+        ("RAG_GENERATE_CHUNK_MAX_CHARS", "3000"),
         ("RAG_GENERATE_TIMEOUT_S", "300"),
         ("RAG_GENERATE_TEMPERATURE", "0.5"),
         ("RAG_BQ_NL2SQL_PARALLEL", "off"),

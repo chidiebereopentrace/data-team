@@ -63,7 +63,13 @@ def rerank(
     use_llm = os.environ.get("RAG_LLM_RERANK", "off").lower() not in {"off", "0", "false"}
     content_key = "content" if any("content" in c for c in context_items) else "text"
 
-    _SOURCE_BOOST = {"bigquery": 0.12, "news": 0.04, "academic": 0.06}
+    _SOURCE_BOOST = {
+        "bigquery": 0.12,
+        "news": 0.04,
+        "academic": 0.06,
+        "web_wikipedia": 0.0,
+        "web_search": 0.0,
+    }
 
     if not use_llm or not _llm_configured():
         scored = []

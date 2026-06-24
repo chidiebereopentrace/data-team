@@ -28,11 +28,13 @@ load_rag_dotenv(_ml_eng)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 import logging
 
+from ml.rag.api_schemas import CitationItem, UsageStats, UserProfile
 from ml.rag.chat_history import normalize_messages
+from ml.rag.request_context import resolve_request_context
 
 logger = logging.getLogger("ml.rag.api")
 from ml.rag.chat_memory import append_turn_and_compact, flat_messages_to_memory
@@ -62,17 +64,26 @@ class ChatMessage(BaseModel):
 
 
 class QueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     query: str = Field(..., min_length=1, description="Natural language question for the RAG")
     include_trace: bool = Field(False, description="Include decomposition and retrieval counts in response")
     session_id: str | None = Field(
         None,
         description="Omit to start a new session; reuse for multi-turn chat (server-side memory)",
     )
+    chat_history: list[ChatMessage] | None = Field(
+        None,
+        description="Prior turns for this request (canonical). Server session is not updated when set.",
+    )
     conversation_history: list[ChatMessage] | None = Field(
         None,
-        description="If set, used as prior turns instead of server session store for this request",
+        description="Deprecated alias for chat_history.",
     )
-    geo_override: str | None = None
+    user_profile: UserProfile | None = Field(
+        None,
+        description="User profile: country, plan_type (access/geo), category (generation persona).",
+    )
     time_start_override: str | None = None
     time_end_override: str | None = None
     news_top_k: int | None = None
@@ -81,25 +92,13 @@ class QueryRequest(BaseModel):
     rerank_top_k: int | None = None
     ota_top_k: int | None = None
 
-    # --- AskADZA / client-driven audience support (client owns profile & tone) ---
-    stakeholder_type: str | None = Field(
-        None,
-        description="Optional audience/persona identifier (e.g. government_public, private_sector, farmers_communities). The AskADZA client decides the value and meaning.",
-    )
-    audience_instructions: str | None = Field(
-        None,
-        description="Optional free-form instructions or tone guidance supplied by the client UI. If present, the RAG generator should incorporate this (client overrides server-side defaults).",
-        max_length=4000,
-    )
-
 
 class QueryResponse(BaseModel):
     answer: str
+    citations: list[CitationItem] = Field(default_factory=list)
     session_id: str = Field(..., description="Pass on the next request for chat continuity")
+    usage: UsageStats = Field(default_factory=lambda: UsageStats())
     error: str | None = None
-    has_bq_results: bool = False
-    has_vector_results: bool = False
-    bq_sql: str | None = None
     trace: dict | None = None
 
 
@@ -148,19 +147,18 @@ async def ready():
     return payload
 
 
-def _resolve_prior_memory(request: QueryRequest) -> tuple[str, str, list[dict[str, str]]]:
+def _resolve_prior_memory(
+    session_id: str | None,
+    history_messages: list[dict[str, str]] | None,
+) -> tuple[str, str, list[dict[str, str]]]:
     """Return (session_id, conversation_summary, recent_turns) before the current user message."""
-    if request.conversation_history is not None:
-        sid = (request.session_id or "").strip() or uuid.uuid4().hex
-        raw_msgs = [
-            m.model_dump() if hasattr(m, "model_dump") else m.dict()
-            for m in request.conversation_history
-        ]
-        prior = normalize_messages(raw_msgs)
+    if history_messages is not None:
+        sid = (session_id or "").strip() or uuid.uuid4().hex
+        prior = normalize_messages(history_messages)
         summary, recent = flat_messages_to_memory(prior)
         return sid, summary, recent
 
-    sid = (request.session_id or "").strip() or uuid.uuid4().hex
+    sid = (session_id or "").strip() or uuid.uuid4().hex
     blob = get_session_blob(sid) or {"conversation_summary": "", "recent_turns": []}
     summary = str(blob.get("conversation_summary") or "")
     recent = normalize_messages(blob.get("recent_turns"))
@@ -182,27 +180,51 @@ def _persist_session_turn(session_id: str, user_msg: str, assistant_msg: str) ->
 async def query(request: QueryRequest):
     """Run the RAG pipeline and return the answer for the frontend chatbot."""
     try:
-        logger.info("query request received (len=%d, has_history=%s, stakeholder=%s)",
-                    len(request.query or ""), bool(request.conversation_history), bool(request.stakeholder_type))
+        try:
+            ctx = resolve_request_context(
+                user_profile=request.user_profile,
+                chat_history=request.chat_history,
+                conversation_history=request.conversation_history,
+                session_id=request.session_id,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+
+        logger.info(
+            "query request received (len=%d, has_history=%s, plan_type=%s, category=%s)",
+            len(request.query or ""),
+            ctx.has_client_history,
+            ctx.plan_type,
+            ctx.category,
+        )
 
         from ml.rag.graph import run_rag
 
-        session_id, prior_summary, prior_recent = _resolve_prior_memory(request)
+        session_id, prior_summary, prior_recent = _resolve_prior_memory(
+            request.session_id,
+            ctx.history_messages,
+        )
 
-        # Optional Langfuse root trace (groups the LangGraph spans + LLM calls)
         create_trace(
             "rag.query",
             session_id=session_id,
-            stakeholder_type=request.stakeholder_type,
+            plan_type=ctx.plan_type,
+            category=ctx.category,
             query=request.query,
-            has_history=bool(request.conversation_history),
+            has_history=ctx.has_client_history,
         )
+
         kwargs: dict = {}
         if prior_summary.strip() or prior_recent:
             kwargs["conversation_summary"] = prior_summary
             kwargs["recent_turns"] = prior_recent
+        if ctx.user_profile is not None:
+            kwargs["user_profile"] = ctx.user_profile
+        if ctx.plan_type:
+            kwargs["plan_type"] = ctx.plan_type
+        if ctx.category:
+            kwargs["category"] = ctx.category
         for key in (
-            "geo_override",
             "time_start_override",
             "time_end_override",
             "news_top_k",
@@ -210,8 +232,6 @@ async def query(request: QueryRequest):
             "bq_top_k",
             "rerank_top_k",
             "ota_top_k",
-            "stakeholder_type",
-            "audience_instructions",
         ):
             val = getattr(request, key, None)
             if val is not None:
@@ -221,19 +241,6 @@ async def query(request: QueryRequest):
                     kwargs[key] = val
 
         result = run_rag(request.query, **kwargs)
-        # Try to extract the SQL used for BQ retrieval (if any)
-        bq_sql: str | None = None
-        valid_bq_items = 0
-        for item in result.get("bq_results") or []:
-            meta = item.get("metadata") or {}
-            if meta.get("validation_failed"):
-                continue
-            valid_bq_items += 1
-            sql = meta.get("sql")
-            if isinstance(sql, str) and sql.strip() and sql.strip().upper().startswith("SELECT"):
-                if bq_sql is None:
-                    bq_sql = sql.strip()
-        has_bq_results = valid_bq_items > 0
         trace: dict | None = None
         if request.include_trace:
             trace = {
@@ -246,16 +253,19 @@ async def query(request: QueryRequest):
             }
 
         answer = result.get("answer", "") or ""
-        if request.conversation_history is None:
+        if not ctx.has_client_history:
             _persist_session_turn(session_id, request.query.strip(), answer)
+
+        raw_citations = result.get("citations") or []
+        citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]
+        usage = UsageStats.from_usage_dict(result.get("usage") if isinstance(result.get("usage"), dict) else None)
 
         return QueryResponse(
             answer=answer,
+            citations=citations,
             session_id=session_id,
+            usage=usage,
             error=result.get("error"),
-            has_bq_results=has_bq_results,
-            has_vector_results=bool(result.get("vector_results")),
-            bq_sql=bq_sql,
             trace=trace,
         )
     except Exception as e:

@@ -18,6 +18,9 @@ from typing import Any
 # Load env: data/local/.env then config/.env (BQ + LLM keys not duplicated in local)
 # streamlit_app.py lives at ml-eng/ml/rag/chatbot/, so parents[3] is `ml-eng/` (load_rag_dotenv needs this).
 _ml_eng = Path(__file__).resolve().parents[3]
+from ml.rag.chatbot.geo_policy import FARMER_PLAN_TYPE
+from ml.rag.chatbot.plan_policy import PLAN_TYPES
+from ml.rag.chatbot.stakeholder_prompts import CATEGORIES
 from ml.rag.local_env import load_rag_dotenv
 
 # #region agent log
@@ -334,7 +337,34 @@ with st.sidebar:
     ota_top_k = st.number_input("OTA chunks (top_k) — local test only", min_value=1, max_value=30, value=10)
     rerank_top_k = st.number_input("Rerank context size", min_value=1, max_value=50, value=20)
     st.divider()
-    geo_override = st.text_input("Geography override (optional)", placeholder="e.g. Nigeria")
+    plan_type_options = [""] + [p["id"] for p in PLAN_TYPES]
+    category_options = [""] + [c["id"] for c in CATEGORIES]
+
+    def _catalog_label(catalog: list[dict[str, str]], item_id: str) -> str:
+        if not item_id:
+            return "(none)"
+        for item in catalog:
+            if item["id"] == item_id:
+                return str(item["label"])
+        return item_id
+
+    plan_type = st.selectbox(
+        "Plan type (optional)",
+        plan_type_options,
+        format_func=lambda x: _catalog_label(PLAN_TYPES, x),
+    )
+    category = st.selectbox(
+        "Category (optional)",
+        category_options,
+        format_func=lambda x: _catalog_label(CATEGORIES, x),
+    )
+    profile_country = ""
+    if plan_type == FARMER_PLAN_TYPE:
+        profile_country = st.text_input(
+            "Profile country (Farmers plan only)",
+            placeholder="e.g. Nigeria",
+            help="Used as retrieval geo filter when plan_type is Farmers.",
+        )
     t_start = st.text_input("Time start YYYY-MM-DD (optional)", placeholder="2020-01-01")
     t_end = st.text_input("Time end YYYY-MM-DD (optional)", placeholder="2025-12-31")
     show_debug = st.checkbox("Show pipeline debug (last run)", value=False)
@@ -363,8 +393,16 @@ if prompt:
         "ota_top_k": int(ota_top_k),
         "rerank_top_k": int(rerank_top_k),
     }
-    if geo_override.strip():
-        kwargs["geo_override"] = geo_override.strip()
+    if plan_type:
+        kwargs["plan_type"] = plan_type
+    if category:
+        kwargs["category"] = category
+    if plan_type or category or profile_country.strip():
+        kwargs["user_profile"] = {
+            "country": profile_country.strip() or None,
+            "plan_type": plan_type or "Integrated",
+            "category": category or plan_type or "Government",
+        }
     if t_start.strip():
         kwargs["time_start_override"] = t_start.strip()[:10]
     if t_end.strip():
@@ -379,9 +417,14 @@ if prompt:
 
             result = run_rag(prompt.strip(), **kwargs)
             answer = result.get("answer") or ""
+            citations = result.get("citations") or []
             err = result.get("error")
             if err:
                 answer = f"**Error:** {err}\n\n{answer}".strip()
+            if citations and "Sources" not in answer:
+                cite_lines = [f"{c.get('id')}. {c.get('text')}" for c in citations if isinstance(c, dict)]
+                if cite_lines:
+                    answer = (answer.rstrip() + "\n\nSources\n" + "\n".join(cite_lines)).strip()
 
             messages.append({"role": "user", "content": prompt.strip()})
             messages.append({"role": "assistant", "content": answer})
