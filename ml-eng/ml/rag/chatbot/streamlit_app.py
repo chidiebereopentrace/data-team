@@ -325,12 +325,19 @@ with st.sidebar:
     st.caption(f"Model: {llm_model_id()}")
     st.caption(f"Configured: {llm_configured()}")
     # Reranker mode resolution mirrors chatbot.reranker._reranker_mode:
-    # explicit RAG_RERANKER_MODE wins; legacy RAG_LLM_RERANK still honoured;
-    # default is cross_encoder.
+    # explicit RAG_RERANKER_MODE wins; auto-selects cohere when key present;
+    # legacy RAG_LLM_RERANK still honoured; default is cross_encoder.
     _reranker_mode_env = os.environ.get("RAG_RERANKER_MODE", "").strip().lower()
+    _cohere_key = (
+        os.environ.get("RAG_RERANKER_COHERE_API_KEY")
+        or os.environ.get("COHERE_API_KEY")
+        or ""
+    ).strip()
     _legacy_rerank = os.environ.get("RAG_LLM_RERANK", "").strip().lower()
-    if _reranker_mode_env in {"cross_encoder", "llm", "off"}:
+    if _reranker_mode_env in {"cohere", "cross_encoder", "llm", "off"}:
         reranker_mode = _reranker_mode_env
+    elif _cohere_key:
+        reranker_mode = "cohere"
     elif _legacy_rerank in {"on", "1", "true", "yes"}:
         reranker_mode = "llm"
     elif _legacy_rerank in {"off", "0", "false", "no"}:
@@ -339,9 +346,15 @@ with st.sidebar:
         reranker_mode = "cross_encoder"
     _reranker_model = (
         os.environ.get("RAG_RERANKER_MODEL", "").strip()
-        or "Xenova/ms-marco-MiniLM-L-6-v2"
+        or "BAAI/bge-reranker-base"
     )
-    if reranker_mode == "cross_encoder":
+    _cohere_model = (
+        os.environ.get("RAG_RERANKER_COHERE_MODEL", "").strip()
+        or "rerank-v3.5"
+    )
+    if reranker_mode == "cohere":
+        st.caption(f"Reranker: cohere ({_cohere_model})")
+    elif reranker_mode == "cross_encoder":
         st.caption(f"Reranker: cross_encoder ({_reranker_model})")
     elif reranker_mode == "llm":
         st.caption("Reranker: llm (per-chunk LLM scoring — slow)")
