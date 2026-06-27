@@ -2,15 +2,22 @@
 Reranker node: takes merged retrieval results and reranks them before passing
 to the generator.
 
-Three modes, selected via ``RAG_RERANKER_MODE``:
+Four modes, selected via ``RAG_RERANKER_MODE``:
 
-- ``cross_encoder`` (default, production):
+- ``cohere`` (recommended for production on Railway):
+    One HTTP call to Cohere's managed rerank API (model ``rerank-v3.5``).
+    No model in the container — zero memory overhead on Railway.
+    Requires ``COHERE_API_KEY`` (or ``RAG_RERANKER_COHERE_API_KEY``).
+    Model is configurable via ``RAG_RERANKER_COHERE_MODEL`` (default
+    ``rerank-v3.5``). Cost is ~$0.002 per 1000 chunks — negligible at
+    freemium scale. Best multilingual accuracy.
+
+- ``cross_encoder`` (default when no Cohere key is set; good for local dev):
     Batch-scores all candidates in a single cross-encoder pass.
-    Fast, accurate, no per-token LLM cost. Uses fastembed when available
-    (already a project dependency for the fastembed embeddings mode),
+    Fast, accurate, no per-token LLM cost. Uses fastembed when available,
     falling back to sentence-transformers if installed. Model is
     configurable via ``RAG_RERANKER_MODEL``
-    (default ``Xenova/ms-marco-MiniLM-L-6-v2``).
+    (default ``BAAI/bge-reranker-base``; multilingual).
 
 - ``llm``:
     One LLM call per candidate (legacy behavior). Retained for back-compat
@@ -25,7 +32,8 @@ Back-compat shim: the previous ``RAG_LLM_RERANK`` env var still works.
 ``RAG_RERANKER_MODE`` is unset, so existing deployments keep their behavior.
 
 Failure handling: never raises. If the configured backend is unavailable we
-degrade gracefully — cross_encoder -> llm (when LLM is configured) -> off —
+degrade gracefully:
+    cohere (no key or API error) -> cross_encoder -> llm (if configured) -> off
 so the graph always receives a usable, ordered list of context chunks.
 """
 from __future__ import annotations
@@ -79,19 +87,21 @@ def _reranker_mode() -> str:
     """Resolve the configured reranker mode with back-compat handling.
 
     Order of precedence:
-    1. ``RAG_RERANKER_MODE`` if explicitly set (cross_encoder | llm | off)
-    2. Legacy ``RAG_LLM_RERANK`` (any truthy value -> ``llm``, falsy -> ``off``)
-    3. Default: ``cross_encoder``
+    1. ``RAG_RERANKER_MODE`` if explicitly set (cohere | cross_encoder | llm | off)
+    2. Auto-select ``cohere`` when a Cohere API key is available and no explicit mode set.
+    3. Legacy ``RAG_LLM_RERANK`` (any truthy value -> ``llm``, falsy -> ``off``)
+    4. Default: ``cross_encoder``
     """
     explicit = os.environ.get("RAG_RERANKER_MODE", "").strip().lower()
-    if explicit in {"cross_encoder", "llm", "off"}:
+    if explicit in {"cohere", "cross_encoder", "llm", "off"}:
         return explicit
+    # Auto-promote to cohere when a key is available and mode was not set explicitly.
+    if _cohere_api_key():
+        return "cohere"
     legacy = os.environ.get("RAG_LLM_RERANK", "").strip().lower()
     if legacy in {"on", "1", "true", "yes"}:
         return "llm"
     if legacy in {"off", "0", "false", "no"}:
-        # Operator explicitly turned the old flag off — honour that but log
-        # so we notice during rollout.
         logger.info(
             "Legacy RAG_LLM_RERANK=off detected; using mode='off'. "
             "Set RAG_RERANKER_MODE=cross_encoder to enable the new reranker."
@@ -103,7 +113,23 @@ def _reranker_mode() -> str:
 def _reranker_model_id() -> str:
     return (
         os.environ.get("RAG_RERANKER_MODEL", "").strip()
-        or "Xenova/ms-marco-MiniLM-L-6-v2"
+        or "BAAI/bge-reranker-base"
+    )
+
+
+def _cohere_api_key() -> str | None:
+    key = (
+        os.environ.get("RAG_RERANKER_COHERE_API_KEY")
+        or os.environ.get("COHERE_API_KEY")
+        or ""
+    ).strip()
+    return key or None
+
+
+def _cohere_model() -> str:
+    return (
+        os.environ.get("RAG_RERANKER_COHERE_MODEL", "").strip()
+        or "rerank-v3.5"
     )
 
 
@@ -342,6 +368,91 @@ def _rerank_off(
     return scored[:top_k]
 
 
+# --- Cohere managed reranker --------------------------------------------------
+
+
+def _rerank_cohere(
+    query: str,
+    context_items: list[dict[str, Any]],
+    top_k: int,
+    content_key: str,
+) -> list[dict[str, Any]] | None:
+    """Rerank via the Cohere managed API.
+
+    Returns ``None`` when Cohere is unavailable (no key, import error, or
+    API failure) so the caller can degrade to the next backend.
+
+    Cohere's relevance_score is already in [0, 1] and encodes both position
+    and semantic relevance, so we skip the min-max normalisation step and add
+    the static source boost directly on top.
+    """
+    key = _cohere_api_key()
+    if not key:
+        return None
+
+    try:
+        import cohere as _cohere  # type: ignore[import-not-found]
+    except ImportError:
+        logger.warning(
+            "Cohere package not installed. "
+            "Run: pip install cohere   (or add it to requirements.txt)"
+        )
+        return None
+
+    max_chars = _max_text_chars()
+    passages = [
+        (item.get(content_key) or item.get("text", str(item)))[:max_chars]
+        for item in context_items
+    ]
+
+    model_name = _cohere_model()
+    try:
+        co = _cohere.ClientV2(api_key=key)
+        response = co.rerank(
+            model=model_name,
+            query=query,
+            documents=passages,
+            top_n=top_k,
+            return_documents=False,
+        )
+    except Exception as exc:
+        logger.warning("Cohere rerank API call failed: %s", exc)
+        return None
+
+    results = getattr(response, "results", None) or []
+    if not results:
+        logger.warning("Cohere returned empty results for query=%r", query[:80])
+        return None
+
+    scored = []
+    for hit in results:
+        idx = int(hit.index)
+        relevance = float(getattr(hit, "relevance_score", 0.0))
+        item = context_items[idx]
+        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
+        boost = _SOURCE_BOOST.get(kind, 0.0)
+        scored.append(
+            {
+                **item,
+                "content": passages[idx],
+                "_order": idx,
+                "_cohere_score": relevance,
+                "_source_boost": boost,
+                "_rerank_score": relevance + boost,
+            }
+        )
+
+    scored.sort(key=lambda x: x["_rerank_score"], reverse=True)
+    logger.info(
+        "Cohere rerank ok: model=%s query_len=%d candidates=%d top_k=%d",
+        model_name,
+        len(query),
+        len(context_items),
+        len(scored),
+    )
+    return scored
+
+
 # --- public entry point -------------------------------------------------------
 
 
@@ -358,6 +469,7 @@ def rerank(
 
     Mode is selected by :func:`_reranker_mode`. When the chosen backend is
     unavailable at runtime the function degrades safely:
+        cohere (no key / error) -> cross_encoder -> llm if configured -> off
         cross_encoder unavailable -> llm if configured -> off
         llm unavailable           -> off
 
@@ -367,7 +479,6 @@ def rerank(
     if not context_items:
         return []
 
-    # Allow env to clamp top_k (matches existing rerank_top_k state field).
     env_top_k = _env_int("RAG_RERANKER_TOP_K", 0)
     if env_top_k > 0:
         top_k = min(top_k, env_top_k)
@@ -375,6 +486,15 @@ def rerank(
     content_key = "content" if any("content" in c for c in context_items) else "text"
     mode = _reranker_mode()
     logger.debug("Reranker mode=%s top_k=%d candidates=%d", mode, top_k, len(context_items))
+
+    if mode == "cohere":
+        result = _rerank_cohere(query, context_items, top_k, content_key)
+        if result is not None:
+            return result
+        logger.warning(
+            "Cohere reranker unavailable; degrading to cross_encoder."
+        )
+        mode = "cross_encoder"
 
     if mode == "cross_encoder":
         result = _rerank_cross_encoder(query, context_items, top_k, content_key)
@@ -396,9 +516,3 @@ def rerank(
         return _rerank_llm(query, context_items, top_k, content_key)
 
     return _rerank_off(context_items, top_k, content_key)
-
-
-# TODO(v0.2): optional Cohere cloud reranker as a third backend
-# (RAG_RERANKER_MODE=cohere + RAG_RERANKER_COHERE_API_KEY). Skipped for v0.1
-# to keep the dependency footprint and runtime cost predictable on the
-# Railway free tier. See TASKS.md "Post-launch".
