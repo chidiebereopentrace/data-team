@@ -258,19 +258,22 @@ Returns one candidate per table with `content` suitable for `BQRetriever` `table
 
 ### 7.2 Rerank ([`chatbot/reranker.py`](chatbot/reranker.py))
 
-Three modes selected via `RAG_RERANKER_MODE` (default `cross_encoder`):
+Four modes selected via `RAG_RERANKER_MODE`:
 
 | Mode | Behaviour |
 |------|-----------|
-| `cross_encoder` (default, production) | Single batched pass through a cross-encoder. Loads via fastembed first, falls back to sentence-transformers if installed. Model id is configurable via `RAG_RERANKER_MODEL` (default `Xenova/ms-marco-MiniLM-L-6-v2`). Raw scores are min-max normalised to `[0, 1]` and combined additively with a static **source boost** (BQ +0.12, academic/policy/public_report +0.06, OTA insight +0.05, news +0.04, web 0). |
+| `cohere` (recommended for production) | One HTTP call to Cohere's managed rerank API (`rerank-v3.5`). No model in the container — zero memory overhead on Railway. Scores are already `[0, 1]`; the static source boost is applied additively. Requires `COHERE_API_KEY` (or `RAG_RERANKER_COHERE_API_KEY`). Auto-selected when a key is present and `RAG_RERANKER_MODE` is not set explicitly. Cost is ~$0.002/1k chunks — negligible at freemium scale. |
+| `cross_encoder` (default for local dev; fallback when no Cohere key) | Single batched pass through a cross-encoder. Loads via fastembed first, falls back to sentence-transformers if installed. Model id is configurable via `RAG_RERANKER_MODEL` (default `BAAI/bge-reranker-base`; multilingual, ~280 MB). Raw scores are min-max normalised to `[0, 1]` then combined additively with the static source boost. |
 | `llm` | Legacy per-chunk LLM scoring (one `llm_chat_complete` call per chunk). Kept for back-compat / A-B testing — too slow and too expensive for production. |
-| `off` | Dev-only pass-through using the static source boost only. |
+| `off` | Dev/debug pass-through using the static source boost only. |
+
+**Auto-promotion:** when `COHERE_API_KEY` (or `RAG_RERANKER_COHERE_API_KEY`) is set and `RAG_RERANKER_MODE` is not explicitly configured, the reranker automatically uses `cohere`. Set `RAG_RERANKER_MODE=cross_encoder` explicitly to override.
 
 **Back-compat:** the old `RAG_LLM_RERANK` flag still works when `RAG_RERANKER_MODE` is unset (`on` → `llm`, `off` → `off`).
 
 **Graceful degradation (never raises):**
-`cross_encoder` unavailable → `llm` if an LLM backend is configured → `off`.
-`llm` requested but no backend → `off`.
+`cohere` (no key or API error) → `cross_encoder` → `llm` if an LLM backend is configured → `off`.
+`cross_encoder` unavailable → `llm` if configured → `off`.
 
 Output trimmed to `rerank_top_k` (default 20 in Streamlit), with optional global cap `RAG_RERANKER_TOP_K`.
 
@@ -437,10 +440,13 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_LLM_BASE_URL` | e.g. `http://127.0.0.1:1234/v1` (LM Studio) |
 | `RAG_LLM_MODEL_ID` | Must match server model id |
 | `RAG_LLM_TIMEOUT_S` | Default HTTP timeout (e.g. 300) |
-| `RAG_RERANKER_MODE` | `cross_encoder` (default) / `llm` / `off` |
-| `RAG_RERANKER_MODEL` | Cross-encoder model id (default `Xenova/ms-marco-MiniLM-L-6-v2`) |
+| `RAG_RERANKER_MODE` | `cohere` (production) / `cross_encoder` (local dev) / `llm` / `off` |
+| `COHERE_API_KEY` | Enables the Cohere rerank API; auto-selects `cohere` mode when set |
+| `RAG_RERANKER_COHERE_API_KEY` | Alternative Cohere key var (takes precedence over `COHERE_API_KEY`) |
+| `RAG_RERANKER_COHERE_MODEL` | Cohere model id (default `rerank-v3.5`) |
+| `RAG_RERANKER_MODEL` | Cross-encoder model id (default `BAAI/bge-reranker-base`; multilingual) |
 | `RAG_RERANKER_TOP_K` | Optional global cap on rerank output (`0` = use caller `top_k`) |
-| `RAG_RERANKER_MAX_TEXT_CHARS` | Per-chunk char cap fed to the cross-encoder (default 2000) |
+| `RAG_RERANKER_MAX_TEXT_CHARS` | Per-chunk char cap fed to the encoder (default 2000) |
 | `RAG_LLM_RERANK` | **Legacy.** Honoured only when `RAG_RERANKER_MODE` is unset (`on` → `llm`, `off` → `off`) |
 | `RAG_GENERATE_MAX_TOKENS` | Answer length cap (default 2048) |
 | `RAG_GENERATE_CONTEXT_MAX_CHARS` | Total context chars to LLM (default 12000) |
