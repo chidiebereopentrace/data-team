@@ -373,8 +373,15 @@ def _build_prompt(
         "(2) supporting evidence by theme, region, or time period, (3) brief limits or gaps. "
         "For compare or trend questions, organize by region or time period when the context provides that breakdown. "
         "Include specific numbers, dates, and regions when present in the context. "
-        "Lead with a direct answer — never open with 'The context provided...', 'Unfortunately...', "
-        "'Based on the context...', or similar meta-commentary. "
+        # Anti-thesis openings. Listed explicitly because the model otherwise reaches
+        # for these by default (the corpus is heavily academic). Tested phrases from
+        # internal R6/R8 reports.
+        "Forbidden openings — never start with: 'The context provided', 'Based on the context', "
+        "'Unfortunately', 'It is important to note', 'It is worth noting', 'This study examines', "
+        "'The evidence suggests', 'In recent years', 'Across the literature', or any similar academic / "
+        "meta-commentary opener. Start with the substantive answer instead. "
+        "Write in active voice and plain business English. Avoid academic hedges "
+        "('relatively', 'somewhat', 'arguably') unless the context explicitly supports the qualification. "
         "If evidence is partial, state limits briefly after the substantive answer. "
         "Do not invent sources, cite Source IDs not in the Context, or invent statistics. "
         "Never output SQL, query code, table DDL, pipeline steps, or instructions to run BigQuery. "
