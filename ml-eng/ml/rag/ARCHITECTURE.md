@@ -258,12 +258,24 @@ Returns one candidate per table with `content` suitable for `BQRetriever` `table
 
 ### 7.2 Rerank ([`chatbot/reranker.py`](chatbot/reranker.py))
 
-| `RAG_LLM_RERANK` | Behavior |
-|------------------|----------|
-| `off` (recommended local) | Sort by small **source boost** only: BQ +0.12, academic +0.06, news +0.04 |
-| on | One LLM relevance score per chunk (slow) |
+Four modes selected via `RAG_RERANKER_MODE`:
 
-Output trimmed to `rerank_top_k` (default 20 in Streamlit).
+| Mode | Behaviour |
+|------|-----------|
+| `cohere` (recommended for production) | One HTTP call to Cohere's managed rerank API (`rerank-v3.5`). No model in the container — zero memory overhead on Railway. Scores are already `[0, 1]`; the static source boost is applied additively. Requires `COHERE_API_KEY` (or `RAG_RERANKER_COHERE_API_KEY`). Auto-selected when a key is present and `RAG_RERANKER_MODE` is not set explicitly. Cost is ~$0.002/1k chunks — negligible at freemium scale. |
+| `cross_encoder` (default for local dev; fallback when no Cohere key) | Single batched pass through a cross-encoder. Loads via fastembed first, falls back to sentence-transformers if installed. Model id is configurable via `RAG_RERANKER_MODEL` (default `BAAI/bge-reranker-base`; multilingual, ~280 MB). Raw scores are min-max normalised to `[0, 1]` then combined additively with the static source boost. |
+| `llm` | Legacy per-chunk LLM scoring (one `llm_chat_complete` call per chunk). Kept for back-compat / A-B testing — too slow and too expensive for production. |
+| `off` | Dev/debug pass-through using the static source boost only. |
+
+**Auto-promotion:** when `COHERE_API_KEY` (or `RAG_RERANKER_COHERE_API_KEY`) is set and `RAG_RERANKER_MODE` is not explicitly configured, the reranker automatically uses `cohere`. Set `RAG_RERANKER_MODE=cross_encoder` explicitly to override.
+
+**Back-compat:** the old `RAG_LLM_RERANK` flag still works when `RAG_RERANKER_MODE` is unset (`on` → `llm`, `off` → `off`).
+
+**Graceful degradation (never raises):**
+`cohere` (no key or API error) → `cross_encoder` → `llm` if an LLM backend is configured → `off`.
+`cross_encoder` unavailable → `llm` if configured → `off`.
+
+Output trimmed to `rerank_top_k` (default 20 in Streamlit), with optional global cap `RAG_RERANKER_TOP_K`.
 
 ### 7.2.1 Web fallback ([`retrievers/web_retriever.py`](retrievers/web_retriever.py))
 
@@ -371,7 +383,7 @@ From [`chunking_config.py`](text_processors/chunking_config.py) `PROFILES` (over
 |------|--------|---------|--------------|
 | Decompose (optional LLM) | `query_decomposer` | `llm_chat` | Heuristics always; LLM optional |
 | NL-to-SQL | `bq_retriever` | `llm_chat` | Fallback SQL if empty |
-| Rerank | `reranker` | `llm_chat` | `RAG_LLM_RERANK=off` |
+| Rerank | `reranker` | cross-encoder (fastembed / sentence-transformers) by default; `llm_chat` only when `RAG_RERANKER_MODE=llm` | `RAG_RERANKER_MODE=off` |
 | Answer | `generator` | `llm_chat` | Context-only message |
 | Memory summary | `chat_memory` | `llm_chat` | Text stub |
 
@@ -381,7 +393,7 @@ From [`chunking_config.py`](text_processors/chunking_config.py) `PROFILES` (over
 2. Else if `HF_API_TOKEN` → Hugging Face router.
 3. Else → no LLM calls succeed.
 
-`local_env.apply_lm_studio_defaults()` sets safe defaults when `RAG_LLM_BASE_URL` is present (rerank off, timeouts, etc.).
+`local_env.apply_lm_studio_defaults()` sets safe defaults when `RAG_LLM_BASE_URL` is present (timeouts, generator caps, NL-to-SQL parallelism). It no longer seeds `RAG_LLM_RERANK=off` — the reranker now runs through `RAG_RERANKER_MODE` and defaults to a cross-encoder backend that is independent of the LLM.
 
 ---
 
@@ -434,7 +446,14 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_LLM_BASE_URL` | e.g. `http://127.0.0.1:1234/v1` (LM Studio) |
 | `RAG_LLM_MODEL_ID` | Must match server model id |
 | `RAG_LLM_TIMEOUT_S` | Default HTTP timeout (e.g. 300) |
-| `RAG_LLM_RERANK` | `off` recommended locally |
+| `RAG_RERANKER_MODE` | `cohere` (production) / `cross_encoder` (local dev) / `llm` / `off` |
+| `COHERE_API_KEY` | Enables the Cohere rerank API; auto-selects `cohere` mode when set |
+| `RAG_RERANKER_COHERE_API_KEY` | Alternative Cohere key var (takes precedence over `COHERE_API_KEY`) |
+| `RAG_RERANKER_COHERE_MODEL` | Cohere model id (default `rerank-v3.5`) |
+| `RAG_RERANKER_MODEL` | Cross-encoder model id (default `BAAI/bge-reranker-base`; multilingual) |
+| `RAG_RERANKER_TOP_K` | Optional global cap on rerank output (`0` = use caller `top_k`) |
+| `RAG_RERANKER_MAX_TEXT_CHARS` | Per-chunk char cap fed to the encoder (default 2000) |
+| `RAG_LLM_RERANK` | **Legacy.** Honoured only when `RAG_RERANKER_MODE` is unset (`on` → `llm`, `off` → `off`) |
 | `RAG_GENERATE_MAX_TOKENS` | Answer length cap (default 2048) |
 | `RAG_GENERATE_CONTEXT_MAX_CHARS` | Total context chars to LLM (default 12000) |
 | `RAG_GENERATE_CHUNK_MAX_CHARS` | Per-chunk cap before global trim (default 3000) |
@@ -523,7 +542,7 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 
 ### 13.4 Debug slow queries
 
-1. `RAG_LLM_RERANK=off`.
+1. `RAG_RERANKER_MODE=off` (debugging aid only; production should stay on `cross_encoder`).
 2. Lower `RAG_BQ_MAX_SQL_QUERIES` (e.g. 3) or use `RAG_BQ_NL2SQL_MODE=batch`.
 3. Reduce Streamlit `academic_top_k`, `rerank_top_k`.
 4. Keep `RAG_BQ_NL2SQL_PARALLEL=off` on single-GPU LM Studio.
