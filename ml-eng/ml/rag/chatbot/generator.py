@@ -363,10 +363,14 @@ def _build_prompt(
         "Sources labeled Type: Wikipedia or Type: Web search are supplemental external context — "
         "prefer OpenTrace news, research, and structured data when available; treat web sources as "
         "partial background and state limits when relying on them. "
-        "When the context supports it, write a substantive multi-paragraph answer "
-        "(roughly 4–8 paragraphs for complex questions). "
-        "Structure complex answers: (1) direct answer, (2) supporting evidence by theme, region, or time period, "
-        "(3) brief limits or gaps. "
+        # Length matches the question. The previous fixed '4–8 paragraphs' floor was the
+        # single biggest cause of thesis-style answers — the model padded with hedges
+        # and restatements to hit the target even on simple lookups. Drop the floor;
+        # let the question determine the length.
+        "Length matches the question: 2–4 sentences for a simple lookup, 2–4 short paragraphs "
+        "for a complex synthesis. Never pad with filler, restatements of the question, or hedges to fill space. "
+        "For complex questions structure the answer as: (1) direct answer first, "
+        "(2) supporting evidence by theme, region, or time period, (3) brief limits or gaps. "
         "For compare or trend questions, organize by region or time period when the context provides that breakdown. "
         "Include specific numbers, dates, and regions when present in the context. "
         "Lead with a direct answer — never open with 'The context provided...', 'Unfortunately...', "
