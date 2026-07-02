@@ -13,6 +13,7 @@ from ml.rag.chatbot.generator import (
     _context_max_chars,
     _format_source_citation,
     _generate_max_tokens,
+    _no_data_fallback_message,
     _normalize_inline_citations,
     _strip_model_sources_appendix,
     extract_referenced_source_ids,
@@ -287,3 +288,114 @@ def test_generate_returns_generation_result_without_sources_block() -> None:
     assert "[1]" in result.answer
     assert len(result.citations) == 1
     assert result.citations[0]["id"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Sprint 1 (Jul 2026) — no-data fallback + temperature + ungrounded guard
+# ---------------------------------------------------------------------------
+
+
+def test_no_data_fallback_contains_acf_marker_and_gap_block() -> None:
+    """Test-1 finding: gap responses were invisible. Every fallback must carry ACF signal."""
+    msg = _no_data_fallback_message(
+        "What are cocoa yields in Ghana in 2024?",
+        decomposition={"countries": ["Ghana"], "time_start": "2024-01-01", "time_end": "2024-12-31"},
+    )
+    assert "I don't have OpenTrace data" in msg
+    assert "**Gap**" in msg
+    assert "Query: What are cocoa yields in Ghana in 2024?" in msg
+    assert "Ghana" in msg
+    assert "2024-01-01" in msg and "2024-12-31" in msg
+    assert "**What would help**" in msg
+    assert "ACF: no evidence" in msg
+
+
+def test_no_data_fallback_handles_missing_decomposition() -> None:
+    """Fallback must still be well-formed without geo/time hints."""
+    msg = _no_data_fallback_message("random unrelated question", decomposition=None)
+    assert "I don't have OpenTrace data" in msg
+    assert "Query: random unrelated question" in msg
+    assert "Geography:" not in msg  # no geo hint → no line
+    assert "Time period:" not in msg  # no time hint → no line
+    assert "ACF: no evidence" in msg
+    assert "What would help" in msg
+
+
+def test_no_data_fallback_handles_empty_query() -> None:
+    msg = _no_data_fallback_message("", decomposition=None)
+    assert "Query: your question" in msg
+    assert "ACF: no evidence" in msg
+
+
+def test_generate_empty_context_returns_structured_fallback() -> None:
+    """Sprint 1: replaces old single-sentence 'couldn't find' string."""
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RAG_ALLOW_UNGROUNDED", None)
+        result = generate("What is the price of rice in Mars?", [])
+    assert isinstance(result, GenerationResult)
+    assert result.citations == []
+    assert "I don't have OpenTrace data" in result.answer
+    assert "ACF: no evidence" in result.answer
+    assert "confirm the knowledge bases are loaded" not in result.answer  # old copy is gone
+
+
+def test_generate_empty_context_fallback_includes_decomposition_hints() -> None:
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RAG_ALLOW_UNGROUNDED", None)
+        result = generate(
+            "Rice yields in Kenya 2023",
+            [],
+            decomposition={"countries": ["Kenya"], "time_period": "2023"},
+        )
+    assert "Kenya" in result.answer
+    assert "2023" in result.answer
+    assert "ACF: no evidence" in result.answer
+
+
+def test_call_llama_default_temperature() -> None:
+    """
+    Sprint 1: default set to 0.7 for response variety across similar queries.
+    Synthesis-on-gaps protection is provided by code guardrails (fallback path,
+    hardened ungrounded prompt, chunk filtering), not by low temperature.
+    """
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RAG_GENERATE_TEMPERATURE", None)
+        with mock.patch("ml.rag.chatbot.generator.llm_chat_complete") as mock_complete:
+            mock_complete.return_value = "ok"
+            from ml.rag.chatbot.generator import _call_llama
+
+            _call_llama([{"role": "user", "content": "hi"}])
+        _, kwargs = mock_complete.call_args
+        assert kwargs["temperature"] == 0.7
+
+
+def test_call_llama_temperature_env_override_respected() -> None:
+    with mock.patch.dict(os.environ, {"RAG_GENERATE_TEMPERATURE": "0.1"}):
+        with mock.patch("ml.rag.chatbot.generator.llm_chat_complete") as mock_complete:
+            mock_complete.return_value = "ok"
+            from ml.rag.chatbot.generator import _call_llama
+
+            _call_llama([{"role": "user", "content": "hi"}])
+        _, kwargs = mock_complete.call_args
+        assert kwargs["temperature"] == 0.1
+
+
+def test_ungrounded_mode_hardens_system_prompt() -> None:
+    """When RAG_ALLOW_UNGROUNDED=on and no context, system prompt must forbid synthesis."""
+    captured: dict = {}
+
+    def fake_call(messages):
+        captured["messages"] = messages
+        return "I don't have OpenTrace data for this question.\n\nACF: no evidence."
+
+    with mock.patch.dict(os.environ, {"RAG_ALLOW_UNGROUNDED": "on"}):
+        with mock.patch("ml.rag.chatbot.generator._call_llama", side_effect=fake_call):
+            generate("Explain drought resilience in Africa broadly.", [])
+
+    sys_msg = captured["messages"][0]["content"]
+    assert "CRITICAL" in sys_msg
+    assert "empty" in sys_msg.lower()
+    assert "Do NOT synthesise" in sys_msg
+    assert "ACF: no evidence" in sys_msg
+
+

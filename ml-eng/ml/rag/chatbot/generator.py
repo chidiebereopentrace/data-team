@@ -547,6 +547,73 @@ def _append_structured_citations(answer: str, source_registry: list[SourceRef]) 
     return (answer.rstrip() + block).strip()
 
 
+def _decomposition_geo_hint(decomposition: dict[str, Any] | None) -> str:
+    """Extract a short human-readable geo hint from the query decomposer output, if any."""
+    if not isinstance(decomposition, dict):
+        return ""
+    for key in ("countries", "regions", "geography", "geo"):
+        val = decomposition.get(key)
+        if isinstance(val, list) and val:
+            return ", ".join(str(x) for x in val if x)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
+def _decomposition_time_hint(decomposition: dict[str, Any] | None) -> str:
+    """Extract a short time-window hint from the query decomposer output, if any."""
+    if not isinstance(decomposition, dict):
+        return ""
+    ts = str(decomposition.get("time_start") or decomposition.get("start_date") or "").strip()
+    te = str(decomposition.get("time_end") or decomposition.get("end_date") or "").strip()
+    if ts and te:
+        return f"{ts} → {te}"
+    return ts or te or str(decomposition.get("time_period") or "").strip()
+
+
+def _no_data_fallback_message(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+) -> str:
+    """
+    Sprint 1 (Jul 2026): structured gap-acknowledgement returned when we have no
+    OpenTrace context for a query. Replaces the previous single-sentence fallback
+    which testers found dev-facing and easy to mistake for a low-confidence answer.
+
+    Format:
+      - one-line direct statement
+      - Gap block (query + any geo/time the decomposer extracted)
+      - What would help block (concrete guidance)
+      - explicit ACF marker so the confidence signal is never invisible on this path
+    """
+    q = (query or "").strip() or "your question"
+    geo = _decomposition_geo_hint(decomposition)
+    time_hint = _decomposition_time_hint(decomposition)
+
+    gap_lines = [f"- Query: {q}"]
+    if geo:
+        gap_lines.append(f"- Geography: {geo}")
+    if time_hint:
+        gap_lines.append(f"- Time period: {time_hint}")
+
+    help_lines = [
+        "- Name a specific country or region (e.g. Kenya, West Africa).",
+        "- Name a specific crop, commodity, or agricultural metric.",
+        "- Narrow the time period (e.g. last 3 years, 2020–2024).",
+    ]
+
+    return (
+        "I don't have OpenTrace data for this question.\n\n"
+        "**Gap**\n"
+        + "\n".join(gap_lines)
+        + "\n\n**What would help**\n"
+        + "\n".join(help_lines)
+        + "\n\n**ACF: no evidence** — no OpenTrace sources (news, research, policy, "
+        "public reports, or structured agricultural data) matched this query, so no "
+        "confidence signal can be computed. This is a data gap, not a low-confidence answer."
+    )
+
+
 def _finalize_generation_result(
     answer: str,
     source_registry: list[SourceRef],
@@ -563,7 +630,12 @@ def _call_llama(messages: list[dict[str, str]]) -> str:
     """Call configured LLM backend; never raises on HTTP errors."""
     gen_timeout = float(os.environ.get("RAG_GENERATE_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
     max_toks = _generate_max_tokens()
-    temperature = float(os.environ.get("RAG_GENERATE_TEMPERATURE", "0.5") or 0.5)
+    # Sprint 1 (Jul 2026): set to 0.7 so responses have natural variety across similar
+    # queries. The "no synthesis on gaps" test-1 concern is handled by code-level
+    # guardrails (empty context → `_no_data_fallback_message` without an LLM call;
+    # `RAG_ALLOW_UNGROUNDED` path is prompt-hardened; `filter_context_items` drops
+    # broken chunks), so temperature can stay in the natural-prose range.
+    temperature = float(os.environ.get("RAG_GENERATE_TEMPERATURE", "0.7") or 0.7)
     return llm_chat_complete(
         messages,
         model=llm_model_id(),
@@ -601,6 +673,9 @@ def generate(
             "yes",
         )
         if allow_ungrounded:
+            # Sprint 1 (Jul 2026): even when RAG_ALLOW_UNGROUNDED=on, do NOT let the
+            # model synthesise academic prose from thin air. Hard-prepend a rule that
+            # forces a structured gap acknowledgement when Context is empty.
             messages = _build_prompt(
                 query,
                 context_block="[No external context]",
@@ -609,16 +684,25 @@ def generate(
                 category=category,
                 plan_type=plan_type,
             )
+            if messages and messages[0].get("role") == "system":
+                messages[0]["content"] = (
+                    "CRITICAL: The Context below is empty ('[No external context]'). "
+                    "Do NOT synthesise, do NOT draw on general knowledge, do NOT produce "
+                    "academic prose. Reply in exactly this shape:\n"
+                    "  Line 1: 'I don't have OpenTrace data for this question.'\n"
+                    "  Then a short 'What would help' list (3 bullets: country/region, "
+                    "crop or commodity, time period).\n"
+                    "  Then a final line: 'ACF: no evidence.'\n"
+                    "No other prose. No hedging. No caveats beyond the ACF line.\n\n"
+                ) + messages[0]["content"]
             llama_answer = _call_llama(messages)
             if llama_answer:
                 cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
                 return _finalize_generation_result(cleaned, [])
+        # Default (RAG_ALLOW_UNGROUNDED off or LLM returned nothing): structured
+        # gap message so testers can distinguish "no data" from "low confidence".
         return GenerationResult(
-            answer=(
-                "I couldn't find relevant OpenTrace sources (news, research, policy, public reports, "
-                "or structured agricultural data) for this question. Try naming a specific country or crop, "
-                "or confirm the knowledge bases are loaded."
-            ),
+            answer=_no_data_fallback_message(query, decomposition),
             citations=[],
         )
 
