@@ -614,6 +614,88 @@ def _no_data_fallback_message(
     )
 
 
+def _query_target_countries(decomposition: dict[str, Any] | None) -> list[str]:
+    """Normalized list of countries/regions the query is scoped to, if any."""
+    if not isinstance(decomposition, dict):
+        return []
+    out: list[str] = []
+    for key in ("countries", "geography", "regions", "geo"):
+        val = decomposition.get(key)
+        if isinstance(val, list):
+            out.extend(str(x).strip() for x in val if str(x).strip())
+        elif isinstance(val, str) and val.strip():
+            out.append(val.strip())
+    seen: set[str] = set()
+    result: list[str] = []
+    for c in out:
+        cl = c.lower()
+        if cl not in seen:
+            seen.add(cl)
+            result.append(c)
+    return result
+
+
+def _geo_conflicts(item: dict[str, Any], allowed_lower: set[str]) -> bool:
+    """
+    True only when a chunk's geo metadata names specific countries and NONE of
+    them match the query's target countries. Chunks with no geo metadata are kept
+    (benefit of the doubt — e.g. structured BQ rows, global/continental references).
+    """
+    meta = _item_metadata(item)
+
+    def _norm_list(s: str) -> set[str]:
+        if not s:
+            return set()
+        parts = re.split(r"[;,/]", s)
+        return {p.strip().lower() for p in parts if p.strip()}
+
+    primary = str(meta.get("geo_country_primary") or meta.get("country") or "")
+    blob = str(meta.get("geo_countries") or "")
+    meta_countries = _norm_list(primary) | _norm_list(blob)
+    if not meta_countries:
+        return False  # no geo signal → keep
+    return not (meta_countries & allowed_lower)
+
+
+def _drop_geo_conflicting(
+    items: list[dict[str, Any]],
+    decomposition: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """
+    Sprint 1 (Jul 2026): source purity. Drop chunks whose geo metadata clearly
+    names other countries than the query asked for (e.g. a Kenya-tagged chunk on a
+    Senegal query). Conservative: chunks lacking geo metadata are always kept, so
+    structured/global references are not accidentally removed. Toggle off with
+    RAG_DROP_GEO_CONFLICTING_CONTEXT=off.
+    """
+    if os.environ.get("RAG_DROP_GEO_CONFLICTING_CONTEXT", "on").strip().lower() in (
+        "0",
+        "off",
+        "false",
+        "no",
+    ):
+        return items
+    countries = _query_target_countries(decomposition)
+    if not countries:
+        return items
+    allowed_lower = {c.lower() for c in countries}
+    return [it for it in items if not _geo_conflicts(it, allowed_lower)]
+
+
+def _min_usable_context() -> int:
+    """
+    Minimum usable chunks required before we call the LLM. When the surviving
+    context is at or below this count we return the structured gap message instead
+    of letting the model pad thin/irrelevant context with general-knowledge prose.
+    Default 0 (disabled) preserves prior behaviour; set RAG_MIN_USABLE_CONTEXT=1+
+    to enforce.
+    """
+    try:
+        return max(0, int(os.environ.get("RAG_MIN_USABLE_CONTEXT", "0") or 0))
+    except ValueError:
+        return 0
+
+
 def _finalize_generation_result(
     answer: str,
     source_registry: list[SourceRef],
@@ -707,6 +789,22 @@ def generate(
         )
 
     usable_context = filter_context_items(context_items)
+
+    # Sprint 1 (Jul 2026): source purity — drop chunks whose geo metadata names
+    # other countries than the query asked for (e.g. Africa-general / Kenya chunks
+    # on a Senegal query). Conservative: chunks without geo metadata are kept.
+    usable_context = _drop_geo_conflicting(usable_context, decomposition)
+
+    # Sprint 1 (Jul 2026): if geo/error filtering leaves too little usable context,
+    # return the structured gap message instead of letting the model pad thin or
+    # irrelevant context with general-knowledge prose (test-1 finding).
+    min_usable = _min_usable_context()
+    if len(usable_context) <= min_usable:
+        return GenerationResult(
+            answer=_no_data_fallback_message(query, decomposition),
+            citations=[],
+        )
+
     ctx_budget = _context_max_chars(memory_block)
     chunk_cap = _chunk_max_chars()
     context_block, source_registry = _build_context_block(usable_context, ctx_budget, chunk_cap)

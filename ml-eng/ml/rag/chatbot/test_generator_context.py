@@ -12,6 +12,7 @@ from ml.rag.chatbot.generator import (
     _build_context_block,
     _context_max_chars,
     _format_source_citation,
+    _drop_geo_conflicting,
     _generate_max_tokens,
     _no_data_fallback_message,
     _normalize_inline_citations,
@@ -397,5 +398,114 @@ def test_ungrounded_mode_hardens_system_prompt() -> None:
     assert "empty" in sys_msg.lower()
     assert "Do NOT synthesise" in sys_msg
     assert "ACF: no evidence" in sys_msg
+
+
+# ---------------------------------------------------------------------------
+# Sprint 1 (Jul 2026) — source purity (geo conflict drop) + min-context threshold
+# ---------------------------------------------------------------------------
+
+
+def _geo_item(country: str, content: str = "some agricultural content") -> dict:
+    return {
+        "content": content,
+        "_context_kind": "news",
+        "metadata": {"doc_kind": "news_article", "country": country, "title": f"{country} note"},
+    }
+
+
+def test_drop_geo_conflicting_removes_other_country() -> None:
+    """A Kenya-tagged chunk should be dropped when the query targets Senegal."""
+    items = [_geo_item("Senegal"), _geo_item("Kenya")]
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+        kept = _drop_geo_conflicting(items, {"countries": ["Senegal"]})
+    kept_countries = [it["metadata"]["country"] for it in kept]
+    assert "Senegal" in kept_countries
+    assert "Kenya" not in kept_countries
+
+
+def test_drop_geo_conflicting_keeps_chunks_without_geo_metadata() -> None:
+    """Chunks with no geo signal are kept (structured/global references)."""
+    no_geo = {"content": "global maize overview", "_context_kind": "academic", "metadata": {}}
+    items = [no_geo, _geo_item("Kenya")]
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+        kept = _drop_geo_conflicting(items, {"countries": ["Senegal"]})
+    assert no_geo in kept
+    assert _geo_item("Kenya")["metadata"]["country"] not in [
+        it["metadata"].get("country") for it in kept
+    ]
+
+
+def test_drop_geo_conflicting_noop_without_target_countries() -> None:
+    """No query geography → nothing dropped."""
+    items = [_geo_item("Kenya"), _geo_item("Senegal")]
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+        kept = _drop_geo_conflicting(items, {})
+    assert len(kept) == 2
+
+
+def test_drop_geo_conflicting_can_be_disabled() -> None:
+    items = [_geo_item("Kenya")]
+    with mock.patch.dict(os.environ, {"RAG_DROP_GEO_CONFLICTING_CONTEXT": "off"}):
+        kept = _drop_geo_conflicting(items, {"countries": ["Senegal"]})
+    assert len(kept) == 1
+
+
+def test_generate_geo_filter_leaves_nothing_returns_gap_message() -> None:
+    """
+    Real-world case: Senegal maize query pulls only Kenya/other-tagged chunks.
+    With min-usable threshold set, generate() should return the structured gap
+    message instead of calling the LLM with irrelevant context.
+    """
+    items = [_geo_item("Kenya"), _geo_item("Nigeria")]
+    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
+        mock_llm.return_value = "should not be called"
+        with mock.patch.dict(
+            os.environ, {"RAG_MIN_USABLE_CONTEXT": "0"}, clear=False
+        ):
+            os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+            result = generate(
+                "maize yields in Senegal 2024",
+                items,
+                decomposition={"countries": ["Senegal"]},
+            )
+    assert "I don't have OpenTrace data" in result.answer
+    assert "ACF: no evidence" in result.answer
+    mock_llm.assert_not_called()
+
+
+def test_generate_min_usable_threshold_blocks_thin_context() -> None:
+    """One weak chunk + RAG_MIN_USABLE_CONTEXT=1 → structured gap, no LLM call."""
+    items = [_geo_item("Senegal")]
+    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
+        mock_llm.return_value = "should not be called"
+        with mock.patch.dict(os.environ, {"RAG_MIN_USABLE_CONTEXT": "1"}, clear=False):
+            os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+            result = generate(
+                "rice production in Senegal",
+                items,
+                decomposition={"countries": ["Senegal"]},
+            )
+    assert "I don't have OpenTrace data" in result.answer
+    mock_llm.assert_not_called()
+
+
+def test_generate_min_usable_threshold_default_allows_generation() -> None:
+    """Default threshold (0) preserves prior behaviour: usable context reaches the LLM."""
+    items = [_geo_item("Senegal")]
+    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
+        mock_llm.return_value = "Rice production is strong in Senegal."
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
+            os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+            result = generate(
+                "rice production in Senegal",
+                items,
+                decomposition={"countries": ["Senegal"]},
+            )
+    assert "I don't have OpenTrace data" not in result.answer
+    mock_llm.assert_called_once()
 
 
