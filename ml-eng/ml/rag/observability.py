@@ -13,8 +13,8 @@ from functools import lru_cache
 from typing import Any
 
 try:
-    from langfuse import Langfuse
-    from langfuse.callback import CallbackHandler as LangfuseCallbackHandler
+    from langfuse.client import Langfuse  # pyright: ignore[reportMissingImports]
+    from langfuse.callbacks import LangfuseCallbackHandler  # pyright: ignore[reportMissingImports]
 except Exception:  # pragma: no cover - langfuse not installed or import error
     Langfuse = None  # type: ignore[assignment]
     LangfuseCallbackHandler = None  # type: ignore[assignment]

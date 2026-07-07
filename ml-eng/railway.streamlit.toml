@@ -1,0 +1,14 @@
+# Railway configuration for OpenTrace RAG Streamlit QA (second service)
+# https://docs.railway.app/deploy/config-as-code
+#
+# Create a new Railway service in the same project, root directory ml-eng/,
+# and point this file as the config (or set dockerfilePath manually).
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.railway.streamlit"
+watchPatterns = ["ml/**", "config/**", "requirements.railway.txt"]
+
+[deploy]
+healthcheckPath = "/_stcore/health"
+healthcheckTimeout = 100

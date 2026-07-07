@@ -2,7 +2,7 @@
 
 This guide is for the **production FastAPI surface** (`ml.rag.app.api`).
 
-**Streamlit is local-testing only.** Do not deploy the Streamlit app to GCE for AskADZA.
+**Streamlit** is for **internal QA only** (local or Railway second service). Do not expose it as the Ask ADZA user-facing chat. See [DEPLOY_STREAMLIT_RAILWAY.md](./DEPLOY_STREAMLIT_RAILWAY.md) (step-by-step) and [ml/rag/README.md](../ml/rag/README.md) — *Deploy Streamlit on Railway*.
 
 ## 1. Build the production image
 

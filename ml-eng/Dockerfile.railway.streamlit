@@ -1,0 +1,42 @@
+# Railway Streamlit QA service — full pipeline inspector (in-process run_rag)
+# Build from ml-eng/:
+#   docker build -f Dockerfile.railway.streamlit -t opentrace-rag-streamlit:latest .
+#
+# Same secrets as Dockerfile.railway (Qdrant, OpenRouter, BQ, GCP SA base64).
+# Optional: RAG_SHOW_SQL_DEBUG=1, RAG_STREAMLIT_DEBUG_DEFAULT=1
+
+FROM python:3.11-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.railway.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY ml ./ml
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+ENV FASTEMBED_CACHE_PATH=/app/models/fastembed
+ENV RAG_EMBEDDINGS_MODE=fastembed
+ENV RAG_SPARSE_EMBEDDINGS=on
+ENV RAG_QDRANT_HYBRID_SEARCH=on
+ENV RAG_SPARSE_MODEL=Qdrant/bm25
+ENV RAG_EMBEDDING_MODEL_ID=intfloat/multilingual-e5-small
+
+RUN mkdir -p /app/models/fastembed \
+    && python -c "from ml.rag.dense_embeddings import warmup_dense_model; from ml.rag.sparse_embeddings import warmup_sparse_model; warmup_dense_model('intfloat/multilingual-e5-small'); warmup_sparse_model(); print('Embedding models cached in image')"
+
+ENV PORT=8501
+EXPOSE $PORT
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8501}/_stcore/health || exit 1
+
+CMD ["sh", "-c", "if [ -n \"$GOOGLE_APPLICATION_CREDENTIALS_BASE64\" ]; then echo \"$GOOGLE_APPLICATION_CREDENTIALS_BASE64\" | base64 -d > /tmp/gcp-sa-key.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa-key.json && echo 'GCP credentials configured'; fi && echo '=== Starting Streamlit pipeline inspector ===' && streamlit run ml/rag/chatbot/streamlit_app.py --server.port=${PORT:-8501} --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false"]

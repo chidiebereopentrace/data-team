@@ -1,256 +1,42 @@
 """
-Streamlit test UI for the multi-source RAG pipeline:
-decompose → parallel retrieval (BQ descriptions + news + academic) → BQ → merge → rerank → generate.
+Streamlit pipeline inspector for the multi-source RAG graph.
 
-Multi-turn chat: sessions in st.session_state; prior turns passed to the generator (retrieval uses latest message only).
+Shows full flow observability: route, decomposition, all retrieval arms, merge/rerank,
+web fallback, generator input, usage, and latency.
 
-Run from repo root: streamlit run ml/rag/streamlit_app.py
+Run: PYTHONPATH=ml-eng streamlit run ml/rag/chatbot/streamlit_app.py
 """
 from __future__ import annotations
 
-import json
 import os
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
-# Load env: data/local/.env then config/.env (BQ + LLM keys not duplicated in local)
-# streamlit_app.py lives at ml-eng/ml/rag/chatbot/, so parents[3] is `ml-eng/` (load_rag_dotenv needs this).
+import streamlit as st
+
 _ml_eng = Path(__file__).resolve().parents[3]
 from ml.rag.chatbot.geo_policy import FARMER_PLAN_TYPE
 from ml.rag.chatbot.plan_policy import PLAN_TYPES
 from ml.rag.chatbot.stakeholder_prompts import CATEGORIES
-from ml.rag.local_env import load_rag_dotenv
-
-# #region agent log
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[4]  # data-team workspace root
-
-
-def _agent_debug_log_runtime(location: str, message: str, data: dict, hypothesis_id: str, run_id: str = "pre-fix") -> None:
-    try:
-        payload = {
-            "sessionId": "6c8b2f",
-            "id": f"log_{int(time.time()*1000)}_{uuid.uuid4().hex[:8]}",
-            "timestamp": int(time.time() * 1000),
-            "location": location,
-            "message": message,
-            "data": data,
-            "runId": run_id,
-            "hypothesisId": hypothesis_id,
-        }
-        with (_WORKSPACE_ROOT / "debug-6c8b2f.log").open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload) + "\n")
-    except Exception:
-        pass
-
-
-_agent_debug_log_runtime(
-    "streamlit_app.py:env_probe:before",
-    "about to load rag dotenv",
-    {
-        "ml_eng_root": str(_ml_eng),
-        "cwd": str(Path.cwd()),
-        "config_env_exists": (_ml_eng / "config" / ".env").is_file(),
-        "data_local_env_exists": (_ml_eng / "data" / "local" / ".env").is_file(),
-    },
-    "A",
+from ml.rag.chatbot.streamlit_inspector import (
+    PRESET_QUERIES,
+    BackendMode,
+    debug_default_enabled,
+    query_via_http_api,
+    render_pipeline_inspector,
 )
-# #endregion
+from ml.rag.chat_memory import append_turn_and_compact
+from ml.rag.local_env import load_rag_dotenv
 
 load_rag_dotenv(_ml_eng)
 
-# #region agent log
-_agent_debug_log_runtime(
-    "streamlit_app.py:env_probe:after",
-    "loaded rag dotenv",
-    {
-        "qdrant_url_present": bool(os.environ.get("QDRANT_URL", "").strip()),
-        "qdrant_api_key_present": bool(os.environ.get("QDRANT_API_KEY", "").strip()),
-        "qdrant_url_len": len(os.environ.get("QDRANT_URL", "")),
-        "qdrant_api_key_len": len(os.environ.get("QDRANT_API_KEY", "")),
-        "rag_llm_base_url": os.environ.get("RAG_LLM_BASE_URL", ""),
-        "rag_llm_model_id": os.environ.get("RAG_LLM_MODEL_ID", ""),
-    },
-    "D",
-)
-
-
-def _probe_qdrant_collection_dims() -> None:
-    """Introspect all RAG collections to compare ingest-time vs query-time dims (H-E/F/G)."""
-    try:
-        from qdrant_client import QdrantClient
-
-        url = os.environ.get("QDRANT_URL", "").strip().strip('"').strip("'")
-        api_key = os.environ.get("QDRANT_API_KEY", "").strip().strip('"').strip("'")
-        if not url or not api_key:
-            return
-        client = QdrantClient(url=url, api_key=api_key, check_compatibility=False, timeout=30)
-        targets = [
-            ("news_data", os.environ.get("QDRANT_COLLECTION_NEWS", "news_data")),
-            ("research_other_papers", os.environ.get("QDRANT_COLLECTION_RESEARCH_PAPERS", "research_other_papers")),
-            ("BQ_table_descriptions", os.environ.get("QDRANT_COLLECTION_DATA_DESCRIPTIONS", "BQ_table_descriptions")),
-            ("OTA_insights", os.environ.get("QDRANT_COLLECTION_OTA_INSIGHTS", "OTA_insights")),
-        ]
-        for label, name in targets:
-            try:
-                info = client.get_collection(collection_name=name)
-                params = getattr(info.config, "params", None)
-                vectors = getattr(params, "vectors", None) if params is not None else None
-                sparse = getattr(params, "sparse_vectors", None) if params is not None else None
-                # vectors may be either a single VectorParams or dict[name->VectorParams]
-                dense_summary: dict[str, Any] = {}
-                if hasattr(vectors, "size"):
-                    dense_summary["<unnamed>"] = {"size": getattr(vectors, "size", None), "distance": str(getattr(vectors, "distance", ""))}
-                elif isinstance(vectors, dict):
-                    for vname, vparams in vectors.items():
-                        dense_summary[vname] = {
-                            "size": getattr(vparams, "size", None),
-                            "distance": str(getattr(vparams, "distance", "")),
-                        }
-                sparse_names = list(sparse.keys()) if isinstance(sparse, dict) else []
-                _agent_debug_log_runtime(
-                    "streamlit_app.py:qdrant_collection_probe",
-                    f"collection dims for {label}",
-                    {
-                        "collection": name,
-                        "points_count": getattr(info, "points_count", None),
-                        "dense_vectors": dense_summary,
-                        "sparse_vector_names": sparse_names,
-                    },
-                    "E",
-                )
-            except Exception as exc:
-                _agent_debug_log_runtime(
-                    "streamlit_app.py:qdrant_collection_probe",
-                    f"collection probe failed for {label}",
-                    {"collection": name, "error": str(exc)[:200]},
-                    "E",
-                )
-    except Exception as exc:
-        _agent_debug_log_runtime(
-            "streamlit_app.py:qdrant_collection_probe",
-            "client init failed",
-            {"error": str(exc)[:200]},
-            "E",
-        )
-
-
-_probe_qdrant_collection_dims()
-# #endregion
-
-import streamlit as st
-
-# #region agent log
-def _agent_debug_log(message: str, data: dict, hypothesis_id: str, run_id: str = "pre-fix") -> None:
-    import json
-    import time
-
-    _p = Path(__file__).resolve().parents[2] / ".cursor" / "debug-4fd6d6.log"
-    try:
-        _p.parent.mkdir(parents=True, exist_ok=True)
-        with _p.open("a", encoding="utf-8") as _f:
-            _f.write(
-                json.dumps(
-                    {
-                        "sessionId": "4fd6d6",
-                        "timestamp": int(time.time() * 1000),
-                        "location": "streamlit_app.py:startup",
-                        "message": message,
-                        "data": data,
-                        "runId": run_id,
-                        "hypothesisId": hypothesis_id,
-                    }
-                )
-                + "\n"
-            )
-    except OSError:
-        pass
-
-
-try:
-    import importlib.util as _ilu
-
-    _tv = _ilu.find_spec("torchvision") is not None
-except Exception:
-    _tv = False
-_agent_debug_log("import_probe", {"torchvision_spec_found": _tv}, "A")
-
-try:
-    import sys as _sys
-
-    _agent_debug_log(
-        "streamlit_runtime_probe",
-        {
-            "streamlit_version": getattr(st, "__version__", None),
-            # Note: Streamlit executes the app in a separate runtime where argv may not include CLI flags.
-            "argv": list(getattr(_sys, "argv", [])[:12]),
-            "env_STREAMLIT_SERVER_FILE_WATCHER_TYPE": os.environ.get("STREAMLIT_SERVER_FILE_WATCHER_TYPE"),
-        },
-        "B",
-    )
-except Exception:
-    pass
-
-try:
-    # Use the public Streamlit API; streamlit.config is an internal module not in type stubs.
-    _agent_debug_log(
-        "streamlit_config_probe",
-        {
-            "server.fileWatcherType": st.get_option("server.fileWatcherType"),
-        },
-        "B",
-    )
-except Exception:
-    pass
-
-try:
-    # Hypothesis E: container exits with 137 due to SIGTERM/SIGINT (user stop) vs SIGKILL (OOM).
-    import signal as _signal
-
-    def _agent_signal_handler(signum, _frame):  # type: ignore[no-untyped-def]
-        _agent_debug_log("signal_received", {"signum": int(signum)}, "E")
-
-    _signal.signal(_signal.SIGTERM, _agent_signal_handler)
-    _signal.signal(_signal.SIGINT, _agent_signal_handler)
-except Exception:
-    pass
-
-try:
-    # Hypothesis F: memory pressure / cgroup limits (OOM kill → SIGKILL, no handler).
-    def _read_text(p: str) -> str | None:
-        try:
-            with open(p, "r", encoding="utf-8") as _f:
-                return _f.read().strip()
-        except OSError:
-            return None
-
-    _status = _read_text("/proc/self/status") or ""
-    _mem_lines = [ln for ln in _status.splitlines() if ln.startswith(("VmRSS:", "VmHWM:", "VmSize:"))]
-    _agent_debug_log(
-        "mem_probe",
-        {
-            "proc_status_mem": _mem_lines[:6],
-            "cgroup_memory_max": _read_text("/sys/fs/cgroup/memory.max"),
-            "cgroup_memory_current": _read_text("/sys/fs/cgroup/memory.current"),
-        },
-        "F",
-    )
-except Exception:
-    pass
-# #endregion
-
-from ml.rag.chat_memory import append_turn_and_compact
-
-st.set_page_config(page_title="OpenTrace RAG (test)", page_icon="🔍", layout="wide")
-st.title("OpenTrace RAG — test interface")
+st.set_page_config(page_title="OpenTrace RAG — Pipeline inspector", page_icon="🔍", layout="wide")
+st.title("OpenTrace RAG — pipeline inspector (QA)")
 st.caption(
-    "Advisory answers from retrieved news, research, and OpenTrace structured data — grounded in sources only."
+    "Test the full RAG graph with retrieval, routing, and generation observability after each turn."
 )
-
-
-def _show_sql_debug() -> bool:
-    return os.environ.get("RAG_SHOW_SQL_DEBUG", "").strip().lower() in ("1", "true", "on", "yes")
 
 
 def _session_label(sid: str) -> str:
@@ -270,14 +56,18 @@ def _ensure_sessions() -> None:
         sid = uuid.uuid4().hex
         st.session_state.rag_sessions = {sid: {"messages": []}}
         st.session_state.active_session_id = sid
+        st.session_state.api_session_id = None
     if "active_session_id" not in st.session_state:
         st.session_state.active_session_id = next(iter(st.session_state.rag_sessions))
+    if "api_session_id" not in st.session_state:
+        st.session_state.api_session_id = None
 
 
 def _new_chat() -> None:
     sid = uuid.uuid4().hex
     st.session_state.rag_sessions[sid] = {"messages": []}
     st.session_state.active_session_id = sid
+    st.session_state.api_session_id = None
 
 
 def _delete_active_session() -> None:
@@ -286,9 +76,92 @@ def _delete_active_session() -> None:
     if len(opts) <= 1:
         st.session_state.rag_sessions = {uuid.uuid4().hex: {"messages": []}}
         st.session_state.active_session_id = next(iter(st.session_state.rag_sessions))
+        st.session_state.api_session_id = None
         return
     del st.session_state.rag_sessions[cur]
     st.session_state.active_session_id = opts[0] if opts[0] != cur else opts[1]
+    st.session_state.api_session_id = None
+
+
+def _build_run_kwargs(
+    *,
+    news_top_k: int,
+    academic_top_k: int,
+    bq_top_k: int,
+    ota_top_k: int,
+    rerank_top_k: int,
+    plan_type: str,
+    category: str,
+    profile_country: str,
+    t_start: str,
+    t_end: str,
+    prior_summary: str,
+    prior_recent: list[dict[str, str]],
+    preset_overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "news_top_k": int(news_top_k),
+        "academic_top_k": int(academic_top_k),
+        "bq_top_k": int(bq_top_k),
+        "ota_top_k": int(ota_top_k),
+        "rerank_top_k": int(rerank_top_k),
+    }
+    overrides = preset_overrides or {}
+    pt = str(overrides.get("plan_type") or plan_type or "")
+    cat = str(overrides.get("category") or category or "")
+    profile = overrides.get("user_profile") if isinstance(overrides.get("user_profile"), dict) else None
+
+    if pt:
+        kwargs["plan_type"] = pt
+    if cat:
+        kwargs["category"] = cat
+    if profile:
+        kwargs["user_profile"] = profile
+    elif pt or cat or profile_country.strip():
+        kwargs["user_profile"] = {
+            "country": profile_country.strip() or None,
+            "plan_type": pt or "Integrated",
+            "category": cat or pt or "Government",
+        }
+    if t_start.strip():
+        kwargs["time_start_override"] = t_start.strip()[:10]
+    if t_end.strip():
+        kwargs["time_end_override"] = t_end.strip()[:10]
+    if prior_summary.strip() or prior_recent:
+        kwargs["conversation_summary"] = prior_summary
+        kwargs["recent_turns"] = prior_recent
+    return kwargs
+
+
+def _run_pipeline(
+    prompt: str,
+    kwargs: dict[str, Any],
+    *,
+    backend_mode: BackendMode,
+    api_base_url: str,
+) -> dict[str, Any]:
+    t0 = time.perf_counter()
+    if backend_mode == "http_api":
+        base = api_base_url.strip()
+        if not base:
+            raise ValueError("Set RAG_API_BASE_URL or enter an API base URL for HTTP mode.")
+        result = query_via_http_api(
+            base,
+            prompt.strip(),
+            kwargs=kwargs,
+            session_id=st.session_state.api_session_id,
+        )
+        sid = result.get("session_id")
+        if isinstance(sid, str) and sid.strip():
+            st.session_state.api_session_id = sid.strip()
+    else:
+        from ml.rag.graph import run_rag
+
+        result = run_rag(prompt.strip(), **kwargs)
+        result["_backend_mode"] = "in_process"
+        result["_query"] = prompt.strip()
+    result["latency_ms"] = (time.perf_counter() - t0) * 1000.0
+    return result
 
 
 _ensure_sessions()
@@ -317,16 +190,37 @@ with st.sidebar:
             st.rerun()
 
     st.divider()
+    st.subheader("Backend")
+    backend_labels = ["In-process (full detail)", "HTTP API (counts only)"]
+    backend_choice = st.radio(
+        "Execution mode",
+        backend_labels,
+        index=0,
+        help="In-process calls run_rag() locally. HTTP mode hits POST /query on Railway or local API.",
+    )
+    backend_mode: BackendMode = "http_api" if backend_choice == backend_labels[1] else "in_process"
+    default_api = os.environ.get("RAG_API_BASE_URL", "").strip()
+    api_base_url = st.text_input(
+        "API base URL (HTTP mode)",
+        value=default_api,
+        placeholder="https://your-railway-service.up.railway.app",
+    )
+
+    st.divider()
+    st.subheader("Preset queries")
+    for label, preset_query, preset_kwargs in PRESET_QUERIES:
+        if st.button(label, key=f"preset_{label}"):
+            st.session_state.pending_prompt = preset_query
+            st.session_state.pending_preset_kwargs = preset_kwargs
+            st.rerun()
+
+    st.divider()
     st.subheader("LLM backend")
     from ml.rag.llm_chat import llm_chat_completions_url, llm_configured, llm_model_id
 
-    llm_url = llm_chat_completions_url() or "(not configured)"
-    st.caption(f"URL: {llm_url}")
+    st.caption(f"URL: {llm_chat_completions_url() or '(not configured)'}")
     st.caption(f"Model: {llm_model_id()}")
     st.caption(f"Configured: {llm_configured()}")
-    # Reranker mode resolution mirrors chatbot.reranker._reranker_mode:
-    # explicit RAG_RERANKER_MODE wins; auto-selects cohere when key present;
-    # legacy RAG_LLM_RERANK still honoured; default is cross_encoder.
     _reranker_mode_env = os.environ.get("RAG_RERANKER_MODE", "").strip().lower()
     _cohere_key = (
         os.environ.get("RAG_RERANKER_COHERE_API_KEY")
@@ -344,23 +238,8 @@ with st.sidebar:
         reranker_mode = "off"
     else:
         reranker_mode = "cross_encoder"
-    _reranker_model = (
-        os.environ.get("RAG_RERANKER_MODEL", "").strip()
-        or "BAAI/bge-reranker-base"
-    )
-    _cohere_model = (
-        os.environ.get("RAG_RERANKER_COHERE_MODEL", "").strip()
-        or "rerank-v3.5"
-    )
-    if reranker_mode == "cohere":
-        st.caption(f"Reranker: cohere ({_cohere_model})")
-    elif reranker_mode == "cross_encoder":
-        st.caption(f"Reranker: cross_encoder ({_reranker_model})")
-    elif reranker_mode == "llm":
-        st.caption("Reranker: llm (per-chunk LLM scoring — slow)")
-    else:
-        st.caption("Reranker: off (pass-through with source boost)")
-    if not llm_configured():
+    st.caption(f"Reranker: {reranker_mode}")
+    if not llm_configured() and backend_mode == "in_process":
         st.warning("Set RAG_LLM_BASE_URL in ml-eng/config/.env and restart Streamlit.")
 
     st.divider()
@@ -368,7 +247,7 @@ with st.sidebar:
     news_top_k = st.number_input("News chunks (top_k)", min_value=1, max_value=50, value=20)
     academic_top_k = st.number_input("Academic chunks (top_k)", min_value=1, max_value=50, value=20)
     bq_top_k = st.number_input("BQ rows (top_k)", min_value=1, max_value=100, value=15)
-    ota_top_k = st.number_input("OTA chunks (top_k) — local test only", min_value=1, max_value=30, value=10)
+    ota_top_k = st.number_input("OTA chunks (top_k)", min_value=1, max_value=30, value=10)
     rerank_top_k = st.number_input("Rerank context size", min_value=1, max_value=50, value=20)
     st.divider()
     plan_type_options = [""] + [p["id"] for p in PLAN_TYPES]
@@ -401,7 +280,7 @@ with st.sidebar:
         )
     t_start = st.text_input("Time start YYYY-MM-DD (optional)", placeholder="2020-01-01")
     t_end = st.text_input("Time end YYYY-MM-DD (optional)", placeholder="2025-12-31")
-    show_debug = st.checkbox("Show pipeline debug (last run)", value=False)
+    show_debug = st.checkbox("Show pipeline inspector (last run)", value=debug_default_enabled())
 
 active = st.session_state.active_session_id
 sess = st.session_state.rag_sessions[active]
@@ -418,157 +297,86 @@ for m in messages:
         st.markdown(m.get("content") or "")
 
 prompt = st.chat_input("Ask a question…")
+if not prompt and st.session_state.get("pending_prompt"):
+    prompt = str(st.session_state.pop("pending_prompt"))
+preset_overrides = st.session_state.pop("pending_preset_kwargs", None)
 
 if prompt:
-    kwargs: dict = {
-        "news_top_k": int(news_top_k),
-        "academic_top_k": int(academic_top_k),
-        "bq_top_k": int(bq_top_k),
-        "ota_top_k": int(ota_top_k),
-        "rerank_top_k": int(rerank_top_k),
-    }
-    if plan_type:
-        kwargs["plan_type"] = plan_type
-    if category:
-        kwargs["category"] = category
-    if plan_type or category or profile_country.strip():
-        kwargs["user_profile"] = {
-            "country": profile_country.strip() or None,
-            "plan_type": plan_type or "Integrated",
-            "category": category or plan_type or "Government",
-        }
-    if t_start.strip():
-        kwargs["time_start_override"] = t_start.strip()[:10]
-    if t_end.strip():
-        kwargs["time_end_override"] = t_end.strip()[:10]
-    if prior_summary.strip() or prior_recent:
-        kwargs["conversation_summary"] = prior_summary
-        kwargs["recent_turns"] = prior_recent
+    kwargs = _build_run_kwargs(
+        news_top_k=int(news_top_k),
+        academic_top_k=int(academic_top_k),
+        bq_top_k=int(bq_top_k),
+        ota_top_k=int(ota_top_k),
+        rerank_top_k=int(rerank_top_k),
+        plan_type=plan_type,
+        category=category,
+        profile_country=profile_country,
+        t_start=t_start,
+        t_end=t_end,
+        prior_summary=prior_summary,
+        prior_recent=prior_recent,
+        preset_overrides=preset_overrides if isinstance(preset_overrides, dict) else None,
+    )
 
     with st.spinner("Running pipeline…"):
         try:
-            from ml.rag.graph import run_rag
-
-            result = run_rag(prompt.strip(), **kwargs)
+            result = _run_pipeline(
+                prompt,
+                kwargs,
+                backend_mode=backend_mode,
+                api_base_url=api_base_url,
+            )
             answer = result.get("answer") or ""
             citations = result.get("citations") or []
             err = result.get("error")
             if err:
                 answer = f"**Error:** {err}\n\n{answer}".strip()
             if citations and "Sources" not in answer:
-                cite_lines = [f"{c.get('id')}. {c.get('text')}" for c in citations if isinstance(c, dict)]
+                cite_lines = [
+                    f"{c.get('id')}. {c.get('text')}"
+                    for c in citations
+                    if isinstance(c, dict)
+                ]
                 if cite_lines:
                     answer = (answer.rstrip() + "\n\nSources\n" + "\n".join(cite_lines)).strip()
 
             messages.append({"role": "user", "content": prompt.strip()})
             messages.append({"role": "assistant", "content": answer})
-            new_summary, new_recent = append_turn_and_compact(
-                prior_summary,
-                prior_recent,
-                prompt.strip(),
-                answer,
-            )
-            sess["conversation_summary"] = new_summary
-            sess["recent_turns"] = new_recent
+            if backend_mode == "in_process":
+                new_summary, new_recent = append_turn_and_compact(
+                    prior_summary,
+                    prior_recent,
+                    prompt.strip(),
+                    answer,
+                )
+                sess["conversation_summary"] = new_summary
+                sess["recent_turns"] = new_recent
             if show_debug:
                 st.session_state.last_rag_debug = result
+                st.session_state.last_rag_debug_meta = {
+                    "query": prompt.strip(),
+                    "memory_summary_len": len(sess.get("conversation_summary") or ""),
+                    "memory_recent_count": len(sess.get("recent_turns") or []),
+                    "backend_mode": backend_mode,
+                }
             st.rerun()
         except Exception as e:
             st.exception(e)
 
-def _render_chunk_rows(items: list[dict[str, Any]], *, preview_chars: int = 600) -> None:
-    """Render retrieval/rerank chunks as collapsible rows with score, metadata, and content preview."""
-    if not items:
-        st.info("No items.")
-        return
-    for i, it in enumerate(items, start=1):
-        content = str(it.get("content") or "")
-        score = it.get("score")
-        raw_meta = it.get("metadata")
-        meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
-        source = it.get("source") or it.get("_context_kind") or "?"
-        title_bits = [f"#{i}", f"[{source}]"]
-        if isinstance(score, (int, float)):
-            title_bits.append(f"score={score:.4f}")
-        # Helpful metadata: title/source_file/authors/doi/url/country/date.
-        for k in ("section_title", "label", "source_file", "title", "url", "doi", "table_name", "geo_country_primary", "country", "published_at"):
-            v = meta.get(k)
-            if isinstance(v, str) and v.strip():
-                title_bits.append(f"{k}={v.strip()[:50]}")
-                break
-        header = " · ".join(title_bits)
-        with st.expander(header, expanded=False):
-            if isinstance(score, (int, float)):
-                st.caption(f"score: {score:.6f}  ·  source: {source}")
-            if meta:
-                st.json({k: v for k, v in meta.items() if v is not None and v != ""}, expanded=False)
-            preview = content if len(content) <= preview_chars else content[:preview_chars] + "…"
-            st.markdown(preview if preview else "_(empty content)_")
-
-
 if show_debug and "last_rag_debug" in st.session_state:
-    result = st.session_state.last_rag_debug
-    with st.expander("Pipeline debug (last run)", expanded=True):
-        dec = result.get("decomposition") or {}
-        st.subheader("Query decomposition")
-        st.json(dec)
-
-        c1, c2, c3, c4, c5 = st.columns(5)
-        with c1:
-            st.metric("BQ table-description matches", len(result.get("bq_table_candidates") or []))
-        with c2:
-            st.metric("Structured data rows", len(result.get("bq_results") or []))
-        with c3:
-            st.metric("News chunks", len(result.get("vector_news_results") or []))
-        with c4:
-            st.metric("Research corpus chunks", len(result.get("vector_academic_results") or []))
-        with c5:
-            st.metric("Reranked → generator", len(result.get("reranked_context") or []))
-
-        if _show_sql_debug():
-            bq_sql_list = result.get("bq_sql_queries") or []
-            if not bq_sql_list:
-                bq_rows = result.get("bq_results") or []
-                seen_sql: set[str] = set()
-                for row in bq_rows:
-                    s = str((row.get("metadata") or {}).get("sql") or "").strip()
-                    if s and s not in seen_sql:
-                        seen_sql.add(s)
-                        bq_sql_list.append(s)
-            if bq_sql_list:
-                with st.expander(f"Internal: generated SQL ({len(bq_sql_list)})", expanded=False):
-                    st.caption("Not shown to end users. Set RAG_SHOW_SQL_DEBUG=0 to hide.")
-                    for i, sql in enumerate(bq_sql_list, start=1):
-                        st.caption(f"Query {i}")
-                        st.code(sql, language="sql")
-
-        st.subheader("Retrieved from each collection")
-        tab_news, tab_research, tab_bq_desc, tab_bq_rows, tab_merged, tab_used = st.tabs([
-            f"News ({len(result.get('vector_news_results') or [])})",
-            f"Research / Policy / Public Report ({len(result.get('vector_academic_results') or [])})",
-            f"BQ table descriptions ({len(result.get('bq_table_candidates') or [])})",
-            f"Structured data ({len(result.get('bq_results') or [])})",
-            f"Merged before rerank ({len(result.get('merged_context') or [])})",
-            f"Passed to generator ({len(result.get('reranked_context') or [])})",
-        ])
-        with tab_news:
-            _render_chunk_rows(list(result.get("vector_news_results") or []))
-        with tab_research:
-            _render_chunk_rows(list(result.get("vector_academic_results") or []))
-        with tab_bq_desc:
-            _render_chunk_rows(list(result.get("bq_table_candidates") or []))
-        with tab_bq_rows:
-            _render_chunk_rows(list(result.get("bq_results") or []))
-        with tab_merged:
-            _render_chunk_rows(list(result.get("merged_context") or []))
-        with tab_used:
-            st.caption("Items in this tab are the exact context block the generator (LLM) saw, in order.")
-            _render_chunk_rows(list(result.get("reranked_context") or []))
+    meta = st.session_state.get("last_rag_debug_meta") or {}
+    render_pipeline_inspector(
+        st.session_state.last_rag_debug,
+        latency_ms=st.session_state.last_rag_debug.get("latency_ms"),
+        backend_mode=meta.get("backend_mode") or backend_mode,
+        query=str(meta.get("query") or ""),
+        memory_summary_len=int(meta.get("memory_summary_len") or 0),
+        memory_recent_count=int(meta.get("memory_recent_count") or 0),
+    )
 
 st.divider()
 st.markdown("**CLI**")
 st.code(
-    "PYTHONPATH=. python -m ml/rag.run \"Your question\"\n"
-    "streamlit run ml/rag/streamlit_app.py",
+    "PYTHONPATH=ml-eng streamlit run ml/rag/chatbot/streamlit_app.py",
     language="bash",
 )
