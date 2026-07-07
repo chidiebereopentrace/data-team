@@ -1,4 +1,4 @@
-.PHONY: help venv-install test rag-run rag-api rag-streamlit
+.PHONY: help venv-install test rag-run rag-api rag-streamlit rag-streamlit-inspector
 
 help:
 	@echo "ML/AI-eng (ml-eng/) commands"
@@ -6,7 +6,8 @@ help:
 	@echo "  make test           Run ML tests (excluding rag/serving by default)"
 	@echo "  make rag-run        Run RAG CLI (uses Qdrant Cloud)"
 	@echo "  make rag-api        Start FastAPI RAG server"
-	@echo "  make rag-streamlit  Start Streamlit UI"
+	@echo "  make rag-streamlit  Start Streamlit pipeline inspector"
+	@echo "  make rag-streamlit-inspector  Alias for rag-streamlit"
 
 venv-install:
 	pip install -r ml-eng/requirements.txt -r ml-eng/requirements-dev.txt
@@ -22,4 +23,6 @@ rag-api:
 
 rag-streamlit:
 	PYTHONPATH=ml-eng streamlit run ml-eng/ml/rag/chatbot/streamlit_app.py
+
+rag-streamlit-inspector: rag-streamlit
 

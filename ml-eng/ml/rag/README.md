@@ -214,13 +214,54 @@ PYTHONPATH=ml-eng python -m ml.rag.run "What tables exist in bronze for yields?"
 PYTHONPATH=ml-eng python -m ml.rag.run
 ```
 
-### Test with Streamlit
+### Test with Streamlit (pipeline inspector)
 
 ```bash
 PYTHONPATH=ml-eng streamlit run ml/rag/chatbot/streamlit_app.py
 ```
 
-Open the URL (e.g. http://localhost:8501), use the **chat** input, and switch sessions from the sidebar. Enable **pipeline debug** to see decomposition and retrieval stats.
+Open http://localhost:8501. The **pipeline inspector** panel (enabled by default) shows after each turn:
+
+- **Route:** meta / product / full_rag / web_fallback / insufficient
+- **Decomposition** (geography, time, entities)
+- **Retrieval metrics** (news, research, OTA, BQ, web, latency, token usage)
+- **Tabs** for every retrieval arm plus merged context and generator input
+- **Preset queries** in the sidebar (identity, product, RAG, Farmers+Ghana)
+
+**Backend modes:**
+
+| Mode | Use |
+|------|-----|
+| **In-process** (default) | Full chunk detail via `run_rag()` |
+| **HTTP API** | `POST /query` with `include_trace` — counts only; set `RAG_API_BASE_URL` |
+
+Env: `RAG_STREAMLIT_DEBUG_DEFAULT=1`, `RAG_SHOW_SQL_DEBUG=1` (optional SQL panel).
+
+### Deploy Streamlit on Railway (second service, internal QA)
+
+Full deploy guide: [deploy/DEPLOY_STREAMLIT_RAILWAY.md](../../deploy/DEPLOY_STREAMLIT_RAILWAY.md). Smoke test: `ml-eng/scripts/smoke_streamlit_railway.sh <url>`.
+
+Keep the existing **RAG API** service (`Dockerfile.railway`). Add a **second service** for the QA UI:
+
+1. New Railway service, root directory **`ml-eng/`**
+2. Config file: [`railway.streamlit.toml`](../railway.streamlit.toml) (or set `dockerfilePath` to `Dockerfile.railway.streamlit`)
+3. Copy env vars from the API service: `QDRANT_*`, `RAG_LLM_*`, `BQ_*`, `GOOGLE_APPLICATION_CREDENTIALS_BASE64`, optional `RAG_REDIS_URL`, `LANGFUSE_*`
+4. Recommended QA vars: `RAG_SHOW_SQL_DEBUG=1`, `RAG_STREAMLIT_DEBUG_DEFAULT=1`
+5. Health check: `GET /_stcore/health`
+6. Restrict access (team-only URL or private networking)
+
+```bash
+docker build -f ml-eng/Dockerfile.railway.streamlit -t opentrace-rag-streamlit:latest ml-eng/
+```
+
+**Verification checklist:**
+
+| Query | Expected route |
+|-------|----------------|
+| `Who are you?` | meta — zero retrieval |
+| `What is OpenTrace?` | product — zero retrieval |
+| `Maize yields in Kenya 2020` | full_rag — populated tabs |
+| Farmers + Ghana preset | full_rag — geo in decomposition |
 
 Programmatic:
 
