@@ -489,21 +489,46 @@ def _citation_kind_normalized(kind: str) -> str:
 
 
 def _citation_url(kind: str, meta: dict[str, Any]) -> str | None:
+    """Extract a clickable URL for a citation, trying multiple metadata fields.
+
+    Sprint 1, Week 3: improved to check url/link/source_url for ALL source types
+    (not just news), so academic papers with a direct URL also get clickable links
+    even when DOI is missing.
+    """
     k = kind.lower()
+
+    # Web sources — url is always present
     if k in ("web_wikipedia", "web_search"):
         url = str(meta.get("url") or "").strip()
         return url or None
+
+    # News — check multiple URL field names
     if k in ("news_article", "news"):
         for key in ("url", "link", "source_url"):
             url = str(meta.get(key) or "").strip()
             if url.startswith("http"):
                 return url
+        return None
+
+    # Academic / policy / public report — DOI preferred, then direct URL fallback
     if k in ("academic_article", "academic", "policy_document", "policy", "public_report"):
         doi = str(meta.get("doi") or "").strip()
         if doi.startswith("http"):
             return doi
         if doi:
             return f"https://doi.org/{doi.lstrip('doi:').strip()}"
+        # Fallback: check for direct url/link fields (some ingested records have these)
+        for key in ("url", "link", "source_url"):
+            url = str(meta.get(key) or "").strip()
+            if url.startswith("http"):
+                return url
+        return None
+
+    # OTA insights — check for url field
+    if k in ("ota_insight", "ota_metric"):
+        url = str(meta.get("url") or meta.get("source_url") or "").strip()
+        return url if url.startswith("http") else None
+
     return None
 
 
