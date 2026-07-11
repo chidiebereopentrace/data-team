@@ -10,6 +10,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, TypedDict, cast
 
+from ml.rag.chatbot.acf import ACFResult, compute_acf
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.geo_policy import effective_geo_override
 from ml.rag.chatbot.plan_policy import apply_plan_decomposition_gates
@@ -291,6 +292,12 @@ class RAGGraphState(TypedDict, total=False):
     plan_type: str | None
     category: str | None
     user_profile: dict[str, Any] | None
+    # ACF (ADZA Confidence Framework) — Sprint 1, Week 2
+    acf_band: str | None
+    acf_score: float | None
+    acf_note: str | None
+    # Session context — Sprint 1, Week 2 (session isolation)
+    session_id: str | None
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
@@ -780,7 +787,18 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
     if state.get("category"):
         gkw["category"] = state.get("category")
     gen_result = generate(query, context, **gkw)
-    return {"answer": gen_result.answer, "citations": gen_result.citations}
+
+    # Sprint 1, Week 2: compute ACF from the context that was sent to the generator.
+    used_web = bool(state.get("web_results"))
+    acf = compute_acf(context, used_web_fallback=used_web)
+
+    return {
+        "answer": gen_result.answer,
+        "citations": gen_result.citations,
+        "acf_band": acf.band,
+        "acf_score": acf.score,
+        "acf_note": acf.note,
+    }
 
 
 def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
@@ -802,7 +820,21 @@ def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
     if state.get("category"):
         gkw["category"] = state.get("category")
     answer = generate_meta_answer(query, **gkw)
-    return {"answer": answer, "citations": []}
+
+    # Meta queries use curated product knowledge — ACF is always HIGH.
+    acf = ACFResult(
+        band="high",
+        score=1.0,
+        note="This response is from the OpenTrace product knowledge base.",
+    )
+
+    return {
+        "answer": answer,
+        "citations": [],
+        "acf_band": acf.band,
+        "acf_score": acf.score,
+        "acf_note": acf.note,
+    }
 
 
 def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
@@ -824,7 +856,20 @@ def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
     if state.get("category"):
         gkw["category"] = state.get("category")
     answer = generate_product_answer(query, **gkw)
-    return {"answer": answer}
+
+    # Product queries use curated knowledge base — ACF is always HIGH.
+    acf = ACFResult(
+        band="high",
+        score=1.0,
+        note="This response is from the OpenTrace product knowledge base.",
+    )
+
+    return {
+        "answer": answer,
+        "acf_band": acf.band,
+        "acf_score": acf.score,
+        "acf_note": acf.note,
+    }
 
 
 def build_graph():
@@ -907,6 +952,8 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
     ):
         if key in kwargs and kwargs[key] is not None:
             initial[key] = kwargs[key]  # type: ignore[assignment]
+    if "session_id" in kwargs and kwargs["session_id"]:
+        initial["session_id"] = kwargs["session_id"]  # type: ignore[assignment]
     if "conversation_summary" in kwargs:
         initial["conversation_summary"] = kwargs["conversation_summary"]  # type: ignore[assignment]
     if "recent_turns" in kwargs:

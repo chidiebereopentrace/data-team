@@ -18,6 +18,7 @@ from ml.rag.chat_memory import (
     default_summary_max_chars,
     default_verbatim_max_chars,
 )
+from ml.rag.chatbot.acf import ACFResult, compute_acf
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
 
