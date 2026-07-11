@@ -5,6 +5,34 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# ---------------------------------------------------------------------------
+# ACF (ADZA Confidence Framework) — surfaced on every response (Sprint 1 Wk2)
+# ---------------------------------------------------------------------------
+
+ACFBandLiteral = Literal["high", "medium", "low", "no_evidence"]
+
+
+class ACFSignal(BaseModel):
+    """Confidence signal attached to every RAG response."""
+
+    band: ACFBandLiteral = Field(
+        ...,
+        description=(
+            "Confidence band: high, medium, low, or no_evidence. "
+            "Derived from retrieval quality, not LLM fluency."
+        ),
+    )
+    score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Composite confidence score (0.0–1.0).",
+    )
+    note: str = Field(
+        ...,
+        description="Plain-language explanation of the confidence level.",
+    )
+
 PlanType = Literal[
     "Free",
     "Farmers",
