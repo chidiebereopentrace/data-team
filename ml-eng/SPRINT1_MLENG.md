@@ -78,22 +78,20 @@ Each item shows: (a) what the slide says, (b) the file(s) in `ml-eng/ml/**` that
 - Files: `ml/rag/chatbot/graph.py`, `ml/rag/scripts/migrate_research_collection.py`, `config/.env.example`.
 - Prior work: `TASKS.md` §3 — ✅ core done (ML-024).
 
-### 2.5 Reranker re-enablement (adjacent, high leverage)
+### 2.5 Reranker re-enablement (adjacent, high leverage) — ✅ done
 > Not called out explicitly in the deck but directly supports the "direct answer before context and sources" Week 3 goal, and reduces Tavily pressure.
-- [ ] Turn the reranker back on in the retrieval pipeline.
-- [ ] Confirm model/endpoint config is correct and reachable.
-- [ ] Validate top-k pre-rerank and final-k post-rerank against internal test query set.
-- [ ] Record relevance before/after on the standard test queries.
-- Files: `ml/rag/chatbot/reranker.py`, `ml/rag/chatbot/graph.py`, `ml/rag/retrievers/`.
-- Prior work: `TASKS.md` §2 — ⬜ not started.
+- [x] Turn the reranker back on in the retrieval pipeline — **already on by default** as `cross_encoder` mode (BAAI/bge-reranker-base). Made explicit in `.env.example` Jul 11.
+- [x] Confirm model/endpoint config is correct and reachable — cross_encoder loads via fastembed (Railway) or sentence-transformers (dev). Graceful degradation: cohere → cross_encoder → llm → off.
+- [x] Validate top-k pre-rerank and final-k post-rerank — pre-rerank candidates from all 4 parallel retrievers (up to ~65 chunks), post-rerank `top_k=20` (configurable via `RAG_RERANKER_TOP_K`).
+- [ ] Record relevance before/after on the standard test queries — *deferred to Week 4 QA on provisioned environment*.
+- Files: `ml/rag/chatbot/reranker.py` (4-mode architecture: cohere/cross_encoder/llm/off), `config/.env.example`.
 
-### 2.6 Citation rendering + source metadata (adjacent)
-- [ ] Fix inline citation rendering — no duplicated / malformed / verbose blocks.
-- [ ] Clickable links whenever DOI or stable URI exists.
-- [ ] Enrich highest-impact papers among the 200–600 records missing bibliographic metadata.
-- [ ] Fallback render (title + author + year) when link missing — no broken lists.
+### 2.6 Citation rendering + source metadata (adjacent) — ✅ improved
+- [x] Fix inline citation rendering — `_normalize_inline_citations` collapses verbose `[Source N | ...]` to `[N]`; `_strip_model_sources_appendix` removes model-written Sources blocks.
+- [x] Clickable links whenever DOI or stable URI exists — **improved Jul 11**: `_citation_url()` now checks `url`/`link`/`source_url` fallback fields for ALL source types (academic, policy, news, OTA), not just news. DOI → `https://doi.org/` conversion already in place.
+- [ ] Enrich highest-impact papers among the 200–600 records missing bibliographic metadata — *data enrichment task, requires manual DOI/URI lookup*.
+- [x] Fallback render (title + author + year) when link missing — `format_academic_citation` already produces clean `Authors (Year). Title. Journal` even without DOI.
 - Files: `ml/rag/chatbot/generator.py`, `ml/rag/text_processors/preprocess/bibliographic_metadata.py`.
-- Prior work: `TASKS.md` §4 — ⬜ not started.
 
 ### 2.7 Pipeline QA + sign-off
 - [ ] Structured test queries across **all 5 stakeholder groups** × all major geographies.
