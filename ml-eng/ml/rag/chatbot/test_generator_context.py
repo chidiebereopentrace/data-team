@@ -10,6 +10,7 @@ from ml.rag.chatbot.generator import (
     SourceRef,
     _append_structured_citations,
     _build_context_block,
+    _clean_answer,
     _context_max_chars,
     _format_source_citation,
     _drop_geo_conflicting,
@@ -17,6 +18,7 @@ from ml.rag.chatbot.generator import (
     _no_data_fallback_message,
     _normalize_inline_citations,
     _strip_model_sources_appendix,
+    _strip_preamble_openers,
     extract_referenced_source_ids,
     filter_context_items,
     generate,
@@ -507,5 +509,91 @@ def test_generate_min_usable_threshold_default_allows_generation() -> None:
             )
     assert "I don't have OpenTrace data" not in result.answer
     mock_llm.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Sprint 1, Week 3 — direct-answer-first (preamble stripping backstop)
+# ---------------------------------------------------------------------------
+
+
+def test_strip_preamble_based_on_the_context() -> None:
+    out = _strip_preamble_openers(
+        "Based on the context, maize yields in Kenya rose 12% in 2023."
+    )
+    assert out == "Maize yields in Kenya rose 12% in 2023."
+
+
+def test_strip_preamble_according_to_the_context() -> None:
+    out = _strip_preamble_openers(
+        "According to the context, rice prices climbed sharply."
+    )
+    assert out == "Rice prices climbed sharply."
+
+
+def test_strip_preamble_it_is_important_to_note() -> None:
+    out = _strip_preamble_openers(
+        "It is important to note that fertiliser costs doubled in West Africa."
+    )
+    assert out == "Fertiliser costs doubled in West Africa."
+
+
+def test_strip_preamble_the_context_shows() -> None:
+    out = _strip_preamble_openers("The context shows that drought reduced output.")
+    assert out == "Drought reduced output."
+
+
+def test_strip_preamble_unfortunately() -> None:
+    out = _strip_preamble_openers("Unfortunately, coverage for Chad is limited.")
+    assert out == "Coverage for Chad is limited."
+
+
+def test_strip_preamble_unwinds_stacked_openers() -> None:
+    out = _strip_preamble_openers(
+        "Based on the context, it is worth noting that prices rose."
+    )
+    assert out == "Prices rose."
+
+
+def test_strip_preamble_leaves_direct_answer_untouched() -> None:
+    text = "Maize yields in Kenya rose 12% in 2023 [1]."
+    assert _strip_preamble_openers(text) == text
+
+
+def test_strip_preamble_does_not_touch_content_opening() -> None:
+    # "This study examines" is a content-bearing opener we must NOT strip mid-answer;
+    # the prompt discourages it, but if it carries meaning we leave it alone here.
+    text = "Rice output grew while input costs also rose."
+    assert _strip_preamble_openers(text) == text
+
+
+def test_strip_preamble_never_returns_empty() -> None:
+    # If the preamble is the entire content, keep the original rather than emptying.
+    text = "Based on the context,"
+    out = _strip_preamble_openers(text)
+    assert out.strip() != ""
+
+
+def test_strip_preamble_empty_input() -> None:
+    assert _strip_preamble_openers("") == ""
+
+
+def test_clean_answer_strips_preamble() -> None:
+    out = _clean_answer("Based on the context, maize yields rose 12%.")
+    assert out == "Maize yields rose 12%."
+
+
+def test_generate_strips_preamble_from_llm_output() -> None:
+    """End-to-end: a preamble-opening LLM answer is cleaned before returning."""
+    items = [_news_item()]
+    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
+        mock_llm.return_value = "Based on the context, rice policy shifted in Senegal.[1]"
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+            os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
+            result = generate("What changed in rice policy?", items)
+    assert not result.answer.lower().startswith("based on the context")
+    assert "Rice policy shifted in Senegal." in result.answer
+    assert "[1]" in result.answer
+
 
 
