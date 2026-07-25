@@ -28,7 +28,7 @@ if env_path.exists():
             k, _, v = line.partition("=")
             os.environ.setdefault(k.strip(), v.strip())
 
-RESEARCH_COLLECTIONS = ("academic_papers", "policies", "news_public_reports")
+RESEARCH_COLLECTIONS = ("academic_papers", "policies", "public_reports")
 
 # A record has a usable clickable link if it has any of these (DOI or URL).
 _LINK_FIELDS = ("doi", "url", "link", "source_url")

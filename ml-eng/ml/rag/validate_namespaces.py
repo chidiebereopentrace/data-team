@@ -1,7 +1,7 @@
-"""Sprint 1, Week 3: Validate namespace separation in Qdrant.
+"""Sprint 1, Week 3 / ML-036: Validate namespace separation in Qdrant.
 
 Connects to Qdrant Cloud and checks that the namespace-separated collections
-(academic_papers, policies, news_public_reports) contain only the expected
+(academic_papers, policies, public_reports, formation) contain only the expected
 doc_kind values — no cross-contamination.
 
 Usage: python -m ml.rag.validate_namespaces
@@ -56,7 +56,8 @@ def main():
     expected = {
         "academic_papers": {"academic_article"},
         "policies": {"policy_document"},
-        "news_public_reports": {"public_report"},
+        "public_reports": {"public_report"},
+        "formation": {"agricultural_practise"},
     }
 
     all_passed = True

@@ -319,7 +319,7 @@ def _tag_vector(item: dict[str, Any], kind: str) -> dict[str, Any]:
     }
 
 
-_RESEARCH_DOC_KINDS = ("academic_article", "policy_document", "public_report")
+_RESEARCH_DOC_KINDS = ("academic_article", "policy_document", "public_report", "agricultural_practise")
 
 
 def _news_kwargs(state: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
@@ -437,17 +437,59 @@ def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
     return [_tag_vector(x, "news") for x in raw]
 
 
+# Sprint 1 (ML-024): the mixed ``research_other_papers`` collection was split by
+# doc_kind into three dedicated collections. Retrieval now queries all three and
+# merges. Set RAG_USE_LEGACY_RESEARCH_COLLECTION=on to fall back to the single
+# pre-split collection (kept in Qdrant as a backup) if needed before test 2.
+_RESEARCH_SPLIT_COLLECTIONS: tuple[tuple[str, str], ...] = (
+    ("QDRANT_COLLECTION_ACADEMIC_PAPERS", "academic_papers"),
+    ("QDRANT_COLLECTION_POLICIES", "policies"),
+    ("QDRANT_COLLECTION_PUBLIC_REPORTS", "public_reports"),
+    ("QDRANT_COLLECTION_FORMATION", "formation"),
+)
+
+
+def _use_legacy_research_collection() -> bool:
+    return os.environ.get("RAG_USE_LEGACY_RESEARCH_COLLECTION", "").strip().lower() in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    )
+
+
 def _retrieve_academic(state: RAGGraphState) -> list[dict[str, Any]]:
     """Research retrieval (academic / policy / public report) with geo + year filters."""
-    raw = _vector_retrieve_for_corpus(
-        state,
-        collection_env="QDRANT_COLLECTION_RESEARCH_PAPERS",
-        default_collection="research_other_papers",
-        build_kwargs=_academic_kwargs,
-        geo_fallback_env="RAG_RESEARCH_GEO_FALLBACK",
-        time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
-    )
-    return [_tag_vector(x, "research") for x in raw]
+    if _use_legacy_research_collection():
+        raw = _vector_retrieve_for_corpus(
+            state,
+            collection_env="QDRANT_COLLECTION_RESEARCH_PAPERS",
+            default_collection="research_other_papers",
+            build_kwargs=_academic_kwargs,
+            geo_fallback_env="RAG_RESEARCH_GEO_FALLBACK",
+            time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
+        )
+        return [_tag_vector(x, "research") for x in raw]
+
+    # Query the three split collections in parallel-safe sequence and merge by score.
+    top_k = int(state.get("academic_top_k") or 20)
+    batches: list[list[dict[str, Any]]] = []
+    for collection_env, default_collection in _RESEARCH_SPLIT_COLLECTIONS:
+        try:
+            batch = _vector_retrieve_for_corpus(
+                state,
+                collection_env=collection_env,
+                default_collection=default_collection,
+                build_kwargs=_academic_kwargs,
+                geo_fallback_env="RAG_RESEARCH_GEO_FALLBACK",
+                time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
+            )
+            batches.append(batch)
+        except Exception:
+            logger.exception("Research retrieval failed for collection %s", default_collection)
+
+    merged = _merge_dedupe_vector_hits(batches, top_k)
+    return [_tag_vector(x, "research") for x in merged]
 
 
 def _retrieve_ota(state: RAGGraphState) -> list[dict[str, Any]]:
@@ -494,6 +536,10 @@ def _research_context_label(meta: dict[str, Any]) -> tuple[str, str]:
         title = str(meta.get("section_title") or meta.get("label") or meta.get("source_file") or "").strip()
         prefix = f"[Public report | {title}]" if title else "[Public report]"
         return "public_report", prefix
+    if dk == "agricultural_practise":
+        title = str(meta.get("section_title") or meta.get("label") or meta.get("source_file") or "").strip()
+        prefix = f"[Formation | {title}]" if title else "[Formation]"
+        return "formation", prefix
     cite = format_academic_citation(meta)
     prefix = f"[Academic | {cite}]" if cite else "[Academic]"
     return "academic", prefix
