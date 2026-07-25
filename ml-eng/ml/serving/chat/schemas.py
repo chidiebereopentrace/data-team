@@ -131,6 +131,11 @@ class ChatSuccessResponse(BaseModel):
 
     created_at: str
 
+    plan_type: str | None = Field(
+        None,
+        description="The plan tier that was applied to this request (echoed for debugging).",
+    )
+
 
 
 
