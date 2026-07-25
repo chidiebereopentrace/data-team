@@ -9,6 +9,16 @@ from ml.rag.chatbot.stakeholder_prompts import (
     is_valid_category,
 )
 
+# Map URL path slugs → canonical plan_type IDs (for plan-scoped API routes).
+PLAN_ROUTE_SLUGS: dict[str, str] = {
+    "free": "Free",
+    "farmers": "Farmers",
+    "government": "Government",
+    "ngos": "NGOs",
+    "agribusinesses": "Agribusinesses",
+    "integrated": "Integrated",
+}
+
 PLAN_TYPES: list[dict[str, str]] = [
     {
         "id": "Free",
@@ -142,10 +152,29 @@ def apply_plan_decomposition_gates(
     return out
 
 
+def default_category_for_plan(plan_type: str | None) -> str | None:
+    """Return the natural default category for a plan tier, or None if no default.
+
+    Used by plan-scoped session creation routes to bootstrap a session
+    with the appropriate category persona when the caller doesn't specify one.
+    """
+    _defaults: dict[str, str | None] = {
+        "Free": None,
+        "Farmers": "Farmers",
+        "Government": "Government",
+        "NGOs": "NGOs",
+        "Agribusinesses": "Agribusinesses",
+        "Integrated": None,  # category selected per message by the Integrated plan
+    }
+    return _defaults.get((plan_type or "").strip())
+
+
 __all__ = [
+    "PLAN_ROUTE_SLUGS",
     "PLAN_TYPES",
     "allows_cross_country",
     "apply_plan_decomposition_gates",
+    "default_category_for_plan",
     "instruction_for_category",
     "is_valid_category",
     "is_valid_plan_type",

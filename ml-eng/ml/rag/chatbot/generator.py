@@ -18,6 +18,7 @@ from ml.rag.chat_memory import (
     default_summary_max_chars,
     default_verbatim_max_chars,
 )
+from ml.rag.chatbot.acf import ACFResult, compute_acf
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
 
@@ -36,6 +37,28 @@ _MODEL_SOURCES_APPENDIX_RE = re.compile(
     r"\n+(?:Sources|References|Bibliography)\s*:?\s*\n[\s\S]*\Z",
     re.IGNORECASE,
 )
+# Sprint 1, Week 3 (direct-answer-first): deterministic backstop for the prompt rule
+# in _build_prompt. Even with the "no preamble" system instruction, the model
+# occasionally still opens with an academic/meta-commentary hedge (the corpus is
+# heavily academic). This regex matches ONLY clear connective preambles at the very
+# start of the answer so we can strip them and let the substantive answer lead.
+# It deliberately does NOT touch content-bearing openings (e.g. "This study examines").
+_PREAMBLE_OPENER_RE = re.compile(
+    r"^\s*(?:"
+    r"based on the (?:provided |given )?context|"
+    r"according to the (?:provided |given )?context|"
+    r"the (?:provided |given )?context(?: above| provided)?"
+    r"(?: clearly)?(?: shows| indicates| suggests| states| reveals| highlights| provides| mentions)|"
+    r"it is important to note|"
+    r"it is worth noting|"
+    r"it should be noted|"
+    r"the evidence suggests|"
+    r"unfortunately"
+    r")\b[\s,:;\u2014-]*(?:that\s+)?",
+    re.IGNORECASE,
+)
+_MAX_PREAMBLE_UNWIND = 3
+
 _BQ_FAILURE_MARKERS = (
     "[bq execution error",
     "[bq validation failed",
@@ -460,6 +483,36 @@ def _strip_sql_from_answer(text: str) -> str:
     return cleaned or text.strip()
 
 
+def _strip_preamble_openers(text: str) -> str:
+    """
+    Sprint 1, Week 3 (direct-answer-first): deterministic backstop for the "no
+    preamble" prompt rule. If the model still opens with a connective/meta-commentary
+    preamble ("Based on the context, ...", "It is important to note that ...", etc.),
+    strip it so the substantive answer leads. Capitalises the new first character.
+
+    Conservative by design:
+      - Only rewrites the very START of the answer.
+      - Only strips recognised preamble phrases (see _PREAMBLE_OPENER_RE); leaves
+        content-bearing openings untouched.
+      - Never returns empty: if stripping would leave nothing, the original is kept.
+      - Unwinds at most _MAX_PREAMBLE_UNWIND stacked preambles.
+    """
+    if not text:
+        return text
+    out = text.lstrip()
+    for _ in range(_MAX_PREAMBLE_UNWIND):
+        m = _PREAMBLE_OPENER_RE.match(out)
+        if not m:
+            break
+        stripped = out[m.end():].lstrip()
+        if not stripped:
+            # Preamble was the entire content — keep original rather than emptying.
+            return text.strip()
+        # Recapitalise the first alphabetic character of the remaining answer.
+        out = stripped[0].upper() + stripped[1:] if stripped[0].isalpha() else stripped
+    return out
+
+
 def _clean_answer(text: str) -> str:
     """Remove Llama chat template echoes and other non-answer artifacts from LLM output."""
     if not text:
@@ -469,7 +522,8 @@ def _clean_answer(text: str) -> str:
     text = re.sub(r"^(Context:|Question:).*$", "", text, flags=re.MULTILINE | re.IGNORECASE).strip()
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = _strip_sql_from_answer(text) or text.strip()
-    return _strip_model_sources_appendix(text)
+    text = _strip_model_sources_appendix(text)
+    return _strip_preamble_openers(text)
 
 
 def _citation_kind_normalized(kind: str) -> str:
@@ -488,21 +542,46 @@ def _citation_kind_normalized(kind: str) -> str:
 
 
 def _citation_url(kind: str, meta: dict[str, Any]) -> str | None:
+    """Extract a clickable URL for a citation, trying multiple metadata fields.
+
+    Sprint 1, Week 3: improved to check url/link/source_url for ALL source types
+    (not just news), so academic papers with a direct URL also get clickable links
+    even when DOI is missing.
+    """
     k = kind.lower()
+
+    # Web sources — url is always present
     if k in ("web_wikipedia", "web_search"):
         url = str(meta.get("url") or "").strip()
         return url or None
+
+    # News — check multiple URL field names
     if k in ("news_article", "news"):
         for key in ("url", "link", "source_url"):
             url = str(meta.get(key) or "").strip()
             if url.startswith("http"):
                 return url
+        return None
+
+    # Academic / policy / public report — DOI preferred, then direct URL fallback
     if k in ("academic_article", "academic", "policy_document", "policy", "public_report"):
         doi = str(meta.get("doi") or "").strip()
         if doi.startswith("http"):
             return doi
         if doi:
             return f"https://doi.org/{doi.lstrip('doi:').strip()}"
+        # Fallback: check for direct url/link fields (some ingested records have these)
+        for key in ("url", "link", "source_url"):
+            url = str(meta.get(key) or "").strip()
+            if url.startswith("http"):
+                return url
+        return None
+
+    # OTA insights — check for url field
+    if k in ("ota_insight", "ota_metric"):
+        url = str(meta.get("url") or meta.get("source_url") or "").strip()
+        return url if url.startswith("http") else None
+
     return None
 
 

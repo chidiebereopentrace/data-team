@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ml.rag.api_schemas import CitationItem, UsageStats
+from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats
 from ml.rag.app.api import QueryResponse
 
 
@@ -28,6 +28,11 @@ def test_query_response_serializes_citations_and_usage() -> None:
         citations=[
             CitationItem(id=1, kind="news", text="[News] Senegal policy", url="https://example.com"),
         ],
+        acf=ACFSignal(
+            band="high",
+            score=0.85,
+            note="This response is well-supported by multiple OpenTrace sources.",
+        ),
         usage=UsageStats(input_tokens=100, output_tokens=50, total_tokens=150),
     )
     data = resp.model_dump()
@@ -38,3 +43,27 @@ def test_query_response_serializes_citations_and_usage() -> None:
         "output_tokens": 50,
         "total_tokens": 150,
     }
+
+
+def test_acf_signal_serializes_all_fields() -> None:
+    """Sprint 1 Wk2: ACF signal must appear in every QueryResponse."""
+    acf = ACFSignal(band="medium", score=0.55, note="Partially supported.")
+    data = acf.model_dump()
+    assert data == {"band": "medium", "score": 0.55, "note": "Partially supported."}
+
+
+def test_query_response_includes_acf() -> None:
+    """QueryResponse.acf must be present and correctly serialized."""
+    resp = QueryResponse(
+        answer="Maize production in Nigeria...",
+        session_id="xyz789",
+        acf=ACFSignal(
+            band="no_evidence",
+            score=0.0,
+            note="No OpenTrace sources matched this query.",
+        ),
+    )
+    data = resp.model_dump()
+    assert data["acf"]["band"] == "no_evidence"
+    assert data["acf"]["score"] == 0.0
+    assert "no opentrace" in data["acf"]["note"].lower()

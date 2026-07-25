@@ -81,17 +81,25 @@ def resolve_request_context(
     conversation_history: list[Any] | None = None,
     session_id: str | None = None,
     use_session_category_fallback: bool = True,
+    injected_plan_type: str | None = None,
 ) -> ResolvedRequestContext:
     """
     Resolve plan tier, category persona, geo profile, and client history from a request.
 
     plan_type and category come from user_profile when present.
     category fallback: session blob when plan fields omitted but session_id is set.
+
+    injected_plan_type: when set (by plan-scoped routes such as POST /v1/chat/farmers),
+        overrides any plan_type in user_profile. The route owns the tier; the payload
+        cannot escalate it.
     """
     profile = _profile_dict(user_profile)
     country = str(profile.get("country") or "").strip() or None
 
-    plan_type = _normalize_plan_type(profile.get("plan_type"))
+    if injected_plan_type is not None:
+        plan_type = _normalize_plan_type(injected_plan_type)
+    else:
+        plan_type = _normalize_plan_type(profile.get("plan_type"))
     category = _normalize_category(profile.get("category"))
 
     if category is None and use_session_category_fallback:

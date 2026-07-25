@@ -32,13 +32,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 import logging
 
-from ml.rag.api_schemas import CitationItem, UsageStats, UserProfile
+from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats, UserProfile
 from ml.rag.chat_history import normalize_messages
 from ml.rag.request_context import resolve_request_context
 
 logger = logging.getLogger("ml.rag.api")
 from ml.rag.chat_memory import append_turn_and_compact, flat_messages_to_memory
-from ml.rag.session_store import get_session_blob, save_session_blob, redis_status
+from ml.rag.session_store import delete_session, get_session_blob, save_session_blob, redis_status
 from ml.rag.observability import create_trace
 
 app = FastAPI(
@@ -96,6 +96,13 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     citations: list[CitationItem] = Field(default_factory=list)
+    acf: ACFSignal = Field(
+        ...,
+        description=(
+            "ADZA Confidence Framework signal: band (high/medium/low/no_evidence), "
+            "score (0.0–1.0), and a plain-language note. Surfaced on every response."
+        ),
+    )
     session_id: str = Field(..., description="Pass on the next request for chat continuity")
     usage: UsageStats = Field(default_factory=lambda: UsageStats())
     error: str | None = None
@@ -240,6 +247,7 @@ async def query(request: QueryRequest):
                 if val:
                     kwargs[key] = val
 
+        kwargs["session_id"] = session_id
         result = run_rag(request.query, **kwargs)
         trace: dict | None = None
         if request.include_trace:
@@ -260,9 +268,17 @@ async def query(request: QueryRequest):
         citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]
         usage = UsageStats.from_usage_dict(result.get("usage") if isinstance(result.get("usage"), dict) else None)
 
+        # Sprint 1, Week 2: build ACF signal from graph state
+        acf = ACFSignal(
+            band=result.get("acf_band") or "no_evidence",
+            score=float(result.get("acf_score") or 0.0),
+            note=str(result.get("acf_note") or "No confidence signal available."),
+        )
+
         return QueryResponse(
             answer=answer,
             citations=citations,
+            acf=acf,
             session_id=session_id,
             usage=usage,
             error=result.get("error"),
@@ -276,6 +292,23 @@ async def query(request: QueryRequest):
         elif "nn" in detail.lower() or "not defined" in detail.lower():
             detail += ". If using the vector retriever, install PyTorch: pip install torch"
         raise HTTPException(status_code=500, detail=detail)
+
+
+@app.delete("/session/{session_id}")
+async def delete_session_endpoint(session_id: str):
+    """
+    Delete a session and its conversation memory.
+
+    Sprint 1, Week 2: explicit session lifecycle management. The frontend should call
+    this when the user starts a new conversation or logs out, ensuring no stale memory
+    bleeds into future queries.
+    """
+    sid = session_id.strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="session_id must not be empty")
+    delete_session(sid)
+    logger.info("session deleted: %s", sid)
+    return {"status": "deleted", "session_id": sid}
 
 
 @app.get("/")
