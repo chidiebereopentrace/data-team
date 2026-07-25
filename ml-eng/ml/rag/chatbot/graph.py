@@ -312,7 +312,7 @@ def _tag_vector(item: dict[str, Any], kind: str) -> dict[str, Any]:
     }
 
 
-_RESEARCH_DOC_KINDS = ("academic_article", "policy_document", "public_report")
+_RESEARCH_DOC_KINDS = ("academic_article", "policy_document", "public_report", "agricultural_practise")
 
 
 def _news_kwargs(state: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
@@ -437,7 +437,8 @@ def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
 _RESEARCH_SPLIT_COLLECTIONS: tuple[tuple[str, str], ...] = (
     ("QDRANT_COLLECTION_ACADEMIC_PAPERS", "academic_papers"),
     ("QDRANT_COLLECTION_POLICIES", "policies"),
-    ("QDRANT_COLLECTION_NEWS_PUBLIC_REPORTS", "news_public_reports"),
+    ("QDRANT_COLLECTION_PUBLIC_REPORTS", "public_reports"),
+    ("QDRANT_COLLECTION_FORMATION", "formation"),
 )
 
 
@@ -528,6 +529,10 @@ def _research_context_label(meta: dict[str, Any]) -> tuple[str, str]:
         title = str(meta.get("section_title") or meta.get("label") or meta.get("source_file") or "").strip()
         prefix = f"[Public report | {title}]" if title else "[Public report]"
         return "public_report", prefix
+    if dk == "agricultural_practise":
+        title = str(meta.get("section_title") or meta.get("label") or meta.get("source_file") or "").strip()
+        prefix = f"[Formation | {title}]" if title else "[Formation]"
+        return "formation", prefix
     cite = format_academic_citation(meta)
     prefix = f"[Academic | {cite}]" if cite else "[Academic]"
     return "academic", prefix
