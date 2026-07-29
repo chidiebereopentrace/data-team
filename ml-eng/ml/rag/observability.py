@@ -239,6 +239,7 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
         "merged_context_count": len(result.get("merged_context") or []),
         "reranked_context_count": len(result.get("reranked_context") or []),
         "web_results_count": web_n,
+        "citation_count": len(result.get("citations") or []),
         "empty_retrieval": empty_retrieval,
         "llm_empty_answer": (not is_shortcut) and not answer,
         **_bq_soft_fail_flags(result),

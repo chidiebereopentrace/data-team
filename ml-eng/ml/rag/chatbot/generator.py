@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,8 +21,8 @@ from ml.rag.chat_memory import (
 )
 from ml.rag.chatbot.acf import ACFResult, compute_acf
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
+from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
-
 _BQ_TABLE_RE = re.compile(
     r"FROM\s+`?(?:[\w-]+\.)*([\w-]+)`?",
     re.IGNORECASE,
@@ -779,12 +780,39 @@ def _finalize_generation_result(
     answer: str,
     source_registry: list[SourceRef],
 ) -> GenerationResult:
-    prose = _strip_model_sources_appendix(answer)
-    citations = referenced_citations(prose, source_registry)
-    if _append_sources_to_answer() and citations:
-        lines = [f"{c['id']}. {c['text']}" for c in citations]
-        prose = (prose.rstrip() + "\n\nSources\n" + "\n".join(lines)).strip()
-    return GenerationResult(answer=prose, citations=citations)
+    """Attach structured citations and emit a ``citations`` Langfuse span (ACF seat)."""
+    t0 = time.perf_counter()
+    with observed_span("citations", input_data={"registry_size": len(source_registry)}):
+        prose = _strip_model_sources_appendix(answer)
+        citations = referenced_citations(prose, source_registry)
+        if _append_sources_to_answer() and citations:
+            lines = [f"{c['id']}. {c['text']}" for c in citations]
+            prose = (prose.rstrip() + "\n\nSources\n" + "\n".join(lines)).strip()
+
+        kind_counts: dict[str, int] = {}
+        for c in citations:
+            kind = str(c.get("kind") or "unknown")
+            kind_counts[kind] = kind_counts.get(kind, 0) + 1
+        cited_ids: list[int] = []
+        for c in citations[:20]:
+            try:
+                cited_ids.append(int(c["id"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+
+        update_current_span_metadata(
+            {
+                "citation_count": len(citations),
+                "registry_size": len(source_registry),
+                "citations_mode": _citations_mode(),
+                "cited_ids": cited_ids,
+                "kind_counts": kind_counts,
+                "latency_ms": trace_elapsed_ms(t0),
+                # Placeholder for ACF confidence scoring on this same span.
+                "acf_status": "pending",
+            }
+        )
+        return GenerationResult(answer=prose, citations=citations)
 
 
 def _call_llama(messages: list[dict[str, str]], *, purpose: str = "generate") -> str:

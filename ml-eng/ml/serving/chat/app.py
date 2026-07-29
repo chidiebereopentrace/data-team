@@ -331,7 +331,6 @@ async def v1_chat(body: ChatRequest):
             created_at=created_at,
             plan_type=ctx.plan_type,
             langfuse_trace_id=turn.langfuse_trace_id,
-            plan_type=ctx.plan_type,
         )
     except HTTPException:
         raise
