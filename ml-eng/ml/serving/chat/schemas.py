@@ -59,6 +59,11 @@ class ChatRequest(BaseModel):
 
     session_id: str | None = None
 
+    user_id: str | None = Field(
+        None,
+        description="Optional product user id for Langfuse analytics (client-supplied until auth).",
+    )
+
     user_profile: UserProfile | None = Field(
 
         None,
@@ -130,10 +135,13 @@ class ChatSuccessResponse(BaseModel):
     request_id: str
 
     created_at: str
-
     plan_type: str | None = Field(
         None,
         description="The plan tier that was applied to this request (echoed for debugging).",
+    )
+    langfuse_trace_id: str | None = Field(
+        None,
+        description="Langfuse trace id when tracing is enabled (for feedback).",
     )
 
 

@@ -25,6 +25,9 @@ def _clear_reranker_env(monkeypatch):
         "COHERE_API_KEY",
         "RAG_RERANKER_COHERE_API_KEY",
         "RAG_RERANKER_COHERE_MODEL",
+        "RAG_LLM_API_KEY",
+        "RAG_RERANK_MODEL_ID",
+        "RAG_RERANK_MODE",
     ):
         monkeypatch.delenv(key, raising=False)
     R._ce_cache.clear()
@@ -61,6 +64,17 @@ def test_reranker_mode_default_is_cross_encoder() -> None:
 def test_reranker_mode_explicit_cohere(monkeypatch) -> None:
     monkeypatch.setenv("RAG_RERANKER_MODE", "cohere")
     assert R._reranker_mode() == "cohere"
+
+
+def test_reranker_mode_explicit_openrouter(monkeypatch) -> None:
+    monkeypatch.setenv("RAG_RERANKER_MODE", "openrouter")
+    assert R._reranker_mode() == "openrouter"
+
+
+def test_reranker_mode_auto_promotes_to_openrouter(monkeypatch) -> None:
+    monkeypatch.setenv("RAG_LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("RAG_LLM_API_KEY", "sk-or-test")
+    assert R._reranker_mode() == "openrouter"
 
 
 def test_reranker_mode_auto_promotes_to_cohere_when_key_present(monkeypatch) -> None:
@@ -267,6 +281,42 @@ def test_cohere_mode_api_failure_degrades_to_cross_encoder(monkeypatch) -> None:
 
     assert len(out) == 3
     assert all("_ce_score" in entry for entry in out)  # cross_encoder ran as fallback
+
+
+def test_openrouter_mode_maps_scores(monkeypatch) -> None:
+    monkeypatch.setenv("RAG_RERANKER_MODE", "openrouter")
+    monkeypatch.setenv("RAG_LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("RAG_LLM_API_KEY", "sk-or-test")
+    monkeypatch.setenv("RAG_RERANK_MODEL_ID", "cohere/rerank-4-pro")
+
+    # Prefer academic (idx 1) then BQ (idx 2)
+    monkeypatch.setattr(
+        R,
+        "openrouter_rerank",
+        lambda *a, **k: [(1, 0.9), (2, 0.5), (0, 0.1)],
+    )
+    monkeypatch.setattr(R, "openrouter_rerank_configured", lambda: True)
+
+    out = R.rerank("q", _sample_items(), top_k=3)
+    assert len(out) == 3
+    assert out[0]["_context_kind"] == "academic"
+    assert out[0]["_openrouter_score"] == 0.9
+    assert R.last_rerank_mode() == "openrouter"
+
+
+def test_openrouter_failure_degrades(monkeypatch) -> None:
+    monkeypatch.setenv("RAG_RERANKER_MODE", "openrouter")
+    monkeypatch.setenv("RAG_LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("RAG_LLM_API_KEY", "sk-or-test")
+    monkeypatch.setattr(R, "openrouter_rerank_configured", lambda: True)
+    monkeypatch.setattr(R, "openrouter_rerank", lambda *a, **k: [])
+    fake_model = mock.Mock()
+    fake_model.predict.return_value = [0.5, 0.9, 0.1]
+    monkeypatch.setattr(R, "_load_cross_encoder", lambda mid: ("sentence_transformers", fake_model))
+
+    out = R.rerank("q", _sample_items(), top_k=3)
+    assert len(out) == 3
+    assert all("_ce_score" in entry for entry in out)
 
 
 # --- empty-input safety -------------------------------------------------------

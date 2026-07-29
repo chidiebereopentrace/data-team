@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import traceback
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from ml.rag.chat_turn import create_session, execute_chat_turn
 from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS, PLAN_TYPES, default_category_for_plan
 from ml.rag.chatbot.stakeholder_prompts import CATEGORIES
 from ml.rag.api_schemas import CitationItem, UsageStats
+from ml.rag.observability import flush_langfuse
 from ml.rag.request_context import bootstrap_category, resolve_request_context
 from ml.serving.chat.schemas import (
     ChatRequest,
@@ -39,10 +41,17 @@ from ml.serving.chat.schemas import (
     SessionCreateResponse,
 )
 
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    yield
+    flush_langfuse()
+
+
 app = FastAPI(
     title="OpenTrace Chatbot API",
     description="Public v1 API for the OpenTrace chatbot (sessions, plan-aware answers).",
     version="1.0.0",
+    lifespan=_app_lifespan,
 )
 
 _cors = os.environ.get("CHATBOT_CORS_ORIGINS", "*").strip().split(",")
@@ -154,6 +163,7 @@ async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
         turn = execute_chat_turn(
             body.user_text(),
             session_id=sid,
+            user_id=body.user_id,
             chat_history=hist,
             plan_type=ctx.plan_type,
             category=ctx.category,
@@ -183,6 +193,7 @@ async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
             request_id=request_id,
             created_at=created_at,
             plan_type=plan_type,
+            langfuse_trace_id=turn.langfuse_trace_id,
         )
     except HTTPException:
         raise
@@ -287,6 +298,7 @@ async def v1_chat(body: ChatRequest):
         turn = execute_chat_turn(
             body.user_text(),
             session_id=sid,
+            user_id=body.user_id,
             chat_history=hist,
             plan_type=ctx.plan_type,
             category=ctx.category,
@@ -318,6 +330,7 @@ async def v1_chat(body: ChatRequest):
             request_id=request_id,
             created_at=created_at,
             plan_type=ctx.plan_type,
+            langfuse_trace_id=turn.langfuse_trace_id,
         )
     except HTTPException:
         raise
@@ -345,3 +358,4 @@ async def root():
         "chat": "POST /v1/chat",
         "chat_plan": {slug: f"POST /v1/chat/{slug}" for slug in PLAN_ROUTE_SLUGS},
     }
+

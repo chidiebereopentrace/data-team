@@ -12,6 +12,7 @@ from ml.rag.chatbot.generator import (
     _build_context_block,
     _clean_answer,
     _context_max_chars,
+    _finalize_generation_result,
     _format_source_citation,
     _drop_geo_conflicting,
     _generate_max_tokens,
@@ -596,4 +597,40 @@ def test_generate_strips_preamble_from_llm_output() -> None:
     assert "[1]" in result.answer
 
 
+def test_finalize_generation_result_emits_citations_span_metadata() -> None:
+    registry = [
+        SourceRef(
+            source_id=1,
+            item={"_context_kind": "news", "content": "a", "metadata": {}},
+            citation_line="News A",
+        ),
+        SourceRef(
+            source_id=2,
+            item={"_context_kind": "bigquery", "content": "b", "metadata": {}},
+            citation_line="BQ B",
+        ),
+    ]
+    updates: list[dict] = []
+
+    with mock.patch(
+        "ml.rag.chatbot.generator.update_current_span_metadata",
+        side_effect=lambda meta: updates.append(dict(meta)),
+    ):
+        with mock.patch("ml.rag.chatbot.generator.observed_span") as mock_span:
+            mock_span.return_value.__enter__ = mock.Mock(return_value=None)
+            mock_span.return_value.__exit__ = mock.Mock(return_value=False)
+            result = _finalize_generation_result("Answer cites [1] only.", registry)
+
+    assert isinstance(result, GenerationResult)
+    assert len(result.citations) == 1
+    assert result.citations[0]["id"] == 1
+    mock_span.assert_called_once()
+    assert mock_span.call_args.args[0] == "citations"
+    assert updates
+    meta = updates[-1]
+    assert meta["citation_count"] == 1
+    assert meta["registry_size"] == 2
+    assert meta["cited_ids"] == [1]
+    assert meta["acf_status"] == "pending"
+    assert "latency_ms" in meta
 

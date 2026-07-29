@@ -12,8 +12,10 @@ Run locally: uvicorn ml.rag.api:app --reload --host 0.0.0.0 --port 7860
 """
 from __future__ import annotations
 
+import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -30,21 +32,27 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
-import logging
-
 from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats, UserProfile
 from ml.rag.chat_history import normalize_messages
+from ml.rag.chat_memory import append_turn_and_compact, flat_messages_to_memory
+from ml.rag.observability import flush_langfuse, get_current_trace_id, rag_trace_context, record_trace_score
 from ml.rag.request_context import resolve_request_context
+from ml.rag.session_store import delete_session, get_session_blob, save_session_blob, redis_status
 
 logger = logging.getLogger("ml.rag.api")
-from ml.rag.chat_memory import append_turn_and_compact, flat_messages_to_memory
-from ml.rag.session_store import delete_session, get_session_blob, save_session_blob, redis_status
-from ml.rag.observability import create_trace
+
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    yield
+    flush_langfuse()
+
 
 app = FastAPI(
     title="OpenTrace RAG API",
     description="Query BigQuery + vector DB via a graph RAG; use from the frontend chatbot.",
     version="0.1.0",
+    lifespan=_app_lifespan,
 )
 
 # Allow frontend to call from another origin (set RAG_CORS_ORIGINS for production)
@@ -71,6 +79,10 @@ class QueryRequest(BaseModel):
     session_id: str | None = Field(
         None,
         description="Omit to start a new session; reuse for multi-turn chat (server-side memory)",
+    )
+    user_id: str | None = Field(
+        None,
+        description="Optional product user id for Langfuse user analytics (client-supplied until auth).",
     )
     chat_history: list[ChatMessage] | None = Field(
         None,
@@ -107,6 +119,18 @@ class QueryResponse(BaseModel):
     usage: UsageStats = Field(default_factory=lambda: UsageStats())
     error: str | None = None
     trace: dict | None = None
+    langfuse_trace_id: str | None = Field(
+        None,
+        description="Langfuse trace id when tracing is enabled (for feedback / debugging)",
+    )
+
+
+class TraceFeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trace_id: str = Field(..., min_length=1)
+    score: float = Field(..., ge=0.0, le=1.0, description="1.0 = thumbs up, 0.0 = thumbs down")
+    comment: str | None = Field(None, max_length=500)
 
 
 @app.get("/health")
@@ -212,15 +236,6 @@ async def query(request: QueryRequest):
             ctx.history_messages,
         )
 
-        create_trace(
-            "rag.query",
-            session_id=session_id,
-            plan_type=ctx.plan_type,
-            category=ctx.category,
-            query=request.query,
-            has_history=ctx.has_client_history,
-        )
-
         kwargs: dict = {}
         if prior_summary.strip() or prior_recent:
             kwargs["conversation_summary"] = prior_summary
@@ -231,6 +246,8 @@ async def query(request: QueryRequest):
             kwargs["plan_type"] = ctx.plan_type
         if ctx.category:
             kwargs["category"] = ctx.category
+        kwargs["session_id"] = session_id
+        kwargs["trace_tags"] = ["api"]
         for key in (
             "time_start_override",
             "time_end_override",
@@ -247,8 +264,19 @@ async def query(request: QueryRequest):
                 if val:
                     kwargs[key] = val
 
-        kwargs["session_id"] = session_id
-        result = run_rag(request.query, **kwargs)
+        with rag_trace_context(
+            trace_name="rag.query",
+            session_id=session_id,
+            user_id=request.user_id,
+            plan_type=ctx.plan_type,
+            category=ctx.category,
+            trace_input={"query": request.query[:500]},
+            tags=["api"],
+        ) as trace_handle:
+            result = run_rag(request.query, **kwargs)
+            trace_handle.update_output(result)
+            langfuse_trace_id = get_current_trace_id()
+        flush_langfuse()
         trace: dict | None = None
         if request.include_trace:
             trace = {
@@ -258,6 +286,7 @@ async def query(request: QueryRequest):
                 "vector_academic_count": len(result.get("vector_academic_results") or []),
                 "merged_context_count": len(result.get("merged_context") or []),
                 "reranked_context_count": len(result.get("reranked_context") or []),
+                "langfuse_trace_id": langfuse_trace_id,
             }
 
         answer = result.get("answer", "") or ""
@@ -283,6 +312,7 @@ async def query(request: QueryRequest):
             usage=usage,
             error=result.get("error"),
             trace=trace,
+            langfuse_trace_id=langfuse_trace_id,
         )
     except Exception as e:
         import traceback
@@ -309,6 +339,23 @@ async def delete_session_endpoint(session_id: str):
     delete_session(sid)
     logger.info("session deleted: %s", sid)
     return {"status": "deleted", "session_id": sid}
+
+
+@app.post("/feedback")
+async def trace_feedback(request: TraceFeedbackRequest):
+    """Record user feedback (thumbs up/down) on a Langfuse trace."""
+    ok = record_trace_score(
+        trace_id=request.trace_id,
+        name="user_feedback",
+        value=request.score,
+        comment=request.comment,
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=503,
+            detail="Langfuse tracing is not configured or trace id is invalid",
+        )
+    return {"status": "ok", "trace_id": request.trace_id}
 
 
 @app.get("/")

@@ -142,7 +142,7 @@ def generate_meta_answer(query: str, **kwargs: Any) -> str:
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
-    raw = _call_llama(messages)
+    raw = _call_llama(messages, purpose="generate_meta")
     answer = raw.strip() if raw else "I am Ask ADZA, the OpenTrace agricultural advisory assistant."
     return _append_footer(answer)
 

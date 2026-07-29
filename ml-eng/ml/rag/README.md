@@ -341,12 +341,37 @@ Response:
 }
 ```
 
-### Observability with Langfuse (optional)
+### Observability with Langfuse (optional, SDK v3+)
 
-Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST` to emit traces for every `/query` request, LLM generation, retrieval step, and LangGraph node execution. Traces appear in the Langfuse UI (local or Cloud) with full token usage, latency, and metadata (session_id, plan_type, category, etc.).
+Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (EU Cloud) to emit **unified traces** for every RAG request.
 
-- When keys are absent the integration is a silent no-op (safe for HF Spaces that do not need tracing).
-- The same env vars work for local `docker compose`, GCE, and HF (point HOST at your Langfuse instance or cloud).
+**Product analytics (push → Railway redeploy):** with keys already on the Railway service, richer nested spans and soft-fail scores appear after redeploy — no Dockerfile or service change. Optional `user_id` on `/query` and `/v1/chat` maps to Langfuse Users. `LANGFUSE_TRACING_RELEASE` falls back to Railway’s `RAILWAY_GIT_COMMIT_SHA` when unset.
+
+| Layer | What appears in Langfuse |
+|-------|--------------------------|
+| Root span | `rag.query` (API), `rag.chat_turn` (chat), `rag.streamlit` (QA UI) |
+| LangGraph | Node spans via LangChain callback (decompose, retrieve, rerank, generate, …) |
+| Control | `decompose`, `merge`, `web_fallback`, `insufficient_context` (+ route/corpus metadata) |
+| Evidence | `citations` (post-generate attach; `acf_status=pending` seat for ACF confidence scoring) |
+| Retrieval | `retrieval.qdrant`, `retrieval.bq_tables`, `retrieval.bq`, `retrieval.bq.nl2sql`, `retrieval.web` |
+| Rerank / embed | `rerank` (mode/model/top score), `embedding.query` (dense + sparse) |
+| LLM | `llm_chat_complete` generations with `purpose` (`decompose`, `bq.nl2sql`, `generate`, `generate_meta`, `generate_product`) |
+
+Root metadata includes corpus counts, `empty_retrieval`, BQ soft-fail flags, `web_fallback_status`, and boolean scores when those flags are true. Tags: `session_id`, optional `user_id`, `plan_type`, `category`, `env:*`, `release:*`, `route:*`.
+
+- When keys are absent the integration is a silent no-op (safe for HF Spaces / Railway without tracing).
+- Optional: `LANGFUSE_TRACING_ENVIRONMENT=production|staging|development`
+- Optional: `LANGFUSE_TRACING_RELEASE=<git-sha>` — else auto from `RAILWAY_GIT_COMMIT_SHA`
+- Optional: `LANGFUSE_TRACING_SAMPLE_RATE=1.0` — reduce volume in production
+- Legacy alias: `LANGFUSE_HOST` (mapped to `LANGFUSE_BASE_URL` at startup)
+
+**Verify setup:** `PYTHONPATH=. python scripts/verify_langfuse_tracing.py` (from `ml-eng/`)
+
+**User feedback:** `POST /feedback` with `{ "trace_id": "...", "score": 1.0, "comment": "..." }` (score 0–1). Serving chat returns `langfuse_trace_id` for the same.
+
+**Suggested dashboards (Langfuse UI):** latency p95 by `route:*` tag, token cost by `plan_type:*`, error rate on `full_rag` vs `meta`, filter `empty_retrieval` / `bq_failure` scores.
+
+**OpenRouter Sessions (LLM cost bundling):** When `RAG_LLM_BASE_URL` points at OpenRouter, each RAG run sends `session_id` (= Langfuse trace ID) on every `llm_chat_complete` **and** OpenRouter `/rerank` call so decompose + NL2SQL + generate + rerank share one session in [OpenRouter Logs](https://openrouter.ai/logs?tab=sessions). Disable with `RAG_OPENROUTER_SESSION_ID=off`. Optional `OPENROUTER_HTTP_REFERER` / `OPENROUTER_APP_TITLE` on chat and rerank.
 
 ### Deploy to Hugging Face Spaces
 
@@ -361,7 +386,7 @@ Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST`
    - **Qdrant**: `QDRANT_URL`, `QDRANT_API_KEY`, and collection variables as in [Env and config](#env-and-config)  
    - For BigQuery auth: either attach a **GCP service account key** (e.g. paste JSON as a secret and set `GOOGLE_APPLICATION_CREDENTIALS` to a path you write it to at startup) or use Workload Identity if running on GCP.  
    - `HF_API_TOKEN` (and optional embedding / LLM model ids) as needed.
-   - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` (optional; send traces to Langfuse Cloud or self-hosted instance)
+   - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (optional tracing)
 
 4. **CORS**  
    For production, set **`RAG_CORS_ORIGINS`** to your frontend origin(s), comma-separated (e.g. `https://yourapp.com`). Default is `*`.
@@ -388,7 +413,19 @@ Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_HOST`
 4. **Recommended:** `RAG_LLM_RERANK=off`, `RAG_LLM_TIMEOUT_S=300`, `RAG_EMBEDDINGS_MODE=fastembed` (or `local` — auto-falls back to fastembed without torch).
 5. **Do not set** `RAG_LLM_BASE_URL` to a LAN IP. Remove stale `GOOGLE_APPLICATION_CREDENTIALS=config/keys/...`.
 6. **Optional:** `OPENROUTER_HTTP_REFERER=https://opentrace.africa`, `OPENROUTER_APP_TITLE=Ask ADZA`.
-7. **Smoke test:** `GET /health`, `GET /ready`, `POST /query` with `{"query":"Who are you?"}`.
+7. **Observability (optional):**
+
+| Variable | Value |
+|----------|--------|
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse project keys |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` |
+| `LANGFUSE_TRACING_ENVIRONMENT` | `production` |
+| `LANGFUSE_TRACING_RELEASE` | git SHA or version tag |
+| `RAG_OPENROUTER_SESSION_ID` | leave unset/`on` (default) to bundle LLM calls per RAG run; `off` to disable |
+
+When both Langfuse and OpenRouter are enabled, OpenRouter Sessions and Langfuse traces share the same run id (`session_id` = Langfuse trace id). See [Observability with Langfuse](#observability-with-langfuse-optional-sdk-v3) above and [deploy/README.md](../../deploy/README.md) §7.5.
+
+8. **Smoke test:** `GET /health`, `GET /ready`, `POST /query` with `{"query":"Who are you?"}`. After a full RAG turn, confirm a nested trace in Langfuse and (if using OpenRouter) one session in OpenRouter Logs.
 
 ### Local API (same interface as HF)
 

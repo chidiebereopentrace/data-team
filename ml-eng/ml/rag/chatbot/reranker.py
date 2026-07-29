@@ -2,50 +2,48 @@
 Reranker node: takes merged retrieval results and reranks them before passing
 to the generator.
 
-Four modes, selected via ``RAG_RERANKER_MODE``:
+Modes, selected via ``RAG_RERANKER_MODE``:
 
-- ``cohere`` (recommended for production on Railway):
-    One HTTP call to Cohere's managed rerank API (model ``rerank-v3.5``).
-    No model in the container — zero memory overhead on Railway.
-    Requires ``COHERE_API_KEY`` (or ``RAG_RERANKER_COHERE_API_KEY``).
-    Model is configurable via ``RAG_RERANKER_COHERE_MODEL`` (default
-    ``rerank-v3.5``). Cost is ~$0.002 per 1000 chunks — negligible at
-    freemium scale. Best multilingual accuracy.
+- ``openrouter`` (recommended when ``RAG_LLM_BASE_URL`` is OpenRouter):
+    One ``POST /rerank`` via OpenRouter (default model ``cohere/rerank-4-pro``).
+    Reuses ``RAG_LLM_API_KEY``. Model via ``RAG_RERANK_MODEL_ID`` (or legacy
+    ``RAG_RERANKER_COHERE_MODEL`` if it looks like an OpenRouter slug).
 
-- ``cross_encoder`` (default when no Cohere key is set; good for local dev):
-    Batch-scores all candidates in a single cross-encoder pass.
-    Fast, accurate, no per-token LLM cost. Uses fastembed when available,
-    falling back to sentence-transformers if installed. Model is
-    configurable via ``RAG_RERANKER_MODEL``
-    (default ``BAAI/bge-reranker-base``; multilingual).
+- ``cohere``:
+    Cohere's managed SDK API (``rerank-v3.5``). Requires ``COHERE_API_KEY``.
 
-- ``llm``:
-    One LLM call per candidate (legacy behavior). Retained for back-compat
-    / A-B testing, but expensive and slow under load.
+- ``cross_encoder`` (default when no OpenRouter/Cohere key):
+    Local fastembed / sentence-transformers batch pass.
 
-- ``off``:
-    Dev-only pass-through. Uses the original source-priority boost so
-    results stay deterministic without any model call.
+- ``llm`` / ``off``: legacy per-chunk LLM scoring / boost-only pass-through.
 
-Back-compat shim: the previous ``RAG_LLM_RERANK`` env var still works.
-``RAG_LLM_RERANK=on`` is mapped to ``RAG_RERANKER_MODE=llm`` if and only if
-``RAG_RERANKER_MODE`` is unset, so existing deployments keep their behavior.
+Auto-select order when mode is unset: openrouter (if OpenRouter + API key) →
+cohere (if Cohere key) → cross_encoder.
 
-Failure handling: never raises. If the configured backend is unavailable we
-degrade gracefully:
-    cohere (no key or API error) -> cross_encoder -> llm (if configured) -> off
-so the graph always receives a usable, ordered list of context chunks.
+Failure handling: never raises. Degrade:
+    openrouter → cohere → cross_encoder → llm (if configured) → off
 """
 from __future__ import annotations
 
 import logging
 import os
 import threading
+import time
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_model_id
+from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
+from ml.rag.rerank_client import (
+    openrouter_rerank,
+    openrouter_rerank_configured,
+    rerank_model_id as _openrouter_rerank_model_id,
+)
 
 logger = logging.getLogger(__name__)
+
+_observe_span = get_observe_decorator()
+
+_LAST_RERANK_MODE = "off"
 
 # Static source priority — applied additively on top of any model score so a
 # BigQuery row that scores near a news chunk still wins the tie-break (BQ
@@ -63,6 +61,10 @@ _SOURCE_BOOST: dict[str, float] = {
 
 
 # --- env helpers --------------------------------------------------------------
+
+
+def _env(name: str, default: str = "") -> str:
+    return (os.environ.get(name) or default).strip()
 
 
 def _env_int(name: str, default: int) -> int:
@@ -87,15 +89,18 @@ def _reranker_mode() -> str:
     """Resolve the configured reranker mode with back-compat handling.
 
     Order of precedence:
-    1. ``RAG_RERANKER_MODE`` if explicitly set (cohere | cross_encoder | llm | off)
-    2. Auto-select ``cohere`` when a Cohere API key is available and no explicit mode set.
-    3. Legacy ``RAG_LLM_RERANK`` (any truthy value -> ``llm``, falsy -> ``off``)
-    4. Default: ``cross_encoder``
+    1. ``RAG_RERANKER_MODE`` if explicitly set
+       (openrouter | cohere | cross_encoder | llm | off)
+    2. Auto ``openrouter`` when OpenRouter base URL + ``RAG_LLM_API_KEY``
+    3. Auto ``cohere`` when a Cohere API key is available
+    4. Legacy ``RAG_LLM_RERANK`` (truthy -> ``llm``, falsy -> ``off``)
+    5. Default: ``cross_encoder``
     """
     explicit = os.environ.get("RAG_RERANKER_MODE", "").strip().lower()
-    if explicit in {"cohere", "cross_encoder", "llm", "off"}:
+    if explicit in {"openrouter", "cohere", "cross_encoder", "llm", "off"}:
         return explicit
-    # Auto-promote to cohere when a key is available and mode was not set explicitly.
+    if openrouter_rerank_configured():
+        return "openrouter"
     if _cohere_api_key():
         return "cohere"
     legacy = os.environ.get("RAG_LLM_RERANK", "").strip().lower()
@@ -104,7 +109,7 @@ def _reranker_mode() -> str:
     if legacy in {"off", "0", "false", "no"}:
         logger.info(
             "Legacy RAG_LLM_RERANK=off detected; using mode='off'. "
-            "Set RAG_RERANKER_MODE=cross_encoder to enable the new reranker."
+            "Set RAG_RERANKER_MODE=openrouter or cross_encoder to enable reranking."
         )
         return "off"
     return "cross_encoder"
@@ -131,6 +136,18 @@ def _cohere_model() -> str:
         os.environ.get("RAG_RERANKER_COHERE_MODEL", "").strip()
         or "rerank-v3.5"
     )
+
+
+def _openrouter_rerank_model() -> str:
+    """Model slug for OpenRouter POST /rerank (e.g. cohere/rerank-4-pro)."""
+    explicit = os.environ.get("RAG_RERANK_MODEL_ID", "").strip()
+    if explicit:
+        return explicit
+    # Allow reusing the Cohere model env when it looks like an OpenRouter slug.
+    cohere_like = os.environ.get("RAG_RERANKER_COHERE_MODEL", "").strip()
+    if "/" in cohere_like:
+        return cohere_like
+    return _openrouter_rerank_model_id()
 
 
 def _max_text_chars() -> int:
@@ -368,6 +385,63 @@ def _rerank_off(
     return scored[:top_k]
 
 
+# --- OpenRouter batch reranker ------------------------------------------------
+
+
+def _rerank_openrouter(
+    query: str,
+    context_items: list[dict[str, Any]],
+    top_k: int,
+    content_key: str,
+) -> list[dict[str, Any]] | None:
+    """Rerank via OpenRouter ``POST /rerank`` (e.g. ``cohere/rerank-4-pro``).
+
+    Returns ``None`` when unconfigured or the API returns nothing so the caller
+    can degrade to Cohere SDK / cross_encoder.
+    """
+    if not openrouter_rerank_configured():
+        return None
+
+    max_chars = _max_text_chars()
+    passages = [
+        (item.get(content_key) or item.get("text", str(item)))[:max_chars]
+        for item in context_items
+    ]
+    model_name = _openrouter_rerank_model()
+    hits = openrouter_rerank(query, passages, top_n=top_k, model=model_name)
+    if not hits:
+        return None
+
+    scored: list[dict[str, Any]] = []
+    for idx, relevance in hits:
+        if idx < 0 or idx >= len(context_items):
+            continue
+        item = context_items[idx]
+        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
+        boost = _SOURCE_BOOST.get(kind, 0.0)
+        scored.append(
+            {
+                **item,
+                "content": passages[idx],
+                "_order": idx,
+                "_openrouter_score": relevance,
+                "_source_boost": boost,
+                "_rerank_score": relevance + boost,
+            }
+        )
+    if not scored:
+        return None
+    scored.sort(key=lambda x: x["_rerank_score"], reverse=True)
+    logger.info(
+        "OpenRouter rerank ok: model=%s query_len=%d candidates=%d top_k=%d",
+        model_name,
+        len(query),
+        len(context_items),
+        len(scored),
+    )
+    return scored
+
+
 # --- Cohere managed reranker --------------------------------------------------
 
 
@@ -456,6 +530,43 @@ def _rerank_cohere(
 # --- public entry point -------------------------------------------------------
 
 
+def _finalize_rerank_trace(
+    items: list[dict[str, Any]],
+    *,
+    mode: str,
+    input_count: int,
+    top_k: int,
+    start: float,
+    model: str | None = None,
+) -> list[dict[str, Any]]:
+    global _LAST_RERANK_MODE
+    _LAST_RERANK_MODE = mode
+    meta: dict[str, Any] = {
+        "mode": mode,
+        "input_count": input_count,
+        "output_count": len(items),
+        "top_k": top_k,
+        "latency_ms": trace_elapsed_ms(start),
+    }
+    if model:
+        meta["model"] = model
+    if items:
+        top = items[0].get("_rerank_score")
+        if top is not None:
+            try:
+                meta["top_rerank_score"] = float(top)
+            except (TypeError, ValueError):
+                pass
+    update_current_span_metadata(meta)
+    return items
+
+
+def last_rerank_mode() -> str:
+    """Effective rerank backend used on the most recent ``rerank()`` call."""
+    return _LAST_RERANK_MODE
+
+
+@_observe_span(as_type="span", name="rerank", capture_input=False, capture_output=False)
 def rerank(
     query: str,
     context_items: list[dict[str, Any]],
@@ -469,6 +580,7 @@ def rerank(
 
     Mode is selected by :func:`_reranker_mode`. When the chosen backend is
     unavailable at runtime the function degrades safely:
+        openrouter (error) -> cohere -> cross_encoder -> llm if configured -> off
         cohere (no key / error) -> cross_encoder -> llm if configured -> off
         cross_encoder unavailable -> llm if configured -> off
         llm unavailable           -> off
@@ -476,8 +588,9 @@ def rerank(
     Top-k cap respected from the ``top_k`` argument and (when set) the
     ``RAG_RERANKER_TOP_K`` env override.
     """
+    t0 = time.perf_counter()
     if not context_items:
-        return []
+        return _finalize_rerank_trace([], mode="off", input_count=0, top_k=top_k, start=t0)
 
     env_top_k = _env_int("RAG_RERANKER_TOP_K", 0)
     if env_top_k > 0:
@@ -485,12 +598,36 @@ def rerank(
 
     content_key = "content" if any("content" in c for c in context_items) else "text"
     mode = _reranker_mode()
-    logger.debug("Reranker mode=%s top_k=%d candidates=%d", mode, top_k, len(context_items))
+    input_count = len(context_items)
+    logger.debug("Reranker mode=%s top_k=%d candidates=%d", mode, top_k, input_count)
+
+    if mode == "openrouter":
+        result = _rerank_openrouter(query, context_items, top_k, content_key)
+        if result is not None:
+            return _finalize_rerank_trace(
+                result,
+                mode="openrouter",
+                input_count=input_count,
+                top_k=top_k,
+                start=t0,
+                model=_openrouter_rerank_model(),
+            )
+        logger.warning(
+            "OpenRouter reranker unavailable; degrading to cohere/cross_encoder."
+        )
+        mode = "cohere" if _cohere_api_key() else "cross_encoder"
 
     if mode == "cohere":
         result = _rerank_cohere(query, context_items, top_k, content_key)
         if result is not None:
-            return result
+            return _finalize_rerank_trace(
+                result,
+                mode="cohere",
+                input_count=input_count,
+                top_k=top_k,
+                start=t0,
+                model=_cohere_model(),
+            )
         logger.warning(
             "Cohere reranker unavailable; degrading to cross_encoder."
         )
@@ -499,7 +636,14 @@ def rerank(
     if mode == "cross_encoder":
         result = _rerank_cross_encoder(query, context_items, top_k, content_key)
         if result is not None:
-            return result
+            return _finalize_rerank_trace(
+                result,
+                mode="cross_encoder",
+                input_count=input_count,
+                top_k=top_k,
+                start=t0,
+                model=_env("RAG_RERANKER_MODEL", "BAAI/bge-reranker-base"),
+            )
         logger.warning(
             "Cross-encoder unavailable; degrading. Install fastembed or "
             "sentence-transformers and set RAG_RERANKER_MODEL accordingly."
@@ -512,7 +656,26 @@ def rerank(
                 "RAG_RERANKER_MODE=llm but no LLM backend configured; "
                 "degrading to off."
             )
-            return _rerank_off(context_items, top_k, content_key)
-        return _rerank_llm(query, context_items, top_k, content_key)
+            return _finalize_rerank_trace(
+                _rerank_off(context_items, top_k, content_key),
+                mode="off",
+                input_count=input_count,
+                top_k=top_k,
+                start=t0,
+            )
+        return _finalize_rerank_trace(
+            _rerank_llm(query, context_items, top_k, content_key),
+            mode="llm",
+            input_count=input_count,
+            top_k=top_k,
+            start=t0,
+            model=llm_model_id(),
+        )
 
-    return _rerank_off(context_items, top_k, content_key)
+    return _finalize_rerank_trace(
+        _rerank_off(context_items, top_k, content_key),
+        mode="off",
+        input_count=input_count,
+        top_k=top_k,
+        start=t0,
+    )

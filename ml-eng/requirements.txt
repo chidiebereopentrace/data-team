@@ -19,12 +19,13 @@ matplotlib>=3.7.0
 # RAG graph + API
 langgraph>=0.2.0
 langchain-core>=0.3.0
+langchain>=0.3.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 requests>=2.31.0
 PyYAML>=6.0
 redis>=5.2.0
-langfuse>=2.0
+langfuse>=3.0
 
 # Google Drive (ingestion sources)
 google-api-python-client>=2.120.0

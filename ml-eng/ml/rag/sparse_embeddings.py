@@ -12,13 +12,18 @@ Env:
 from __future__ import annotations
 
 import os
+import time
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
+
+from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
 
 if TYPE_CHECKING:
     from qdrant_client.http.models import SparseVector
 
 DEFAULT_SPARSE_MODEL = "Qdrant/bm25"
+
+_observe_span = get_observe_decorator()
 
 
 def _flag(name: str, *, default: bool = True) -> bool:
@@ -94,12 +99,23 @@ def embed_sparse_documents(texts: list[str]) -> list[SparseVector]:
     return [_to_sparse_vector(e) for e in model.embed(cleaned)]
 
 
+@_observe_span(as_type="span", name="embedding.query", capture_input=False, capture_output=False)
 def embed_sparse_query(text: str) -> SparseVector:
     """BM25 sparse vector for a search query."""
+    t0 = time.perf_counter()
     model = _sparse_model()
     q = (text or "").strip() or " "
     emb = next(iter(model.query_embed(q)))
-    return _to_sparse_vector(emb)
+    result = _to_sparse_vector(emb)
+    update_current_span_metadata(
+        {
+            "model_id": sparse_model_name(),
+            "mode": "fastembed_sparse",
+            "batch_size": 1,
+            "latency_ms": trace_elapsed_ms(t0),
+        }
+    )
+    return result
 
 
 def warmup_sparse_model() -> None:

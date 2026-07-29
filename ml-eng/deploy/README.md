@@ -125,11 +125,33 @@ RAG_REDIS_CONNECT_TIMEOUT_S=2
 
 Update the AskADZA client to treat `session_id` as durable now that Redis backs it.
 
-## 7.5 Langfuse tracing (optional)
+## 7.5 Langfuse tracing (optional, SDK v3+)
 
-Same pattern as Redis: set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` (point at your self-hosted instance or Langfuse Cloud). When present the RAG API emits detailed traces for queries, LLM calls (with usage), retrieval, BQ SQL, and full LangGraph execution. When absent, tracing is disabled with zero overhead.
+When Langfuse keys are set, each `/query` emits a unified trace. When absent, tracing is a silent no-op (zero overhead). The API flushes pending traces **after each request** and on shutdown. Push + redeploy the existing Railway RAG service — no Dockerfile change.
 
-Recommended for GCE production; for HF Spaces set the keys only if you want traces routed to your Langfuse backend.
+**Required env vars:**
+
+| Variable | Value |
+|----------|--------|
+| `LANGFUSE_PUBLIC_KEY` | `pk-lf-...` |
+| `LANGFUSE_SECRET_KEY` | `sk-lf-...` |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` (EU Cloud) |
+
+**Recommended for production:**
+
+| Variable | Value |
+|----------|--------|
+| `LANGFUSE_TRACING_ENVIRONMENT` | `production` |
+| `LANGFUSE_TRACING_RELEASE` | git SHA or version tag (optional; else `RAILWAY_GIT_COMMIT_SHA`) |
+| `LANGFUSE_TRACING_SAMPLE_RATE` | `1.0` (optional; lower for high volume) |
+
+**Expected spans** (when the corresponding path runs): root `rag.query`, LangGraph nodes, `decompose` / `merge` / `web_fallback` / `insufficient_context`, `retrieval.*`, `rerank`, `embedding.query`, and `llm_chat_complete` generations (`purpose`: `decompose`, `bq.nl2sql`, `generate`, …). Metadata includes `session_id`, optional `user_id`, soft-fail flags, and release tags.
+
+**OpenRouter Sessions (LLM cost bundling):** When `RAG_LLM_BASE_URL` points at OpenRouter, leave `RAG_OPENROUTER_SESSION_ID` unset or `on` so decompose + NL2SQL + generate + `/rerank` share one `session_id` (= Langfuse trace id) in [OpenRouter Logs](https://openrouter.ai/logs?tab=sessions). Set `RAG_OPENROUTER_SESSION_ID=off` to disable.
+
+**User feedback:** `POST /feedback` with `{ "trace_id": "...", "score": 1.0, "comment": "..." }` (score 0–1) when tracing is enabled. `/v1/chat` returns `langfuse_trace_id`.
+
+**Verify:** `python scripts/verify_langfuse_tracing.py` (from `ml-eng/` with keys loaded).
 
 ## 8. Scaling & resources
 
