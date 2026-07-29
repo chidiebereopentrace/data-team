@@ -34,8 +34,11 @@ import requests
 
 from ml.rag.chatbot.generator import filter_context_items, is_usable_context_item
 from ml.rag.chatbot.query_decomposer import resolve_retrieval_geographies
+from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
 
 logger = logging.getLogger(__name__)
+
+_observe_span = get_observe_decorator()
 
 _WIKI_API = "https://en.wikipedia.org/w/api.php"
 _WIKI_REST = "https://en.wikipedia.org/api/rest_v1/page/summary"
@@ -205,7 +208,8 @@ def _build_wiki_search_query(
         geography=dec.get("geography") if isinstance(dec.get("geography"), list) else None,
     )
     parts.extend(countries[:2])
-    entities = dec.get("entities") if isinstance(dec.get("entities"), list) else []
+    raw_entities = dec.get("entities")
+    entities = raw_entities if isinstance(raw_entities, list) else []
     for ent in entities[:3]:
         s = str(ent).strip()
         if s:
@@ -419,6 +423,20 @@ def _retrieve_tavily(
     return items, ("ok" if items else "empty"), ""
 
 
+def _finalize_web_trace(result: WebFallbackResult, *, start: float) -> WebFallbackResult:
+    source = result.reason if result.status == "ok" else result.status
+    update_current_span_metadata(
+        {
+            "source": source,
+            "status": result.status,
+            "result_count": len(result.items),
+            "latency_ms": trace_elapsed_ms(start),
+        }
+    )
+    return result
+
+
+@_observe_span(as_type="span", name="retrieval.web", capture_input=False, capture_output=False)
 def retrieve_web_fallback_detailed(
     query: str,
     decomposition: dict[str, Any] | None = None,
@@ -438,14 +456,21 @@ def retrieve_web_fallback_detailed(
     the "insufficient context" branch (``rate_limited``, ``error``, ``empty``,
     or ``disabled``).
     """
+    t0 = time.perf_counter()
     if not web_fallback_enabled():
-        return WebFallbackResult(status="disabled", reason="RAG_WEB_FALLBACK_ENABLED is off")
+        return _finalize_web_trace(
+            WebFallbackResult(status="disabled", reason="RAG_WEB_FALLBACK_ENABLED is off"),
+            start=t0,
+        )
 
     search_query = _build_wiki_search_query(
         query, decomposition, geo_override=geo_override
     )
     if len(search_query) < 5:
-        return WebFallbackResult(status="empty", reason="search query too short")
+        return _finalize_web_trace(
+            WebFallbackResult(status="empty", reason="search query too short"),
+            start=t0,
+        )
 
     timeout_s = _web_timeout_s()
     wiki_top_k = _env_int("RAG_WEB_WIKI_TOP_K", 2)
@@ -454,7 +479,10 @@ def retrieve_web_fallback_detailed(
 
     wiki_items = _retrieve_wikipedia(search_query, top_k=wiki_top_k, timeout_s=timeout_s)
     if wiki_items:
-        return WebFallbackResult(items=wiki_items[:total_cap], status="ok", reason="wikipedia")
+        return _finalize_web_trace(
+            WebFallbackResult(items=wiki_items[:total_cap], status="ok", reason="wikipedia"),
+            start=t0,
+        )
 
     tavily_items, status, reason = _retrieve_tavily(
         search_query,
@@ -463,10 +491,14 @@ def retrieve_web_fallback_detailed(
         time_end=time_end,
     )
     if status == "ok":
-        return WebFallbackResult(items=tavily_items[:total_cap], status="ok", reason="tavily")
-    # Wikipedia returned nothing and Tavily didn't recover us — propagate the
-    # underlying status so the graph can refuse to fabricate an answer.
-    return WebFallbackResult(items=[], status=status, reason=reason or "no usable web results")
+        return _finalize_web_trace(
+            WebFallbackResult(items=tavily_items[:total_cap], status="ok", reason="tavily"),
+            start=t0,
+        )
+    return _finalize_web_trace(
+        WebFallbackResult(items=[], status=status, reason=reason or "no usable web results"),
+        start=t0,
+    )
 
 
 def retrieve_web_fallback(
@@ -496,7 +528,8 @@ def retrieve_web_fallback(
 def format_web_chunk_for_context(item: dict[str, Any]) -> dict[str, Any]:
     """Prefix web chunk content for the generator context block."""
     kind = _context_kind(item)
-    meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    raw_meta = item.get("metadata")
+    meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
     title = str(meta.get("title") or "").strip()
     body = str(item.get("content") or "").strip()
     if kind == "web_wikipedia":

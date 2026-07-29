@@ -171,6 +171,7 @@ def query_via_http_api(
     *,
     kwargs: dict[str, Any],
     session_id: str | None = None,
+    trace_id: str | None = None,
     timeout_s: float = 300.0,
 ) -> dict[str, Any]:
     """POST /query and return a normalized inspector result dict."""
@@ -199,7 +200,10 @@ def query_via_http_api(
             body[key] = kwargs[key]
 
     t0 = time.perf_counter()
-    resp = requests.post(url, json=body, timeout=timeout_s)
+    headers: dict[str, str] = {}
+    if trace_id:
+        headers["X-Langfuse-Trace-Id"] = trace_id
+    resp = requests.post(url, json=body, timeout=timeout_s, headers=headers or None)
     latency_ms = (time.perf_counter() - t0) * 1000.0
     resp.raise_for_status()
     payload = resp.json()

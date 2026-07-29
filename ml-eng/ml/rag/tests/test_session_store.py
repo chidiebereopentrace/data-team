@@ -16,10 +16,6 @@ from typing import Any
 
 import pytest
 
-# Ensure the package is importable when run as a script or from repo root
-import sys
-sys.path.insert(0, os.path.abspath("ml-eng"))
-
 from ml.rag import session_store as ss
 
 
@@ -108,7 +104,9 @@ def test_redis_backend_when_fakeredis_present():
 
         # session helper
         ss.save_session_blob("sidX", {"conversation_summary": "x"})
-        assert ss.get_session_blob("sidX")["conversation_summary"] == "x"
+        blob = ss.get_session_blob("sidX")
+        assert blob is not None
+        assert blob["conversation_summary"] == "x"
     finally:
         ss._get_client = orig_get  # type: ignore[assignment]
         ss._redis_client = None  # type: ignore[attr-defined]

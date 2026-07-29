@@ -14,8 +14,8 @@ from typing import Any
 from ml.rag.chatbot.chat_history import normalize_messages
 from ml.rag.chatbot.chat_memory import append_turn_and_compact, flat_messages_to_memory
 from ml.rag.chatbot.stakeholder_prompts import is_valid_category
+from ml.rag.observability import rag_trace_context
 from ml.rag.session_store import get_session_blob, save_session_blob
-from ml.rag.observability import get_langfuse
 
 
 @dataclass
@@ -119,11 +119,6 @@ def execute_chat_turn(
         session_id, history, category
     )
 
-    lf = get_langfuse()
-    turn_trace = lf.trace(name="chat_turn", session_id=sid, category=cat) if lf else None
-    if turn_trace:
-        turn_trace.update(input={"query": query[:200]})
-
     kwargs: dict[str, Any] = dict(rag_kwargs)
     if prior_summary.strip() or prior_recent:
         kwargs["conversation_summary"] = prior_summary
@@ -134,10 +129,22 @@ def execute_chat_turn(
         kwargs["category"] = cat
     if user_profile is not None:
         kwargs["user_profile"] = user_profile
+    kwargs["session_id"] = sid
+    kwargs["trace_tags"] = ["chat"]
 
     from ml.rag.chatbot.graph import run_rag  # defer heavy graph / torch imports
 
-    result = run_rag(query.strip(), **kwargs)
+    with rag_trace_context(
+        trace_name="rag.chat_turn",
+        session_id=sid,
+        plan_type=plan_type,
+        category=cat,
+        trace_input={"query": query[:500]},
+        tags=["chat"],
+    ) as trace_handle:
+        result = run_rag(query.strip(), **kwargs)
+        trace_handle.update_output(result)
+
     answer = result.get("answer", "") or ""
     err = result.get("error")
     err_s = str(err).strip() if err is not None else None
@@ -160,4 +167,3 @@ def execute_chat_turn(
         pipeline_error=err_s,
         raw_result=dict(result),
     )
-

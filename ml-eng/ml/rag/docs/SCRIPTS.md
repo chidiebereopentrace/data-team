@@ -360,7 +360,7 @@ streamlit run ml/rag/chatbot/streamlit_app.py
 
 | File | Run |
 |------|-----|
-| [`retrievers/test_bq_filter_context.py`](../retrievers/test_bq_filter_context.py) | `python -m pytest ml/rag/retrievers/test_bq_filter_context.py` (if pytest installed) or `python ml/rag/retrievers/test_bq_filter_context.py` |
+| [`tests/retrievers/test_bq_filter_context.py`](../tests/retrievers/test_bq_filter_context.py) | From `ml-eng/`: `python -m pytest ml/rag/tests/retrievers/test_bq_filter_context.py` (if pytest installed) or `python ml/rag/tests/retrievers/test_bq_filter_context.py` |
 
 ---
 

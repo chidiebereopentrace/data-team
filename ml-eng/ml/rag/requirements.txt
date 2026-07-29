@@ -1,12 +1,13 @@
 # RAG graph and retrieval (install from repo root: pip install -r ml-eng/ml/rag/requirements.txt)
 langgraph>=0.2.0
 langchain-core>=0.3.0
+langchain>=0.3.0
 
 # API (for ml.rag.api / Hugging Face deploy)
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 redis>=5.2.0
-langfuse>=2.0
+langfuse>=3.0
 
 # Llama via Hugging Face Inference API / reranker + generator
 requests>=2.31.0

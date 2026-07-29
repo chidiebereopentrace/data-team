@@ -7,16 +7,27 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
+from ml.rag.observability import (
+    get_observe_decorator,
+    observed_span,
+    run_with_tracing_context,
+    sql_hash,
+    trace_elapsed_ms,
+    update_current_span_metadata,
+)
 from ml.rag.retrievers.base import BaseRetriever
 from ml.rag.session_store import get_bq_schema_cache, set_bq_schema_cache
 
 logger = logging.getLogger(__name__)
+
+_observe_span = get_observe_decorator()
 
 # Production note: The main API (app/api.py) calls load_rag_dotenv early using the
 # unified loader (respecting config/.env and pure env vars for GCE).
@@ -52,6 +63,7 @@ def _call_llama_for_sql(messages: list[dict[str, str]], *, max_tokens: int | Non
         max_tokens=cap,
         temperature=0.0,
         timeout_s=bq_timeout,
+        purpose="nl2sql",
     )
 
 
@@ -412,80 +424,110 @@ class BQRetriever(BaseRetriever):
         max_queries = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
         mode = os.environ.get("RAG_BQ_NL2SQL_MODE", "per_hint").strip().lower()
         cleaned_hints = [str(h).strip() for h in (table_hints or []) if str(h).strip()]
+        nl2sql_t0 = time.perf_counter()
 
-        if mode == "batch":
-            messages = self._build_nl2sql_messages(
-                question,
-                cleaned_hints[:max_queries],
-                geo_country=geo_country,
-                geo_countries=geo_countries,
-                time_start=time_start,
-                time_end=time_end,
-                entities=entities,
-                domains=domains,
-                multi_query=True,
-                max_queries=max_queries,
+        with observed_span(
+            "retrieval.bq.nl2sql",
+            input_data={
+                "question": question[:200],
+                "table_hints_count": len(cleaned_hints),
+                "mode": mode,
+            },
+        ):
+            parallel_used = False
+            queries: list[str] = []
+
+            if mode == "batch":
+                messages = self._build_nl2sql_messages(
+                    question,
+                    cleaned_hints[:max_queries],
+                    geo_country=geo_country,
+                    geo_countries=geo_countries,
+                    time_start=time_start,
+                    time_end=time_end,
+                    entities=entities,
+                    domains=domains,
+                    multi_query=True,
+                    max_queries=max_queries,
+                )
+                parsed = _parse_sql_queries(_call_llama_for_sql(messages), max_queries)
+                if parsed:
+                    queries = parsed
+
+            if not queries:
+                hints_for_calls = cleaned_hints[:max_queries] if cleaned_hints else [None]
+                parallel = os.environ.get("RAG_BQ_NL2SQL_PARALLEL", "off").strip().lower() in (
+                    "1",
+                    "true",
+                    "on",
+                    "yes",
+                )
+                workers = max(1, int(os.environ.get("RAG_BQ_NL2SQL_PARALLEL_WORKERS", "4") or 4))
+
+                def _gen_one(hint: str | None) -> str:
+                    return self._nl_to_sql_one(
+                        question,
+                        table_hints=[hint] if hint else None,
+                        geo_country=geo_country,
+                        geo_countries=geo_countries,
+                        time_start=time_start,
+                        time_end=time_end,
+                        entities=entities,
+                        domains=domains,
+                    )
+
+                seen: set[str] = set()
+                if parallel and len(hints_for_calls) > 1:
+                    parallel_used = True
+                    with ThreadPoolExecutor(max_workers=min(workers, len(hints_for_calls))) as pool:
+                        futs = {
+                            pool.submit(run_with_tracing_context(_gen_one, h)): h
+                            for h in hints_for_calls
+                        }
+                        for fut in as_completed(futs):
+                            sql = fut.result()
+                            if not sql:
+                                continue
+                            norm = " ".join(sql.split())
+                            if norm in seen:
+                                continue
+                            seen.add(norm)
+                            queries.append(sql)
+                else:
+                    for hint in hints_for_calls:
+                        sql = _gen_one(hint)
+                        if not sql:
+                            continue
+                        norm = " ".join(sql.split())
+                        if norm in seen:
+                            continue
+                        seen.add(norm)
+                        queries.append(sql)
+                        if len(queries) >= max_queries:
+                            break
+
+            if not queries:
+                logger.warning(
+                    "NL-to-SQL: 0 queries from %s hint(s) (mode=%s); check RAG_LLM_BASE_URL, "
+                    "RAG_LLM_MODEL_ID (must match LM Studio), and timeout logs",
+                    len(cleaned_hints),
+                    mode,
+                )
+
+            sql_hashes = list(
+                dict.fromkeys(h for h in (sql_hash(q) for q in queries) if h)
             )
-            parsed = _parse_sql_queries(_call_llama_for_sql(messages), max_queries)
-            if parsed:
-                return parsed
-
-        # per_hint: one targeted SELECT per matched table (primary path)
-        hints_for_calls = cleaned_hints[:max_queries] if cleaned_hints else [None]
-        parallel = os.environ.get("RAG_BQ_NL2SQL_PARALLEL", "off").strip().lower() in (
-            "1",
-            "true",
-            "on",
-            "yes",
-        )
-        workers = max(1, int(os.environ.get("RAG_BQ_NL2SQL_PARALLEL_WORKERS", "4") or 4))
-
-        def _gen_one(hint: str | None) -> str:
-            return self._nl_to_sql_one(
-                question,
-                table_hints=[hint] if hint else None,
-                geo_country=geo_country,
-                geo_countries=geo_countries,
-                time_start=time_start,
-                time_end=time_end,
-                entities=entities,
-                domains=domains,
+            update_current_span_metadata(
+                {
+                    "mode": mode,
+                    "table_hints_count": len(cleaned_hints),
+                    "sql_query_count": len(queries),
+                    "parallel": parallel_used,
+                    "sql_hashes": sql_hashes[:10],
+                    "latency_ms": trace_elapsed_ms(nl2sql_t0),
+                }
             )
-
-        seen: set[str] = set()
-        queries: list[str] = []
-        if parallel and len(hints_for_calls) > 1:
-            with ThreadPoolExecutor(max_workers=min(workers, len(hints_for_calls))) as pool:
-                futs = {pool.submit(_gen_one, h): h for h in hints_for_calls}
-                for fut in as_completed(futs):
-                    sql = fut.result()
-                    if not sql:
-                        continue
-                    norm = " ".join(sql.split())
-                    if norm in seen:
-                        continue
-                    seen.add(norm)
-                    queries.append(sql)
-        else:
-            for hint in hints_for_calls:
-                sql = _gen_one(hint)
-                if not sql:
-                    continue
-                norm = " ".join(sql.split())
-                if norm in seen:
-                    continue
-                seen.add(norm)
-                queries.append(sql)
-                if len(queries) >= max_queries:
-                    break
-        if not queries:
-            logger.warning(
-                "NL-to-SQL: 0 queries from %s hint(s) (mode=%s); check RAG_LLM_BASE_URL, "
-                "RAG_LLM_MODEL_ID (must match LM Studio), and timeout logs",
-                len(cleaned_hints),
-                mode,
-            )
-        return queries[:max_queries]
+            return queries[:max_queries]
 
     def _fallback_sql(self, question: str) -> str:
         """Minimal fallback when NL-to-SQL returns nothing (connectivity / LLM down)."""
@@ -523,6 +565,7 @@ class BQRetriever(BaseRetriever):
             pass
         return ""
 
+    @_observe_span(as_type="span", name="retrieval.bq", capture_input=False, capture_output=False)
     def retrieve(self, query: str, top_k: int = 10, **kwargs: Any) -> list[dict[str, Any]]:
         """
         Run one or more BQ queries and return rows as context items.
@@ -533,7 +576,9 @@ class BQRetriever(BaseRetriever):
         Optional kwargs: geo_country, time_start, time_end, entities, domains, table_hints.
         Graph node aggregates distinct executed SQL into state ``bq_sql_queries``.
         """
+        t0 = time.perf_counter()
         if not self.project_id:
+            update_current_span_metadata({"status": "no_project", "row_count": 0})
             return []
         client = self._get_client()
         table_hints = kwargs.get("table_hints")
@@ -597,6 +642,14 @@ class BQRetriever(BaseRetriever):
                 sql_queries = [fb]
 
         if not sql_queries:
+            update_current_span_metadata(
+                {
+                    "table_hints_count": len(hint_list or []),
+                    "sql_query_count": 0,
+                    "row_count": 0,
+                    "latency_ms": trace_elapsed_ms(t0),
+                }
+            )
             return []
 
         max_queries = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
@@ -663,4 +716,20 @@ class BQRetriever(BaseRetriever):
                 if budget <= 0:
                     break
 
+        sql_hashes = list(
+            dict.fromkeys(
+                sql_hash(str((item.get("metadata") or {}).get("sql") or ""))
+                for item in items
+                if sql_hash(str((item.get("metadata") or {}).get("sql") or ""))
+            )
+        )
+        update_current_span_metadata(
+            {
+                "table_hints_count": len(hint_list or []),
+                "sql_query_count": len(sql_queries),
+                "row_count": len(items),
+                "sql_hashes": sql_hashes[:10],
+                "latency_ms": trace_elapsed_ms(t0),
+            }
+        )
         return items

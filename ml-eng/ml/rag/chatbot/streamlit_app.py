@@ -8,6 +8,7 @@ Run: PYTHONPATH=ml-eng streamlit run ml/rag/chatbot/streamlit_app.py
 """
 from __future__ import annotations
 
+import atexit
 import os
 import time
 import uuid
@@ -27,10 +28,12 @@ from ml.rag.chatbot.streamlit_inspector import (
     query_via_http_api,
     render_pipeline_inspector,
 )
+from ml.rag.observability import flush_langfuse, rag_trace_context
 from ml.rag.chat_memory import append_turn_and_compact
 from ml.rag.local_env import load_rag_dotenv
 
 load_rag_dotenv(_ml_eng)
+atexit.register(flush_langfuse)
 
 st.set_page_config(page_title="OpenTrace RAG — Pipeline inspector", page_icon="🔍", layout="wide")
 st.title("OpenTrace RAG — pipeline inspector (QA)")
@@ -149,15 +152,28 @@ def _run_pipeline(
             base,
             prompt.strip(),
             kwargs=kwargs,
-            session_id=st.session_state.api_session_id,
+            session_id=st.session_state.active_session_id,
         )
         sid = result.get("session_id")
         if isinstance(sid, str) and sid.strip():
             st.session_state.api_session_id = sid.strip()
+            st.session_state.active_session_id = sid.strip()
     else:
         from ml.rag.graph import run_rag
 
-        result = run_rag(prompt.strip(), **kwargs)
+        session_id = st.session_state.active_session_id
+        kwargs["session_id"] = session_id
+        kwargs["trace_tags"] = ["streamlit-qa"]
+        with rag_trace_context(
+            trace_name="rag.streamlit",
+            session_id=session_id,
+            plan_type=str(kwargs.get("plan_type") or ""),
+            category=str(kwargs.get("category") or ""),
+            trace_input={"query": prompt.strip()[:500]},
+            tags=["streamlit-qa"],
+        ) as trace_handle:
+            result = run_rag(prompt.strip(), **kwargs)
+            trace_handle.update_output(result, latency_ms=result.get("latency_ms"))
         result["_backend_mode"] = "in_process"
         result["_query"] = prompt.strip()
     result["latency_ms"] = (time.perf_counter() - t0) * 1000.0

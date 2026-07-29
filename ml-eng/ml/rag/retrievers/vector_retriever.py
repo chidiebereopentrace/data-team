@@ -29,9 +29,12 @@ from pathlib import Path
 from typing import Any
 
 from ml.rag.retrievers.base import BaseRetriever
+from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
 from ml.rag.text_processors.chunking_config import profile_for_collection
 
 logger = logging.getLogger(__name__)
+
+_observe_span = get_observe_decorator()
 
 DEFAULT_MODEL = "intfloat/multilingual-e5-small"
 
@@ -678,6 +681,7 @@ class VectorRetriever(BaseRetriever):
 
     # -- public retrieve -----------------------------------------------------
 
+    @_observe_span(as_type="span", name="retrieval.qdrant", capture_input=False, capture_output=False)
     def retrieve(self, query: str, top_k: int = 10, **kwargs: Any) -> list[dict[str, Any]]:
         """
         Return top_k similar chunks from Qdrant.
@@ -689,6 +693,7 @@ class VectorRetriever(BaseRetriever):
           doc_kind / doc_kinds / geo_country / published_at_from / published_at_to / domains_substring
         """
         doc_kind = kwargs.get("doc_kind")
+        t0 = time.perf_counter()
         if isinstance(doc_kind, str):
             doc_kind = doc_kind.strip() or None
         else:
@@ -887,4 +892,17 @@ class VectorRetriever(BaseRetriever):
                 break
 
         items.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
-        return items[:top_k]
+        result = items[:top_k]
+        update_current_span_metadata(
+            {
+                "corpus": profile_for_collection(collection).corpus,
+                "collection": collection,
+                "top_k": top_k,
+                "hit_count": len(result),
+                "vector_search_mode": vector_search_mode,
+                "hybrid": use_hybrid,
+                "geo_filter": bool(geo_country or geo_countries),
+                "latency_ms": trace_elapsed_ms(t0),
+            }
+        )
+        return result

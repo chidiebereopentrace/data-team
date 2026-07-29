@@ -125,11 +125,33 @@ RAG_REDIS_CONNECT_TIMEOUT_S=2
 
 Update the AskADZA client to treat `session_id` as durable now that Redis backs it.
 
-## 7.5 Langfuse tracing (optional)
+## 7.5 Langfuse tracing (optional, SDK v3+)
 
-Same pattern as Redis: set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` (point at your self-hosted instance or Langfuse Cloud). When present the RAG API emits detailed traces for queries, LLM calls (with usage), retrieval, BQ SQL, and full LangGraph execution. When absent, tracing is disabled with zero overhead.
+When Langfuse keys are set, each `/query` emits a unified trace. When absent, tracing is a silent no-op (zero overhead). The API flushes pending traces on shutdown.
 
-Recommended for GCE production; for HF Spaces set the keys only if you want traces routed to your Langfuse backend.
+**Required env vars:**
+
+| Variable | Value |
+|----------|--------|
+| `LANGFUSE_PUBLIC_KEY` | `pk-lf-...` |
+| `LANGFUSE_SECRET_KEY` | `sk-lf-...` |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` (EU Cloud) |
+
+**Recommended for production:**
+
+| Variable | Value |
+|----------|--------|
+| `LANGFUSE_TRACING_ENVIRONMENT` | `production` |
+| `LANGFUSE_TRACING_RELEASE` | git SHA or version tag (compare regressions across deploys) |
+| `LANGFUSE_TRACING_SAMPLE_RATE` | `1.0` (optional; lower for high volume) |
+
+**Expected spans** (when the corresponding path runs): root `rag.query`, LangGraph node spans, `retrieval.qdrant`, `retrieval.bq`, `retrieval.bq.nl2sql`, `retrieval.bq_tables`, `retrieval.web`, `rerank`, `embedding.query`, and `llm_chat_complete` generations (token usage; `purpose` metadata e.g. `nl2sql`). Trace metadata includes `session_id`, `plan_type`, `category`, and release tags.
+
+**OpenRouter Sessions (LLM cost bundling):** When `RAG_LLM_BASE_URL` points at OpenRouter, leave `RAG_OPENROUTER_SESSION_ID` unset or `on` so decompose + NL2SQL + generate share one `session_id` (= Langfuse trace id) in [OpenRouter Logs](https://openrouter.ai/logs?tab=sessions). Set `RAG_OPENROUTER_SESSION_ID=off` to disable. Langfuse remains the full-pipeline trace; OpenRouter covers LLM spend only.
+
+**User feedback:** `POST /feedback` with `{ "trace_id": "...", "score": 1.0, "comment": "..." }` (score 0–1) when tracing is enabled.
+
+**Verify:** `python scripts/verify_langfuse_tracing.py` (from `ml-eng/` with keys loaded).
 
 ## 8. Scaling & resources
 

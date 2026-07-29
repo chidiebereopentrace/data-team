@@ -7,8 +7,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, TypedDict, cast
+from typing import Any, TypedDict
 
 from ml.rag.chatbot.acf import ACFResult, compute_acf
 from ml.rag.chatbot.assistant_identity import is_meta_query
@@ -22,7 +23,7 @@ from ml.rag.chatbot.query_decomposer import (
     normalize_geography_for_filter,
     resolve_retrieval_geographies,
 )
-from ml.rag.chatbot.reranker import rerank
+from ml.rag.chatbot.reranker import last_rerank_mode, rerank
 from ml.rag.retrievers.bq_retriever import BQRetriever
 from ml.rag.retrievers.vector_retriever import VectorRetriever
 from ml.rag.llm_chat import get_llm_usage, reset_llm_usage
@@ -33,10 +34,14 @@ from ml.rag.retrievers.web_retriever import (
     route_after_rerank,
 )
 
-from langchain_core.runnables import RunnableConfig
-
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
-from ml.rag.observability import get_langfuse_callback
+from ml.rag.observability import (
+    build_rag_invoke_config,
+    observed_span,
+    run_with_tracing_context,
+    trace_elapsed_ms,
+    update_current_span_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -547,7 +552,16 @@ def _research_context_label(meta: dict[str, Any]) -> tuple[str, str]:
 
 def _retrieve_bq_tables(state: RAGGraphState) -> list[dict[str, Any]]:
     q = (state.get("query") or "").strip()
-    return match_bq_tables_from_descriptions(q, top_k=10)
+    t0 = time.perf_counter()
+    with observed_span("retrieval.bq_tables", input_data={"query": q[:200]}):
+        result = match_bq_tables_from_descriptions(q, top_k=10)
+        update_current_span_metadata(
+            {
+                "candidate_count": len(result),
+                "latency_ms": trace_elapsed_ms(t0),
+            }
+        )
+        return result
 
 
 def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
@@ -559,10 +573,10 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         futs = {
-            ex.submit(_retrieve_bq_tables, state): "bq_tables",
-            ex.submit(_retrieve_news, state): "news",
-            ex.submit(_retrieve_academic, state): "academic",
-            ex.submit(_retrieve_ota, state): "ota",
+            ex.submit(run_with_tracing_context(_retrieve_bq_tables, state)): "bq_tables",
+            ex.submit(run_with_tracing_context(_retrieve_news, state)): "news",
+            ex.submit(run_with_tracing_context(_retrieve_academic, state)): "academic",
+            ex.submit(run_with_tracing_context(_retrieve_ota, state)): "ota",
         }
         for fut in as_completed(futs):
             kind = futs[fut]
@@ -701,7 +715,7 @@ def node_rerank(state: RAGGraphState) -> dict[str, Any]:
     merged = state.get("merged_context") or []
     top_k = int(state.get("rerank_top_k") or 20)
     top = rerank(query, merged, top_k=top_k)
-    return {"reranked_context": top}
+    return {"reranked_context": top, "rerank_mode": last_rerank_mode()}
 
 
 def _has_usable_internal_context(reranked: list[dict[str, Any]]) -> bool:
@@ -1004,14 +1018,16 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
         initial["conversation_summary"] = kwargs["conversation_summary"]  # type: ignore[assignment]
     if "recent_turns" in kwargs:
         initial["recent_turns"] = kwargs["recent_turns"]  # type: ignore[assignment]
-    cfg: RunnableConfig | None = kwargs.get("config")
-    handler = get_langfuse_callback()
-    if handler:
-        base: dict[str, Any] = dict(cfg) if cfg else {}
-        cbs = list(base.get("callbacks") or [])
-        if handler not in cbs:
-            cbs.append(handler)
-        cfg = cast(RunnableConfig, {**base, "callbacks": cbs})
+    session_id = kwargs.get("session_id")
+    trace_tags = kwargs.get("trace_tags")
+    extra_tags = list(trace_tags) if isinstance(trace_tags, list) else None
+    cfg = build_rag_invoke_config(
+        base_config=kwargs.get("config"),
+        session_id=str(session_id).strip() if session_id else None,
+        plan_type=str(plan_type).strip() if plan_type else None,
+        category=str(kwargs.get("category") or "").strip() or None,
+        tags=extra_tags,
+    )
     result = graph.invoke(initial, config=cfg)
     out = dict(result)
     out.setdefault("citations", [])

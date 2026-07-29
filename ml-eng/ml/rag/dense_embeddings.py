@@ -7,8 +7,12 @@ Supports ``intfloat/multilingual-e5-small`` (384-dim, matches Qdrant ingest).
 from __future__ import annotations
 
 import logging
+import time
+from contextlib import nullcontext
 from functools import lru_cache
 from typing import Any
+
+from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +62,29 @@ def _text_embedding(model_id: str) -> Any:
 
 def embed_dense_texts(texts: list[str], *, model_id: str) -> list[list[float]]:
     """Return L2-normalized dense vectors for a batch of texts."""
+    t0 = time.perf_counter()
     if not texts:
         return []
-    model = _text_embedding(model_id)
-    cleaned = [(t or "").strip() or " " for t in texts]
-    out: list[list[float]] = []
-    for emb in model.embed(cleaned):
-        out.append([float(x) for x in emb])
+    span_ctx = (
+        observed_span("embedding.query", input_data={"model_id": model_id, "mode": "fastembed"})
+        if len(texts) == 1
+        else nullcontext()
+    )
+    with span_ctx:
+        model = _text_embedding(model_id)
+        cleaned = [(t or "").strip() or " " for t in texts]
+        out: list[list[float]] = []
+        for emb in model.embed(cleaned):
+            out.append([float(x) for x in emb])
+        if len(texts) == 1:
+            update_current_span_metadata(
+                {
+                    "model_id": model_id,
+                    "mode": "fastembed",
+                    "batch_size": len(texts),
+                    "latency_ms": trace_elapsed_ms(t0),
+                }
+            )
     return out
 
 

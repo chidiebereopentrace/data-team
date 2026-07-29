@@ -41,11 +41,17 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_model_id
+from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
 
 logger = logging.getLogger(__name__)
+
+_observe_span = get_observe_decorator()
+
+_LAST_RERANK_MODE = "off"
 
 # Static source priority — applied additively on top of any model score so a
 # BigQuery row that scores near a news chunk still wins the tie-break (BQ
@@ -456,6 +462,36 @@ def _rerank_cohere(
 # --- public entry point -------------------------------------------------------
 
 
+def _finalize_rerank_trace(
+    items: list[dict[str, Any]],
+    *,
+    mode: str,
+    input_count: int,
+    top_k: int,
+    start: float,
+    model: str | None = None,
+) -> list[dict[str, Any]]:
+    global _LAST_RERANK_MODE
+    _LAST_RERANK_MODE = mode
+    meta: dict[str, Any] = {
+        "mode": mode,
+        "input_count": input_count,
+        "output_count": len(items),
+        "top_k": top_k,
+        "latency_ms": trace_elapsed_ms(start),
+    }
+    if model:
+        meta["model"] = model
+    update_current_span_metadata(meta)
+    return items
+
+
+def last_rerank_mode() -> str:
+    """Effective rerank backend used on the most recent ``rerank()`` call."""
+    return _LAST_RERANK_MODE
+
+
+@_observe_span(as_type="span", name="rerank", capture_input=False, capture_output=False)
 def rerank(
     query: str,
     context_items: list[dict[str, Any]],
@@ -476,8 +512,9 @@ def rerank(
     Top-k cap respected from the ``top_k`` argument and (when set) the
     ``RAG_RERANKER_TOP_K`` env override.
     """
+    t0 = time.perf_counter()
     if not context_items:
-        return []
+        return _finalize_rerank_trace([], mode="off", input_count=0, top_k=top_k, start=t0)
 
     env_top_k = _env_int("RAG_RERANKER_TOP_K", 0)
     if env_top_k > 0:
@@ -485,12 +522,20 @@ def rerank(
 
     content_key = "content" if any("content" in c for c in context_items) else "text"
     mode = _reranker_mode()
-    logger.debug("Reranker mode=%s top_k=%d candidates=%d", mode, top_k, len(context_items))
+    input_count = len(context_items)
+    logger.debug("Reranker mode=%s top_k=%d candidates=%d", mode, top_k, input_count)
 
     if mode == "cohere":
         result = _rerank_cohere(query, context_items, top_k, content_key)
         if result is not None:
-            return result
+            return _finalize_rerank_trace(
+                result,
+                mode="cohere",
+                input_count=input_count,
+                top_k=top_k,
+                start=t0,
+                model=_env("RAG_RERANKER_COHERE_MODEL", "rerank-v3.5") or "rerank-v3.5",
+            )
         logger.warning(
             "Cohere reranker unavailable; degrading to cross_encoder."
         )
@@ -499,7 +544,14 @@ def rerank(
     if mode == "cross_encoder":
         result = _rerank_cross_encoder(query, context_items, top_k, content_key)
         if result is not None:
-            return result
+            return _finalize_rerank_trace(
+                result,
+                mode="cross_encoder",
+                input_count=input_count,
+                top_k=top_k,
+                start=t0,
+                model=_env("RAG_RERANKER_MODEL", "BAAI/bge-reranker-base"),
+            )
         logger.warning(
             "Cross-encoder unavailable; degrading. Install fastembed or "
             "sentence-transformers and set RAG_RERANKER_MODEL accordingly."
@@ -512,7 +564,26 @@ def rerank(
                 "RAG_RERANKER_MODE=llm but no LLM backend configured; "
                 "degrading to off."
             )
-            return _rerank_off(context_items, top_k, content_key)
-        return _rerank_llm(query, context_items, top_k, content_key)
+            return _finalize_rerank_trace(
+                _rerank_off(context_items, top_k, content_key),
+                mode="off",
+                input_count=input_count,
+                top_k=top_k,
+                start=t0,
+            )
+        return _finalize_rerank_trace(
+            _rerank_llm(query, context_items, top_k, content_key),
+            mode="llm",
+            input_count=input_count,
+            top_k=top_k,
+            start=t0,
+            model=llm_model_id(),
+        )
 
-    return _rerank_off(context_items, top_k, content_key)
+    return _finalize_rerank_trace(
+        _rerank_off(context_items, top_k, content_key),
+        mode="off",
+        input_count=input_count,
+        top_k=top_k,
+        start=t0,
+    )

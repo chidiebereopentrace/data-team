@@ -48,6 +48,8 @@ Copy from the API service, then add Streamlit-specific vars.
 |----------|--------|
 | `RAG_STREAMLIT_DEBUG_DEFAULT` | `1` — inspector panel on after each turn |
 | `RAG_SHOW_SQL_DEBUG` | `1` — show generated SQL in inspector |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Optional tracing (`LANGFUSE_BASE_URL=https://cloud.langfuse.com`) |
+| `LANGFUSE_TRACING_RELEASE` | Optional deploy tag (git SHA) for regression comparison |
 
 ### Optional
 
