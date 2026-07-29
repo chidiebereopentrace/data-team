@@ -787,7 +787,7 @@ def _finalize_generation_result(
     return GenerationResult(answer=prose, citations=citations)
 
 
-def _call_llama(messages: list[dict[str, str]]) -> str:
+def _call_llama(messages: list[dict[str, str]], *, purpose: str = "generate") -> str:
     """Call configured LLM backend; never raises on HTTP errors."""
     gen_timeout = float(os.environ.get("RAG_GENERATE_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
     max_toks = _generate_max_tokens()
@@ -803,6 +803,7 @@ def _call_llama(messages: list[dict[str, str]]) -> str:
         max_tokens=max_toks,
         temperature=temperature,
         timeout_s=gen_timeout,
+        purpose=purpose or "generate",
     )
 
 
@@ -856,7 +857,7 @@ def generate(
                     "  Then a final line: 'ACF: no evidence.'\n"
                     "No other prose. No hedging. No caveats beyond the ACF line.\n\n"
                 ) + messages[0]["content"]
-            llama_answer = _call_llama(messages)
+            llama_answer = _call_llama(messages, purpose="generate")
             if llama_answer:
                 cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
                 return _finalize_generation_result(cleaned, [])
@@ -896,7 +897,7 @@ def generate(
         category=category,
         plan_type=plan_type,
     )
-    llama_answer = _call_llama(messages)
+    llama_answer = _call_llama(messages, purpose="generate")
     if llama_answer:
         cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
         return _finalize_generation_result(cleaned, source_registry)

@@ -1,18 +1,20 @@
 """Unit tests for Langfuse observability helpers (no live Langfuse server)."""
 from __future__ import annotations
 
-import os
-
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from unittest.mock import MagicMock
 
 import pytest
 
 from ml.rag.observability import (
     RagTraceHandle,
     build_rag_invoke_config,
+    get_observe_decorator,
     get_openrouter_run_id,
     infer_rag_route,
     is_tracing_enabled,
+    observed_span,
     openrouter_run_context,
     openrouter_sessions_enabled,
     rag_trace_context,
@@ -163,3 +165,116 @@ def test_llm_chat_complete_no_raise_without_tracing(monkeypatch: pytest.MonkeyPa
     from ml.rag.llm_chat import llm_chat_complete
 
     assert llm_chat_complete([{"role": "user", "content": "hi"}]) == ""
+
+
+def test_tracing_release_falls_back_to_railway_sha(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ml.rag.observability import tracing_release
+
+    monkeypatch.delenv("LANGFUSE_TRACING_RELEASE", raising=False)
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "abcdef1234567890")
+    assert tracing_release() == "abcdef123456"
+
+
+def test_summarize_soft_fail_flags() -> None:
+    summary = summarize_rag_result_for_trace(
+        {
+            "vector_news_results": [],
+            "vector_academic_results": [],
+            "vector_ota_results": [],
+            "bq_results": [{"content": "[BQ validation failed…]"}],
+            "web_results": [],
+            "web_fallback_status": "rate_limited",
+            "answer": "",
+        }
+    )
+    assert summary["empty_retrieval"] is False  # bq_results non-empty
+    assert summary["bq_validation_failed"] is True
+    assert summary["web_fallback_status"] == "rate_limited"
+    assert summary["llm_empty_answer"] is True
+
+
+def test_summarize_empty_retrieval() -> None:
+    summary = summarize_rag_result_for_trace({"answer": "x"})
+    assert summary["empty_retrieval"] is True
+
+
+def test_lazy_observe_decorator_invokes_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def fake_observe(*_a: object, **_k: object):
+        def deco(fn: object):
+            def wrapped(*args: object, **kwargs: object):
+                calls.append("observed")
+                return fn(*args, **kwargs)  # type: ignore[operator]
+
+            return wrapped
+
+        return deco
+
+    monkeypatch.setattr("ml.rag.observability.observe", fake_observe)
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
+
+    lazy = get_observe_decorator()
+
+    @lazy(as_type="span", name="t")
+    def sample() -> str:
+        return "ok"
+
+    assert sample() == "ok"
+    assert calls == ["observed"]
+
+
+def test_lazy_observe_decorator_noop_without_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+    lazy = get_observe_decorator()
+
+    @lazy(as_type="span", name="t")
+    def sample() -> str:
+        return "ok"
+
+    assert sample() == "ok"
+
+    """Body errors must not become 'generator didn't stop after throw()'."""
+
+    @contextmanager
+    def _fake_observation(**_kwargs: object):
+        yield MagicMock(name="span")
+
+    client = MagicMock()
+    client.start_as_current_observation.side_effect = lambda **kw: _fake_observation(**kw)
+    monkeypatch.setattr("ml.rag.observability.get_langfuse_client", lambda: client)
+
+    with pytest.raises(ImportError, match="numpy.core.multiarray"):
+        with observed_span("retrieval.test"):
+            raise ImportError("numpy.core.multiarray failed to import")
+
+
+def test_observed_span_setup_failure_yields_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = MagicMock()
+    client.start_as_current_observation.side_effect = RuntimeError("langfuse down")
+    monkeypatch.setattr("ml.rag.observability.get_langfuse_client", lambda: client)
+
+    with observed_span("retrieval.test") as span:
+        assert span is None
+
+
+def test_rag_trace_context_propagates_body_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    @contextmanager
+    def _fake_observation(**_kwargs: object):
+        yield MagicMock(name="root")
+
+    @contextmanager
+    def _fake_propagate(**_kwargs: object):
+        yield
+
+    client = MagicMock()
+    client.start_as_current_observation.side_effect = lambda **kw: _fake_observation(**kw)
+    monkeypatch.setattr("ml.rag.observability.get_langfuse_client", lambda: client)
+    monkeypatch.setattr("ml.rag.observability.propagate_attributes", _fake_propagate)
+    monkeypatch.setattr("ml.rag.observability.get_current_trace_id", lambda: "trace-test")
+
+    with pytest.raises(ValueError, match="boom"):
+        with rag_trace_context(session_id="s1", trace_input={"query": "hi"}):
+            raise ValueError("boom")

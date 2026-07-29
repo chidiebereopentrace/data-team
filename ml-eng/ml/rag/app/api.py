@@ -80,6 +80,10 @@ class QueryRequest(BaseModel):
         None,
         description="Omit to start a new session; reuse for multi-turn chat (server-side memory)",
     )
+    user_id: str | None = Field(
+        None,
+        description="Optional product user id for Langfuse user analytics (client-supplied until auth).",
+    )
     chat_history: list[ChatMessage] | None = Field(
         None,
         description="Prior turns for this request (canonical). Server session is not updated when set.",
@@ -263,6 +267,7 @@ async def query(request: QueryRequest):
         with rag_trace_context(
             trace_name="rag.query",
             session_id=session_id,
+            user_id=request.user_id,
             plan_type=ctx.plan_type,
             category=ctx.category,
             trace_input={"query": request.query[:500]},
@@ -270,7 +275,8 @@ async def query(request: QueryRequest):
         ) as trace_handle:
             result = run_rag(request.query, **kwargs)
             trace_handle.update_output(result)
-        langfuse_trace_id = get_current_trace_id()
+            langfuse_trace_id = get_current_trace_id()
+        flush_langfuse()
         trace: dict | None = None
         if request.include_trace:
             trace = {

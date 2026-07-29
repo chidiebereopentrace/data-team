@@ -343,31 +343,34 @@ Response:
 
 ### Observability with Langfuse (optional, SDK v3+)
 
-Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (EU Cloud) to emit **unified traces** for every RAG request:
+Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (EU Cloud) to emit **unified traces** for every RAG request.
+
+**Product analytics (push → Railway redeploy):** with keys already on the Railway service, richer nested spans and soft-fail scores appear after redeploy — no Dockerfile or service change. Optional `user_id` on `/query` and `/v1/chat` maps to Langfuse Users. `LANGFUSE_TRACING_RELEASE` falls back to Railway’s `RAILWAY_GIT_COMMIT_SHA` when unset.
 
 | Layer | What appears in Langfuse |
 |-------|--------------------------|
 | Root span | `rag.query` (API), `rag.chat_turn` (chat), `rag.streamlit` (QA UI) |
 | LangGraph | Node spans via LangChain callback (decompose, retrieve, rerank, generate, …) |
+| Control | `decompose`, `merge`, `web_fallback`, `insufficient_context` (+ route/corpus metadata) |
 | Retrieval | `retrieval.qdrant`, `retrieval.bq_tables`, `retrieval.bq`, `retrieval.bq.nl2sql`, `retrieval.web` |
-| Rerank / embed | `rerank`, `embedding.query` (dense + sparse) |
-| LLM | `llm_chat_complete` generations with model name + token usage (`purpose=nl2sql` on SQL generation) |
+| Rerank / embed | `rerank` (mode/model/top score), `embedding.query` (dense + sparse) |
+| LLM | `llm_chat_complete` generations with `purpose` (`decompose`, `bq.nl2sql`, `generate`, `generate_meta`, `generate_product`) |
 
-Trace metadata includes `session_id`, `plan_type`, `category`, and `release:*` tags for filtering in the Langfuse UI (Sessions view, dashboards).
+Root metadata includes corpus counts, `empty_retrieval`, BQ soft-fail flags, `web_fallback_status`, and boolean scores when those flags are true. Tags: `session_id`, optional `user_id`, `plan_type`, `category`, `env:*`, `release:*`, `route:*`.
 
 - When keys are absent the integration is a silent no-op (safe for HF Spaces / Railway without tracing).
 - Optional: `LANGFUSE_TRACING_ENVIRONMENT=production|staging|development`
-- Optional: `LANGFUSE_TRACING_RELEASE=<git-sha>` — tag traces per deploy for regression comparison
+- Optional: `LANGFUSE_TRACING_RELEASE=<git-sha>` — else auto from `RAILWAY_GIT_COMMIT_SHA`
 - Optional: `LANGFUSE_TRACING_SAMPLE_RATE=1.0` — reduce volume in production
 - Legacy alias: `LANGFUSE_HOST` (mapped to `LANGFUSE_BASE_URL` at startup)
 
-**Verify setup:** `PYTHONPATH=ml-eng python ml-eng/scripts/verify_langfuse_tracing.py`
+**Verify setup:** `PYTHONPATH=. python scripts/verify_langfuse_tracing.py` (from `ml-eng/`)
 
-**User feedback:** `POST /feedback` with `{ "trace_id": "...", "score": 1.0, "comment": "..." }` (score 0–1).
+**User feedback:** `POST /feedback` with `{ "trace_id": "...", "score": 1.0, "comment": "..." }` (score 0–1). Serving chat returns `langfuse_trace_id` for the same.
 
-**Suggested dashboards (Langfuse UI):** latency p95 by `route:*` tag, token cost by `plan_type:*`, error rate on `full_rag` vs `meta`.
+**Suggested dashboards (Langfuse UI):** latency p95 by `route:*` tag, token cost by `plan_type:*`, error rate on `full_rag` vs `meta`, filter `empty_retrieval` / `bq_failure` scores.
 
-**OpenRouter Sessions (LLM cost bundling):** When `RAG_LLM_BASE_URL` points at OpenRouter, each RAG run sends `session_id` (= Langfuse trace ID) on every `llm_chat_complete` call so decompose + NL2SQL + generate appear as one session in [OpenRouter Logs](https://openrouter.ai/logs?tab=sessions). Disable with `RAG_OPENROUTER_SESSION_ID=off`. Langfuse remains the full-pipeline trace; OpenRouter sessions cover LLM spend only.
+**OpenRouter Sessions (LLM cost bundling):** When `RAG_LLM_BASE_URL` points at OpenRouter, each RAG run sends `session_id` (= Langfuse trace ID) on every `llm_chat_complete` **and** OpenRouter `/rerank` call so decompose + NL2SQL + generate + rerank share one session in [OpenRouter Logs](https://openrouter.ai/logs?tab=sessions). Disable with `RAG_OPENROUTER_SESSION_ID=off`. Optional `OPENROUTER_HTTP_REFERER` / `OPENROUTER_APP_TITLE` on chat and rerank.
 
 ### Deploy to Hugging Face Spaces
 

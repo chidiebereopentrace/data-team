@@ -63,7 +63,7 @@ def _call_llama_for_sql(messages: list[dict[str, str]], *, max_tokens: int | Non
         max_tokens=cap,
         temperature=0.0,
         timeout_s=bq_timeout,
-        purpose="nl2sql",
+        purpose="bq.nl2sql",
     )
 
 

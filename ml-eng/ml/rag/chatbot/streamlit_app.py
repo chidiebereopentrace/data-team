@@ -174,6 +174,7 @@ def _run_pipeline(
         ) as trace_handle:
             result = run_rag(prompt.strip(), **kwargs)
             trace_handle.update_output(result, latency_ms=result.get("latency_ms"))
+        flush_langfuse()
         result["_backend_mode"] = "in_process"
         result["_query"] = prompt.strip()
     result["latency_ms"] = (time.perf_counter() - t0) * 1000.0

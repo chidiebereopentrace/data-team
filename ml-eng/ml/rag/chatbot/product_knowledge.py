@@ -440,7 +440,7 @@ def generate_product_answer(query: str, **kwargs: Any) -> str:
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
-    raw = _call_llama(messages)
+    raw = _call_llama(messages, purpose="generate_product")
     answer = raw.strip() if raw else (
         "OpenTrace Africa builds Africa's agricultural intelligence layer — "
         "federating fragmented data into decision intelligence via OFIA, ACF, and Ask ADZA."

@@ -307,13 +307,16 @@ class RAGGraphState(TypedDict, total=False):
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
-    dec = decompose_query(q)
-    profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
-    country = str((profile or {}).get("country") or "").strip() or None
-    dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
-    meta = is_meta_query(q)
-    product = (not meta) and is_product_query(q, dec)
-    return {"decomposition": dec, "is_meta_query": meta, "is_product_query": product}
+    with observed_span("decompose", input_data={"query": q[:200]}):
+        dec = decompose_query(q)
+        profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
+        country = str((profile or {}).get("country") or "").strip() or None
+        dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
+        meta = is_meta_query(q)
+        product = (not meta) and is_product_query(q, dec)
+        route_candidate = "meta" if meta else ("product" if product else "full_rag")
+        update_current_span_metadata({"route_candidate": route_candidate})
+        return {"decomposition": dec, "is_meta_query": meta, "is_product_query": product}
 
 
 def _tag_vector(item: dict[str, Any], kind: str) -> dict[str, Any]:
@@ -570,6 +573,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     news_out: list[dict[str, Any]] = []
     academic_out: list[dict[str, Any]] = []
     ota_out: list[dict[str, Any]] = []
+    corpus_errors: list[str] = []
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         futs = {
@@ -582,8 +586,9 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
             kind = futs[fut]
             try:
                 res = fut.result()
-            except Exception:
+            except Exception as exc:
                 logger.exception("Parallel retrieval failed for %s; returning empty list", kind)
+                corpus_errors.append(f"{kind}:{type(exc).__name__}")
                 res = []
             if kind == "bq_tables":
                 bq_cands = res
@@ -593,6 +598,9 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
                 academic_out = res
             else:
                 ota_out = res
+
+    if corpus_errors:
+        update_current_span_metadata({"corpus_error": ",".join(corpus_errors)})
 
     combined = list(news_out) + list(academic_out) + list(ota_out)
     return {
@@ -646,68 +654,78 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
 
 
 def node_merge(state: RAGGraphState) -> dict[str, Any]:
-    merged: list[dict[str, Any]] = []
-    for r in state.get("bq_results") or []:
-        if not is_usable_context_item(r):
-            continue
-        text = str(r.get("content") or "").strip()
-        merged.append(
-            {
-                **r,
-                "content": f"[Structured data] {text}" if text else "[Structured data]",
-                "source": r.get("source", "bigquery"),
-                "_context_kind": "bigquery",
-            }
-        )
-    for item in state.get("vector_news_results") or []:
-        text = item.get("content") or ""
-        meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        merged.append(
-            {
-                "content": f"[News] {text}",
-                "source": "news",
-                "_context_kind": "news",
-                "metadata": meta,
-                "score": item.get("score"),
-            }
-        )
-    for item in state.get("vector_academic_results") or []:
-        text = item.get("content") or ""
-        meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        source_tag, label = _research_context_label(meta if isinstance(meta, dict) else {})
-        merged.append(
-            {
-                "content": f"{label} {text}",
-                "source": source_tag,
-                "_context_kind": source_tag,
-                "metadata": meta,
-                "score": item.get("score"),
-            }
-        )
+    with observed_span("merge"):
+        merged: list[dict[str, Any]] = []
+        for r in state.get("bq_results") or []:
+            if not is_usable_context_item(r):
+                continue
+            text = str(r.get("content") or "").strip()
+            merged.append(
+                {
+                    **r,
+                    "content": f"[Structured data] {text}" if text else "[Structured data]",
+                    "source": r.get("source", "bigquery"),
+                    "_context_kind": "bigquery",
+                }
+            )
+        for item in state.get("vector_news_results") or []:
+            text = item.get("content") or ""
+            meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            merged.append(
+                {
+                    "content": f"[News] {text}",
+                    "source": "news",
+                    "_context_kind": "news",
+                    "metadata": meta,
+                    "score": item.get("score"),
+                }
+            )
+        for item in state.get("vector_academic_results") or []:
+            text = item.get("content") or ""
+            meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            source_tag, label = _research_context_label(meta if isinstance(meta, dict) else {})
+            merged.append(
+                {
+                    "content": f"{label} {text}",
+                    "source": source_tag,
+                    "_context_kind": source_tag,
+                    "metadata": meta,
+                    "score": item.get("score"),
+                }
+            )
 
-    # OTA insights (from OTA_insights collection, ota_triple vectors)
-    # Merged into main context (per spec) with clear OTA citations retained.
-    for item in state.get("vector_ota_results") or []:
-        text = item.get("content") or ""
-        meta = _chunk_metadata(item)
-        # Choose nice prefix based on common OTA payload fields
-        if meta.get("recommendation_text") or "recommendation" in str(meta.get("doc_kind") or "").lower():
-            label = "[OTA Recommendation]"
-        elif meta.get("metric_text") or "metric" in str(meta.get("doc_kind") or "").lower():
-            label = "[OTA Metric]"
-        else:
-            label = "[OTA Insight]"
-        merged.append(
+        # OTA insights (from OTA_insights collection, ota_triple vectors)
+        # Merged into main context (per spec) with clear OTA citations retained.
+        for item in state.get("vector_ota_results") or []:
+            text = item.get("content") or ""
+            meta = _chunk_metadata(item)
+            # Choose nice prefix based on common OTA payload fields
+            if meta.get("recommendation_text") or "recommendation" in str(meta.get("doc_kind") or "").lower():
+                label = "[OTA Recommendation]"
+            elif meta.get("metric_text") or "metric" in str(meta.get("doc_kind") or "").lower():
+                label = "[OTA Metric]"
+            else:
+                label = "[OTA Insight]"
+            merged.append(
+                {
+                    "content": f"{label} {text}",
+                    "source": "ota_insight",
+                    "_context_kind": "ota_insight",
+                    "metadata": meta,
+                    "score": item.get("score"),
+                }
+            )
+
+        update_current_span_metadata(
             {
-                "content": f"{label} {text}",
-                "source": "ota_insight",
-                "_context_kind": "ota_insight",
-                "metadata": meta,
-                "score": item.get("score"),
+                "bq_count": len(state.get("bq_results") or []),
+                "news_count": len(state.get("vector_news_results") or []),
+                "academic_count": len(state.get("vector_academic_results") or []),
+                "ota_count": len(state.get("vector_ota_results") or []),
+                "merged_count": len(merged),
             }
         )
-
-    return {"merged_context": merged}
+        return {"merged_context": merged}
 
 
 def node_rerank(state: RAGGraphState) -> dict[str, Any]:
@@ -740,56 +758,76 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
       enough information" branch instead of letting the generator fabricate
       around stale / tangential internal chunks.
     """
-    reranked = list(state.get("reranked_context") or [])
-    if not needs_web_fallback(reranked):
-        return {}
+    with observed_span("web_fallback"):
+        reranked = list(state.get("reranked_context") or [])
+        if not needs_web_fallback(reranked):
+            update_current_span_metadata({"web_fallback_status": "skipped"})
+            return {}
 
-    q = (state.get("query") or "").strip()
-    dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
-    ts = (state.get("time_start_override") or (dec or {}).get("time_start") or "").strip()[:10]
-    te = (state.get("time_end_override") or (dec or {}).get("time_end") or "").strip()[:10]
-    try:
-        result = retrieve_web_fallback_detailed(
-            q,
-            dec,
-            geo_override=str(state.get("geo_override") or ""),
-            time_start=ts or None,
-            time_end=te or None,
-        )
-    except Exception:
-        logger.exception("Web fallback retrieval raised; treating as error")
-        result = None  # type: ignore[assignment]
+        q = (state.get("query") or "").strip()
+        dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
+        ts = (state.get("time_start_override") or (dec or {}).get("time_start") or "").strip()[:10]
+        te = (state.get("time_end_override") or (dec or {}).get("time_end") or "").strip()[:10]
+        try:
+            result = retrieve_web_fallback_detailed(
+                q,
+                dec,
+                geo_override=str(state.get("geo_override") or ""),
+                time_start=ts or None,
+                time_end=te or None,
+            )
+        except Exception:
+            logger.exception("Web fallback retrieval raised; treating as error")
+            result = None  # type: ignore[assignment]
 
-    out: dict[str, Any] = {}
+        out: dict[str, Any] = {}
 
-    if result is None:
-        out["web_fallback_status"] = "error"
-        out["web_fallback_reason"] = "exception in retrieve_web_fallback_detailed"
-        if not _has_usable_internal_context(reranked):
+        if result is None:
+            out["web_fallback_status"] = "error"
+            out["web_fallback_reason"] = "exception in retrieve_web_fallback_detailed"
+            if not _has_usable_internal_context(reranked):
+                out["insufficient_context"] = True
+            update_current_span_metadata(
+                {
+                    "web_fallback_status": out["web_fallback_status"],
+                    "insufficient_context": bool(out.get("insufficient_context")),
+                }
+            )
+            return out
+
+        out["web_fallback_status"] = result.status
+        out["web_fallback_reason"] = result.reason
+
+        if result.items:
+            web_chunks = [format_web_chunk_for_context(item) for item in result.items]
+            out["web_results"] = web_chunks
+            out["reranked_context"] = reranked + web_chunks
+            update_current_span_metadata(
+                {
+                    "web_fallback_status": result.status,
+                    "web_result_count": len(web_chunks),
+                }
+            )
+            return out
+
+        # No web items recovered the query. Only proceed to the standard generator
+        # if internal context was already strong enough on its own — otherwise mark
+        # the turn as insufficient so we don't hallucinate around tangential chunks.
+        if result.status in ("rate_limited", "error", "disabled", "empty") and not _has_usable_internal_context(reranked):
+            logger.info(
+                "Web fallback status=%s with weak internal context — routing to insufficient_context. reason=%s",
+                result.status,
+                result.reason,
+            )
             out["insufficient_context"] = True
-        return out
 
-    out["web_fallback_status"] = result.status
-    out["web_fallback_reason"] = result.reason
-
-    if result.items:
-        web_chunks = [format_web_chunk_for_context(item) for item in result.items]
-        out["web_results"] = web_chunks
-        out["reranked_context"] = reranked + web_chunks
-        return out
-
-    # No web items recovered the query. Only proceed to the standard generator
-    # if internal context was already strong enough on its own — otherwise mark
-    # the turn as insufficient so we don't hallucinate around tangential chunks.
-    if result.status in ("rate_limited", "error", "disabled", "empty") and not _has_usable_internal_context(reranked):
-        logger.info(
-            "Web fallback status=%s with weak internal context — routing to insufficient_context. reason=%s",
-            result.status,
-            result.reason,
+        update_current_span_metadata(
+            {
+                "web_fallback_status": result.status,
+                "insufficient_context": bool(out.get("insufficient_context")),
+            }
         )
-        out["insufficient_context"] = True
-
-    return out
+        return out
 
 
 _INSUFFICIENT_CONTEXT_ANSWER = (
@@ -809,15 +847,26 @@ def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
     """
     status = state.get("web_fallback_status") or "unknown"
     reason = state.get("web_fallback_reason") or ""
-    logger.info(
-        "Returning insufficient_context response (web_fallback_status=%s reason=%s)",
-        status,
-        reason,
-    )
-    return {
-        "answer": _INSUFFICIENT_CONTEXT_ANSWER,
-        "citations": [],
-    }
+    with observed_span(
+        "insufficient_context",
+        input_data={"web_fallback_status": str(status)[:80]},
+    ):
+        update_current_span_metadata(
+            {
+                "web_fallback_status": str(status),
+                "reason": str(reason)[:200],
+            }
+        )
+        logger.info(
+            "insufficient_context: status=%s reason=%s",
+            status,
+            reason,
+        )
+        return {
+            "answer": _INSUFFICIENT_CONTEXT_ANSWER,
+            "citations": [],
+            "insufficient_context": True,
+        }
 
 
 def _route_after_web_fallback(state: RAGGraphState) -> str:

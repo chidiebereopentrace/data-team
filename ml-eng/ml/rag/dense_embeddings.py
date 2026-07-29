@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import time
-from contextlib import nullcontext
 from functools import lru_cache
 from typing import Any
 
@@ -65,10 +64,9 @@ def embed_dense_texts(texts: list[str], *, model_id: str) -> list[list[float]]:
     t0 = time.perf_counter()
     if not texts:
         return []
-    span_ctx = (
-        observed_span("embedding.query", input_data={"model_id": model_id, "mode": "fastembed"})
-        if len(texts) == 1
-        else nullcontext()
+    span_ctx = observed_span(
+        "embedding.query",
+        input_data={"model_id": model_id, "mode": "fastembed", "batch_size": len(texts)},
     )
     with span_ctx:
         model = _text_embedding(model_id)
@@ -76,15 +74,14 @@ def embed_dense_texts(texts: list[str], *, model_id: str) -> list[list[float]]:
         out: list[list[float]] = []
         for emb in model.embed(cleaned):
             out.append([float(x) for x in emb])
-        if len(texts) == 1:
-            update_current_span_metadata(
-                {
-                    "model_id": model_id,
-                    "mode": "fastembed",
-                    "batch_size": len(texts),
-                    "latency_ms": trace_elapsed_ms(t0),
-                }
-            )
+        update_current_span_metadata(
+            {
+                "model_id": model_id,
+                "mode": "fastembed",
+                "batch_size": len(texts),
+                "latency_ms": trace_elapsed_ms(t0),
+            }
+        )
     return out
 
 

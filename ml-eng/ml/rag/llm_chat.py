@@ -163,6 +163,13 @@ def llm_chat_complete(
         api_key = os.environ.get("RAG_LLM_API_KEY", "").strip()
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+    if llm_uses_openrouter():
+        referer = os.environ.get("OPENROUTER_HTTP_REFERER", "").strip()
+        title = os.environ.get("OPENROUTER_APP_TITLE", "").strip()
+        if referer:
+            headers["HTTP-Referer"] = referer
+        if title:
+            headers["X-Title"] = title
 
     payload = {
         "model": effective_model,

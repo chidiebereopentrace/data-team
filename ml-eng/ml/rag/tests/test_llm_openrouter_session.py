@@ -42,7 +42,7 @@ def test_llm_chat_injects_openrouter_session_id(monkeypatch: pytest.MonkeyPatch)
         from ml.rag.llm_chat import llm_chat_complete
 
         with openrouter_run_context("trace-abc123"):
-            out = llm_chat_complete([{"role": "user", "content": "hi"}], purpose="nl2sql")
+            out = llm_chat_complete([{"role": "user", "content": "hi"}], purpose="bq.nl2sql")
 
     assert out == "ok"
     payload = captured.get("json") or {}
@@ -106,7 +106,7 @@ def test_call_llama_for_sql_passes_nl2sql_purpose(monkeypatch: pytest.MonkeyPatc
 
         _call_llama_for_sql([{"role": "user", "content": "q"}])
         mock_llm.assert_called_once()
-        assert mock_llm.call_args.kwargs.get("purpose") == "nl2sql"
+        assert mock_llm.call_args.kwargs.get("purpose") == "bq.nl2sql"
 
 
 def test_nl2sql_span_metadata_on_empty_hints(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,3 +130,56 @@ def test_nl2sql_span_metadata_on_empty_hints(monkeypatch: pytest.MonkeyPatch) ->
     assert updates
     assert updates[-1]["mode"] == "per_hint"
     assert updates[-1]["sql_query_count"] == 0
+
+
+def test_llm_chat_sends_openrouter_attribution_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("RAG_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_HTTP_REFERER", "https://opentrace.africa")
+    monkeypatch.setenv("OPENROUTER_APP_TITLE", "Ask ADZA")
+    monkeypatch.setenv("RAG_OPENROUTER_SESSION_ID", "off")
+
+    captured: dict = {}
+
+    def fake_post(url: str, **kwargs: object) -> mock.Mock:
+        captured["headers"] = kwargs.get("headers")
+        resp = mock.Mock()
+        resp.status_code = 200
+        resp.json.return_value = {"choices": [{"message": {"content": "ok"}}], "usage": {}}
+        resp.raise_for_status = mock.Mock()
+        return resp
+
+    with mock.patch("ml.rag.llm_chat.requests.post", side_effect=fake_post):
+        from ml.rag.llm_chat import llm_chat_complete
+
+        llm_chat_complete([{"role": "user", "content": "hi"}])
+
+    headers = captured.get("headers") or {}
+    assert headers.get("HTTP-Referer") == "https://opentrace.africa"
+    assert headers.get("X-Title") == "Ask ADZA"
+
+
+def test_openrouter_rerank_injects_session_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("RAG_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("RAG_OPENROUTER_SESSION_ID", "on")
+
+    captured: dict = {}
+
+    def fake_post(url: str, **kwargs: object) -> mock.Mock:
+        captured["json"] = kwargs.get("json")
+        captured["headers"] = kwargs.get("headers")
+        resp = mock.Mock()
+        resp.status_code = 200
+        resp.json.return_value = {"results": [{"index": 0, "relevance_score": 0.9}]}
+        resp.raise_for_status = mock.Mock()
+        return resp
+
+    with mock.patch("ml.rag.rerank_client.requests.post", side_effect=fake_post):
+        from ml.rag.rerank_client import openrouter_rerank
+
+        with openrouter_run_context("trace-rerank-1"):
+            openrouter_rerank("q", ["doc a", "doc b"], top_n=1)
+
+    assert (captured.get("json") or {}).get("session_id") == "trace-rerank-1"
+    assert (captured.get("headers") or {}).get("x-session-id") == "trace-rerank-1"

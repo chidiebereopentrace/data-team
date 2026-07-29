@@ -163,6 +163,7 @@ async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
         turn = execute_chat_turn(
             body.user_text(),
             session_id=sid,
+            user_id=body.user_id,
             chat_history=hist,
             plan_type=ctx.plan_type,
             category=ctx.category,
@@ -192,6 +193,7 @@ async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
             request_id=request_id,
             created_at=created_at,
             plan_type=plan_type,
+            langfuse_trace_id=turn.langfuse_trace_id,
         )
     except HTTPException:
         raise
@@ -296,6 +298,7 @@ async def v1_chat(body: ChatRequest):
         turn = execute_chat_turn(
             body.user_text(),
             session_id=sid,
+            user_id=body.user_id,
             chat_history=hist,
             plan_type=ctx.plan_type,
             category=ctx.category,
@@ -326,6 +329,8 @@ async def v1_chat(body: ChatRequest):
             usage=usage,
             request_id=request_id,
             created_at=created_at,
+            plan_type=ctx.plan_type,
+            langfuse_trace_id=turn.langfuse_trace_id,
             plan_type=ctx.plan_type,
         )
     except HTTPException:

@@ -411,6 +411,7 @@ def _call_llama_decompose(query: str) -> dict[str, Any] | None:
             max_tokens=400,
             temperature=0.0,
             timeout_s=45,
+            purpose="decompose",
         )
         if not raw:
             return None

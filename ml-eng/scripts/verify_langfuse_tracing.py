@@ -73,9 +73,13 @@ def main() -> int:
     env = os.environ.get("LANGFUSE_TRACING_ENVIRONMENT", "").strip()
     if env:
         print(f"  environment tag: {env}")
-    release = os.environ.get("LANGFUSE_TRACING_RELEASE", "").strip()
+    from ml.rag.observability import tracing_release
+
+    release = tracing_release()
     if release:
         print(f"  release tag: {release}")
+    else:
+        print("  release tag: (unset — set LANGFUSE_TRACING_RELEASE or RAILWAY_GIT_COMMIT_SHA)")
 
     if not is_tracing_enabled():
         print("ERROR: is_tracing_enabled() is False despite keys — check langfuse package.")
@@ -90,6 +94,8 @@ def main() -> int:
     print("\nManual UI verification (https://cloud.langfuse.com):")
     for route, query in PRESET_QUERIES:
         print(f"  [{route}] {query!r}")
+    print("  Expect nested: decompose/merge/web_fallback, retrieval.*, rerank, llm purpose tags")
+    print("  Optional: pass user_id on /query for Langfuse Users")
 
     if args.smoke:
         from ml.rag.graph import run_rag
@@ -100,6 +106,7 @@ def main() -> int:
         with rag_trace_context(
             trace_name="rag.verify",
             session_id="langfuse-verify",
+            user_id="verify-user",
             trace_input={"query": query},
             tags=["verify"],
         ) as handle:
@@ -107,7 +114,7 @@ def main() -> int:
             handle.update_output(result)
         flush_langfuse()
         print(f"  answer length: {len(str(result.get('answer') or ''))}")
-        print("  Check Langfuse UI for trace name rag.verify")
+        print("  Check Langfuse UI for trace name rag.verify (user verify-user)")
 
     flush_langfuse()
     return 0

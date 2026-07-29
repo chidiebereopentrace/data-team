@@ -104,15 +104,24 @@ def is_tracing_enabled() -> bool:
 
 
 @lru_cache(maxsize=1)
-def get_langfuse_client() -> Any | None:
-    """Return the global Langfuse client when keys are configured, else None."""
-    if get_client is None or not is_tracing_enabled():
-        return None
+def _langfuse_client_cached() -> Any | None:
+    """Cached client init — only called when tracing keys are present."""
     _ensure_langfuse_env()
     try:
         return get_client()
     except Exception:
         return None
+
+
+def get_langfuse_client() -> Any | None:
+    """Return the global Langfuse client when keys are configured, else None.
+
+    Disabled/missing-key results are not cached so keys loaded after import
+    (dotenv / Railway inject) still activate tracing.
+    """
+    if get_client is None or not is_tracing_enabled():
+        return None
+    return _langfuse_client_cached()
 
 
 def get_langfuse() -> Any | None:
@@ -141,6 +150,17 @@ def flush_langfuse() -> None:
         pass
 
 
+def tracing_release() -> str:
+    """Explicit LANGFUSE_TRACING_RELEASE, else Railway git SHA (short)."""
+    explicit = os.environ.get("LANGFUSE_TRACING_RELEASE", "").strip()
+    if explicit:
+        return explicit
+    sha = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "").strip()
+    if sha:
+        return sha[:12]
+    return ""
+
+
 def _build_tags(
     *,
     plan_type: str | None = None,
@@ -152,7 +172,7 @@ def _build_tags(
     env = os.environ.get("LANGFUSE_TRACING_ENVIRONMENT", "").strip()
     if env:
         tags.append(f"env:{env}")
-    release = os.environ.get("LANGFUSE_TRACING_RELEASE", "").strip()
+    release = tracing_release()
     if release:
         tags.append(f"release:{release}")
     if route:
@@ -172,20 +192,60 @@ def sql_hash(sql: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
+def _bq_soft_fail_flags(result: dict[str, Any]) -> dict[str, Any]:
+    """Derive BQ soft-fail signals from result rows / metadata."""
+    bq_results = result.get("bq_results") or []
+    validation_failed = 0
+    execution_failed = 0
+    for row in bq_results:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("content") or row.get("text") or "")
+        if "[BQ validation failed" in text:
+            validation_failed += 1
+        if "[BQ execution error" in text or "[BQ execution failed" in text:
+            execution_failed += 1
+    sql_count = result.get("bq_sql_count")
+    if sql_count is None:
+        sql_count = len(bq_results) if bq_results else 0
+    return {
+        "bq_sql_count": int(sql_count),
+        "bq_validation_failed": validation_failed > 0,
+        "bq_execution_failed": execution_failed > 0,
+        "bq_validation_failed_count": validation_failed,
+        "bq_execution_failed_count": execution_failed,
+    }
+
+
 def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
-    """Retrieval/rerank counts for root trace output metadata."""
+    """Retrieval/rerank counts and soft-fail flags for root trace output metadata."""
     route = infer_rag_route(result)
+    news_n = len(result.get("vector_news_results") or [])
+    academic_n = len(result.get("vector_academic_results") or [])
+    ota_n = len(result.get("vector_ota_results") or [])
+    bq_n = len(result.get("bq_results") or [])
+    web_n = len(result.get("web_results") or [])
+    answer = str(result.get("answer") or "").strip()
+    is_shortcut = bool(result.get("is_meta_query") or result.get("is_product_query"))
+    empty_retrieval = (not is_shortcut) and (news_n + academic_n + ota_n + bq_n + web_n == 0)
+    web_status = result.get("web_fallback_status")
     summary: dict[str, Any] = {
         "route": route,
-        "vector_news_count": len(result.get("vector_news_results") or []),
-        "vector_academic_count": len(result.get("vector_academic_results") or []),
-        "vector_ota_count": len(result.get("vector_ota_results") or []),
+        "vector_news_count": news_n,
+        "vector_academic_count": academic_n,
+        "vector_ota_count": ota_n,
         "bq_table_candidates_count": len(result.get("bq_table_candidates") or []),
-        "bq_results_count": len(result.get("bq_results") or []),
+        "bq_results_count": bq_n,
         "merged_context_count": len(result.get("merged_context") or []),
         "reranked_context_count": len(result.get("reranked_context") or []),
-        "web_results_count": len(result.get("web_results") or []),
+        "web_results_count": web_n,
+        "empty_retrieval": empty_retrieval,
+        "llm_empty_answer": (not is_shortcut) and not answer,
+        **_bq_soft_fail_flags(result),
     }
+    if web_status is not None:
+        summary["web_fallback_status"] = str(web_status)
+        summary["web_fallback_used"] = str(web_status).lower() not in ("", "skipped", "none", "off")
     rerank_mode = result.get("rerank_mode") or result.get("_rerank_mode")
     if rerank_mode:
         summary["rerank_mode"] = str(rerank_mode)
@@ -194,6 +254,25 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
     if result.get("latency_ms") is not None:
         summary["latency_ms"] = float(result["latency_ms"])
     return summary
+
+
+def _record_soft_fail_scores(result: dict[str, Any], summary: dict[str, Any]) -> None:
+    """Emit boolean Langfuse scores only when soft-fail flags are true."""
+    tid = get_current_trace_id()
+    if not tid:
+        return
+    flags = (
+        ("empty_retrieval", bool(summary.get("empty_retrieval"))),
+        ("llm_empty_answer", bool(summary.get("llm_empty_answer"))),
+        (
+            "bq_failure",
+            bool(summary.get("bq_validation_failed") or summary.get("bq_execution_failed")),
+        ),
+        ("web_fallback_used", bool(summary.get("web_fallback_used"))),
+    )
+    for name, on in flags:
+        if on:
+            record_trace_score(name=name, value=True, trace_id=tid)
 
 
 def infer_rag_route(result: dict[str, Any]) -> str:
@@ -277,6 +356,10 @@ class RagTraceHandle:
                 self.span.update(output=output, metadata=retrieval_summary)
             except Exception:
                 pass
+        try:
+            _record_soft_fail_scores(result, retrieval_summary)
+        except Exception:
+            pass
 
 
 @contextmanager
@@ -284,13 +367,14 @@ def rag_trace_context(
     *,
     trace_name: str = "rag.query",
     session_id: str | None = None,
+    user_id: str | None = None,
     plan_type: str | None = None,
     category: str | None = None,
     trace_input: dict[str, Any] | None = None,
     tags: list[str] | None = None,
 ) -> Iterator[RagTraceHandle]:
     """
-    Root span for one RAG request with session/plan/category propagated to children.
+    Root span for one RAG request with session/user/plan/category propagated to children.
 
     Yields a :class:`RagTraceHandle` — call ``update_output(result)`` after ``run_rag()``.
     Also sets OpenRouter ``session_id`` (trace id) for LLM cost bundling when enabled.
@@ -308,31 +392,46 @@ def rag_trace_context(
     propagate_kwargs: dict[str, Any] = {}
     if session_id:
         propagate_kwargs["session_id"] = session_id
+    uid = (user_id or "").strip()
+    if uid:
+        propagate_kwargs["user_id"] = uid
     if tag_list:
         propagate_kwargs["tags"] = tag_list
 
+    # Only swallow failures *starting* the root observation. Exceptions from the
+    # caller's body must propagate — a second yield in ``except`` triggers
+    # ``RuntimeError: generator didn't stop after throw()``.
     try:
-        with client.start_as_current_observation(
+        observation = client.start_as_current_observation(
             as_type="span",
             name=trace_name,
             input=trace_input,
-        ) as root_span:
-            handle.span = root_span
-            run_id = get_current_trace_id() or fallback_run_id
-            try:
-                root_span.update_trace(metadata={"openrouter_session_id": run_id})
-            except Exception:
-                pass
-            with openrouter_run_context(run_id):
-                if propagate_kwargs:
-                    with propagate_attributes(**propagate_kwargs):
-                        yield handle
-                else:
-                    yield handle
-            handle._closed = True
+        )
     except Exception:
         with openrouter_run_context(fallback_run_id):
             yield handle
+        return
+
+    with observation as root_span:
+        handle.span = root_span
+        run_id = get_current_trace_id() or fallback_run_id
+        try:
+            meta = {"openrouter_session_id": run_id}
+            if uid:
+                meta["user_id"] = uid
+            release = tracing_release()
+            if release:
+                meta["release"] = release
+            root_span.update_trace(metadata=meta)
+        except Exception:
+            pass
+        with openrouter_run_context(run_id):
+            if propagate_kwargs:
+                with propagate_attributes(**propagate_kwargs):
+                    yield handle
+            else:
+                yield handle
+        handle._closed = True
 
 
 def safe_llm_trace_input(messages: list[dict[str, Any]], model: str) -> dict[str, Any]:
@@ -388,14 +487,29 @@ def update_current_llm_generation(
 
 
 def get_observe_decorator() -> Any:
-    """Return Langfuse ``@observe`` or a no-op decorator when tracing is disabled."""
-    if observe is None or not is_tracing_enabled():
-        def _noop(*_args: Any, **_kwargs: Any):
-            def decorator(fn: Any) -> Any:
-                return fn
-            return decorator
-        return _noop
-    return observe
+    """
+    Return a lazy Langfuse ``@observe`` proxy.
+
+    Resolves at *call* time so modules that bind
+    ``_observe = get_observe_decorator()`` at import still work when
+    ``LANGFUSE_*`` keys are loaded later (dotenv / Railway).
+    """
+
+    def _lazy_observe(*obs_args: Any, **obs_kwargs: Any) -> Callable[[Any], Any]:
+        def decorator(fn: Any) -> Any:
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                if observe is not None and is_tracing_enabled():
+                    return observe(*obs_args, **obs_kwargs)(fn)(*args, **kwargs)
+                return fn(*args, **kwargs)
+
+            wrapper.__name__ = getattr(fn, "__name__", "wrapped")
+            wrapper.__qualname__ = getattr(fn, "__qualname__", wrapper.__name__)
+            wrapper.__doc__ = getattr(fn, "__doc__", None)
+            return wrapper
+
+        return decorator
+
+    return _lazy_observe
 
 
 def update_current_span_metadata(metadata: dict[str, Any]) -> None:
@@ -422,15 +536,20 @@ def observed_span(
     if client is None:
         yield None
         return
+    # Only swallow failures *starting* the observation. Body exceptions must
+    # propagate — yielding again in ``except`` causes
+    # ``RuntimeError: generator didn't stop after throw()``.
     try:
-        with client.start_as_current_observation(
+        observation = client.start_as_current_observation(
             as_type="span",
             name=name,
             input=input_data,
-        ) as span:
-            yield span
+        )
     except Exception:
         yield None
+        return
+    with observation as span:
+        yield span
 
 
 def run_with_tracing_context(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Callable[[], Any]:
