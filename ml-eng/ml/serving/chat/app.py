@@ -24,7 +24,7 @@ if _env.exists():
                 if k and k not in os.environ:
                     os.environ[k] = v
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -33,12 +33,15 @@ from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS, PLAN_TYPES, default_cat
 from ml.rag.chatbot.stakeholder_prompts import CATEGORIES
 from ml.rag.api_schemas import CitationItem, UsageStats
 from ml.rag.observability import flush_langfuse
+from ml.rag.rate_limiter import check_plan_rate_limit, get_rate_limit_status
 from ml.rag.request_context import bootstrap_category, resolve_request_context
+from ml.rag.session_store import delete_session, get_session_blob
 from ml.serving.chat.schemas import (
     ChatRequest,
     ChatSuccessResponse,
     SessionCreateRequest,
     SessionCreateResponse,
+    SessionStatusResponse,
 )
 
 @asynccontextmanager
@@ -59,7 +62,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _cors if o.strip()],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -80,6 +83,7 @@ async def v1_meta():
         "plan_types": list(PLAN_TYPES),
         "categories": list(CATEGORIES),
         "plan_routes": {slug: f"/v1/chat/{slug}" for slug in PLAN_ROUTE_SLUGS},
+        "rate_limits_rpm": get_rate_limit_status(),
     }
 
 
@@ -94,6 +98,41 @@ async def v1_create_session(body: SessionCreateRequest):
         created_at=datetime.now(timezone.utc).isoformat(),
         category=body.category,
     )
+
+
+@router.get("/sessions/{session_id}", response_model=SessionStatusResponse)
+async def v1_get_session(session_id: str):
+    """GET /v1/sessions/{session_id} — check if a session is alive.
+
+    Returns session metadata (category, turn count, whether a summary exists).
+    Returns 404 if the session has expired or never existed.
+    """
+    sid = session_id.strip()
+    if not sid:
+        raise HTTPException(status_code=422, detail="session_id must be non-empty")
+    blob = get_session_blob(sid)
+    if blob is None:
+        raise HTTPException(status_code=404, detail=f"Session not found or expired.")
+    return SessionStatusResponse(
+        session_id=sid,
+        alive=True,
+        category=blob.get("category"),
+        turn_count=len(blob.get("recent_turns") or []),
+        has_summary=bool((blob.get("conversation_summary") or "").strip()),
+    )
+
+
+@router.delete("/sessions/{session_id}")
+async def v1_delete_session(session_id: str):
+    """DELETE /v1/sessions/{session_id} — explicitly clear a session (logout / clear chat).
+
+    Idempotent: returns success even if the session was already gone.
+    """
+    sid = session_id.strip()
+    if not sid:
+        raise HTTPException(status_code=422, detail="session_id must be non-empty")
+    delete_session(sid)
+    return {"session_id": sid, "deleted": True}
 
 
 @router.post("/sessions/{plan_type_slug}", response_model=SessionCreateResponse)
@@ -212,38 +251,44 @@ async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
 # ---------------------------------------------------------------------------
 
 @router.post("/chat/free")
-async def v1_chat_free(body: ChatRequest):
+async def v1_chat_free(body: ChatRequest, request: Request):
     """POST /v1/chat/free — Free tier (single country, top-line answers only)."""
+    check_plan_rate_limit("free", request)
     return await _plan_chat("Free", body, uuid.uuid4().hex)
 
 
 @router.post("/chat/farmers")
-async def v1_chat_farmers(body: ChatRequest):
+async def v1_chat_farmers(body: ChatRequest, request: Request):
     """POST /v1/chat/farmers — Farmers tier (localized crop/rainfall/market)."""
+    check_plan_rate_limit("farmers", request)
     return await _plan_chat("Farmers", body, uuid.uuid4().hex)
 
 
 @router.post("/chat/government")
-async def v1_chat_government(body: ChatRequest):
+async def v1_chat_government(body: ChatRequest, request: Request):
     """POST /v1/chat/government — Government tier (national/sub-national, food security)."""
+    check_plan_rate_limit("government", request)
     return await _plan_chat("Government", body, uuid.uuid4().hex)
 
 
 @router.post("/chat/ngos")
-async def v1_chat_ngos(body: ChatRequest):
+async def v1_chat_ngos(body: ChatRequest, request: Request):
     """POST /v1/chat/ngos — NGOs tier (multi-region risk, program angles)."""
+    check_plan_rate_limit("ngos", request)
     return await _plan_chat("NGOs", body, uuid.uuid4().hex)
 
 
 @router.post("/chat/agribusinesses")
-async def v1_chat_agribusinesses(body: ChatRequest):
+async def v1_chat_agribusinesses(body: ChatRequest, request: Request):
     """POST /v1/chat/agribusinesses — Agribusinesses tier (cross-country, market volatility)."""
+    check_plan_rate_limit("agribusinesses", request)
     return await _plan_chat("Agribusinesses", body, uuid.uuid4().hex)
 
 
 @router.post("/chat/integrated")
-async def v1_chat_integrated(body: ChatRequest):
+async def v1_chat_integrated(body: ChatRequest, request: Request):
     """POST /v1/chat/integrated — Integrated tier (full access, category lens per message)."""
+    check_plan_rate_limit("integrated", request)
     return await _plan_chat("Integrated", body, uuid.uuid4().hex)
 
 
@@ -355,6 +400,8 @@ async def root():
         "meta": "/v1/meta",
         "sessions": "POST /v1/sessions",
         "sessions_plan": "POST /v1/sessions/{plan_type_slug}",
+        "session_status": "GET /v1/sessions/{session_id}",
+        "session_delete": "DELETE /v1/sessions/{session_id}",
         "chat": "POST /v1/chat",
         "chat_plan": {slug: f"POST /v1/chat/{slug}" for slug in PLAN_ROUTE_SLUGS},
     }
