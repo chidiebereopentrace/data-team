@@ -13,6 +13,7 @@ from typing import Any, TypedDict
 
 from ml.rag.chatbot.acf import ACFResult, compute_acf
 from ml.rag.chatbot.assistant_identity import is_meta_query
+from ml.rag.chatbot.ofia import infer_source_tier
 from ml.rag.chatbot.geo_policy import effective_geo_override
 from ml.rag.chatbot.plan_policy import apply_plan_decomposition_gates
 from ml.rag.chatbot.product_knowledge import is_product_query
@@ -725,6 +726,13 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
                 "merged_count": len(merged),
             }
         )
+        # OFIA Pillar 1: annotate every merged chunk with its OFIA evidence tier.
+        # This makes tier visible to ACF, logging, and future retrieval filtering
+        # without requiring any ingestion-side changes.
+        for chunk in merged:
+            if "_ofia_tier" not in chunk:
+                chunk["_ofia_tier"] = infer_source_tier(chunk)
+
         return {"merged_context": merged}
 
 
