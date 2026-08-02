@@ -93,6 +93,32 @@ Thin wrapper around `run_rag` (same as CLI, alternate module path).
 
 ## 2. Qdrant collection management
 
+### `python -m ml.rag.scripts.migrate_acf_payload_fields`
+
+**File:** [`scripts/migrate_acf_payload_fields.py`](../scripts/migrate_acf_payload_fields.py)
+
+Backfills ACF Path B payload fields on existing Qdrant points (no re-embed):
+`tier`, `data_level`, `as_of_date`, `region`, `source_id`, plus claim/D/M
+`finding`, `metric`, `direction`, `magnitude`, `unit` extracted from `content`.
+
+Also covers research-split collections (`academic_papers`, `policies`,
+`public_reports`, `formation`, …).
+
+| Env / flag | Effect |
+|------------|--------|
+| `RAG_ACF_CLAIM_EXTRACT` unset / `off` | Rules-only claim extract (default) |
+| `RAG_ACF_CLAIM_EXTRACT=llm` | Hybrid: LLM only when rules miss direction/magnitude |
+| `--dry-run` | Count points without writing |
+| `--corpus` / `--collection` | Limit scope |
+
+```bash
+PYTHONPATH=ml-eng python -m ml.rag.scripts.migrate_acf_payload_fields --dry-run
+RAG_ACF_CLAIM_EXTRACT=llm PYTHONPATH=ml-eng python -m ml.rag.scripts.migrate_acf_payload_fields
+```
+
+After bumping `INGEST_VERSION` (claim extract), prefer a full rebuild via
+`ingestion.cli rebuild`, or run this migrate for an additive backfill.
+
 ### `python -m ml.rag.scripts.create_qdrant_collections`
 
 **File:** [`scripts/create_qdrant_collections.py`](../scripts/create_qdrant_collections.py)

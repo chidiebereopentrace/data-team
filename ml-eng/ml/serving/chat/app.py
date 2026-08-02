@@ -11,6 +11,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
 _repo_root = Path(__file__).resolve().parents[3]
 _env = _repo_root / "data" / "local" / ".env"
@@ -31,10 +32,12 @@ from fastapi.responses import JSONResponse
 from ml.rag.chat_turn import create_session, execute_chat_turn
 from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS, PLAN_TYPES, default_category_for_plan
 from ml.rag.chatbot.stakeholder_prompts import CATEGORIES
+from ml.rag.acf_signal import acf_signal_from_result
 from ml.rag.api_schemas import CitationItem, UsageStats
 from ml.rag.observability import flush_langfuse
 from ml.rag.request_context import bootstrap_category, resolve_request_context
 from ml.serving.chat.schemas import (
+    CategoryType,
     ChatRequest,
     ChatSuccessResponse,
     SessionCreateRequest,
@@ -116,14 +119,15 @@ async def v1_create_plan_session(plan_type_slug: str):
     # The session category only labels memory; it does not restrict what the user can ask.
     if default_cat is None:
         default_cat = CATEGORIES[0]["id"] if CATEGORIES else "Government"
+    category = cast(CategoryType, default_cat)
     try:
-        sid = create_session(default_cat)
+        sid = create_session(category)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return SessionCreateResponse(
         session_id=sid,
         created_at=datetime.now(timezone.utc).isoformat(),
-        category=default_cat,
+        category=category,
     )
 
 
@@ -185,9 +189,11 @@ async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
         raw_citations = turn.citations or []
         citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]
         usage = UsageStats.from_usage_dict(turn.usage)
+        acf = acf_signal_from_result(turn.raw_result)
         return ChatSuccessResponse(
             assistant_message=turn.answer,
             citations=citations,
+            acf=acf,
             session_id=turn.session_id,
             usage=usage,
             request_id=request_id,
@@ -322,9 +328,11 @@ async def v1_chat(body: ChatRequest):
         raw_citations = turn.citations or []
         citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]
         usage = UsageStats.from_usage_dict(turn.usage)
+        acf = acf_signal_from_result(turn.raw_result)
         return ChatSuccessResponse(
             assistant_message=turn.answer,
             citations=citations,
+            acf=acf,
             session_id=turn.session_id,
             usage=usage,
             request_id=request_id,

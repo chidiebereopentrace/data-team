@@ -7,6 +7,8 @@ import hashlib
 import uuid
 from typing import Any
 
+from ml.rag.chatbot.acf_metadata import enrich_acf_payload_fields
+from ml.rag.text_processors.acf_claim_extract import apply_claim_extract_to_meta
 from ml.rag.text_processors.chunking_config import CHUNK_ID_NAMESPACE, INGEST_VERSION, CorpusKey
 
 _NS = uuid.UUID(CHUNK_ID_NAMESPACE)
@@ -84,4 +86,7 @@ def enrich_metadata(
         chunk_index=chunk_index,
         text=text,
     )
-    return out
+    # ACF claim/finding + structured D/M (Hybrid C: rules always, optional LLM)
+    out = apply_claim_extract_to_meta(out, text, corpus=corpus)
+    # ACF Path B provenance (tier / data_level / as_of_date / region / source_id)
+    return enrich_acf_payload_fields(out)

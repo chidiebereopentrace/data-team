@@ -32,6 +32,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
+from ml.rag.acf_signal import acf_signal_from_result
 from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats, UserProfile
 from ml.rag.chat_history import normalize_messages
 from ml.rag.chat_memory import append_turn_and_compact, flat_messages_to_memory
@@ -111,8 +112,8 @@ class QueryResponse(BaseModel):
     acf: ACFSignal = Field(
         ...,
         description=(
-            "ADZA Confidence Framework signal: band (high/medium/low/no_evidence), "
-            "score (0.0–1.0), and a plain-language note. Surfaced on every response."
+            "ADZA Confidence Framework (Path B): band, score 0–100, and explanation "
+            "from cited evidence. Surfaced on every response."
         ),
     )
     session_id: str = Field(..., description="Pass on the next request for chat continuity")
@@ -297,12 +298,7 @@ async def query(request: QueryRequest):
         citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]
         usage = UsageStats.from_usage_dict(result.get("usage") if isinstance(result.get("usage"), dict) else None)
 
-        # Sprint 1, Week 2: build ACF signal from graph state
-        acf = ACFSignal(
-            band=result.get("acf_band") or "no_evidence",
-            score=float(result.get("acf_score") or 0.0),
-            note=str(result.get("acf_note") or "No confidence signal available."),
-        )
+        acf = acf_signal_from_result(result)
 
         return QueryResponse(
             answer=answer,

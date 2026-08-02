@@ -70,6 +70,8 @@ def _ota_chunk() -> dict:
             "doc_kind": "ota_insight",
             "metric_text": "Rice output +8%",
             "geo_country_primary": "Senegal",
+            "as_of_date": "2024-01-01",
+            "ota_record_id": "ota-senegal-rice-1",
         },
     }
 
@@ -131,10 +133,10 @@ def test_pipeline_data_query_returns_answer_citations_and_acf() -> None:
 
     assert result.get("answer")
     assert "I don't have OpenTrace data" not in result["answer"]
-    # ACF signal present on every response (Week 2 guarantee).
+    # ACF Path B signal present on every response.
     assert result.get("acf_band")
-    assert isinstance(result.get("acf_score"), float)
-    assert result.get("acf_note")
+    assert isinstance(result.get("acf_score"), (int, float))
+    assert result.get("acf_note") or result.get("acf_explanation")
     # Citations resolved from the inline [1].
     assert result.get("citations")
     assert result["citations"][0]["id"] == 1
@@ -197,8 +199,8 @@ def test_pipeline_meta_query_short_circuits_high_acf() -> None:
         result = run_rag("Who are you?")
 
     assert "ADZA" in result["answer"]
-    assert result.get("acf_band") == "high"
-    assert result.get("acf_score") == 1.0
+    assert result.get("acf_band") == "strong"
+    assert result.get("acf_score") == 90
 
 
 # ---------------------------------------------------------------------------

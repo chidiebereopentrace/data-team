@@ -73,7 +73,8 @@ def _load_env() -> None:
 
 
 def _payload_doc_kind(payload: dict[str, Any]) -> str:
-    meta = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else payload
+    raw_meta = payload.get("metadata")
+    meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else payload
     return str(meta.get("doc_kind") or payload.get("doc_kind") or "").strip()
 
 

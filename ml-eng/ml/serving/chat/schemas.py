@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 
-from ml.rag.api_schemas import CitationItem, UsageStats, UserProfile
+from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats, UserProfile
 
 
 
@@ -127,6 +127,11 @@ class ChatSuccessResponse(BaseModel):
     assistant_message: str
 
     citations: list[CitationItem] = Field(default_factory=list)
+
+    acf: ACFSignal = Field(
+        ...,
+        description="ADZA Confidence Framework (Path B) signal from cited evidence.",
+    )
 
     session_id: str
 

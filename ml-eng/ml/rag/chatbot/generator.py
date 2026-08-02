@@ -19,7 +19,7 @@ from ml.rag.chat_memory import (
     default_summary_max_chars,
     default_verbatim_max_chars,
 )
-from ml.rag.chatbot.acf import ACFResult, compute_acf
+from ml.rag.chatbot.acf_scoring import ACFResult, no_evidence_acf, score_cited_evidence
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
@@ -85,6 +85,7 @@ class GenerationResult:
 
     answer: str
     citations: list[dict[str, Any]]
+    acf: ACFResult | None = None
 
 
 def _generate_max_tokens() -> int:
@@ -779,8 +780,11 @@ def _min_usable_context() -> int:
 def _finalize_generation_result(
     answer: str,
     source_registry: list[SourceRef],
+    *,
+    query: str = "",
+    decomposition: dict[str, Any] | None = None,
 ) -> GenerationResult:
-    """Attach structured citations and emit a ``citations`` Langfuse span (ACF seat)."""
+    """Attach structured citations and score ACF Path B on cited sources only."""
     t0 = time.perf_counter()
     with observed_span("citations", input_data={"registry_size": len(source_registry)}):
         prose = _strip_model_sources_appendix(answer)
@@ -800,6 +804,18 @@ def _finalize_generation_result(
             except (KeyError, TypeError, ValueError):
                 continue
 
+        cited_refs = _referenced_source_refs(prose, source_registry)
+        if cited_refs:
+            acf = score_cited_evidence(
+                cited_refs,
+                query=query,
+                decomposition=decomposition,
+            )
+            acf_status = "scored"
+        else:
+            acf = no_evidence_acf()
+            acf_status = "no_citations"
+
         update_current_span_metadata(
             {
                 "citation_count": len(citations),
@@ -808,11 +824,18 @@ def _finalize_generation_result(
                 "cited_ids": cited_ids,
                 "kind_counts": kind_counts,
                 "latency_ms": trace_elapsed_ms(t0),
-                # Placeholder for ACF confidence scoring on this same span.
-                "acf_status": "pending",
+                "acf_status": acf_status,
+                "acf_band": acf.band,
+                "acf_band_label": acf.band_label,
+                "acf_score": acf.score,
+                "acf_explanation": acf.explanation,
+                "acf_claim_level": acf.claim_level,
+                "acf_question_type": acf.question_type,
+                "acf_applied_ceiling": acf.applied_ceiling,
+                "acf_config_version": acf.config_version,
             }
         )
-        return GenerationResult(answer=prose, citations=citations)
+        return GenerationResult(answer=prose, citations=citations, acf=acf)
 
 
 def _call_llama(messages: list[dict[str, str]], *, purpose: str = "generate") -> str:
@@ -888,12 +911,15 @@ def generate(
             llama_answer = _call_llama(messages, purpose="generate")
             if llama_answer:
                 cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
-                return _finalize_generation_result(cleaned, [])
+                return _finalize_generation_result(
+                    cleaned, [], query=query, decomposition=decomposition
+                )
         # Default (RAG_ALLOW_UNGROUNDED off or LLM returned nothing): structured
         # gap message so testers can distinguish "no data" from "low confidence".
         return GenerationResult(
             answer=_no_data_fallback_message(query, decomposition),
             citations=[],
+            acf=no_evidence_acf(),
         )
 
     usable_context = filter_context_items(context_items)
@@ -911,6 +937,7 @@ def generate(
         return GenerationResult(
             answer=_no_data_fallback_message(query, decomposition),
             citations=[],
+            acf=no_evidence_acf(),
         )
 
     ctx_budget = _context_max_chars(memory_block)
@@ -928,7 +955,12 @@ def generate(
     llama_answer = _call_llama(messages, purpose="generate")
     if llama_answer:
         cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
-        return _finalize_generation_result(cleaned, source_registry)
+        return _finalize_generation_result(
+            cleaned,
+            source_registry,
+            query=query,
+            decomposition=decomposition,
+        )
 
     if llm_configured():
         hint = (
@@ -944,4 +976,7 @@ def generate(
     return GenerationResult(
         answer=hint + f"Context:\n{context_block[:3000]}\n\nQuery: {query}",
         citations=[],
+        acf=no_evidence_acf(
+            explanation="Generation failed before citations could be scored."
+        ),
     )

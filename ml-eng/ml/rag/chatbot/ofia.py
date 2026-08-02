@@ -1,21 +1,18 @@
 """
-OpenTrace Federated Intelligence Architecture (OFIA) — shared tier utilities.
+OpenTrace Federated Intelligence Architecture (OFIA) — authority tier utilities.
 
-Every context chunk in the RAG pipeline belongs to one of the three OFIA evidence tiers:
+OFIA tiers describe **source authority**, not ACF geo-scale evidence tiers.
+ACF ``tier`` (global / national / community) is derived separately in
+``acf_metadata`` and must never be fed from ``_ofia_tier``.
 
     Tier 1 — Authoritative institutional sources
               (FAO, World Bank, AfDB, national stats, government reports,
                satellite systems, peer-reviewed academic publications, BQ structured data)
-              ACF weight: 25%
-
     Tier 2 — Local validation networks
               (cooperatives, NGOs, market boards, extension services, news outlets,
                OTA insights and metrics)
-              ACF weight: 40%
-
     Tier 3 — User-contributed intelligence
               (Ask ADZA user-submitted observations — future capability)
-              ACF weight: 35%
 
 Tier 3 is not yet in the corpus; user-contributed records will be tagged when the
 feature ships. Until then, any unrecognised source maps to Tier 2 (conservative).
@@ -23,7 +20,7 @@ feature ships. Until then, any unrecognised source maps to Tier 2 (conservative)
 Usage:
     from ml.rag.chatbot.ofia import infer_source_tier
 
-    tier = infer_source_tier(chunk)   # returns 1, 2, or 3
+    tier = infer_source_tier(chunk)   # returns 1, 2, or 3 (authority only)
 """
 from __future__ import annotations
 
@@ -31,12 +28,13 @@ from typing import Any
 
 
 # ---------------------------------------------------------------------------
-# Canonical doc_kind → OFIA tier mapping
+# Canonical doc_kind → OFIA authority tier mapping
 # ---------------------------------------------------------------------------
 # Uses the `doc_kind` field (from Qdrant payload metadata) and `info_type`
 # for records where the content-type is more specific than the collection type.
 # When `source_tier` is added to ingested records by the Data team, this
 # mapping will be replaced by a direct field read.
+# NOTE: This is NOT ACF geo-scale `tier`.
 
 _DOC_KIND_TO_TIER: dict[str, int] = {
     # Tier 1 — institutional / peer-reviewed / government
@@ -69,7 +67,7 @@ _DEFAULT_TIER: int = 2
 
 
 def infer_source_tier(item: dict[str, Any]) -> int:
-    """Infer the OFIA evidence tier for a context chunk.
+    """Infer the OFIA **authority** tier for a context chunk.
 
     Checks (in priority order):
     1. ``source_tier`` field on the item or its metadata — explicit tag from Data team.
@@ -86,11 +84,11 @@ def infer_source_tier(item: dict[str, Any]) -> int:
 
     Returns
     -------
-    int: 1, 2, or 3.
+    int: 1, 2, or 3 (authority). Never use as ACF geo-scale tier.
     """
     meta: dict[str, Any] = item.get("metadata") or {}
 
-    # 1. Explicit source_tier field (future — Data team will add this)
+    # 1. Explicit source_tier field (authority tag — not ACF tier)
     explicit = meta.get("source_tier") or item.get("source_tier")
     if explicit is not None:
         try:
@@ -122,5 +120,9 @@ def infer_source_tier(item: dict[str, Any]) -> int:
 
 
 def tier_label(tier: int) -> str:
-    """Human-readable label for a tier integer."""
-    return {1: "Tier 1 (institutional)", 2: "Tier 2 (local network)", 3: "Tier 3 (user-contributed)"}.get(tier, f"Tier {tier}")
+    """Human-readable label for an OFIA authority tier integer."""
+    return {
+        1: "Tier 1 (institutional)",
+        2: "Tier 2 (local network)",
+        3: "Tier 3 (user-contributed)",
+    }.get(tier, f"Tier {tier}")

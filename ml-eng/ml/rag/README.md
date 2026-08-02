@@ -352,7 +352,7 @@ Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASE_URL=https:/
 | Root span | `rag.query` (API), `rag.chat_turn` (chat), `rag.streamlit` (QA UI) |
 | LangGraph | Node spans via LangChain callback (decompose, retrieve, rerank, generate, …) |
 | Control | `decompose`, `merge`, `web_fallback`, `insufficient_context` (+ route/corpus metadata) |
-| Evidence | `citations` (post-generate attach; `acf_status=pending` seat for ACF confidence scoring) |
+| Evidence | `citations` (post-generate attach; Path B ACF scored on cited sources, `acf_status=scored`) |
 | Retrieval | `retrieval.qdrant`, `retrieval.bq_tables`, `retrieval.bq`, `retrieval.bq.nl2sql`, `retrieval.web` |
 | Rerank / embed | `rerank` (mode/model/top score), `embedding.query` (dense + sparse) |
 | LLM | `llm_chat_complete` generations with `purpose` (`decompose`, `bq.nl2sql`, `generate`, `generate_meta`, `generate_product`) |
