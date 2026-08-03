@@ -32,7 +32,10 @@ from qdrant_client import QdrantClient
 from ml.rag.chatbot.acf_metadata import enrich_acf_payload_fields
 from ml.rag.scripts.qdrant_collection_specs import PAYLOAD_INDEXES
 from ml.rag.text_processors.acf_claim_extract import apply_claim_extract_to_meta
+from ml.rag.text_processors.chunk_contract import backfill_geo_from_text
 from ml.rag.text_processors.chunking_config import profile_for_corpus
+
+_CLAIM_KEYS = ("finding", "metric", "direction", "magnitude", "unit")
 
 _ACF_PATCH_KEYS = (
     "tier",
@@ -40,11 +43,12 @@ _ACF_PATCH_KEYS = (
     "as_of_date",
     "region",
     "source_id",
-    "finding",
-    "metric",
-    "direction",
-    "magnitude",
-    "unit",
+    *_CLAIM_KEYS,
+    # Date / geo repairs (set_payload merge; does not overwrite vectors)
+    "published_at",
+    "geo_countries",
+    "geo_country_primary",
+    "country",
 )
 
 logger = logging.getLogger(__name__)
@@ -157,13 +161,16 @@ def migrate_collection(
         if not points:
             break
         for pt in points:
-            payload = dict(pt.payload or {})
+            original = dict(pt.payload or {})
+            payload = dict(original)
             content = payload.pop("content", None)
             text = str(content or "")
-            # Force re-extract on migrate by clearing prior claim fields when content exists
+            had_claim_keys = [k for k in _CLAIM_KEYS if k in original]
+            # Force re-extract: clear prior claim fields so quality gate can omit
             if text.strip():
-                for k in ("finding", "metric", "direction", "magnitude", "unit"):
+                for k in _CLAIM_KEYS:
                     payload.pop(k, None)
+                payload = backfill_geo_from_text(payload, text)
                 claimed = apply_claim_extract_to_meta(payload, text, corpus=corpus)
             else:
                 claimed = payload
@@ -175,16 +182,28 @@ def migrate_collection(
                 for k in _ACF_PATCH_KEYS
                 if k in enriched and enriched[k] is not None
             }
-            if not patch:
+            # Stale weak claims / garbage dates: keys present before but omitted after
+            drop_keys = [k for k in had_claim_keys if k not in enriched]
+            for k in ("published_at", "as_of_date"):
+                if k in original and k not in enriched:
+                    drop_keys.append(k)
+            if not patch and not drop_keys:
                 continue
             if dry_run:
                 updated += 1
                 continue
-            client.set_payload(
-                collection_name=collection,
-                payload=patch,
-                points=[pt.id],
-            )
+            if patch:
+                client.set_payload(
+                    collection_name=collection,
+                    payload=patch,
+                    points=[pt.id],
+                )
+            if drop_keys:
+                client.delete_payload(
+                    collection_name=collection,
+                    keys=drop_keys,
+                    points=[pt.id],
+                )
             updated += 1
         if next_offset is None:
             break

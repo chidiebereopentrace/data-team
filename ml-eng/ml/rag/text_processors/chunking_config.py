@@ -19,7 +19,7 @@ ChunkingStrategy = Literal[
     "bq_structured",  # BQ_table_descriptions: section/schema-aware splits
 ]
 
-INGEST_VERSION = "2026.08-acf-claim-v1"
+INGEST_VERSION = "2026.08-acf-claim-v2"
 
 # OpenTrace namespace for deterministic UUID5 chunk ids
 CHUNK_ID_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"

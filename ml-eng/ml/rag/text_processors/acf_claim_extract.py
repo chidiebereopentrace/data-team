@@ -45,9 +45,6 @@ _PCT_RE = re.compile(
     re.IGNORECASE,
 )
 
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
-
-
 def claim_extract_mode() -> str:
     """Return ``off`` (rules only) or ``llm`` (hybrid)."""
     raw = os.environ.get("RAG_ACF_CLAIM_EXTRACT", "").strip().lower()
@@ -76,7 +73,8 @@ def _sentence_for_span(text: str, start: int, end: int) -> str:
     return _truncate_finding(text[left:right].strip() or text[start:end])
 
 
-def _metric_from_meta(meta: dict[str, Any] | None) -> str | None:
+def _metric_from_structured_meta(meta: dict[str, Any] | None) -> str | None:
+    """Metric from structured keys only (not domains / general)."""
     if not meta:
         return None
     for key in ("metric", "metric_text", "Measure", "measure", "indicator", "element", "item", "product"):
@@ -84,6 +82,12 @@ def _metric_from_meta(meta: dict[str, Any] | None) -> str | None:
         if val:
             # metric_text can be long; take first clause
             return val.split(".")[0].strip()[:128]
+    return None
+
+
+def _metric_from_domains(meta: dict[str, Any] | None) -> str | None:
+    if not meta:
+        return None
     domains = meta.get("domains")
     if isinstance(domains, str) and domains.strip():
         return domains.split(";")[0].strip().split(",")[0].strip()[:128] or None
@@ -91,6 +95,22 @@ def _metric_from_meta(meta: dict[str, Any] | None) -> str | None:
         first = str(domains[0]).strip()
         return first[:128] if first else None
     return None
+
+
+def _metric_from_meta(meta: dict[str, Any] | None, *, allow_domains: bool = True) -> str | None:
+    structured = _metric_from_structured_meta(meta)
+    if structured:
+        return structured
+    if allow_domains:
+        return _metric_from_domains(meta)
+    return None
+
+
+def has_usable_claim_signal(result: dict[str, Any]) -> bool:
+    """True when direction is known or a magnitude is present."""
+    direction = str(result.get("direction") or "unknown")
+    has_mag = result.get("magnitude") is not None
+    return direction != "unknown" or has_mag
 
 
 def _direction_from_text(text: str) -> str:
@@ -144,8 +164,6 @@ def _rules_extract(text: str, meta: dict[str, Any] | None) -> dict[str, Any]:
         elif magnitude > 0:
             direction = "increasing"
 
-    metric = _metric_from_meta(meta) or "general"
-
     finding = ""
     if pct_match is not None:
         finding = _sentence_for_span(body, pct_match.start(), pct_match.end())
@@ -155,16 +173,18 @@ def _rules_extract(text: str, meta: dict[str, Any] | None) -> dict[str, Any]:
             if dm:
                 finding = _sentence_for_span(body, dm.start(), dm.end())
                 break
-    if not finding and body:
-        # First sentence or truncated chunk
-        parts = _SENTENCE_SPLIT_RE.split(body, maxsplit=1)
-        finding = _truncate_finding(parts[0] if parts else body, 200)
+    # No first-sentence fallback — omit over invent when no trend span.
+
+    usable = direction != "unknown" or magnitude is not None
+    metric = _metric_from_meta(meta, allow_domains=usable) if usable else _metric_from_structured_meta(meta)
 
     out: dict[str, Any] = {
-        "finding": finding,
-        "metric": metric,
         "direction": direction,
     }
+    if finding:
+        out["finding"] = finding
+    if metric:
+        out["metric"] = metric
     if magnitude is not None:
         out["magnitude"] = magnitude
     if unit:
@@ -174,9 +194,7 @@ def _rules_extract(text: str, meta: dict[str, Any] | None) -> dict[str, Any]:
 
 def _rules_missed(result: dict[str, Any]) -> bool:
     """True when hybrid LLM fallback should be considered."""
-    direction = str(result.get("direction") or "unknown")
-    has_mag = result.get("magnitude") is not None
-    return direction == "unknown" and not has_mag
+    return not has_usable_claim_signal(result)
 
 
 _LLM_SYSTEM = (
@@ -244,21 +262,26 @@ def _llm_extract(text: str, meta: dict[str, Any] | None) -> dict[str, Any] | Non
     direction = str(data.get("direction") or "unknown").strip().lower()
     if direction not in _DIRECTIONS:
         direction = "unknown"
-    finding = _truncate_finding(str(data.get("finding") or snippet[:200]))
-    metric = str(data.get("metric") or _metric_from_meta(meta) or "general").strip()[:128] or "general"
-    out: dict[str, Any] = {
-        "finding": finding,
-        "metric": metric,
-        "direction": direction,
-    }
-    mag = data.get("magnitude")
-    if mag is not None and mag != "":
+    mag: float | None = None
+    mag_raw = data.get("magnitude")
+    if mag_raw is not None and mag_raw != "":
         try:
-            out["magnitude"] = float(mag)
+            mag = float(mag_raw)
         except (TypeError, ValueError):
-            pass
+            mag = None
+    usable = direction != "unknown" or mag is not None
+    out: dict[str, Any] = {"direction": direction}
+    if usable:
+        finding_raw = str(data.get("finding") or "").strip()
+        if finding_raw:
+            out["finding"] = _truncate_finding(finding_raw)
+        metric = str(data.get("metric") or _metric_from_meta(meta, allow_domains=True) or "").strip()[:128]
+        if metric:
+            out["metric"] = metric
+    if mag is not None:
+        out["magnitude"] = mag
     unit = data.get("unit")
-    if unit is not None and str(unit).strip():
+    if unit is not None and str(unit).strip() and usable:
         out["unit"] = str(unit).strip()[:64]
     return out
 
@@ -326,6 +349,9 @@ def apply_claim_extract_to_meta(
         return out
 
     claim = extract_acf_claim(extract_text or text, meta=out, force_llm=force_llm)
+    if not has_usable_claim_signal(claim):
+        # Omit over invent: leave claim keys absent on no-signal chunks.
+        return out
     if claim.get("finding") and not str(out.get("finding") or "").strip():
         out["finding"] = claim["finding"]
     if claim.get("metric") and not str(out.get("metric") or "").strip():

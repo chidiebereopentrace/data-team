@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import date
 from typing import Any
+
+from ml.rag.text_processors.normalize_dates import normalize_to_iso_date
 
 # Coverage-class keyword used in Qdrant payloads (not ACF place-name geo_scope).
 _COVERAGE_GLOBAL = frozenset({"global"})
@@ -164,30 +165,8 @@ def derive_tier_and_data_level(meta: dict[str, Any]) -> tuple[int, str]:
 
 
 def _parse_iso_date(raw: Any) -> str | None:
-    if raw is None:
-        return None
-    if isinstance(raw, date):
-        return raw.isoformat()
-    text = _s(raw)
-    if not text:
-        return None
-    # Truncate datetime / timestamps to date.
-    if "T" in text:
-        text = text.split("T", 1)[0]
-    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
-        try:
-            date.fromisoformat(text[:10])
-            return text[:10]
-        except ValueError:
-            return None
-    # YYYY-MM
-    m = re.fullmatch(r"(\d{4})-(\d{2})", text)
-    if m:
-        return f"{m.group(1)}-{m.group(2)}-01"
-    # year only
-    if re.fullmatch(r"\d{4}", text):
-        return f"{text}-01-01"
-    return None
+    """Parse date-like values to ISO ``YYYY-MM-DD`` (RFC-822 OK; truncated → None)."""
+    return normalize_to_iso_date(raw)
 
 
 def derive_as_of_date(meta: dict[str, Any]) -> str | None:
@@ -274,12 +253,29 @@ def _first_numeric(meta: dict[str, Any], keys: tuple[str, ...]) -> float | None:
 def enrich_acf_payload_fields(meta: dict[str, Any]) -> dict[str, Any]:
     """Stamp tier / data_level / as_of_date / region / source_id onto metadata (ingest)."""
     out = dict(meta or {})
+    # Repair or clear garbage published_at before as_of derivation.
+    if "published_at" in out:
+        pub_raw = out.get("published_at")
+        if pub_raw is not None and _s(pub_raw):
+            pub_norm = normalize_to_iso_date(pub_raw)
+            if pub_norm:
+                out["published_at"] = pub_norm
+            else:
+                out.pop("published_at", None)
+        else:
+            out.pop("published_at", None)
+    # Clear invalid as_of_date so derive can fall through to other keys.
+    if "as_of_date" in out and out.get("as_of_date") is not None:
+        if not normalize_to_iso_date(out.get("as_of_date")):
+            out.pop("as_of_date", None)
     tier, data_level = derive_tier_and_data_level(out)
     out["tier"] = tier
     out["data_level"] = data_level
     as_of = derive_as_of_date(out)
     if as_of:
         out["as_of_date"] = as_of
+    elif "as_of_date" in out:
+        out.pop("as_of_date", None)
     # region: keep existing or promote first admin place
     if not _s(out.get("region")):
         for key in _ADMIN_KEYS:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +11,7 @@ from ml.rag.text_processors.chunking_config import profile_for_corpus
 from ml.rag.text_processors.domain_taxonomy import infer_domains
 from ml.rag.text_processors.ingest_manifest import load_manifest, record_chunk, save_manifest, should_skip_chunk
 from ml.rag.text_processors.news_docx_adapter import docx_to_news_txt_content
+from ml.rag.text_processors.normalize_dates import normalize_published_at
 from ml.rag.text_processors.preprocess.llama_split import TextSlice, cap_slices, split_blocks
 from ml.rag.text_processors.preprocess.models import ChunkOutput
 from ml.rag.text_processors.preprocess.structure_blocks import paragraphs_to_blocks
@@ -34,21 +34,13 @@ def _parse_front_matter_and_body(raw: str) -> tuple[dict[str, Any], str]:
         return {}, body.strip()
 
 
-def normalize_published_at(value: str) -> str:
-    s = (value or "").strip().strip("'").strip('"')
-    if not s:
-        return ""
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
-        return s
-    if re.match(r"^\d{4}-\d{2}-\d{2}[ T]", s):
-        return s[:10]
-    if s.endswith("Z") and "T" in s:
-        s = s[:-1] + "+00:00"
-    try:
-        return datetime.fromisoformat(s).date().isoformat()
-    except Exception:
-        m = re.search(r"(\d{4}-\d{2}-\d{2})", s)
-        return m.group(1) if m else ""
+# Re-export for news_preprocessor / tests that import from this module.
+__all__ = [
+    "normalize_published_at",
+    "list_news_document_files",
+    "preprocess_document",
+    "preprocess_folder",
+]
 
 
 def _infer_country_from_path(path: Path, input_dir: Path) -> str:
