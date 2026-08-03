@@ -25,6 +25,8 @@ import re
 from pathlib import Path
 from typing import Any, Final, TypedDict
 
+from ml.rag.chatbot.acf_metadata import enrich_acf_payload_fields
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INPUT = REPO_ROOT / "data" / "local" / "pdf_chunks.jsonl"
 
@@ -131,6 +133,7 @@ def _normalize_metadata(meta: dict[str, Any]) -> dict[str, Any]:
       - geo_scope: country | multi_country | regional | global | unknown
       - geo_countries: '; '-separated country list (string)
       - geo_country_primary: first country in geo_countries (string)
+      - ACF Path B fields via enrich_acf_payload_fields
     """
     m = dict(meta or {})
 
@@ -190,7 +193,8 @@ def _normalize_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     if "domain" in m and "domains" not in m:
         m["domains"] = m.pop("domain")
 
-    return m
+    # ACF Path B provenance (best-effort at load time if preprocess missed it)
+    return enrich_acf_payload_fields(m)
 
 
 def _safe_metadata(meta: dict[str, Any]) -> dict[str, str | int | float | bool]:
@@ -213,15 +217,22 @@ def _safe_metadata(meta: dict[str, Any]) -> dict[str, str | int | float | bool]:
 # Per-collection payload allow-lists (fields kept in each Qdrant point).
 # ---------------------------------------------------------------------------
 
+# Shared ACF Path B provenance + claim/D/M fields (geo-scale tier, not OFIA authority).
+_PAYLOAD_ACF: Final[frozenset[str]] = frozenset({
+    "tier", "data_level", "as_of_date", "region", "source_id",
+    "finding", "metric", "direction", "magnitude", "unit",
+})
+
 PAYLOAD_NEWS: Final[frozenset[str]] = frozenset({
     "content", "doc_kind", "geo_country_primary", "geo_countries", "geo_scope",
     "domains", "published_at", "title", "source", "url",
     "chunk_index", "total_chunks", "document_id", "content_hash",
     "section_path", "ingest_version",
-})
+}) | _PAYLOAD_ACF
 
 PAYLOAD_RESEARCH: Final[frozenset[str]] = frozenset({
     "content", "doc_kind", "strategy", "geo_country_primary", "geo_countries",
+    "geo_scope", "place_of_focus", "region",
     "domains", "info_type",
     "section_title", "chunk_index", "total_chunks",
     "document_id", "content_hash", "ingest_version",
@@ -229,20 +240,21 @@ PAYLOAD_RESEARCH: Final[frozenset[str]] = frozenset({
     "section_role", "content_type",
     "article_title", "authors", "publication_year", "journal", "doi",
     "volume", "issue", "pages", "bibliography_source",
-})
+}) | _PAYLOAD_ACF
 
 PAYLOAD_OTA: Final[frozenset[str]] = frozenset({
     "content", "insight_text", "metric_text", "recommendation_text",
-    "doc_kind", "geo_country_primary", "geo_scope", "domains",
-    "chunk_index", "total_chunks",
-})
+    "doc_kind", "geo_country_primary", "geo_countries", "geo_scope", "domains",
+    "chunk_index", "total_chunks", "document_id", "content_hash",
+    "ingest_version", "ota_record_id",
+}) | _PAYLOAD_ACF
 
 PAYLOAD_BQ_DESCRIPTIONS: Final[frozenset[str]] = frozenset({
     "content", "doc_kind", "table_name", "bq_table_id", "label",
     "chunk_index", "total_chunks", "document_id", "content_hash",
     "section_path", "ingest_version", "type", "source_kind",
     "hierarchy_path", "semantic_lane", "content_type",
-})
+}) | _PAYLOAD_ACF
 
 
 def _filter_payload(

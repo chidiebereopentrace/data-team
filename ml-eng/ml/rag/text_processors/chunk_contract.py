@@ -7,7 +7,37 @@ import hashlib
 import uuid
 from typing import Any
 
+from ml.rag.chatbot.acf_metadata import enrich_acf_payload_fields
+from ml.rag.text_processors.acf_claim_extract import apply_claim_extract_to_meta
 from ml.rag.text_processors.chunking_config import CHUNK_ID_NAMESPACE, INGEST_VERSION, CorpusKey
+from ml.rag.text_processors.domain_taxonomy import infer_places_of_focus
+
+
+def _geo_empty(meta: dict[str, Any]) -> bool:
+    for key in ("geo_countries", "country", "geo_country_primary"):
+        val = meta.get(key)
+        if val is None:
+            continue
+        if isinstance(val, (list, tuple, set)):
+            if any(str(x).strip() for x in val):
+                return False
+        elif str(val).strip():
+            return False
+    return True
+
+
+def backfill_geo_from_text(meta: dict[str, Any], text: str) -> dict[str, Any]:
+    """When geo keys are empty, infer places from chunk body (does not overwrite)."""
+    out = dict(meta or {})
+    if not _geo_empty(out):
+        return out
+    places = infer_places_of_focus(text or "")
+    if not places:
+        return out
+    out["geo_countries"] = "; ".join(places)
+    out["geo_country_primary"] = places[0]
+    out["country"] = places[0]
+    return out
 
 _NS = uuid.UUID(CHUNK_ID_NAMESPACE)
 
@@ -84,4 +114,9 @@ def enrich_metadata(
         chunk_index=chunk_index,
         text=text,
     )
-    return out
+    # Geo from body when path/front-matter left geo empty
+    out = backfill_geo_from_text(out, text)
+    # ACF claim/finding + structured D/M (Hybrid C: rules always, optional LLM)
+    out = apply_claim_extract_to_meta(out, text, corpus=corpus)
+    # ACF Path B provenance (tier / data_level / as_of_date / region / source_id)
+    return enrich_acf_payload_fields(out)

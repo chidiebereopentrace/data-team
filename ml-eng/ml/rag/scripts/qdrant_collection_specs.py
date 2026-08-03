@@ -136,6 +136,14 @@ COLLECTION_BUILDERS: dict[str, Any] = {
 }
 
 # Payload fields indexed for server-side Filter / Range (must match loader payloads).
+_ACF_PAYLOAD_INDEXES: list[tuple[str, models.PayloadSchemaType]] = [
+    ("tier", models.PayloadSchemaType.INTEGER),
+    ("data_level", models.PayloadSchemaType.KEYWORD),
+    ("as_of_date", models.PayloadSchemaType.KEYWORD),
+    ("region", models.PayloadSchemaType.KEYWORD),
+    ("source_id", models.PayloadSchemaType.KEYWORD),
+]
+
 PAYLOAD_INDEXES: dict[str, list[tuple[str, models.PayloadSchemaType]]] = {
     "news": [
         ("doc_kind", models.PayloadSchemaType.KEYWORD),
@@ -146,6 +154,7 @@ PAYLOAD_INDEXES: dict[str, list[tuple[str, models.PayloadSchemaType]]] = {
         ("geo_countries", models.PayloadSchemaType.TEXT),
         ("geo_scope", models.PayloadSchemaType.KEYWORD),
         ("domains", models.PayloadSchemaType.TEXT),
+        *_ACF_PAYLOAD_INDEXES,
     ],
     "research": [
         ("doc_kind", models.PayloadSchemaType.KEYWORD),
@@ -153,21 +162,26 @@ PAYLOAD_INDEXES: dict[str, list[tuple[str, models.PayloadSchemaType]]] = {
         ("geo_countries", models.PayloadSchemaType.TEXT),
         # KEYWORD index lets the geo filter's ``country`` MatchValue fallback work.
         ("country", models.PayloadSchemaType.KEYWORD),
+        ("geo_scope", models.PayloadSchemaType.KEYWORD),
         ("section_role", models.PayloadSchemaType.KEYWORD),
         ("content_type", models.PayloadSchemaType.KEYWORD),
         ("semantic_lane", models.PayloadSchemaType.KEYWORD),
         ("publication_year", models.PayloadSchemaType.KEYWORD),
         ("journal", models.PayloadSchemaType.KEYWORD),
         ("doi", models.PayloadSchemaType.KEYWORD),
+        *_ACF_PAYLOAD_INDEXES,
     ],
     "ota": [
         ("doc_kind", models.PayloadSchemaType.KEYWORD),
         ("geo_country_primary", models.PayloadSchemaType.KEYWORD),
         ("geo_scope", models.PayloadSchemaType.KEYWORD),
+        ("geo_countries", models.PayloadSchemaType.TEXT),
+        *_ACF_PAYLOAD_INDEXES,
     ],
     "data_description": [
         ("doc_kind", models.PayloadSchemaType.KEYWORD),
         ("table_name", models.PayloadSchemaType.KEYWORD),
+        *_ACF_PAYLOAD_INDEXES,
     ],
 }
 

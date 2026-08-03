@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, TypedDict
 
-from ml.rag.chatbot.acf import ACFResult, compute_acf
+from ml.rag.chatbot.acf_scoring import acf_result_to_state, curated_product_acf, no_evidence_acf
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.ofia import infer_source_tier
 from ml.rag.chatbot.geo_policy import effective_geo_override
@@ -298,10 +298,17 @@ class RAGGraphState(TypedDict, total=False):
     plan_type: str | None
     category: str | None
     user_profile: dict[str, Any] | None
-    # ACF (ADZA Confidence Framework) — Sprint 1, Week 2
+    # ACF Path B (ADZA Confidence Framework) — cited evidence scoring
     acf_band: str | None
-    acf_score: float | None
+    acf_band_label: str | None
+    acf_score: int | float | None
     acf_note: str | None
+    acf_explanation: str | None
+    acf_components: dict[str, Any] | None
+    acf_applied_ceiling: str | None
+    acf_config_version: str | None
+    acf_claim_level: str | None
+    acf_question_type: str | None
     # Session context — Sprint 1, Week 2 (session isolation)
     session_id: str | None
 
@@ -874,6 +881,7 @@ def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
             "answer": _INSUFFICIENT_CONTEXT_ANSWER,
             "citations": [],
             "insufficient_context": True,
+            **acf_result_to_state(no_evidence_acf()),
         }
 
 
@@ -905,16 +913,13 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         gkw["category"] = state.get("category")
     gen_result = generate(query, context, **gkw)
 
-    # Sprint 1, Week 2: compute ACF from the context that was sent to the generator.
-    used_web = bool(state.get("web_results"))
-    acf = compute_acf(context, used_web_fallback=used_web)
+    # ACF Path B is computed post-cite inside generate/_finalize_generation_result.
+    acf = gen_result.acf or no_evidence_acf()
 
     return {
         "answer": gen_result.answer,
         "citations": gen_result.citations,
-        "acf_band": acf.band,
-        "acf_score": acf.score,
-        "acf_note": acf.note,
+        **acf_result_to_state(acf),
     }
 
 
@@ -938,19 +943,10 @@ def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
         gkw["category"] = state.get("category")
     answer = generate_meta_answer(query, **gkw)
 
-    # Meta queries use curated product knowledge — ACF is always HIGH.
-    acf = ACFResult(
-        band="high",
-        score=1.0,
-        note="This response is from the OpenTrace product knowledge base.",
-    )
-
     return {
         "answer": answer,
         "citations": [],
-        "acf_band": acf.band,
-        "acf_score": acf.score,
-        "acf_note": acf.note,
+        **acf_result_to_state(curated_product_acf()),
     }
 
 
@@ -974,18 +970,10 @@ def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
         gkw["category"] = state.get("category")
     answer = generate_product_answer(query, **gkw)
 
-    # Product queries use curated knowledge base — ACF is always HIGH.
-    acf = ACFResult(
-        band="high",
-        score=1.0,
-        note="This response is from the OpenTrace product knowledge base.",
-    )
-
     return {
         "answer": answer,
-        "acf_band": acf.band,
-        "acf_score": acf.score,
-        "acf_note": acf.note,
+        "citations": [],
+        **acf_result_to_state(curated_product_acf()),
     }
 
 

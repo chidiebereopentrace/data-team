@@ -388,7 +388,7 @@ def test_ungrounded_mode_hardens_system_prompt() -> None:
     """When RAG_ALLOW_UNGROUNDED=on and no context, system prompt must forbid synthesis."""
     captured: dict = {}
 
-    def fake_call(messages):
+    def fake_call(messages, **_kwargs):
         captured["messages"] = messages
         return "I don't have OpenTrace data for this question.\n\nACF: no evidence."
 
@@ -601,7 +601,17 @@ def test_finalize_generation_result_emits_citations_span_metadata() -> None:
     registry = [
         SourceRef(
             source_id=1,
-            item={"_context_kind": "news", "content": "a", "metadata": {}},
+            item={
+                "_context_kind": "news",
+                "content": "a",
+                "metadata": {
+                    "doc_kind": "news_article",
+                    "geo_scope": "country",
+                    "geo_countries": "Kenya",
+                    "published_at": "2025-06-01",
+                    "document_id": "n1",
+                },
+            },
             citation_line="News A",
         ),
         SourceRef(
@@ -619,11 +629,16 @@ def test_finalize_generation_result_emits_citations_span_metadata() -> None:
         with mock.patch("ml.rag.chatbot.generator.observed_span") as mock_span:
             mock_span.return_value.__enter__ = mock.Mock(return_value=None)
             mock_span.return_value.__exit__ = mock.Mock(return_value=False)
-            result = _finalize_generation_result("Answer cites [1] only.", registry)
+            result = _finalize_generation_result(
+                "Answer cites [1] only.",
+                registry,
+                query="Kenya maize yields?",
+            )
 
     assert isinstance(result, GenerationResult)
     assert len(result.citations) == 1
     assert result.citations[0]["id"] == 1
+    assert result.acf is not None
     mock_span.assert_called_once()
     assert mock_span.call_args.args[0] == "citations"
     assert updates
@@ -631,6 +646,7 @@ def test_finalize_generation_result_emits_citations_span_metadata() -> None:
     assert meta["citation_count"] == 1
     assert meta["registry_size"] == 2
     assert meta["cited_ids"] == [1]
-    assert meta["acf_status"] == "pending"
+    assert meta["acf_status"] == "scored"
+    assert "acf_score" in meta
     assert "latency_ms" in meta
 

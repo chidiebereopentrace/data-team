@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+from ml.rag.chatbot.acf_metadata import project_bq_row_acf
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 from ml.rag.observability import (
@@ -702,15 +703,18 @@ class BQRetriever(BaseRetriever):
 
             for row in rows[:limit]:
                 d = dict(row)
-                items.append({
-                    "content": str(d),
-                    "source": "bigquery",
-                    "metadata": {
+                meta = project_bq_row_acf(
+                    {
                         **d,
                         "sql": validated,
                         "sql_index": idx + 1,
                         "sql_count": len(sql_queries),
-                    },
+                    }
+                )
+                items.append({
+                    "content": str(d),
+                    "source": "bigquery",
+                    "metadata": meta,
                 })
                 budget -= 1
                 if budget <= 0:
