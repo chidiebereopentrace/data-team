@@ -19,6 +19,8 @@ from ml.rag.chatbot.answer_language import (
 )
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.ofia import infer_source_tier
+from ml.rag.chatbot.export_intent import EXPORT_UPGRADE_MESSAGE, detect_export_intent
+from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.geo_policy import effective_geo_override
 from ml.rag.chatbot.plan_policy import apply_plan_decomposition_gates
 from ml.rag.chatbot.product_knowledge import is_product_query
@@ -318,6 +320,10 @@ class RAGGraphState(TypedDict, total=False):
     answer_lang: str | None
     # Session context — Sprint 1, Week 2 (session isolation)
     session_id: str | None
+    # Export / enriched outputs (Agribusinesses + Integrated routes only)
+    export_enabled: bool | None
+    export_intent: str | None
+    artifacts: list[dict[str, Any]]
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
@@ -331,10 +337,12 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         product = (not meta) and is_product_query(q, dec)
         route_candidate = "meta" if meta else ("product" if product else "full_rag")
         answer_lang = detect_answer_language(q)
+        export_intent = detect_export_intent(q)
         update_current_span_metadata(
             {
                 "route_candidate": route_candidate,
                 "answer_lang": answer_lang,
+                "export_intent": export_intent,
             }
         )
         return {
@@ -342,6 +350,7 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             "is_meta_query": meta,
             "is_product_query": product,
             "answer_lang": answer_lang,
+            "export_intent": export_intent,
         }
 
 
@@ -944,6 +953,49 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
     }
 
 
+def node_export(state: RAGGraphState) -> dict[str, Any]:
+    """Build downloadable artifacts when export is enabled on the route."""
+    export_intent = state.get("export_intent")
+    export_enabled = bool(state.get("export_enabled"))
+    out: dict[str, Any] = {"artifacts": []}
+
+    if not export_intent:
+        return out
+
+    answer = str(state.get("answer") or "")
+
+    if not export_enabled:
+        if EXPORT_UPGRADE_MESSAGE not in answer:
+            out["answer"] = f"{answer}\n\n{EXPORT_UPGRADE_MESSAGE}".strip()
+        return out
+
+    try:
+        artifacts = run_exports(
+            export_kind=export_intent,  # type: ignore[arg-type]
+            query=str(state.get("query") or ""),
+            answer=answer,
+            bq_results=state.get("bq_results"),
+            citations=state.get("citations"),
+            state=dict(state),
+            export_enabled=export_enabled,
+            plan_type=state.get("plan_type"),
+        )
+        out["artifacts"] = artifacts
+        if artifacts:
+            links = ", ".join(a.get("filename", "") for a in artifacts if a.get("filename"))
+            suffix = f"\n\nDownloadable files are attached to this response: {links}."
+            if suffix.strip() not in answer:
+                out["answer"] = f"{answer}{suffix}".strip()
+    except Exception as exc:
+        logger.warning("export node failed: %s", exc)
+        out["answer"] = (
+            f"{answer}\n\nI could not generate the requested export ({exc}). "
+            "Try asking again once structured data is available in the answer."
+        ).strip()
+
+    return out
+
+
 def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
     """Short-circuit node for identity meta questions. No retrieval."""
     from ml.rag.chatbot.assistant_identity import generate_meta_answer
@@ -1023,6 +1075,7 @@ def build_graph():
     graph.add_node("web_fallback", node_web_fallback)
     graph.add_node("insufficient_context", node_insufficient_context)
     graph.add_node("generate", node_generate)
+    graph.add_node("export", node_export)
     graph.add_node("generate_meta", node_generate_meta)
     graph.add_node("generate_product", node_generate_product)
 
@@ -1041,7 +1094,8 @@ def build_graph():
     graph.add_edge("merge", "rerank")
     graph.add_conditional_edges("rerank", route_after_rerank)
     graph.add_conditional_edges("web_fallback", _route_after_web_fallback)
-    graph.add_edge("generate", END)
+    graph.add_edge("generate", "export")
+    graph.add_edge("export", END)
     graph.add_edge("insufficient_context", END)
     graph.add_edge("generate_meta", END)
     graph.add_edge("generate_product", END)
@@ -1092,6 +1146,8 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
         initial["conversation_summary"] = kwargs["conversation_summary"]  # type: ignore[assignment]
     if "recent_turns" in kwargs:
         initial["recent_turns"] = kwargs["recent_turns"]  # type: ignore[assignment]
+    if kwargs.get("export_enabled"):
+        initial["export_enabled"] = True  # type: ignore[assignment]
     session_id = kwargs.get("session_id")
     trace_tags = kwargs.get("trace_tags")
     extra_tags = list(trace_tags) if isinstance(trace_tags, list) else None
@@ -1105,5 +1161,6 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
     result = graph.invoke(initial, config=cfg)
     out = dict(result)
     out.setdefault("citations", [])
+    out.setdefault("artifacts", [])
     out["usage"] = get_llm_usage().to_dict()
     return out

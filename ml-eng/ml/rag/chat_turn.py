@@ -23,6 +23,7 @@ class ChatTurnResult:
     answer: str
     session_id: str
     citations: list[dict[str, Any]] | None = None
+    artifacts: list[dict[str, Any]] | None = None
     usage: dict[str, int] | None = None
     pipeline_error: str | None = None
     raw_result: dict[str, Any] | None = None
@@ -161,6 +162,8 @@ def execute_chat_turn(
 
     raw_citations = result.get("citations")
     citations = list(raw_citations) if isinstance(raw_citations, list) else []
+    raw_artifacts = result.get("artifacts")
+    artifacts = list(raw_artifacts) if isinstance(raw_artifacts, list) else []
     raw_usage = result.get("usage")
     usage = dict(raw_usage) if isinstance(raw_usage, dict) else {}
 
@@ -168,6 +171,7 @@ def execute_chat_turn(
         answer=answer,
         session_id=sid,
         citations=citations,
+        artifacts=artifacts,
         usage=usage,
         pipeline_error=err_s,
         raw_result=dict(result),

@@ -57,6 +57,9 @@ _PLAN_TYPE_IDS = frozenset(p["id"] for p in PLAN_TYPES)
 # Plans that allow multi-country retrieval and compare-style answers.
 _CROSS_COUNTRY_PLANS = frozenset({"Agribusinesses", "Integrated"})
 
+# Plans whose dedicated API routes may produce downloadable exports.
+_EXPORT_PLANS = frozenset({"Agribusinesses", "Integrated"})
+
 
 def valid_plan_type_ids() -> frozenset[str]:
     return _PLAN_TYPE_IDS
@@ -68,6 +71,11 @@ def is_valid_plan_type(plan_type: str) -> bool:
 
 def allows_cross_country(plan_type: str | None) -> bool:
     return (plan_type or "").strip() in _CROSS_COUNTRY_PLANS
+
+
+def allows_export(plan_type: str | None) -> bool:
+    """Whether export builders may run (defense-in-depth; route also gates via export_enabled)."""
+    return (plan_type or "").strip() in _EXPORT_PLANS
 
 
 def plan_generation_addendum(plan_type: str | None) -> str:
@@ -173,6 +181,7 @@ __all__ = [
     "PLAN_ROUTE_SLUGS",
     "PLAN_TYPES",
     "allows_cross_country",
+    "allows_export",
     "apply_plan_decomposition_gates",
     "default_category_for_plan",
     "instruction_for_category",
