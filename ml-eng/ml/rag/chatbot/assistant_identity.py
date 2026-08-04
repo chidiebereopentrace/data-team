@@ -12,6 +12,11 @@ import os
 import re
 from typing import Any
 
+from ml.rag.chatbot.answer_language import (
+    detect_answer_language,
+    is_english_answer_lang,
+    language_instruction,
+)
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 
 # Canonical identity-only patterns (product/OpenTrace questions use product_knowledge.py)
@@ -21,6 +26,21 @@ _META_PATTERNS: tuple[str, ...] = (
     r"\bwhat are you\b",
     r"\bwhat do you do\b",
     r"\bwhat are you doing\b",
+    # French
+    r"\bqui\s+(?:es[- ]tu|êtes[- ]vous|etes[- ]vous)\b",
+    r"\bquel\s+est\s+(?:ton|votre)\s+nom\b",
+    r"\bqu['’]est[- ]ce\s+que\s+tu\s+fais\b",
+    # Swahili
+    r"\bwewe\s+ni\s+nani\b",
+    r"\bjina\s+lako\s+nani\b",
+    r"\buna[- ]?fanya\s+nini\b",
+    # Nigerian Pidgin
+    r"\bwho\s+you\s+be\b",
+    r"\bwetin\s+be\s+your\s+name\b",
+    r"\bwetin\s+you\s+dey\s+do\b",
+    # Igbo / Yoruba (high-frequency identity)
+    r"\bonye\s+[ịi]\s+b[ụu]\b",
+    r"\bta\s+ni\s+[ẹe]\b",
 )
 
 _META_RE = re.compile("|".join(_META_PATTERNS), re.IGNORECASE)
@@ -41,11 +61,29 @@ def classify_meta_query(query: str) -> str | None:
     if not query:
         return None
     q = query.lower()
-    if re.search(r"\bwho are you\b", q) or re.search(r"\bwhat are you\b", q):
+    if (
+        re.search(r"\bwho are you\b", q)
+        or re.search(r"\bwhat are you\b", q)
+        or re.search(r"\bqui\s+(?:es[- ]tu|êtes[- ]vous|etes[- ]vous)\b", q)
+        or re.search(r"\bwewe\s+ni\s+nani\b", q)
+        or re.search(r"\bwho\s+you\s+be\b", q)
+        or re.search(r"\bonye\s+[ịi]\s+b[ụu]\b", q)
+        or re.search(r"\bta\s+ni\s+[ẹe]\b", q)
+    ):
         return "identity"
-    if re.search(r"\bwhat(?:'s| is) your name\b", q):
+    if (
+        re.search(r"\bwhat(?:'s| is) your name\b", q)
+        or re.search(r"\bquel\s+est\s+(?:ton|votre)\s+nom\b", q)
+        or re.search(r"\bjina\s+lako\s+nani\b", q)
+        or re.search(r"\bwetin\s+be\s+your\s+name\b", q)
+    ):
         return "name"
-    if re.search(r"\bwhat do you do\b|\bwhat are you doing\b", q):
+    if (
+        re.search(r"\bwhat do you do\b|\bwhat are you doing\b", q)
+        or re.search(r"\bqu['’]est[- ]ce\s+que\s+tu\s+fais\b", q)
+        or re.search(r"\buna[- ]?fanya\s+nini\b", q)
+        or re.search(r"\bwetin\s+you\s+dey\s+do\b", q)
+    ):
         return "role"
     return None
 
@@ -106,14 +144,16 @@ def generate_meta_answer(query: str, **kwargs: Any) -> str:
     Produce a meta answer for identity questions.
 
     Hybrid mode (default): static canonical answers when available; otherwise LLM via persona prompt.
+    Non-English queries skip static English answers and use the LLM + language mirror instruction.
     Respects RAG_META_RESPONSES env var.
     Optionally appends category tone and plan-tier guidance when provided.
     """
     bucket = classify_meta_query(query)
     mode = _env_mode()
+    lang = detect_answer_language(query)
 
-    # Static path
-    if mode in ("hybrid", "static"):
+    # Static path — English only (canonical copy is English)
+    if mode in ("hybrid", "static") and is_english_answer_lang(lang):
         static = static_meta_answer(bucket, query)
         if static:
             category = kwargs.get("category") or ""
@@ -122,7 +162,7 @@ def generate_meta_answer(query: str, **kwargs: Any) -> str:
                 static = static.rstrip() + "\n\n" + tone
             return _append_footer(static)
 
-    # LLM path (hybrid for variants, or llm mode)
+    # LLM path (hybrid for variants / non-English, or llm mode)
     from ml.rag.chatbot.generator import _call_llama, _resolve_memory_block  # local import to avoid circular
 
     memory_block = _resolve_memory_block(**kwargs)
@@ -131,7 +171,7 @@ def generate_meta_answer(query: str, **kwargs: Any) -> str:
     tone = instruction_for_category(category) if category else ""
     plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
 
-    system = META_SYSTEM_PROMPT
+    system = META_SYSTEM_PROMPT + "\n\n" + language_instruction(lang)
     if tone:
         system = system + "\n\n" + tone
     if plan_addendum:

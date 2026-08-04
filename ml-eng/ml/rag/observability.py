@@ -167,6 +167,8 @@ def _build_tags(
     category: str | None = None,
     extra_tags: list[str] | None = None,
     route: str | None = None,
+    answer_lang: str | None = None,
+    acf_band: str | None = None,
 ) -> list[str]:
     tags: list[str] = list(extra_tags or [])
     env = os.environ.get("LANGFUSE_TRACING_ENVIRONMENT", "").strip()
@@ -181,6 +183,12 @@ def _build_tags(
         tags.append(f"plan_type:{plan_type}")
     if category:
         tags.append(f"category:{category}")
+    lang = (answer_lang or "").strip()
+    if lang:
+        tags.append(f"answer_lang:{lang}")
+    band = (acf_band or "").strip()
+    if band:
+        tags.append(f"acf_band:{band}")
     return tags
 
 
@@ -217,6 +225,40 @@ def _bq_soft_fail_flags(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _acf_and_language_for_trace(result: dict[str, Any]) -> dict[str, Any]:
+    """ACF Path B fields + soft answer_lang for root-trace metadata."""
+    out: dict[str, Any] = {}
+    for key in (
+        "acf_band",
+        "acf_band_label",
+        "acf_score",
+        "acf_claim_level",
+        "acf_question_type",
+        "acf_applied_ceiling",
+        "acf_config_version",
+    ):
+        val = result.get(key)
+        if val is not None and val != "":
+            out[key] = val
+    expl = result.get("acf_explanation") or result.get("acf_note")
+    if expl is not None and str(expl).strip():
+        out["acf_explanation"] = str(expl).strip()[:200]
+
+    lang = result.get("answer_lang")
+    if lang is None or not str(lang).strip():
+        query = result.get("query")
+        if isinstance(query, str) and query.strip():
+            try:
+                from ml.rag.chatbot.answer_language import detect_answer_language
+
+                lang = detect_answer_language(query)
+            except Exception:
+                lang = None
+    if lang is not None and str(lang).strip():
+        out["answer_lang"] = str(lang).strip()
+    return out
+
+
 def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
     """Retrieval/rerank counts and soft-fail flags for root trace output metadata."""
     route = infer_rag_route(result)
@@ -243,6 +285,7 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
         "empty_retrieval": empty_retrieval,
         "llm_empty_answer": (not is_shortcut) and not answer,
         **_bq_soft_fail_flags(result),
+        **_acf_and_language_for_trace(result),
     }
     if web_status is not None:
         summary["web_fallback_status"] = str(web_status)
@@ -274,6 +317,18 @@ def _record_soft_fail_scores(result: dict[str, Any], summary: dict[str, Any]) ->
     for name, on in flags:
         if on:
             record_trace_score(name=name, value=True, trace_id=tid)
+
+
+def _record_acf_score(summary: dict[str, Any]) -> None:
+    """Emit Path B ACF score (0–100) on the root trace when present."""
+    raw = summary.get("acf_score")
+    if raw is None:
+        return
+    try:
+        score = float(raw)
+    except (TypeError, ValueError):
+        return
+    record_trace_score(name="acf_score", value=score)
 
 
 def infer_rag_route(result: dict[str, Any]) -> str:
@@ -345,7 +400,11 @@ class RagTraceHandle:
             "usage": usage,
             **retrieval_summary,
         }
-        tag_list = _build_tags(route=route_label)
+        tag_list = _build_tags(
+            route=route_label,
+            answer_lang=str(retrieval_summary.get("answer_lang") or "") or None,
+            acf_band=str(retrieval_summary.get("acf_band") or "") or None,
+        )
         try:
             self.span.update_trace(
                 output=output,
@@ -359,6 +418,10 @@ class RagTraceHandle:
                 pass
         try:
             _record_soft_fail_scores(result, retrieval_summary)
+        except Exception:
+            pass
+        try:
+            _record_acf_score(retrieval_summary)
         except Exception:
             pass
 

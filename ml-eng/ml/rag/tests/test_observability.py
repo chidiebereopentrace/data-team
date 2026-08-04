@@ -9,6 +9,7 @@ import pytest
 
 from ml.rag.observability import (
     RagTraceHandle,
+    _build_tags,
     build_rag_invoke_config,
     get_observe_decorator,
     get_openrouter_run_id,
@@ -91,6 +92,76 @@ def test_summarize_rag_result_for_trace() -> None:
     assert summary["rerank_mode"] == "cohere"
     assert summary["route"] == "full_rag"
     assert summary["citation_count"] == 2
+
+
+def test_summarize_includes_acf_and_answer_lang() -> None:
+    summary = summarize_rag_result_for_trace(
+        {
+            "answer": "ok",
+            "answer_lang": "non_en",
+            "acf_band": "moderate",
+            "acf_band_label": "Moderate confidence",
+            "acf_score": 62,
+            "acf_claim_level": "claim",
+            "acf_question_type": "descriptive",
+            "acf_applied_ceiling": None,
+            "acf_config_version": "path-b-v1",
+            "acf_explanation": "Cited evidence supports a moderate confidence reading.",
+            "citations": [{"id": 1}],
+        }
+    )
+    assert summary["answer_lang"] == "non_en"
+    assert summary["acf_band"] == "moderate"
+    assert summary["acf_score"] == 62
+    assert summary["acf_claim_level"] == "claim"
+    assert "moderate" in summary["acf_explanation"].lower()
+
+
+def test_summarize_detects_answer_lang_from_query_when_missing() -> None:
+    summary = summarize_rag_result_for_trace(
+        {
+            "answer": "ok",
+            "query": "Habari, nipe taarifa za kilimo Kenya.",
+        }
+    )
+    assert summary.get("answer_lang") == "non_en"
+
+
+def test_build_tags_include_answer_lang_and_acf_band() -> None:
+    tags = _build_tags(route="full_rag", answer_lang="sw", acf_band="strong")
+    assert "route:full_rag" in tags
+    assert "answer_lang:sw" in tags
+    assert "acf_band:strong" in tags
+
+
+def test_update_output_records_acf_score(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded: list[tuple[str, float]] = []
+
+    def _fake_score(*, name: str, value, trace_id=None, comment=None):  # noqa: ANN001
+        recorded.append((name, float(value)))
+        return True
+
+    monkeypatch.setattr("ml.rag.observability.record_trace_score", _fake_score)
+    monkeypatch.setattr("ml.rag.observability.get_current_trace_id", lambda: "tid-1")
+
+    span = MagicMock()
+    handle = RagTraceHandle(span=span)
+    handle.update_output(
+        {
+            "answer": "Maize yields rose.",
+            "answer_lang": "en",
+            "acf_band": "strong",
+            "acf_score": 78,
+            "citations": [{"id": 1}],
+        }
+    )
+    assert ("acf_score", 78.0) in recorded
+    meta = span.update_trace.call_args.kwargs.get("metadata") or {}
+    assert meta.get("acf_band") == "strong"
+    assert meta.get("answer_lang") == "en"
+    tags = span.update_trace.call_args.kwargs.get("tags") or []
+    assert "acf_band:strong" in tags
+    assert "answer_lang:en" in tags
 
 
 def test_run_with_tracing_context_runs_fn() -> None:
