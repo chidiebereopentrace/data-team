@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ml.rag.chatbot.assistant_identity import META_ANSWER_FOOTER, _append_footer
+from ml.rag.chatbot.answer_language import detect_answer_language, language_instruction
 
 _DEFAULT_KB_PATH = Path(__file__).resolve().parent / "data" / "opentrace_product.json"
 
@@ -423,7 +424,7 @@ def generate_product_answer(query: str, **kwargs: Any) -> str:
     tone = instruction_for_category(category) if category else ""
     plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
 
-    system = PRODUCT_SYSTEM_PROMPT
+    system = PRODUCT_SYSTEM_PROMPT + "\n\n" + language_instruction(detect_answer_language(query))
     if tone:
         system = system + "\n\n" + tone
     if plan_addendum:

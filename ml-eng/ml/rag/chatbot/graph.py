@@ -12,6 +12,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, TypedDict
 
 from ml.rag.chatbot.acf_scoring import acf_result_to_state, curated_product_acf, no_evidence_acf
+from ml.rag.chatbot.answer_language import (
+    detect_answer_language,
+    detect_canned_insufficient_lang,
+    insufficient_context_answer,
+)
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.ofia import infer_source_tier
 from ml.rag.chatbot.geo_policy import effective_geo_override
@@ -309,6 +314,8 @@ class RAGGraphState(TypedDict, total=False):
     acf_config_version: str | None
     acf_claim_level: str | None
     acf_question_type: str | None
+    # Soft answer-language tag (en|non_en|ar|am|mixed) — Langfuse + generation
+    answer_lang: str | None
     # Session context — Sprint 1, Week 2 (session isolation)
     session_id: str | None
 
@@ -323,8 +330,19 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         meta = is_meta_query(q)
         product = (not meta) and is_product_query(q, dec)
         route_candidate = "meta" if meta else ("product" if product else "full_rag")
-        update_current_span_metadata({"route_candidate": route_candidate})
-        return {"decomposition": dec, "is_meta_query": meta, "is_product_query": product}
+        answer_lang = detect_answer_language(q)
+        update_current_span_metadata(
+            {
+                "route_candidate": route_candidate,
+                "answer_lang": answer_lang,
+            }
+        )
+        return {
+            "decomposition": dec,
+            "is_meta_query": meta,
+            "is_product_query": product,
+            "answer_lang": answer_lang,
+        }
 
 
 def _tag_vector(item: dict[str, Any], kind: str) -> dict[str, Any]:
@@ -845,13 +863,7 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
         return out
 
 
-_INSUFFICIENT_CONTEXT_ANSWER = (
-    "I don't have enough reliable information to answer that confidently right now. "
-    "My internal knowledge base didn't return a strong match and supplemental web "
-    "search wasn't available for this query. Could you try rephrasing, narrowing the "
-    "country or time range, or asking a related question I can ground in available "
-    "sources?"
-)
+_INSUFFICIENT_CONTEXT_ANSWER = insufficient_context_answer("en")
 
 
 def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
@@ -862,6 +874,10 @@ def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
     """
     status = state.get("web_fallback_status") or "unknown"
     reason = state.get("web_fallback_reason") or ""
+    query = str(state.get("query") or "")
+    answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
+    canned_lang = detect_canned_insufficient_lang(query)
+    answer = insufficient_context_answer(query=query)
     with observed_span(
         "insufficient_context",
         input_data={"web_fallback_status": str(status)[:80]},
@@ -870,6 +886,8 @@ def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
             {
                 "web_fallback_status": str(status),
                 "reason": str(reason)[:200],
+                "answer_lang": answer_lang,
+                "insufficient_canned_lang": canned_lang,
             }
         )
         logger.info(
@@ -878,9 +896,10 @@ def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
             reason,
         )
         return {
-            "answer": _INSUFFICIENT_CONTEXT_ANSWER,
+            "answer": answer,
             "citations": [],
             "insufficient_context": True,
+            "answer_lang": answer_lang,
             **acf_result_to_state(no_evidence_acf()),
         }
 
@@ -915,10 +934,12 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
 
     # ACF Path B is computed post-cite inside generate/_finalize_generation_result.
     acf = gen_result.acf or no_evidence_acf()
+    answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
 
     return {
         "answer": gen_result.answer,
         "citations": gen_result.citations,
+        "answer_lang": answer_lang,
         **acf_result_to_state(acf),
     }
 
@@ -928,6 +949,7 @@ def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
     from ml.rag.chatbot.assistant_identity import generate_meta_answer
 
     query = state.get("query") or ""
+    answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
     gkw: dict[str, Any] = {}
     cs = state.get("conversation_summary")
     rt = state.get("recent_turns")
@@ -941,11 +963,14 @@ def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
         gkw["plan_type"] = state.get("plan_type")
     if state.get("category"):
         gkw["category"] = state.get("category")
-    answer = generate_meta_answer(query, **gkw)
+    with observed_span("generate_meta", input_data={"query": str(query)[:200]}):
+        update_current_span_metadata({"answer_lang": answer_lang, "route": "meta"})
+        answer = generate_meta_answer(query, **gkw)
 
     return {
         "answer": answer,
         "citations": [],
+        "answer_lang": answer_lang,
         **acf_result_to_state(curated_product_acf()),
     }
 
@@ -955,6 +980,7 @@ def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
     from ml.rag.chatbot.product_knowledge import generate_product_answer
 
     query = state.get("query") or ""
+    answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
     gkw: dict[str, Any] = {}
     cs = state.get("conversation_summary")
     rt = state.get("recent_turns")
@@ -968,11 +994,14 @@ def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
         gkw["plan_type"] = state.get("plan_type")
     if state.get("category"):
         gkw["category"] = state.get("category")
-    answer = generate_product_answer(query, **gkw)
+    with observed_span("generate_product", input_data={"query": str(query)[:200]}):
+        update_current_span_metadata({"answer_lang": answer_lang, "route": "product"})
+        answer = generate_product_answer(query, **gkw)
 
     return {
         "answer": answer,
         "citations": [],
+        "answer_lang": answer_lang,
         **acf_result_to_state(curated_product_acf()),
     }
 

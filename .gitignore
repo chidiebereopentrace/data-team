@@ -37,6 +37,9 @@ env/
 *.swo
 .DS_Store
 
+# Cursor
+.cursor/    
+.cursor/plans/
 # Terraform (paths live under data-eng/infra as well as legacy infra symlinks)
 **/.terraform/
 **/infra/**/*.tfstate

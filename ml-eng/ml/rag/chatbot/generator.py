@@ -20,6 +20,7 @@ from ml.rag.chat_memory import (
     default_verbatim_max_chars,
 )
 from ml.rag.chatbot.acf_scoring import ACFResult, no_evidence_acf, score_cited_evidence
+from ml.rag.chatbot.answer_language import detect_answer_language, language_instruction
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
@@ -405,8 +406,8 @@ def _build_prompt(
         "'Unfortunately', 'It is important to note', 'It is worth noting', 'This study examines', "
         "'The evidence suggests', 'In recent years', 'Across the literature', or any similar academic / "
         "meta-commentary opener. Start with the substantive answer instead. "
-        "Write in active voice and plain business English. Avoid academic hedges "
-        "('relatively', 'somewhat', 'arguably') unless the context explicitly supports the qualification. "
+        + language_instruction(detect_answer_language(query))
+        + " "
         "If evidence is partial, state limits briefly after the substantive answer. "
         "Do not invent sources, cite Source IDs not in the Context, or invent statistics. "
         "Never output SQL, query code, table DDL, pipeline steps, or instructions to run BigQuery. "
