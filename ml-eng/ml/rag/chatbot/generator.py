@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_configured, llm_default_timeout_s, llm_model_id
+from ml.rag.chatbot.plan_policy import model_for_plan
 
 from ml.rag.chat_history import normalize_messages, truncate_chat_history
 from ml.rag.chat_memory import (
@@ -839,8 +840,17 @@ def _finalize_generation_result(
         return GenerationResult(answer=prose, citations=citations, acf=acf)
 
 
-def _call_llama(messages: list[dict[str, str]], *, purpose: str = "generate") -> str:
-    """Call configured LLM backend; never raises on HTTP errors."""
+def _call_llama(
+    messages: list[dict[str, str]],
+    *,
+    purpose: str = "generate",
+    model: str | None = None,
+) -> str:
+    """Call configured LLM backend; never raises on HTTP errors.
+
+    model: override the global RAG_LLM_MODEL_ID (used for per-plan routing, ML-041).
+    When None, falls back to llm_model_id() which reads RAG_LLM_MODEL_ID from env.
+    """
     gen_timeout = float(os.environ.get("RAG_GENERATE_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
     max_toks = _generate_max_tokens()
     # Sprint 1 (Jul 2026): set to 0.7 so responses have natural variety across similar
@@ -851,7 +861,7 @@ def _call_llama(messages: list[dict[str, str]], *, purpose: str = "generate") ->
     temperature = float(os.environ.get("RAG_GENERATE_TEMPERATURE", "0.7") or 0.7)
     return llm_chat_complete(
         messages,
-        model=llm_model_id(),
+        model=model or llm_model_id(),
         max_tokens=max_toks,
         temperature=temperature,
         timeout_s=gen_timeout,
@@ -909,7 +919,7 @@ def generate(
                     "  Then a final line: 'ACF: no evidence.'\n"
                     "No other prose. No hedging. No caveats beyond the ACF line.\n\n"
                 ) + messages[0]["content"]
-            llama_answer = _call_llama(messages, purpose="generate")
+            llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
             if llama_answer:
                 cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
                 return _finalize_generation_result(
@@ -953,7 +963,7 @@ def generate(
         category=category,
         plan_type=plan_type,
     )
-    llama_answer = _call_llama(messages, purpose="generate")
+    llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
     if llama_answer:
         cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
         return _finalize_generation_result(
