@@ -87,6 +87,25 @@ class CitationItem(BaseModel):
     url: str | None = None
 
 
+ArtifactKind = Literal["csv", "chart", "docx", "pdf", "html"]
+
+
+class ArtifactItem(BaseModel):
+    """Downloadable export produced on Agribusinesses / Integrated chat routes."""
+
+    id: str = Field(..., description="Stable artifact id for this response")
+    kind: ArtifactKind = Field(..., description="Export format")
+    filename: str
+    mime_type: str
+    url: str = Field(..., description="Signed HTTPS URL (GCS) or local file URI in dev")
+    summary: str = Field(..., description="Short description of the artifact contents")
+    citation_ids: list[int] = Field(
+        default_factory=list,
+        description="Citation ids from the parent answer that underpin this export",
+    )
+    byte_size: int = Field(..., ge=0, description="Artifact size in bytes")
+
+
 class UserProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

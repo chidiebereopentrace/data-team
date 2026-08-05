@@ -33,7 +33,7 @@ from ml.rag.chat_turn import create_session, execute_chat_turn
 from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS, PLAN_TYPES, default_category_for_plan
 from ml.rag.chatbot.stakeholder_prompts import CATEGORIES
 from ml.rag.acf_signal import acf_signal_from_result
-from ml.rag.api_schemas import CitationItem, UsageStats
+from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats
 from ml.rag.observability import flush_langfuse
 from ml.rag.rate_limiter import check_plan_rate_limit, get_rate_limit_status
 from ml.rag.request_context import bootstrap_category, resolve_request_context
@@ -170,10 +170,17 @@ async def v1_create_plan_session(plan_type_slug: str):
     )
 
 
-async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
+async def _plan_chat(
+    plan_type: str,
+    body: ChatRequest,
+    request_id: str,
+    *,
+    export_enabled: bool = False,
+):
     """Shared logic for plan-scoped chat routes.
 
     plan_type is injected from the route — the payload cannot override it.
+    export_enabled is route-owned: only Agribusinesses and Integrated may produce artifacts.
     Auth/subscription enforcement is handled upstream by the API gateway.
     """
     try:
@@ -212,6 +219,7 @@ async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
             category=ctx.category,
             user_profile=ctx.user_profile,
             persist_to_session=(hist is None),
+            export_enabled=export_enabled,
         )
 
         if turn.pipeline_error:
@@ -227,6 +235,8 @@ async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
         created_at = datetime.now(timezone.utc).isoformat()
         raw_citations = turn.citations or []
         citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]
+        raw_artifacts = turn.artifacts or []
+        artifacts = [ArtifactItem.model_validate(a) for a in raw_artifacts if isinstance(a, dict)]
         usage = UsageStats.from_usage_dict(turn.usage)
         acf = acf_signal_from_result(turn.raw_result)
         return ChatSuccessResponse(
@@ -239,6 +249,7 @@ async def _plan_chat(plan_type: str, body: ChatRequest, request_id: str):
             created_at=created_at,
             plan_type=plan_type,
             langfuse_trace_id=turn.langfuse_trace_id,
+            artifacts=artifacts,
         )
     except HTTPException:
         raise

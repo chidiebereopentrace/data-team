@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 
-from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats, UserProfile
+from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats, UserProfile
 
 
 
@@ -147,6 +147,13 @@ class ChatSuccessResponse(BaseModel):
     langfuse_trace_id: str | None = Field(
         None,
         description="Langfuse trace id when tracing is enabled (for feedback).",
+    )
+    artifacts: list[ArtifactItem] = Field(
+        default_factory=list,
+        description=(
+            "Downloadable exports (CSV, chart, DOCX, PDF). Populated only on "
+            "POST /v1/chat/agribusinesses and POST /v1/chat/integrated."
+        ),
     )
 
 

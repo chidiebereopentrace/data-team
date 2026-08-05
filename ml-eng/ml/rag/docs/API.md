@@ -450,19 +450,60 @@ Single chat turn through the same RAG pipeline as `/query`, with v1 response sha
 | `usage` | `UsageStats` | Same as `/query`. |
 | `request_id` | `string` | Unique ID for this HTTP request (support/debug). |
 | `created_at` | `string` | ISO-8601 UTC timestamp. |
+| `plan_type` | `string \| null` | Plan tier applied to this request (when using plan-scoped routes). |
+| `acf` | `ACFSignal` | Confidence band, score, and explanation. |
+| `artifacts` | `ArtifactItem[]` | Downloadable exports. **Only populated on** `POST /v1/chat/agribusinesses` and `POST /v1/chat/integrated`. Always `[]` on other routes. |
+
+### Plan-scoped chat routes
+
+Prefer these routes for new integrations. The plan tier is **locked by the URL**; the payload cannot override it.
+
+| Route | Plan | Exports (`artifacts`) |
+|-------|------|------------------------|
+| `POST /v1/chat/free` | Free | No |
+| `POST /v1/chat/farmers` | Farmers | No |
+| `POST /v1/chat/government` | Government | No |
+| `POST /v1/chat/ngos` | NGOs | No |
+| `POST /v1/chat/agribusinesses` | Agribusinesses | **Yes** (CSV, chart, DOCX, PDF) |
+| `POST /v1/chat/integrated` | Integrated | **Yes** (CSV, chart, DOCX, PDF) |
+
+When a user on a non-export route asks for a CSV, chart, or report, the assistant explains that exports require the Agribusinesses or Integrated endpoint.
+
+### `ArtifactItem` (export-enabled routes only)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Stable artifact id for this response |
+| `kind` | `csv \| chart \| docx \| pdf` | Export format |
+| `filename` | `string` | Suggested download filename |
+| `mime_type` | `string` | MIME type |
+| `url` | `string` | Signed HTTPS URL (GCS in production) |
+| `summary` | `string` | Short description of contents |
+| `citation_ids` | `integer[]` | Citation ids from the parent answer |
+| `byte_size` | `integer` | File size in bytes |
 
 ```json
 {
-  "assistant_message": "According to …[3]",
-  "citations": [{ "id": 3, "kind": "academic", "text": "...", "url": "https://..." }],
+  "assistant_message": "Maize production rose…\n\nDownloadable files are attached to this response: nigeria_maize.csv, nigeria_maize.png.",
+  "citations": [{ "id": 3, "kind": "bigquery", "text": "...", "url": null }],
+  "acf": { "band": "strong", "band_label": "Strong confidence", "score": 78, "explanation": "..." },
   "session_id": "abc123...",
-  "usage": {
-    "input_tokens": 1200,
-    "output_tokens": 400,
-    "total_tokens": 1600
-  },
+  "usage": { "input_tokens": 1200, "output_tokens": 400, "total_tokens": 1600 },
   "request_id": "f4e2...",
-  "created_at": "2026-06-08T12:00:00+00:00"
+  "created_at": "2026-06-08T12:00:00+00:00",
+  "plan_type": "Agribusinesses",
+  "artifacts": [
+    {
+      "id": "art_a1b2c3d4e5f6",
+      "kind": "csv",
+      "filename": "nigeria_maize.csv",
+      "mime_type": "text/csv",
+      "url": "https://storage.googleapis.com/...",
+      "summary": "CSV export (24 rows)",
+      "citation_ids": [3],
+      "byte_size": 12480
+    }
+  ]
 }
 ```
 

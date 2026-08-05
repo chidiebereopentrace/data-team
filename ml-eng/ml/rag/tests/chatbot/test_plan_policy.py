@@ -27,6 +27,14 @@ def test_cross_country_only_agribusiness_and_integrated() -> None:
     assert allows_cross_country("Integrated")
 
 
+def test_export_only_agribusiness_and_integrated() -> None:
+    from ml.rag.chatbot.plan_policy import allows_export
+
+    assert allows_export("Agribusinesses")
+    assert allows_export("Integrated")
+    assert not allows_export("NGOs")
+
+
 def test_decomposition_clamps_geography_for_government() -> None:
     dec = {
         "intent": "compare",
