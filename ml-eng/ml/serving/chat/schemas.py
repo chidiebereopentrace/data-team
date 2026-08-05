@@ -160,6 +160,16 @@ class ChatSuccessResponse(BaseModel):
 
 
 
+class SessionStatusResponse(BaseModel):
+    """Response for GET /v1/sessions/{session_id}."""
+
+    session_id: str
+    alive: bool
+    category: str | None = None
+    turn_count: int = 0
+    has_summary: bool = False
+
+
 class ErrorBody(BaseModel):
 
     code: str
