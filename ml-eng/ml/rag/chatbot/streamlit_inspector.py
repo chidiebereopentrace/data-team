@@ -39,6 +39,13 @@ INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "usage",
     "error",
     "latency_ms",
+    "answer_lang",
+    "acf_band",
+    "acf_band_label",
+    "acf_score",
+    "acf_explanation",
+    "acf_claim_level",
+    "acf_question_type",
     "_backend_mode",
     "_http_trace",
 )
@@ -346,6 +353,32 @@ def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = Non
     if status:
         reason = result.get("web_fallback_reason") or ""
         st.caption(f"Web fallback: **{status}**" + (f" — {reason}" if reason else ""))
+
+    # ACF Path B + language + per-plan model (ML-029 / ML-039 / ML-041)
+    acf_band = str(result.get("acf_band_label") or result.get("acf_band") or "").strip()
+    acf_score = result.get("acf_score")
+    answer_lang = str(result.get("answer_lang") or "").strip()
+    if acf_band or acf_score is not None or answer_lang:
+        from ml.rag.chatbot.plan_policy import model_for_plan
+        from ml.rag.llm_chat import llm_model_id
+        plan_type = str(result.get("plan_type") or "").strip()
+        model_used = model_for_plan(plan_type) or llm_model_id()
+        model_short = model_used.split("/")[-1] if "/" in model_used else model_used
+
+        r3 = st.columns(4)
+        with r3[0]:
+            st.metric("ACF band", acf_band or "—")
+        with r3[1]:
+            score_disp = f"{acf_score:.0f}/100" if isinstance(acf_score, (int, float)) else "—"
+            st.metric("ACF score", score_disp)
+        with r3[2]:
+            st.metric("answer_lang", answer_lang or "—")
+        with r3[3]:
+            st.metric("LLM model", model_short or "—")
+
+        expl = str(result.get("acf_explanation") or result.get("acf_note") or "").strip()
+        if expl:
+            st.caption(f"ACF explanation: {expl[:200]}")
 
 
 def render_sql_panel(result: dict[str, Any]) -> None:
