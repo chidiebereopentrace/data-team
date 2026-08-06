@@ -1,0 +1,72 @@
+version: 2
+
+models:
+  - name: stg_isric_isda_soil
+    description: "ISRIC Africa soil properties by depth (wide)"
+    columns:
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_unccd_land_degradation
+    description: "UNCCD land degradation indicators"
+    columns:
+      - name: geo_area_code
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_s4a_field_surveys
+    description: "S4A field surveys – soil surface"
+    columns:
+      - name: plot_code
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+  - name: stg_cifor_icraf
+    description: "CIFOR-ICRAF plot soil nutrients"
+    columns:
+      - name: plot_id
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null

@@ -42,6 +42,7 @@ From the `dbt` directory (with `DBT_PROFILES_DIR=.`):
 dbt deps
 dbt run --target raw_dev
 dbt run --target staging_dev
+dbt test --target staging_dev
 dbt run --target mart_dev
 ```
 
@@ -69,12 +70,58 @@ dbt/
 ├── models/
 │   ├── sources.yml    # Generated from docs/bq_schema_catalog.json
 │   ├── landing/
-│   ├── raw_dev/
-│   ├── staging_dev/
+│   ├── raw_dev/       # Flat stubs from catalog (optional)
+│   ├── staging_dev/   # Domain-grouped curated stg_* models
+│   │   ├── fews/
+│   │   ├── faostat/
+│   │   ├── production/
+│   │   ├── ilri/
+│   │   ├── climate/
+│   │   ├── soil_and_land/
+│   │   ├── spatial/
+│   │   ├── research/
+│   │   ├── socio_economic/
+│   │   └── market_prices/
 │   └── mart_dev/
 ```
 
-In models, use **`{{ source('raw_dev', 'table') }}`**, **`source('staging_dev', ...)`**, **`source('landing', ...)`** — names must match those in `sources.yml` after `generate_dbt_sources.py`.
+## Staging layer
+
+`staging_dev/` is **domain-grouped curated staging**, not one model per `raw_dev` table. Lean models select and rename columns for downstream intermediate/marts; selection narrows further later.
+
+### Status
+
+Curated staging is complete for the domain folders above. Taxonomy maps roughly **~98** of **~179** `raw_dev` tables. Uncovered tables are mostly intentional exclusions (for example FEWS `*_data_series` / master, FAOSTAT discontinued/forestry/macro and parallel `fao_*` bronzes, most remaining ILRI surveys/dictionaries, other S4A themes, enriched iSDA long format, ClimateWatch pathways, older OpenAIRE bronzes).
+
+### Conventions
+
+- Every staging model reads **only** `{{ source('raw_dev', '…') }}` — no `landing` jumps and no `source('staging_dev', …)`.
+- Prefer `materialized='table'`. Do not set `schema='staging'` in model config (`dbt_project.yml` already writes to `staging_dev`).
+- Explicit column aliases; on unions use typed `cast(null as …)` for missing columns.
+- Add `source_natural_key` and `loaded_at` on every model.
+- Domain `schema.yml` files hold tests (`not_null`, `unique`, `accepted_values`, `dbt_utils.recency`).
+
+### Exceptions / placeholders
+
+| Model | Notes |
+|-------|--------|
+| `spatial/stg_aez` | Empty schema table (`where false`) until AEZ zonal stats exist in `raw_dev`. |
+| `market_prices/stg_prices_harmonised` | `enabled=false`; harmonise WFP + FEWS + FAOSTAT prices later in intermediate. |
+| `socio_economic/stg_un_peace_security` | `enabled=false` (payload-only, low analytical value). |
+
+### Taxonomy and generator
+
+Model → `raw_dev` table mappings live in [`data/local/scripts/staging_dev_taxonomy.yml`](../data/local/scripts/staging_dev_taxonomy.yml).
+
+The generator can scaffold **new** staging SQL from the taxonomy; it **never overwrites** existing curated files:
+
+```bash
+python data/local/scripts/generate_dbt_models_from_catalog.py --staging-only
+```
+
+Edit the taxonomy (`path` + `tables`) before scaffolding new models. Do not wipe curated SQL unless you intend to regenerate stubs from scratch.
+
+In models, use **`{{ source('raw_dev', 'table') }}`** and **`source('landing', ...)`** for upstream layers — names must match those in `sources.yml` after `generate_dbt_sources.py`.
 
 ## Keeping sources in sync
 

@@ -1,0 +1,215 @@
+# Domain-grouped staging models for dbt/models/staging_dev/
+# Each model reads only source('raw_dev', …). Generator hardcodes raw_dev.
+#
+# tables: list of raw_dev table ids (1 = passthrough stub; 2+ = CTE + union all stub)
+# tables: null or [] => unmapped placeholder until wired
+#
+# Edit this file and re-run generate_dbt_models_from_catalog.py --staging-only
+# (existing SQL files are never overwritten — wipe staging_dev first to regenerate).
+
+models:
+  # --- fews (time_series observation grain only) ---
+  - path: fews/stg_fews_food_security.sql
+    tables:
+      - FEWS_NET_Food_insecure_population_estimates_time_series_data
+      - FEWS_NET_food_security_classifications_time_series_data
+  - path: fews/stg_fews_market_prices.sql
+    tables:
+      - FEWS_NET_market_Prices_time_series_data
+  - path: fews/stg_fews_cross_border_trade.sql
+    tables:
+      - FEWS_NET_cross_border_Trade_time_series_data
+
+  # --- faostat ---
+  - path: faostat/stg_faostat_production.sql
+    tables:
+      - Unpivoted_FAOstat_africa_production_Crops_and_livestock
+      - Unpivoted_FAOstat_africa_production_Production Indices
+      - Unpivoted_FAOstat_africa_production_Value_of_Agricultural_Production
+  - path: faostat/stg_faostat_emissions.sql
+    tables:
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Farm_gate_Emissions_from_Crops
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Farm_gate_Emissions_from_Livestock
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Farm_gate_Emissions_from_Energy_use_in_agriculture
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Land_use_and_change_Emissions_from_Fires
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Land_use_and_change_Emissions_from_Forests
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Land_use_and_change_Emissions_from_Drained_organic_soils
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Pre_and_post_agricultural_production_Emissions_from_pre_and_post_agricultural_production
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_totals
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_intensities
+      - Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_indicators
+  - path: faostat/stg_faostat_prices.sql
+    tables:
+      - Unpivoted_FAOstat_africa_Prices_Consumer_Price_Indices
+      - Unpivoted_FAOstat_africa_Prices_Deflators
+      - Unpivoted_FAOstat_africa_Prices_Exchange_rates
+      - Unpivoted_FAOstat_africa_Prices_Producer_Prices
+  - path: faostat/stg_faostat_trade.sql
+    tables:
+      - Unpivoted_FAOstat_africa_Trade_Crops_and_livestock_products
+      - Unpivoted_FAOstat_africa_Trade_Trade_Indices
+      - Unpivoted_FAOstat_africa_Trade_Crops_and_livestock_products_indicators
+  - path: faostat/stg_faostat_food_balances.sql
+    tables:
+      - Unpivoted_FAOstat_africa_Food Balances_Food_Balances_2010-23
+      - Unpivoted_FAOstat_africa_Food_Balances_Food_Balances_1961-2013_old_methodology_and_population
+      - Unpivoted_FAOstat_africa_Food_Balances_Commodity_Balances_non-food_2010-23
+      - Unpivoted_FAOstat_africa_Food_Balances_Supply_Utilization_Accounts_2010-23
+  - path: faostat/stg_faostat_investment_asti.sql
+    tables:
+      - Unpivoted_FAOstat_africa_Investment_Country_Investment_Statistics_Profile
+      - Unpivoted_FAOstat_africa_Investment_Credit_to_Agriculture
+      - Unpivoted_FAOstat_africa_Investment_Development_Flows_to_Agriculture
+      - Unpivoted_FAOstat_africa_Investment_Foreign_Direct_Investment_FDI
+      - Unpivoted_FAOstat_africa_Investment_Government_Expenditure
+      - Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Researchers
+      - Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Expenditures
+  - path: faostat/stg_faostat_land_inputs.sql
+    tables:
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Fertilizers_by_Nutrient
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Fertilizers_by_Product
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Detailed_trade_matrix_fertilizers
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Pesticides_Use
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Pesticides_Trade
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Livestock_Manure
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Land_Land_Cover
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Land_Land_Use
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Climate_Change_Indicators_Temperature_change_on_land
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Sustainability_Indicators_Bioenergy
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Sustainability_Indicators_Cropland_Nutrient_Balance
+      - Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Sustainability_Indicators_Livestock_Patterns
+  - path: faostat/stg_faostat_population_employment.sql
+    tables:
+      - Unpivoted_FAOstat_africa_Population_and_Employment_Annual_population
+      - Unpivoted_FAOstat_africa_Population_and_Employment_Employment_Indicators_Employment_Indicators_Agriculture_and_agrifood_systems
+      - Unpivoted_FAOstat_africa_Population_and_Employment_Employment_Indicators_Employment_Indicators_Rural
+  - path: faostat/stg_faostat_sdg_hdi.sql
+    tables:
+      - Unpivoted_FAOstat_africa_SDG_Indicators_SDG_Indicators
+      - Unpivoted_FAOstat_africa_Cost_and_Affordability_of_a_Healthy_Diet_Cost_and_Affordability_of_a_Healthy_Diet
+      - Unpivoted_FAOstat_africa_Food_Value_Chain_Value_shares_by_industry_and_primary_factors
+      - Unpivoted_FAOstat_africa_World_Census_of_Agriculture_Structural_data_from_agricultural_censuses
+
+  # --- production ---
+  - path: production/stg_yield_raw_data.sql
+    tables:
+      - yield_raw_data
+  - path: production/stg_ilri_dairy_genetics.sql
+    tables:
+      - ilri_dgea1_calvinfo_public
+      - ilri_dgea1_milkinfo_public
+
+  # --- ilri ---
+  - path: ilri/stg_ilri_household_food_security.sql
+    tables:
+      - ilri_crp_household_food_security_v1
+      - ilri_indicators_final_v1
+  - path: ilri/stg_ilri_animal_health.sql
+    tables:
+      - ilri_amuse_eth_data
+      - ilri_acaricide_use_final_analysis_dataverse
+      - ilri_impact_assessment_data_lira_uganda_nov25
+  - path: ilri/stg_ilri_vegetation_feed.sql
+    tables:
+      - ilri_vegetation_survey_v1
+      - ilri_feed_assessment_odisha_database_2018_mel_public
+  - path: ilri/stg_ilri_i4i_livestock_insurance.sql
+    tables:
+      - ilri_i4i_farmerdataanon
+      - ilri_i4i_samplingdata_anon
+  - path: ilri/stg_ilri_vendor_consumer.sql
+    tables:
+      - ilri_bf_rct_vendorsurvey_t0t1_anonymous_final
+      - ilri_burkinafaso_consumersurvey_t0t1data_wide_anonymous
+      - ilri_ethiopia_consumersurvey_t0t1data_wide_anonymous
+  - path: ilri/stg_ilri_food_hazards.sql
+    tables:
+      - ilri_dataset_burkina_faso_food_hazards_review_meta_analysis
+  - path: ilri/stg_ilri_other_surveys.sql
+    tables:
+      - ilri_adgo_database_mel_public
+      - ilri_agripreneurbaselinedata_public
+      - ilri_dairy_enterprise_cash_flows_ifamr_paperanon
+      - ilri_databasetanzaniadairydevelopmentforumevaluationanonymous150119_public
+
+  # --- climate ---
+  - path: climate/stg_nasa_power.sql
+    tables:
+      - africa_nasa_power_daily_summary_bronze
+      - africa_nasa_power_hourly_bronze
+  - path: climate/stg_copernicus_era5.sql
+    tables:
+      - copernicus_climate_raw_era5_stats_2023_06
+  - path: climate/stg_climatewatch_health.sql
+    tables:
+      - climatewatch_climate_health_impacts
+
+  # --- soil_and_land ---
+  - path: soil_and_land/stg_isric_isda_soil.sql
+    tables:
+      - isric_africa_soil_data
+  - path: soil_and_land/stg_unccd_land_degradation.sql
+    tables:
+      - unccd_land_degradation_bulk
+  - path: soil_and_land/stg_s4a_field_surveys.sql
+    tables:
+      - s4a_field_soil_surface_info
+  - path: soil_and_land/stg_cifor_icraf.sql
+    tables:
+      - cifor_icraf_raw
+
+  # --- spatial ---
+  - path: spatial/stg_protected_areas.sql
+    tables:
+      - arcgis_land_protected_areas
+  - path: spatial/stg_vegetation_ndvi.sql
+    tables:
+      - arcgis_vegetation_ndvi
+  - path: spatial/stg_biodiversity.sql
+    tables:
+      - arcgis_rarity_80_birds_africa
+      - gbif_biodiversity_occurrence
+  - path: spatial/stg_germplasm.sql
+    tables:
+      - arcgis_layer_rice_germplasm_in_africa_3d2a9
+      - crop_germplasm_africa
+  - path: spatial/stg_aez.sql
+    tables: null
+
+  # --- market_prices ---
+  - path: market_prices/stg_wfp_vampire_prices.sql
+    tables:
+      - WFP_VAMPIRE_Tool_global_food_prices_bronze
+  - path: market_prices/stg_prices_harmonised.sql
+    tables: null
+
+  # --- research ---
+  - path: research/stg_openaire_projects.sql
+    tables:
+      - openaire_agriculture_and_environment_Research_publications_Projects_bronze
+  - path: research/stg_openaire_organisations.sql
+    tables:
+      - openaire_agriculture_and_environment_Research_publications_Organizations_bronze
+  - path: research/stg_openaire_persons.sql
+    tables:
+      - openaire_agriculture_and_environment_Research_publications_Persons_bronze
+  - path: research/stg_openaire_product_links.sql
+    tables:
+      - openaire_agriculture_and_environment_Research_publications_Product_links_bronze
+  - path: research/stg_openaire_data_sources.sql
+    tables:
+      - openaire_agriculture_and_environment_Research_publications_Data_sources_bronze
+
+  # --- socio_economic ---
+  - path: socio_economic/stg_africa_hdi.sql
+    tables:
+      - africa_Human_development_index
+  - path: socio_economic/stg_africa_gdp_ppp.sql
+    tables:
+      - africa_gross_domestic_product_purchasing_power_parity_bronze
+  - path: socio_economic/stg_nakuru_air_quality.sql
+    tables:
+      - nakuru_air_quality_archive
+  - path: socio_economic/stg_un_peace_security.sql
+    tables:
+      - un_peace_security_records

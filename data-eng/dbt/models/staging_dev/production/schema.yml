@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: stg_yield_raw_data
+    description: "Yield Raw Data with season and production system"
+    columns:
+      - name: country
+        tests:
+          - not_null
+      - name: product
+        tests:
+          - not_null
+      - name: yield
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'yield_raw_data'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            coalesce(fnid, '') || '-' ||
+            country || '-' ||
+            product || '-' ||
+            coalesce(season_name, '') || '-' ||
+            coalesce(cast(harvest_year as string), '') || '-' ||
+            coalesce(cast(harvest_month as string), '')
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
+
+  - name: stg_ilri_dairy_genetics
+    description: "ILRI Dairy Genetics East Africa - Milk yields + Calving records"
+    columns:
+      - name: client_id
+        tests:
+          - not_null
+      - name: farm_code
+        tests:
+          - not_null
+      - name: cow_number
+        tests:
+          - not_null
+      - name: record_type
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'milk'
+                - 'calving'
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(client_id as string) || '-' ||
+            farm_code || '-' ||
+            cow_number || '-' ||
+            record_type || '-' ||
+            coalesce(date_of_milking, '') || '-' ||
+            coalesce(initial_calving_date, '')
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30

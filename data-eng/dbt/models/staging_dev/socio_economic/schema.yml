@@ -1,0 +1,84 @@
+version: 2
+
+models:
+  - name: stg_africa_hdi
+    description: "Africa Human Development Index"
+    columns:
+      - name: country
+        tests:
+          - not_null
+      - name: country_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: hdi_value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'africa_Human_development_index'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "country_code || '-' || cast(year as string)"
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_africa_gdp_ppp
+    description: "Africa GDP per capita PPP"
+    columns:
+      - name: country_code
+        tests:
+          - not_null
+      - name: observation_year
+        tests:
+          - not_null
+      - name: gdp_per_capita_ppp
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "country_code || '-' || cast(observation_year as string)"
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_nakuru_air_quality
+    description: "Nakuru Air Quality Archive"
+    columns:
+      - name: sensor_id
+        tests:
+          - not_null
+      - name: observation_timestamp
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 7
