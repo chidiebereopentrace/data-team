@@ -1,4 +1,4 @@
-{{ config(materialized='view') }}
+{{ config(materialized='table') }}
 
 select
     area_code,
@@ -10,8 +10,8 @@ select
     element_code,
     element,
     year,
-    Unit as unit,
-    value,
+    cast(Unit as string) as unit,
+    cast(value as float64) as value,
     'Unpivoted_FAOstat_africa_production_Crops_and_livestock' as source_natural_key,
     current_timestamp() as loaded_at
 from {{ source('raw_dev', 'Unpivoted_FAOstat_africa_production_Crops_and_livestock') }}
@@ -28,8 +28,8 @@ select
     element_code,
     element,
     year,
-    Unit as unit,
-    value,
+    cast(Unit as string) as unit,
+    cast(value as float64) as value,
     'Unpivoted_FAOstat_africa_production_Production Indices' as source_natural_key,
     current_timestamp() as loaded_at
 from {{ source('raw_dev', 'Unpivoted_FAOstat_africa_production_Production Indices') }}
@@ -46,8 +46,8 @@ select
     element_code,
     element,
     year,
-    Unit as unit,
-    value,
+    cast(Unit as string) as unit,
+    cast(value as float64) as value,
     'Unpivoted_FAOstat_africa_production_Value_of_Agricultural_Production' as source_natural_key,
     current_timestamp() as loaded_at
 from {{ source('raw_dev', 'Unpivoted_FAOstat_africa_production_Value_of_Agricultural_Production') }}

@@ -3,7 +3,7 @@
 select
     latitude,
     longitude,
-    cast(fetched_at as date) as fetched_date,
+    date(safe_cast(fetched_at as timestamp)) as fetched_date,
     bdod_0_5cm,
     bdod_5_15cm,
     bdod_15_30cm,
