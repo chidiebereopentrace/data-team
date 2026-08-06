@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: stg_wfp_vampire_prices
+    description: "WFP VAMPIRE Global Food Prices – curated for fct_prices"
+    columns:
+      - name: country
+        tests:
+          - not_null
+      - name: market_name
+        tests:
+          - not_null
+      - name: product_name
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'WFP_VAMPIRE_global_food_prices'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            coalesce(cast(country_id as string), '') || '-' ||
+            coalesce(cast(market_id as string), '') || '-' ||
+            coalesce(cast(product_id as string), '') || '-' ||
+            coalesce(price_type, '') || '-' ||
+            cast(year as string) || '-' ||
+            coalesce(cast(month as string), '')
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 7

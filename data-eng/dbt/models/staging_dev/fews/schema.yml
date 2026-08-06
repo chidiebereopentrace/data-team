@@ -1,0 +1,105 @@
+version: 2
+
+models:
+  - name: stg_fews_food_security
+    description: "Lean FEWS Food Security – only columns needed for final schema"
+    columns:
+      - name: fnid
+        tests:
+          - not_null
+      - name: country
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: measure_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['population', 'classification']
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'FEWS_NET_Food_insecure_population_estimates'
+                - 'FEWS_NET_food_security_classifications'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "fnid || '-' || cast(year as string) || '-' || coalesce(cast(month as string), '') || '-' || measure_type || '-' || source_natural_key"
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 7
+
+  - name: stg_fews_market_prices
+    description: "Lean FEWS NET Market Prices"
+    columns:
+      - name: country
+        tests:
+          - not_null
+      - name: market_name
+        tests:
+          - not_null
+      - name: product_name
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['FEWS_NET_market_Prices']
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "country || '-' || market_name || '-' || product_name || '-' || coalesce(price_type, '') || '-' || cast(year as string) || '-' || coalesce(cast(month as string), '')"
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 7
+
+  - name: stg_fews_cross_border_trade
+    description: "Lean FEWS NET Cross Border Trade"
+    columns:
+      - name: country
+        tests:
+          - not_null
+      - name: product_name
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['FEWS_NET_cross_border_Trade']
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "country || '-' || coalesce(border_point, '') || '-' || product_name || '-' || coalesce(trade_flow, '') || '-' || cast(year as string) || '-' || coalesce(cast(month as string), '')"
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 7

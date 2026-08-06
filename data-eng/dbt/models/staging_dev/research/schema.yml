@@ -1,0 +1,106 @@
+version: 2
+
+models:
+  - name: stg_openaire_projects
+    description: "OpenAIRE research projects"
+    columns:
+      - name: project_id
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "project_id"
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_openaire_organisations
+    description: "OpenAIRE organisations"
+    columns:
+      - name: organisation_id
+        tests:
+          - not_null
+      - name: legal_name
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "organisation_id"
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_openaire_persons
+    description: "OpenAIRE persons"
+    columns:
+      - name: person_id
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "person_id"
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_openaire_product_links
+    description: "OpenAIRE product relationship links"
+    columns:
+      - name: openaire_id
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_openaire_data_sources
+    description: "OpenAIRE data sources"
+    columns:
+      - name: openaire_id
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30

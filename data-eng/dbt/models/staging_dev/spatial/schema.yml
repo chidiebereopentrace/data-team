@@ -1,0 +1,78 @@
+version: 2
+
+models:
+  - name: stg_protected_areas
+    description: "ArcGIS land protected areas"
+    columns:
+      - name: protected_area_name
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_vegetation_ndvi
+    description: "ArcGIS vegetation NDVI grids"
+    columns:
+      - name: grid_id
+        tests:
+          - not_null
+      - name: ndvi_mean
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_biodiversity
+    description: "GBIF biodiversity occurrences + ArcGIS rarity-80 birds"
+    columns:
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_germplasm
+    description: "Crop germplasm Africa + ArcGIS rice germplasm"
+    columns:
+      - name: germplasm_id
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 60

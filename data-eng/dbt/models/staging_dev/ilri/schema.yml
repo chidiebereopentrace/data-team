@@ -1,0 +1,179 @@
+version: 2
+
+models:
+  - name: stg_ilri_household_food_security
+    description: "ILRI Household Food Security surveys (CRP + Indicators Final)"
+    columns:
+      - name: household_id
+        tests:
+          - not_null
+      - name: country
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'ilri_crp_household_food_security_v1'
+                - 'ilri_indicators_final_v1'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "household_id || '-' || source_natural_key"
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_ilri_animal_health
+    description: "ILRI Animal Health – Lira clinical scores, Acaricide use, AMUSE Ethiopia"
+    columns:
+      - name: household_id
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'ilri_impact_assessment_data_lira_uganda_nov25'
+                - 'ilri_acaricide_use_final_analysis_dataverse'
+                - 'ilri_amuse_eth_data'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: "household_id || '-' || source_natural_key || '-' || coalesce(species, '')"
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_ilri_vegetation_feed
+    description: "ILRI Vegetation Survey + Feed Assessment"
+    columns:
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'ilri_vegetation_survey_v1'
+                - 'ilri_feed_assessment_odisha_database_2018_mel_public'
+      - name: record_type
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'vegetation'
+                - 'feed_assessment'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 60
+
+  - name: stg_ilri_i4i_livestock_insurance
+    description: "ILRI Index-Based Livestock Insurance – Farmer data + Vaccinator sampling"
+    columns:
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'ilri_i4i_farmerdataanon'
+                - 'ilri_i4i_samplingdata_anon'
+      - name: record_type
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'farmer'
+                - 'vaccinator'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 60
+
+  - name: stg_ilri_vendor_consumer
+    description: "ILRI Vendor and Consumer surveys (Burkina Faso + Ethiopia)"
+    columns:
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: respondent_type
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'vendor'
+                - 'consumer'
+      - name: country
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 60
+
+  - name: stg_ilri_food_hazards
+    description: "ILRI Foodborne Hazards Meta-Analysis (Burkina Faso)"
+    columns:
+      - name: foodborne_hazard
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'ilri_dataset_burkina_faso_food_hazards_review_meta_analysis'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 90
+
+  - name: stg_ilri_other_surveys
+    description: "ILRI other / lower-priority surveys (ADGO, Agripreneur, Dairy cashflow, Tanzania forum)"
+    columns:
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: survey_type
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 90

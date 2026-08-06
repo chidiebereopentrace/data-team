@@ -1,0 +1,72 @@
+version: 2
+
+models:
+  - name: stg_nasa_power
+    description: "NASA POWER Daily + Hourly climate data"
+    columns:
+      - name: country_code
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'NASA_POWER_daily'
+                - 'NASA_POWER_hourly'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 7
+
+  - name: stg_copernicus_era5
+    description: "Copernicus ERA5 climate reanalysis"
+    columns:
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null
+      - name: temperature_2m
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
+
+  - name: stg_climatewatch_health
+    description: "ClimateWatch Climate-Health Impacts"
+    columns:
+      - name: country_name
+        tests:
+          - not_null
+      - name: indicator
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30

@@ -1,0 +1,360 @@
+version: 2
+
+models:
+  - name: stg_faostat_production
+    description: "FAOSTAT Production – Crops & Livestock + Production Indices + Value of Agricultural Production"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: item_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Unpivoted_FAOstat_africa_production_Crops_and_livestock'
+                - 'Unpivoted_FAOstat_africa_production_Production Indices'
+                - 'Unpivoted_FAOstat_africa_production_Value_of_Agricultural_Production'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            cast(item_code as string) || '-' ||
+            cast(element_code as string) || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+  - name: stg_faostat_emissions
+    description: "FAOSTAT Agrifood Systems Emissions (all farm-gate, land-use, pre/post and totals)"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: item_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            cast(item_code as string) || '-' ||
+            cast(element_code as string) || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
+
+  - name: stg_faostat_prices
+    description: "FAOSTAT Prices – Producer Prices, Consumer Price Indices, Deflators, Exchange Rates"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Unpivoted_FAOstat_africa_Prices_Producer_Prices'
+                - 'Unpivoted_FAOstat_africa_Prices_Consumer_Price_Indices'
+                - 'Unpivoted_FAOstat_africa_Prices_Deflators'
+                - 'Unpivoted_FAOstat_africa_Prices_Exchange_rates'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            coalesce(cast(item_code as string), '') || '-' ||
+            cast(element_code as string) || '-' ||
+            coalesce(cast(months_code as string), '') || '-' ||
+            coalesce(iso_currency_code, '') || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
+
+  - name: stg_faostat_trade
+    description: "FAOSTAT Trade – Crops & Livestock Products, Trade Indices, Indicators"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: item_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Unpivoted_FAOstat_africa_Trade_Crops_and_livestock_products'
+                - 'Unpivoted_FAOstat_africa_Trade_Trade_Indices'
+                - 'Unpivoted_FAOstat_africa_Trade_Crops_and_livestock_products_indicators'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            cast(item_code as string) || '-' ||
+            cast(element_code as string) || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
+
+  - name: stg_faostat_food_balances
+    description: "FAOSTAT Food Balances + Supply Utilization Accounts + Commodity Balances"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: item_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            cast(item_code as string) || '-' ||
+            cast(element_code as string) || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
+
+  - name: stg_faostat_investment_asti
+    description: "FAOSTAT Investment flows + ASTI Researchers & Expenditures"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            coalesce(donor_code, '') || '-' ||
+            coalesce(purpose_code, '') || '-' ||
+            coalesce(cast(item_code as string), '') || '-' ||
+            coalesce(cast(element_code as string), '') || '-' ||
+            coalesce(indicator_code, '') || '-' ||
+            coalesce(institution, '') || '-' ||
+            coalesce(degree_code, '') || '-' ||
+            coalesce(sex_code, '') || '-' ||
+            coalesce(cost_category_code, '') || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
+
+  - name: stg_faostat_land_inputs
+    description: "FAOSTAT Land Use/Cover + Fertilizers + Pesticides + Manure + Temperature + Nutrient Balance + Livestock Patterns"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            coalesce(partner_country_code, '') || '-' ||
+            coalesce(cast(item_code as string), '') || '-' ||
+            coalesce(months_code, '') || '-' ||
+            cast(element_code as string) || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
+
+  - name: stg_faostat_population_employment
+    description: "FAOSTAT Annual Population + Employment in Agriculture & Rural areas"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            coalesce(cast(item_code as string), '') || '-' ||
+            coalesce(cast(element_code as string), '') || '-' ||
+            coalesce(indicator_code, '') || '-' ||
+            coalesce(source_code, '') || '-' ||
+            coalesce(sex_code, '') || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
+
+  - name: stg_faostat_sdg_hdi
+    description: "FAOSTAT SDG Indicators + Food Value Chain + Agricultural Census"
+    columns:
+      - name: country_name
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            coalesce(cast(area_code as string), '') || '-' ||
+            coalesce(area_code_m49, '') || '-' ||
+            coalesce(cast(item_code as string), '') || '-' ||
+            coalesce(food_value_code, '') || '-' ||
+            coalesce(industry_code, '') || '-' ||
+            coalesce(factor_code, '') || '-' ||
+            coalesce(release_code, '') || '-' ||
+            coalesce(census_year_code, '') || '-' ||
+            coalesce(cast(element_code as string), '') || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 14
