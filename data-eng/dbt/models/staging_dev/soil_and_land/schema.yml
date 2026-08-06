@@ -1,8 +1,8 @@
 version: 2
 
 models:
-  - name: stg_isric_isda_soil
-    description: "ISRIC Africa soil properties by depth (wide)"
+  - name: stg_isric_africa_soil
+    description: "ISRIC Africa soil properties by depth (wide); drops fully-null soil rows"
     columns:
       - name: latitude
         tests:
@@ -18,6 +18,43 @@ models:
           - not_null
 
     tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_isda_soil_enriched
+    description: "Enriched iSDA soil properties (long: property + depth + value)"
+    columns:
+      - name: longitude
+        tests:
+          - not_null
+      - name: latitude
+        tests:
+          - not_null
+      - name: soil_property
+        tests:
+          - not_null
+      - name: depth
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(longitude as string) || '-' ||
+            cast(latitude as string) || '-' ||
+            soil_property || '-' ||
+            depth
       - dbt_utils.recency:
           datepart: day
           field: loaded_at
