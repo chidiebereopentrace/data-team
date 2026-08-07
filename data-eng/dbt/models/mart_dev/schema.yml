@@ -1,11 +1,530 @@
-# mart_dev models: analytics-ready; write to mart_dev (BQ_DATASET_GOLD).
-# Run: dbt run --target mart_dev
+# mart_dev Gold layer (DPL-044)
+# dbt run --target mart_dev_sa --select mart_dev.*
 
 version: 2
 
 models:
+
   - name: gold_example
-    description: "Example mart model. Replace with aggregations and ML-ready logic."
+    description: "Placeholder mart model."
+
+  # CORE DIMENSIONS
+  - name: gold_dim_geography
+    description: "Conformed geography dimension."
     columns:
-      - name: id
-        description: "Primary key"
+      - name: geography_key
+        tests: [not_null, unique]
+      - name: country_code
+        description: "ISO 3-letter country code"
+
+  - name: dim_time
+    description: "Full calendar time dimension."
+    columns:
+      - name: time_key
+        tests: [not_null, unique]
+
+  - name: gold_dim_season
+    description: "Season dimension."
+    columns:
+      - name: season_key
+        tests: [not_null, unique]
+      - name: season_name
+        tests: [not_null]
+
+  - name: gold_dim_source
+    description: "Data source with tier and data_level."
+    columns:
+      - name: source_key
+        tests: [not_null, unique]
+      - name: tier
+        description: "1=global 2=national 3=sub-national"
+      - name: data_level
+        description: "global national sub_national or community"
+
+  - name: gold_dim_unit
+    description: "Unit of measure dimension."
+    columns:
+      - name: unit_key
+        tests: [not_null, unique]
+
+  - name: dim_organisation
+    description: "Organisation dimension from OpenAire."
+    columns:
+      - name: organisation_key
+        tests: [not_null, unique]
+
+  - name: dim_product
+    description: "Product/crop dimension."
+    columns:
+      - name: product_key
+        tests: [not_null, unique]
+      - name: product_name
+        tests: [not_null]
+
+  - name: dim_livestock
+    description: "Livestock species from FAOSTAT."
+    columns:
+      - name: livestock_key
+        tests: [not_null, unique]
+      - name: species
+        tests: [not_null]
+
+  - name: dim_audit
+    description: "Audit dimension."
+    columns:
+      - name: audit_key
+        tests: [not_null]
+
+  # SECONDARY DIMENSIONS
+  - name: dim_disease
+    description: "Animal disease dimension."
+    columns:
+      - name: disease_key
+        tests: [not_null, unique]
+      - name: disease_name
+        tests: [not_null]
+
+  - name: dim_pest
+    description: "Crop and livestock pest dimension."
+    columns:
+      - name: pest_key
+        tests: [not_null, unique]
+
+  - name: gold_dim_technology
+    description: "Technology dimension."
+    columns:
+      - name: technology_key
+        tests: [not_null, unique]
+      - name: technology_name
+        tests: [not_null]
+
+  - name: dim_person
+    description: "Person dimension from OpenAire."
+    columns:
+      - name: person_key
+        tests: [not_null, unique]
+
+  - name: dim_market
+    description: "Market dimension from FEWS prices."
+    columns:
+      - name: market_key
+        tests: [not_null, unique]
+      - name: market_name
+        tests: [not_null]
+
+  - name: dim_scenario
+    description: "IPC/FEWS scenario codes."
+    columns:
+      - name: scenario_key
+        tests: [not_null, unique]
+
+  - name: dim_classification
+    description: "IPC classification phases 1-5."
+    columns:
+      - name: classification_key
+        tests: [not_null, unique]
+      - name: phase_name
+        tests: [not_null]
+
+  - name: dim_production_system
+    description: "Production system types."
+    columns:
+      - name: production_system_key
+        tests: [not_null, unique]
+
+  - name: gold_dim_farm_practice
+    description: "Farm practice dimension."
+    columns:
+      - name: farm_practice_key
+        tests: [not_null, unique]
+
+  - name: dim_soil
+    description: "Soil depth-layer reference."
+    columns:
+      - name: soil_key
+        tests: [not_null, unique]
+
+  - name: dim_emission_category
+    description: "GHG emission category."
+    columns:
+      - name: emission_category_key
+        tests: [not_null, unique]
+
+  - name: dim_land_use
+    description: "Land use classification."
+    columns:
+      - name: land_use_key
+        tests: [not_null, unique]
+
+  - name: gold_dim_indicator
+    description: "Indicator dimension."
+    columns:
+      - name: indicator_key
+        tests: [not_null, unique]
+      - name: indicator_name
+        tests: [not_null]
+
+  - name: dim_status
+    description: "Collection and quality status."
+    columns:
+      - name: status_key
+        tests: [not_null, unique]
+
+  - name: dim_trade_flow
+    description: "Trade flow direction."
+    columns:
+      - name: trade_flow_key
+        tests: [not_null, unique]
+
+  - name: dim_breed_variety
+    description: "Crop variety and livestock breed."
+    columns:
+      - name: breed_variety_key
+        tests: [not_null, unique]
+
+  - name: dim_sensor
+    description: "IoT/environmental sensor."
+    columns:
+      - name: sensor_key
+        tests: [not_null, unique]
+
+  - name: dim_research_project
+    description: "Research project from OpenAire."
+    columns:
+      - name: research_project_key
+        tests: [not_null, unique]
+
+  - name: dim_water
+    description: "Water source and access type."
+    columns:
+      - name: water_key
+        tests: [not_null, unique]
+
+  - name: dim_currency
+    description: "Currency dimension from FEWS prices."
+    columns:
+      - name: currency_key
+        tests: [not_null, unique]
+      - name: currency_code
+        tests: [not_null]
+
+  # BRIDGE TABLES
+  - name: bridge_season_calendar
+    description: "Maps seasons to time keys."
+    columns:
+      - name: season_key
+        tests: [not_null]
+      - name: time_key
+        tests: [not_null]
+
+  - name: bridge_geography_aez
+    description: "Links geography to AEZ codes."
+    columns:
+      - name: geo_key
+        tests: [not_null]
+
+  - name: bridge_household_crop
+    description: "Households to crops grown (pending ILRI staging)."
+
+  - name: bridge_household_livestock
+    description: "Households to livestock kept (pending ILRI staging)."
+
+  - name: bridge_household_disease
+    description: "Households to diseases reported (pending ILRI staging)."
+
+  - name: bridge_project_organisation
+    description: "Research projects to organisations."
+
+  # FACT TABLES
+  - name: fct_food_security
+    description: "IPC population estimates."
+    columns:
+      - name: food_security_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_production
+    description: "Agricultural production quantities."
+    columns:
+      - name: production_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_prices
+    description: "Commodity market prices from FEWS."
+    columns:
+      - name: price_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_trade
+    description: "Cross-border trade flows from FEWS."
+    columns:
+      - name: trade_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_animal_health
+    description: "Animal health metrics (pending ILRI staging)."
+
+  - name: fct_household
+    description: "Household survey metrics (pending ILRI staging)."
+
+  - name: fct_gender_inclusion
+    description: "Gender control shares (pending ILRI staging)."
+
+  - name: fct_emissions
+    description: "GHG emission pathways from ClimateWatch."
+    columns:
+      - name: emission_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_climate
+    description: "Climate metrics from fact_climate."
+    columns:
+      - name: climate_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_soil_health
+    description: "Soil health from ISRIC and ISDA."
+    columns:
+      - name: soil_health_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_hdi
+    description: "Human Development Index."
+    columns:
+      - name: hdi_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_technology
+    description: "Technology adoption."
+    columns:
+      - name: technology_fact_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_vegetation
+    description: "NDVI from ARCGIS satellite data."
+    columns:
+      - name: vegetation_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_market_access
+    description: "Market access."
+    columns:
+      - name: market_access_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_economics
+    description: "Household economics (pending ILRI staging)."
+
+  - name: fct_investment
+    description: "Enterprise investment."
+    columns:
+      - name: investment_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_researchers
+    description: "Researcher counts from OpenAire."
+    columns:
+      - name: researcher_fact_key
+        tests: [not_null, unique]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_research_expenditure
+    description: "R and D expenditure from OECD Africa."
+    columns:
+      - name: research_exp_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_land_use
+    description: "Land use areas."
+    columns:
+      - name: land_use_fact_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_land_degradation
+    description: "Land degradation (pending dedicated source)."
+
+  - name: fct_fertilizer
+    description: "Fertilizer use from FAOSTAT."
+    columns:
+      - name: fertilizer_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_pesticide
+    description: "Pesticide use from FAOSTAT."
+    columns:
+      - name: pesticide_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_air_quality
+    description: "Air quality from Nakuru sensor archive."
+    columns:
+      - name: air_quality_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_biodiversity
+    description: "Species occurrence from GBIF Africa."
+    columns:
+      - name: biodiversity_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_protected_areas
+    description: "Protected areas from ARCGIS."
+    columns:
+      - name: protected_area_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_germplasm
+    description: "Germplasm accessions."
+    columns:
+      - name: germplasm_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_food_balance
+    description: "Food balance from FAOSTAT."
+    columns:
+      - name: food_balance_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_value_chain
+    description: "Value chain shares."
+    columns:
+      - name: value_chain_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_forestry
+    description: "Forestry from FAOSTAT fao_rl."
+    columns:
+      - name: forestry_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_machinery
+    description: "Machinery stock from FAOSTAT fao_ti."
+    columns:
+      - name: machinery_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_employment
+    description: "Employment counts (pending labour source)."
+
+  - name: fct_population_dynamics
+    description: "Population from ArcGIS ward demographics."
+    columns:
+      - name: population_fact_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  - name: fct_humanitarian
+    description: "Humanitarian values from fact_humanitarian."
+    columns:
+      - name: humanitarian_key
+        tests: [not_null, unique]
+      - name: geo_key
+        tests: [not_null]
+      - name: source_key
+        tests: [not_null]
+
+  # AGGREGATES
+  - name: agg_food_security_monthly
+    description: "Pre-aggregated food security for dashboards."
+
+  - name: agg_production_annual
+    description: "Pre-aggregated annual production for dashboards."
