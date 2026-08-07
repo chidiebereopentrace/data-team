@@ -4,9 +4,6 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from docx import Document
-from docx.shared import Inches, Pt
-
 
 def build_docx(
     *,
@@ -18,6 +15,10 @@ def build_docx(
     acf_summary: str | None = None,
     filename: str = "report.docx",
 ) -> tuple[bytes, str]:
+    # Lazy import — avoids loading python-docx at Railway startup when no export runs.
+    from docx import Document
+    from docx.shared import Inches, Pt
+
     doc = Document()
     doc.add_heading(title, level=0)
 
