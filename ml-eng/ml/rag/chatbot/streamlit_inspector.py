@@ -46,6 +46,8 @@ INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "acf_explanation",
     "acf_claim_level",
     "acf_question_type",
+    "artifacts",
+    "langfuse_trace_id",
     "_backend_mode",
     "_http_trace",
 )
@@ -64,6 +66,37 @@ PRESET_QUERIES: list[tuple[str, str, dict[str, Any]]] = [
                 "country": "Ghana",
                 "plan_type": "Farmers",
                 "category": "Farmers",
+            },
+        },
+    ),
+    (
+        "Swahili lang",
+        "Habari, nipe taarifa za kilimo Kenya.",
+        {
+            "plan_type": "Farmers",
+            "category": "Farmers",
+            "user_profile": {
+                "country": "Kenya",
+                "plan_type": "Farmers",
+                "category": "Farmers",
+            },
+        },
+    ),
+    (
+        "Pidgin lang",
+        "Wetin be the maize price for Abuja?",
+        {},
+    ),
+    (
+        "Agri export CSV",
+        "Export maize production data for Nigeria as a CSV",
+        {
+            "plan_type": "Agribusinesses",
+            "category": "Agribusinesses",
+            "user_profile": {
+                "country": "Nigeria",
+                "plan_type": "Agribusinesses",
+                "category": "Agribusinesses",
             },
         },
     ),
@@ -132,8 +165,12 @@ def normalize_http_response(
     query: str,
     kwargs: dict[str, Any],
 ) -> dict[str, Any]:
-    """Map POST /query JSON into a shape the inspector can render (counts only)."""
-    trace = _as_dict(payload.get("trace"))
+    """Map POST /v1/chat/{plan} JSON (ChatSuccessResponse) into inspector shape.
+
+    Production response fields: assistant_message, citations, acf (nested ACFSignal),
+    session_id, usage, request_id, created_at, plan_type, langfuse_trace_id, artifacts.
+    There is no 'trace' field in production — retrieval counts are unavailable in HTTP mode.
+    """
     usage_raw = payload.get("usage")
     usage: dict[str, int] = {}
     if isinstance(usage_raw, dict):
@@ -143,31 +180,43 @@ def normalize_http_response(
             "total_tokens": int(usage_raw.get("total_tokens") or 0),
         }
 
-    plan_type = kwargs.get("plan_type")
-    category = kwargs.get("category")
+    # ACF is a nested ACFSignal object in production; flatten to the keys
+    # render_metrics_row already reads (acf_band, acf_score, acf_explanation, …).
+    acf = _as_dict(payload.get("acf"))
+    # plan_type echoed back by the API; fall back to kwargs when absent.
+    plan_type = payload.get("plan_type") or kwargs.get("plan_type")
     user_profile = kwargs.get("user_profile")
 
     return {
-        "answer": payload.get("answer") or "",
+        "answer": payload.get("assistant_message") or "",
         "citations": payload.get("citations") or [],
         "error": payload.get("error"),
         "session_id": payload.get("session_id"),
         "usage": usage,
-        "decomposition": trace.get("decomposition") or {},
-        "bq_table_candidates": [None] * int(trace.get("bq_table_candidates_count") or 0),
-        "vector_news_results": [None] * int(trace.get("vector_news_count") or 0),
-        "vector_academic_results": [None] * int(trace.get("vector_academic_count") or 0),
-        "bq_results": [],
-        "vector_ota_results": [],
-        "merged_context": [None] * int(trace.get("merged_context_count") or 0),
-        "reranked_context": [None] * int(trace.get("reranked_context_count") or 0),
-        "web_results": [],
         "latency_ms": latency_ms,
         "plan_type": plan_type,
-        "category": category,
+        "category": _as_dict(user_profile).get("category"),
         "user_profile": user_profile,
+        "langfuse_trace_id": payload.get("langfuse_trace_id"),
+        "artifacts": payload.get("artifacts") or [],
+        # ACF flattened — mirrors the flat keys consumed by render_metrics_row.
+        "acf_band": acf.get("band") or "",
+        "acf_band_label": acf.get("band_label") or "",
+        "acf_score": acf.get("score"),
+        "acf_explanation": acf.get("explanation") or acf.get("note") or "",
+        "acf_claim_level": acf.get("claim_level"),
+        "acf_question_type": acf.get("question_type"),
+        # HTTP mode: no decomposition or retrieval counts from this endpoint.
+        "decomposition": {},
+        "bq_table_candidates": [],
+        "vector_news_results": [],
+        "vector_academic_results": [],
+        "bq_results": [],
+        "vector_ota_results": [],
+        "merged_context": [],
+        "reranked_context": [],
+        "web_results": [],
         "_backend_mode": "http_api",
-        "_http_trace": trace,
         "_query": query,
     }
 
@@ -181,30 +230,26 @@ def query_via_http_api(
     trace_id: str | None = None,
     timeout_s: float = 300.0,
 ) -> dict[str, Any]:
-    """POST /query and return a normalized inspector result dict."""
+    """POST /v1/chat/{plan} and return a normalized inspector result dict.
+
+    Targets the plan-scoped production routes (ML-034) which return ChatSuccessResponse.
+    Plan slug is derived from kwargs['plan_type']; defaults to 'integrated' when unset.
+    ChatRequest has extra='forbid' — only message, session_id, user_profile are sent.
+    """
     import time
 
-    url = base_url.rstrip("/") + "/query"
-    body: dict[str, Any] = {
-        "query": query,
-        "include_trace": True,
-    }
+    # Derive plan slug from kwargs['plan_type']; lowercase maps all plan IDs to slugs.
+    plan_type = str(kwargs.get("plan_type") or "").strip()
+    plan_slug = plan_type.lower() if plan_type else "integrated"
+    url = base_url.rstrip("/") + f"/v1/chat/{plan_slug}"
+
+    # ChatRequest fields only — no include_trace, no internal top_k params.
+    body: dict[str, Any] = {"message": query}
     if session_id:
         body["session_id"] = session_id
     profile = kwargs.get("user_profile")
     if isinstance(profile, dict) and profile.get("plan_type") and profile.get("category"):
         body["user_profile"] = profile
-    for key in (
-        "time_start_override",
-        "time_end_override",
-        "news_top_k",
-        "academic_top_k",
-        "bq_top_k",
-        "rerank_top_k",
-        "ota_top_k",
-    ):
-        if key in kwargs and kwargs[key] is not None:
-            body[key] = kwargs[key]
 
     t0 = time.perf_counter()
     headers: dict[str, str] = {}
@@ -215,7 +260,7 @@ def query_via_http_api(
     resp.raise_for_status()
     payload = resp.json()
     if not isinstance(payload, dict):
-        raise ValueError(f"Unexpected /query response type: {type(payload)!r}")
+        raise ValueError(f"Unexpected /v1/chat response type: {type(payload)!r}")
     result = normalize_http_response(payload, latency_ms=latency_ms, query=query, kwargs=kwargs)
     return result
 
@@ -287,6 +332,9 @@ def render_flow_strip(route: str, result: dict[str, Any]) -> None:
         st.warning(
             "HTTP API mode: chunk lists are counts only. Use **In-process** backend for full retrieval detail."
         )
+    trace_id = str(result.get("langfuse_trace_id") or "").strip()
+    if trace_id:
+        st.caption(f"Langfuse trace: `{trace_id}`")
 
 
 def render_request_context(
@@ -450,6 +498,44 @@ def render_raw_json(result: dict[str, Any]) -> None:
         st.json(slim)
 
 
+def render_artifacts(result: dict[str, Any]) -> None:
+    """Render export artifacts (CSV / chart / DOCX / PDF) with download links.
+
+    Artifacts are only present on Agribusinesses and Integrated plan responses
+    (ML-030). Each ArtifactItem has: id, kind, filename, mime_type, url,
+    summary, citation_ids, byte_size.
+
+    URL handling (Option A):
+      - https:// URLs  → st.link_button (clickable download)
+      - file://  URLs  → st.code (dev-only; can't open cross-origin in browser)
+    """
+    artifacts = _as_list(result.get("artifacts"))
+    real = [a for a in artifacts if isinstance(a, dict)]
+    if not real:
+        return
+
+    st.subheader(f"Export artifacts ({len(real)})")
+    for art in real:
+        kind = str(art.get("kind") or "file").upper()
+        fname = str(art.get("filename") or "export")
+        url = str(art.get("url") or "").strip()
+        summary = str(art.get("summary") or "")
+        byte_size = art.get("byte_size")
+        size_str = f"{byte_size:,} bytes" if isinstance(byte_size, int) else ""
+
+        header = f"**[{kind}]** {fname}" + (f"  ·  {size_str}" if size_str else "")
+        with st.expander(header, expanded=True):
+            if summary:
+                st.caption(summary)
+            if url.startswith("https://"):
+                st.link_button(f"Download {fname}", url)
+            elif url.startswith("file://"):
+                st.caption("Local dev artifact — copy path to access:")
+                st.code(url)
+            else:
+                st.caption(f"URL: {url or '(none)'}")
+
+
 def render_pipeline_inspector(
     result: dict[str, Any],
     *,
@@ -481,6 +567,8 @@ def render_pipeline_inspector(
 
         st.subheader("Retrieved data by source")
         render_retrieval_tabs(result)
+
+        render_artifacts(result)
 
         if backend_mode == "http_api" and result.get("_http_trace"):
             st.subheader("HTTP trace (counts)")
