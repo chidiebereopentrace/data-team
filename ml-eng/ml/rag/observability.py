@@ -268,7 +268,12 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
     bq_n = len(result.get("bq_results") or [])
     web_n = len(result.get("web_results") or [])
     answer = str(result.get("answer") or "").strip()
-    is_shortcut = bool(result.get("is_meta_query") or result.get("is_product_query"))
+    is_shortcut = bool(
+        result.get("is_meta_query")
+        or result.get("is_product_query")
+        or result.get("is_greeting_query")
+        or result.get("is_out_of_scope_query")
+    )
     empty_retrieval = (not is_shortcut) and (news_n + academic_n + ota_n + bq_n + web_n == 0)
     web_status = result.get("web_fallback_status")
     summary: dict[str, Any] = {
@@ -337,6 +342,10 @@ def infer_rag_route(result: dict[str, Any]) -> str:
         return "meta"
     if result.get("is_product_query"):
         return "product"
+    if result.get("is_greeting_query"):
+        return "greeting"
+    if result.get("is_out_of_scope_query"):
+        return "out_of_scope"
     if result.get("insufficient_context"):
         return "insufficient"
     if result.get("web_results"):

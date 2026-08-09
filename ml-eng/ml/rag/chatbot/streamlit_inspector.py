@@ -117,6 +117,10 @@ def infer_pipeline_route(result: dict[str, Any]) -> str:
         return "meta"
     if result.get("is_product_query"):
         return "product"
+    if result.get("is_greeting_query"):
+        return "greeting"
+    if result.get("is_out_of_scope_query"):
+        return "out_of_scope"
     if result.get("insufficient_context"):
         return "insufficient"
     if result.get("web_results"):
@@ -129,6 +133,8 @@ def _flow_narrative(route: str) -> str:
         return "decompose → generate_meta → END"
     if route == "product":
         return "decompose → generate_product → END"
+    if route in ("greeting", "out_of_scope"):
+        return "decompose → generate_social → END"
     if route == "insufficient":
         return (
             "decompose → parallel_retrieve → bq_retrieve → merge → rerank "
