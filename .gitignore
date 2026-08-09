@@ -108,3 +108,5 @@ ml-eng/langfuse/
 data-eng/dbt/target/
 data-eng/dbt/dbt_packages/
 data-eng/dbt/logs/
+
+ml-eng/docs/
