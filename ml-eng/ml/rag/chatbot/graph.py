@@ -24,6 +24,12 @@ from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.geo_policy import effective_geo_override
 from ml.rag.chatbot.plan_policy import apply_plan_decomposition_gates
 from ml.rag.chatbot.product_knowledge import is_product_query
+from ml.rag.chatbot.query_gate import (
+    classify_social_query,
+    generate_social_answer,
+    is_greeting_query,
+    is_out_of_scope_query,
+)
 from ml.rag.chatbot.bq_table_matcher import match_bq_tables_from_descriptions
 from ml.rag.chatbot.generator import filter_context_items, generate, is_usable_context_item
 from ml.rag.chatbot.query_decomposer import (
@@ -302,6 +308,8 @@ class RAGGraphState(TypedDict, total=False):
     chat_history: list[dict[str, Any]] | None  # legacy: verbatim-only, no summary
     is_meta_query: bool | None
     is_product_query: bool | None
+    is_greeting_query: bool | None
+    is_out_of_scope_query: bool | None
     plan_type: str | None
     category: str | None
     user_profile: dict[str, Any] | None
@@ -335,7 +343,20 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
         meta = is_meta_query(q)
         product = (not meta) and is_product_query(q, dec)
-        route_candidate = "meta" if meta else ("product" if product else "full_rag")
+        greeting = (not meta) and (not product) and is_greeting_query(q)
+        out_of_scope = (
+            (not meta) and (not product) and (not greeting) and is_out_of_scope_query(q, dec)
+        )
+        if meta:
+            route_candidate = "meta"
+        elif product:
+            route_candidate = "product"
+        elif greeting:
+            route_candidate = "greeting"
+        elif out_of_scope:
+            route_candidate = "out_of_scope"
+        else:
+            route_candidate = "full_rag"
         answer_lang = detect_answer_language(q)
         export_intent = detect_export_intent(q)
         update_current_span_metadata(
@@ -349,6 +370,8 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             "decomposition": dec,
             "is_meta_query": meta,
             "is_product_query": product,
+            "is_greeting_query": greeting,
+            "is_out_of_scope_query": out_of_scope,
             "answer_lang": answer_lang,
             "export_intent": export_intent,
         }
@@ -1027,6 +1050,28 @@ def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
     }
 
 
+def node_generate_social(state: RAGGraphState) -> dict[str, Any]:
+    """Short-circuit greetings / out-of-scope. No retrieval and no chat-memory injection."""
+    query = state.get("query") or ""
+    answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
+    kind = classify_social_query(query, state.get("decomposition"))
+    if kind is None:
+        kind = "greeting" if state.get("is_greeting_query") else "out_of_scope"
+    route = "greeting" if kind == "greeting" else "out_of_scope"
+    with observed_span("generate_social", input_data={"query": str(query)[:200]}):
+        update_current_span_metadata({"answer_lang": answer_lang, "route": route})
+        answer = generate_social_answer(kind, query, answer_lang=answer_lang)
+
+    return {
+        "answer": answer,
+        "citations": [],
+        "answer_lang": answer_lang,
+        "is_greeting_query": kind == "greeting",
+        "is_out_of_scope_query": kind == "out_of_scope",
+        **acf_result_to_state(curated_product_acf()),
+    }
+
+
 def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
     """Short-circuit node for OpenTrace product questions. Uses product KB, no retrieval."""
     from ml.rag.chatbot.product_knowledge import generate_product_answer
@@ -1078,6 +1123,7 @@ def build_graph():
     graph.add_node("export", node_export)
     graph.add_node("generate_meta", node_generate_meta)
     graph.add_node("generate_product", node_generate_product)
+    graph.add_node("generate_social", node_generate_social)
 
     graph.add_edge(START, "decompose")
 
@@ -1086,6 +1132,8 @@ def build_graph():
             return "generate_meta"
         if state.get("is_product_query"):
             return "generate_product"
+        if state.get("is_greeting_query") or state.get("is_out_of_scope_query"):
+            return "generate_social"
         return "parallel_retrieve"
 
     graph.add_conditional_edges("decompose", _route_after_decompose)
@@ -1099,6 +1147,7 @@ def build_graph():
     graph.add_edge("insufficient_context", END)
     graph.add_edge("generate_meta", END)
     graph.add_edge("generate_product", END)
+    graph.add_edge("generate_social", END)
 
     return graph.compile()
 

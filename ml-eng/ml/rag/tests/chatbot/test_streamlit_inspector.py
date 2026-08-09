@@ -12,6 +12,14 @@ def test_infer_pipeline_route_product() -> None:
     assert infer_pipeline_route({"is_product_query": True}) == "product"
 
 
+def test_infer_pipeline_route_greeting() -> None:
+    assert infer_pipeline_route({"is_greeting_query": True}) == "greeting"
+
+
+def test_infer_pipeline_route_out_of_scope() -> None:
+    assert infer_pipeline_route({"is_out_of_scope_query": True}) == "out_of_scope"
+
+
 def test_infer_pipeline_route_insufficient() -> None:
     assert infer_pipeline_route({"insufficient_context": True}) == "insufficient"
 

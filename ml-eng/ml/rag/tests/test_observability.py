@@ -204,6 +204,14 @@ def test_infer_rag_route_meta() -> None:
     assert infer_rag_route({"is_meta_query": True}) == "meta"
 
 
+def test_infer_rag_route_greeting() -> None:
+    assert infer_rag_route({"is_greeting_query": True}) == "greeting"
+
+
+def test_infer_rag_route_out_of_scope() -> None:
+    assert infer_rag_route({"is_out_of_scope_query": True}) == "out_of_scope"
+
+
 def test_infer_rag_route_full_rag() -> None:
     assert infer_rag_route({"vector_news_results": [{"content": "x"}]}) == "full_rag"
 
