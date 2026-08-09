@@ -145,9 +145,12 @@ models:
       - climatewatch_climate_health_impacts
 
   # --- soil_and_land ---
-  - path: soil_and_land/stg_isric_isda_soil.sql
+  - path: soil_and_land/stg_isric_africa_soil.sql
     tables:
       - isric_africa_soil_data
+  - path: soil_and_land/stg_isda_soil_enriched.sql
+    tables:
+      - enriched_isda_soil_property_Africa
   - path: soil_and_land/stg_unccd_land_degradation.sql
     tables:
       - unccd_land_degradation_bulk
