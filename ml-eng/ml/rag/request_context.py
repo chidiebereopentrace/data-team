@@ -51,6 +51,13 @@ def _profile_dict(user_profile: UserProfile | dict[str, Any] | None) -> dict[str
     return dict(user_profile)
 
 
+def _blob_str(blob: dict[str, Any], key: str) -> str | None:
+    raw = blob.get(key)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
 def effective_chat_history_messages(
     chat_history: list[Any] | None,
     conversation_history: list[Any] | None,
@@ -87,7 +94,7 @@ def resolve_request_context(
     Resolve plan tier, category persona, geo profile, and client history from a request.
 
     plan_type and category come from user_profile when present.
-    category fallback: session blob when plan fields omitted but session_id is set.
+    When omitted, fall back to session blob (category, plan_type, country) if session_id is set.
 
     injected_plan_type: when set (by plan-scoped routes such as POST /v1/chat/farmers),
         overrides any plan_type in user_profile. The route owns the tier; the payload
@@ -102,13 +109,20 @@ def resolve_request_context(
         plan_type = _normalize_plan_type(profile.get("plan_type"))
     category = _normalize_category(profile.get("category"))
 
-    if category is None and use_session_category_fallback:
+    if use_session_category_fallback:
         sid = (session_id or "").strip()
-        if sid:
+        if sid and (category is None or plan_type is None or country is None):
             blob = get_session_blob(sid) or {}
-            raw = blob.get("category")
-            if isinstance(raw, str) and is_valid_category(raw):
-                category = raw.strip()
+            if category is None:
+                raw_cat = _blob_str(blob, "category")
+                if raw_cat and is_valid_category(raw_cat):
+                    category = raw_cat
+            if plan_type is None and injected_plan_type is None:
+                raw_plan = _blob_str(blob, "plan_type")
+                if raw_plan and is_valid_plan_type(raw_plan):
+                    plan_type = raw_plan
+            if country is None:
+                country = _blob_str(blob, "country")
 
     geo_profile: dict[str, Any] | None = None
     if plan_type is not None or category is not None or country is not None:

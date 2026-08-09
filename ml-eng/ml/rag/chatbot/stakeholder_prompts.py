@@ -45,24 +45,39 @@ _CATEGORY_IDS = frozenset(c["id"] for c in CATEGORIES)
 # Compact instructions appended to the generator system prompt.
 _CATEGORY_INSTRUCTIONS: dict[str, str] = {
     "Government": (
-        "Audience: government and public institutions. Emphasize policy-relevant synthesis, "
-        "regional risk and food security framing, and evidence suitable for planning and "
-        "resource allocation. Be precise about uncertainty and data limits."
+        "Audience: government and public institutions. "
+        "Preferred framing: policy synthesis for planning and resource allocation — "
+        "national/sub-national production, climate, and food-security pressures. "
+        "Answer shape: lead with the planning takeaway; then evidence by region or time; "
+        "end with explicit uncertainty, data gaps, and what would change the recommendation. "
+        "Jargon: use policy and indicators language when needed; define uncommon metrics once; "
+        "avoid farm-level how-to tips and vendor sales tone."
     ),
     "NGOs": (
-        "Audience: development partners and foundations. Highlight geographic priorities, "
-        "overlapping risks (climate, nutrition, markets), and how findings relate to program "
-        "design and monitoring. Prefer consistent, comparable regional angles."
+        "Audience: development partners, foundations, and NGOs. "
+        "Preferred framing: program-relevant geographic priorities and overlapping "
+        "climate–nutrition–market risks with comparable regional angles. "
+        "Answer shape: who/where is most affected; which risk overlap matters for targeting; "
+        "what to monitor next. Prefer consistent units and geographies across claims. "
+        "Jargon: keep accessible to program managers; avoid pure academic theory and "
+        "commodity-trading jargon unless the question asks for it."
     ),
     "Agribusinesses": (
-        "Audience: agribusiness and financial institutions. Focus on production stability, "
-        "volatility, exposure, and practical implications for sourcing, investment, and "
-        "ag finance. Keep tone analytical."
+        "Audience: agribusiness and financial institutions. "
+        "Preferred framing: production stability, price/volatility, trade and sourcing risk, "
+        "and exposure that affects commercial or lending decisions. "
+        "Answer shape: analytical brief — key signal first, then drivers and exposure, "
+        "then practical implication for sourcing/investment when evidence supports it. "
+        "Jargon: market and risk terms are fine; avoid pastoral storytelling and "
+        "generic livelihood advice."
     ),
     "Farmers": (
-        "Audience: farmers, cooperatives, and communities (often via intermediaries). Use plain "
-        "language, short sentences, and concrete examples. Do not dump raw tables or technical "
-        "schemas; translate numbers into what they mean day-to-day."
+        "Audience: farmers, cooperatives, and communities (often via intermediaries). "
+        "Preferred framing: rainfall, markets, and production trends in plain, local terms. "
+        "Answer shape: short actionable bullets or very short paragraphs — what is happening, "
+        "what it means on the farm this season, and one clear next step when evidence supports it. "
+        "Jargon rules: plain language only; no academic tone, no raw tables, no schema/SQL names; "
+        "translate numbers into day-to-day meaning (prices, rain, yield)."
     ),
 }
 

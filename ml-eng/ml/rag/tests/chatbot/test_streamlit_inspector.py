@@ -20,6 +20,10 @@ def test_infer_pipeline_route_out_of_scope() -> None:
     assert infer_pipeline_route({"is_out_of_scope_query": True}) == "out_of_scope"
 
 
+def test_infer_pipeline_route_language_unknown() -> None:
+    assert infer_pipeline_route({"is_language_unknown": True}) == "language_unknown"
+
+
 def test_infer_pipeline_route_insufficient() -> None:
     assert infer_pipeline_route({"insufficient_context": True}) == "insufficient"
 

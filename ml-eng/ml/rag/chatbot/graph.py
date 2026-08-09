@@ -16,13 +16,18 @@ from ml.rag.chatbot.answer_language import (
     detect_answer_language,
     detect_canned_insufficient_lang,
     insufficient_context_answer,
+    language_unclear_answer,
 )
+from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.ofia import infer_source_tier
 from ml.rag.chatbot.export_intent import EXPORT_UPGRADE_MESSAGE, detect_export_intent
 from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.geo_policy import effective_geo_override
-from ml.rag.chatbot.plan_policy import apply_plan_decomposition_gates
+from ml.rag.chatbot.plan_policy import (
+    apply_category_domain_hints,
+    apply_plan_decomposition_gates,
+)
 from ml.rag.chatbot.product_knowledge import is_product_query
 from ml.rag.chatbot.query_gate import (
     classify_social_query,
@@ -310,6 +315,7 @@ class RAGGraphState(TypedDict, total=False):
     is_product_query: bool | None
     is_greeting_query: bool | None
     is_out_of_scope_query: bool | None
+    is_language_unknown: bool | None
     plan_type: str | None
     category: str | None
     user_profile: dict[str, Any] | None
@@ -324,7 +330,7 @@ class RAGGraphState(TypedDict, total=False):
     acf_config_version: str | None
     acf_claim_level: str | None
     acf_question_type: str | None
-    # Soft answer-language tag (en|non_en|ar|am|mixed) — Langfuse + generation
+    # Named answer-language tag (en|sw|fr|pcm|ar|am|ig|…|mixed|unknown)
     answer_lang: str | None
     # Session context — Sprint 1, Week 2 (session isolation)
     session_id: str | None
@@ -341,11 +347,21 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
         country = str((profile or {}).get("country") or "").strip() or None
         dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
+        category = str(state.get("category") or (profile or {}).get("category") or "").strip() or None
+        dec = apply_category_domain_hints(dec, category)
         meta = is_meta_query(q)
         product = (not meta) and is_product_query(q, dec)
         greeting = (not meta) and (not product) and is_greeting_query(q)
         out_of_scope = (
             (not meta) and (not product) and (not greeting) and is_out_of_scope_query(q, dec)
+        )
+        answer_lang = detect_answer_language(q)
+        lang_unknown = (
+            (not meta)
+            and (not product)
+            and (not greeting)
+            and (not out_of_scope)
+            and answer_lang == "unknown"
         )
         if meta:
             route_candidate = "meta"
@@ -355,9 +371,10 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             route_candidate = "greeting"
         elif out_of_scope:
             route_candidate = "out_of_scope"
+        elif lang_unknown:
+            route_candidate = "language_unknown"
         else:
             route_candidate = "full_rag"
-        answer_lang = detect_answer_language(q)
         export_intent = detect_export_intent(q)
         update_current_span_metadata(
             {
@@ -372,6 +389,7 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             "is_product_query": product,
             "is_greeting_query": greeting,
             "is_out_of_scope_query": out_of_scope,
+            "is_language_unknown": lang_unknown,
             "answer_lang": answer_lang,
             "export_intent": export_intent,
         }
@@ -943,6 +961,22 @@ def _route_after_web_fallback(state: RAGGraphState) -> str:
     return "generate"
 
 
+def node_generate_language_help(state: RAGGraphState) -> dict[str, Any]:
+    """Short-circuit when query language cannot be named. No retrieval, no memory."""
+    query = state.get("query") or ""
+    answer_lang = str(state.get("answer_lang") or "unknown")
+    with observed_span("generate_language_help", input_data={"query": str(query)[:200]}):
+        update_current_span_metadata({"answer_lang": answer_lang, "route": "language_unknown"})
+        answer = language_unclear_answer()
+    return {
+        "answer": answer,
+        "citations": [],
+        "answer_lang": answer_lang,
+        "is_language_unknown": True,
+        **acf_result_to_state(curated_product_acf()),
+    }
+
+
 def node_generate(state: RAGGraphState) -> dict[str, Any]:
     query = state.get("query") or ""
     context = filter_context_items(state.get("reranked_context") or [])
@@ -953,15 +987,29 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
     has_mem = (isinstance(cs, str) and cs.strip()) or (
         isinstance(rt, list) and len(rt) > 0
     )
+    dec_dict = dec if isinstance(dec, dict) else None
     if has_mem:
-        gkw["conversation_summary"] = cs if isinstance(cs, str) else ""
-        gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
+        if memory_relevant_for_query(
+            query,
+            cs if isinstance(cs, str) else "",
+            list(rt) if isinstance(rt, list) else None,
+            dec_dict,
+        ):
+            gkw["conversation_summary"] = cs if isinstance(cs, str) else ""
+            gkw["recent_turns"] = list(rt) if isinstance(rt, list) else []
     elif state.get("chat_history"):
-        gkw["chat_history"] = state.get("chat_history")
+        from ml.rag.chat_history import normalize_messages as _norm_msgs
+
+        hist = _norm_msgs(state.get("chat_history"))
+        hist_text = "\n".join(m.get("content") or "" for m in hist)
+        if memory_relevant_for_query(query, hist_text, hist, dec_dict):
+            gkw["chat_history"] = state.get("chat_history")
     if state.get("plan_type"):
         gkw["plan_type"] = state.get("plan_type")
     if state.get("category"):
         gkw["category"] = state.get("category")
+    if state.get("answer_lang"):
+        gkw["answer_lang"] = state.get("answer_lang")
     gen_result = generate(query, context, **gkw)
 
     # ACF Path B is computed post-cite inside generate/_finalize_generation_result.
@@ -1124,6 +1172,7 @@ def build_graph():
     graph.add_node("generate_meta", node_generate_meta)
     graph.add_node("generate_product", node_generate_product)
     graph.add_node("generate_social", node_generate_social)
+    graph.add_node("generate_language_help", node_generate_language_help)
 
     graph.add_edge(START, "decompose")
 
@@ -1134,6 +1183,8 @@ def build_graph():
             return "generate_product"
         if state.get("is_greeting_query") or state.get("is_out_of_scope_query"):
             return "generate_social"
+        if state.get("is_language_unknown"):
+            return "generate_language_help"
         return "parallel_retrieve"
 
     graph.add_conditional_edges("decompose", _route_after_decompose)
@@ -1148,6 +1199,7 @@ def build_graph():
     graph.add_edge("generate_meta", END)
     graph.add_edge("generate_product", END)
     graph.add_edge("generate_social", END)
+    graph.add_edge("generate_language_help", END)
 
     return graph.compile()
 

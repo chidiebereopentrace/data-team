@@ -98,7 +98,7 @@ def test_summarize_includes_acf_and_answer_lang() -> None:
     summary = summarize_rag_result_for_trace(
         {
             "answer": "ok",
-            "answer_lang": "non_en",
+            "answer_lang": "ig",
             "acf_band": "moderate",
             "acf_band_label": "Moderate confidence",
             "acf_score": 62,
@@ -110,7 +110,7 @@ def test_summarize_includes_acf_and_answer_lang() -> None:
             "citations": [{"id": 1}],
         }
     )
-    assert summary["answer_lang"] == "non_en"
+    assert summary["answer_lang"] == "ig"
     assert summary["acf_band"] == "moderate"
     assert summary["acf_score"] == 62
     assert summary["acf_claim_level"] == "claim"
@@ -124,7 +124,7 @@ def test_summarize_detects_answer_lang_from_query_when_missing() -> None:
             "query": "Habari, nipe taarifa za kilimo Kenya.",
         }
     )
-    assert summary.get("answer_lang") == "non_en"
+    assert summary.get("answer_lang") == "sw"
 
 
 def test_build_tags_include_answer_lang_and_acf_band() -> None:
@@ -210,6 +210,10 @@ def test_infer_rag_route_greeting() -> None:
 
 def test_infer_rag_route_out_of_scope() -> None:
     assert infer_rag_route({"is_out_of_scope_query": True}) == "out_of_scope"
+
+
+def test_infer_rag_route_language_unknown() -> None:
+    assert infer_rag_route({"is_language_unknown": True}) == "language_unknown"
 
 
 def test_infer_rag_route_full_rag() -> None:

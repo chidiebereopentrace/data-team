@@ -186,6 +186,43 @@ def normalize_geography_for_filter(geography: list[str] | None) -> list[str]:
     return out
 
 
+def _facet_grounded_in_query(value: str, query: str) -> bool:
+    """True when a geography/entity string is evidenced in the raw user query."""
+    q = (query or "").lower()
+    v = (value or "").strip()
+    if not v or not q:
+        return False
+    vl = v.lower()
+    if vl in q:
+        return True
+    # Canonical country name → any known alias present in the query.
+    for alias, canonical in _COUNTRY_ALIASES.items():
+        if canonical.lower() == vl or canonical == v:
+            if re.search(rf"\b{re.escape(alias)}\b", q):
+                return True
+    # Region / continent labels (kept in entities; geography filter drops them later).
+    if vl in _NON_COUNTRY_GEO and vl in q:
+        return True
+    for region in _NON_COUNTRY_GEO:
+        if region == vl and re.search(rf"\b{re.escape(region)}\b", q):
+            return True
+    return False
+
+
+def _ground_facets_in_query(
+    values: list[str] | None,
+    query: str,
+) -> list[str]:
+    out: list[str] = []
+    for raw in values or []:
+        s = str(raw).strip()
+        if not s:
+            continue
+        if _facet_grounded_in_query(s, query) and s not in out:
+            out.append(s)
+    return out
+
+
 def resolve_news_geo(*, geo_override: str, geography: list[str] | None) -> str | None:
     """Pick at most one country for news filtering; skip continents/regions."""
     countries = resolve_retrieval_geographies(geo_override=geo_override, geography=geography)
@@ -498,6 +535,9 @@ def decompose_query(query: str) -> dict[str, Any]:
         out["time_start"] = ts
         out["time_end"] = te
 
+    # Drop LLM-hallucinated places/entities not evidenced in the user text.
+    out["geography"] = _ground_facets_in_query(out.get("geography"), q)
+    out["entities"] = _ground_facets_in_query(out.get("entities"), q)
     out["geography"] = normalize_geography_for_filter(out.get("geography"))
     out["intent"] = _normalize_intent(out.get("intent"))
     return out
