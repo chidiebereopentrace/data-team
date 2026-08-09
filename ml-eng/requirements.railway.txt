@@ -33,6 +33,11 @@ redis>=5.0.0
 # Token counting (optional)
 tiktoken>=0.5.0
 
+# Chatbot exports (charts / DOCX / PDF)
+matplotlib>=3.7.0
+python-docx>=1.1.0
+reportlab>=4.0.0
+
 # Streamlit QA UI (Railway streamlit service; unused by API image)
 streamlit>=1.28.0
 
