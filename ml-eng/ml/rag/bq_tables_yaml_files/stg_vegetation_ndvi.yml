@@ -1,0 +1,77 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_vegetation_ndvi
+description: Vegetation NDVI grid means.
+grain: grid_id
+entity_type: spatial
+source:
+  layer: staging_dev
+  domain: spatial
+relationships:
+  primary_key:
+    type: logical
+    fields: grid_id
+semantic_role:
+  primary_domain: spatial
+  supports: &id001
+  - ndvi
+  - vegetation
+business_questions_supported:
+- What insights does stg_vegetation_ndvi provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Avoid large geometry unless needed
+columns:
+- name: objectid
+  type: STRING
+  description: objectid
+- name: grid_id
+  type: STRING
+  description: grid id
+- name: ndvi_mean
+  type: STRING
+  description: ndvi mean
+- name: ndvi_mean_secondary
+  type: STRING
+  description: ndvi mean secondary
+- name: shape_area
+  type: STRING
+  description: shape area
+- name: shape_length
+  type: STRING
+  description: shape length
+- name: geometry_wkt
+  type: STRING
+  description: geometry wkt
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: spatial
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_nasa_power
+    'on':
+    - spatial+time
+    how: enrich
+    note: NDVI with climate forcing
+  - table: stg_yield_raw_data
+    'on':
+    - spatial proximity
+    - season
+    how: enrich
+    note: Greenness vs yield (caution)
+  - table: stg_protected_areas
+    'on':
+    - spatial overlap
+    how: enrich
+    note: NDVI inside protected areas
+  companions:
+  - table: stg_ilri_vegetation_feed
+    when: field forage assessments
+    role: enrich_context
+  do_not_join:
+  - table: stg_openaire_projects
+    reason: research projects

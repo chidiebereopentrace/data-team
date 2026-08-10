@@ -1,0 +1,78 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_copernicus_era5
+description: Copernicus ERA5 reanalysis temperature fields.
+grain: lat/lon × time × ensemble
+entity_type: climate
+source:
+  layer: staging_dev
+  domain: climate
+relationships:
+  primary_key:
+    type: logical
+    fields: lat/lon × time × ensemble
+semantic_role:
+  primary_domain: climate
+  supports: &id001
+  - climate
+  - temperature
+  - era5
+business_questions_supported:
+- What insights does stg_copernicus_era5 provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_copernicus_era5`
+- Always include LIMIT
+columns:
+- name: time
+  type: STRING
+  description: time
+- name: valid_time
+  type: STRING
+  description: valid time
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: ensemble_member
+  type: STRING
+  description: ensemble member
+- name: step
+  type: STRING
+  description: step
+- name: surface
+  type: STRING
+  description: surface
+- name: temperature_2m
+  type: FLOAT64
+  description: temperature 2m
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: climate
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_nasa_power
+    'on':
+    - latitude
+    - longitude
+    - time
+    how: compare
+    note: Reanalysis vs POWER
+  - table: stg_yield_raw_data
+    'on':
+    - spatial+season
+    how: enrich
+    note: Temperature stress on yields
+  companions:
+  - table: stg_climatewatch_health
+    when: health impact scenarios
+    role: enrich_context
+  do_not_join:
+  - table: stg_wfp_vampire_prices
+    reason: market prices; different use

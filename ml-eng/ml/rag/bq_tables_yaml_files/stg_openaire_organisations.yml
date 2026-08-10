@@ -1,0 +1,83 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_openaire_organisations
+description: OpenAIRE organisations.
+grain: entity row
+entity_type: research
+source:
+  layer: staging_dev
+  domain: research
+relationships:
+  primary_key:
+    type: logical
+    fields: entity row
+semantic_role:
+  primary_domain: research
+  supports: &id001
+  - research
+  - openaire
+business_questions_supported:
+- What insights does stg_openaire_organisations provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_openaire_organisations`
+- Always include LIMIT
+columns:
+- name: organisation_id
+  type: STRING
+  description: organisation id
+- name: legal_name
+  type: STRING
+  description: legal name
+- name: short_name
+  type: STRING
+  description: short name
+- name: website_url
+  type: STRING
+  description: website url
+- name: country_code
+  type: STRING
+  description: country code
+- name: country_name
+  type: STRING
+  description: country name
+- name: alternative_names
+  type: STRING
+  description: alternative names
+- name: pids
+  type: STRING
+  description: pids
+- name: fetched_at
+  type: STRING
+  description: fetched at
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: research
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_openaire_projects
+    'on':
+    - shared research graph
+    how: enrich
+    note: Orgs with projects
+  - table: stg_openaire_product_links
+    'on':
+    - organisation links
+    how: enrich
+    note: Orgs with products
+  - table: stg_openaire_persons
+    'on':
+    - coauthor/affiliation via links
+    how: enrich
+    note: Orgs with people
+  companions:
+  - table: stg_openaire_data_sources
+    when: hosting repositories
+    role: enrich_context
+  do_not_join:
+  - table: stg_fews_food_security
+    reason: IPC time series

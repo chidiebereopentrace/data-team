@@ -1,0 +1,105 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_ilri_vegetation_feed
+description: ILRI vegetation survey and feed assessment.
+grain: lat/lon or household × record_type
+entity_type: ilri
+source:
+  layer: staging_dev
+  domain: ilri
+relationships:
+  primary_key:
+    type: logical
+    fields: lat/lon or household × record_type
+semantic_role:
+  primary_domain: ilri
+  supports: &id001
+  - feed
+  - vegetation
+  - ilri
+business_questions_supported:
+- What is carrying capacity in surveyed sites?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter record_type
+columns:
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: survey_date
+  type: STRING
+  description: survey date
+- name: quantity_trees
+  type: STRING
+  description: quantity trees
+- name: quantity_shrubs
+  type: STRING
+  description: quantity shrubs
+- name: quantity_grass
+  type: STRING
+  description: quantity grass
+- name: leaves_trees
+  type: STRING
+  description: leaves trees
+- name: leaves_shrubs
+  type: STRING
+  description: leaves shrubs
+- name: leaves_grass
+  type: STRING
+  description: leaves grass
+- name: palatability_trees
+  type: STRING
+  description: palatability trees
+- name: palatability_shrubs
+  type: STRING
+  description: palatability shrubs
+- name: palatability_grass
+  type: STRING
+  description: palatability grass
+- name: carrying_capacity
+  type: STRING
+  description: carrying capacity
+- name: currently_grazing
+  type: STRING
+  description: currently grazing
+- name: photo_id
+  type: STRING
+  description: photo id
+- name: household_id
+  type: STRING
+  description: household id
+- name: agro_climatic_zone_id
+  type: STRING
+  description: agro climatic zone id
+- name: record_type
+  type: STRING
+  description: record type
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: ilri
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_ilri_animal_health
+    'on':
+    - household_id
+    how: enrich
+    note: Feed with animal health
+  - table: stg_vegetation_ndvi
+    'on':
+    - spatial proximity
+    how: compare
+    note: Survey feed vs NDVI (spatial caution)
+  companions:
+  - table: stg_nasa_power
+    when: climate stress on forage
+    role: enrich_context
+  do_not_join:
+  - table: stg_faostat_prices
+    reason: national prices; not plot vegetation

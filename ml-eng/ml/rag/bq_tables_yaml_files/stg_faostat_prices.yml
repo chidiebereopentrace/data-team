@@ -1,0 +1,108 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_prices
+description: FAOSTAT producer prices, CPI, deflators, exchange rates.
+grain: country × product × element × year × month
+entity_type: faostat
+source:
+  layer: staging_dev
+  domain: faostat
+relationships:
+  primary_key:
+    type: logical
+    fields: country × product × element × year × month
+semantic_role:
+  primary_domain: faostat
+  supports: &id001
+  - prices
+  - faostat
+business_questions_supported:
+- What are producer prices for a crop?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter country_name and year
+- Filter element for the metric needed
+- GROUP BY country_name, product_name, year when comparing
+columns:
+- name: area_code
+  type: STRING
+  description: area code
+- name: area_code_m49
+  type: STRING
+  description: area code m49
+- name: country_name
+  type: STRING
+  description: country name
+- name: item_code
+  type: STRING
+  description: item code
+- name: item_code_cpc
+  type: STRING
+  description: item code cpc
+- name: product_name
+  type: STRING
+  description: product name
+- name: element_code
+  type: STRING
+  description: element code
+- name: element
+  type: STRING
+  description: element
+- name: months_code
+  type: STRING
+  description: months code
+- name: months
+  type: STRING
+  description: months
+- name: iso_currency_code
+  type: STRING
+  description: iso currency code
+- name: currency
+  type: STRING
+  description: currency
+- name: year
+  type: INT64
+  description: year
+- name: unit
+  type: STRING
+  description: unit
+- name: value
+  type: FLOAT64
+  description: value
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: faostat
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_fews_market_prices
+    'on':
+    - country≈country_name
+    - product_name
+    - year
+    how: compare
+    note: Watch currency/unit differences
+  - table: stg_wfp_vampire_prices
+    'on':
+    - country≈country_name
+    - product_name
+    - year
+    how: compare
+    note: National vs market retail series
+  - table: stg_faostat_production
+    'on':
+    - country_name
+    - product_name
+    - year
+    how: enrich
+    note: Prices with production
+  companions:
+  - table: stg_africa_gdp_ppp
+    when: real income context
+    role: enrich_context
+  do_not_join:
+  - table: stg_isda_soil_enriched
+    reason: soil long-format; no price grain

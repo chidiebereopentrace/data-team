@@ -1,0 +1,200 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_biodiversity
+description: GBIF occurrences and rarity-80 bird richness layers.
+grain: occurrence or feature
+entity_type: spatial
+source:
+  layer: staging_dev
+  domain: spatial
+relationships:
+  primary_key:
+    type: logical
+    fields: occurrence or feature
+semantic_role:
+  primary_domain: spatial
+  supports: &id001
+  - biodiversity
+  - species
+business_questions_supported:
+- What insights does stg_biodiversity provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Prefer species + country_code filters
+columns:
+- name: gbif_id
+  type: STRING
+  description: gbif id
+- name: dataset_key
+  type: STRING
+  description: dataset key
+- name: occurrence_id
+  type: STRING
+  description: occurrence id
+- name: kingdom
+  type: STRING
+  description: kingdom
+- name: phylum
+  type: STRING
+  description: phylum
+- name: classification
+  type: STRING
+  description: classification
+- name: taxonomic_order
+  type: STRING
+  description: taxonomic order
+- name: family
+  type: STRING
+  description: family
+- name: genus
+  type: STRING
+  description: genus
+- name: species
+  type: STRING
+  description: species
+- name: infraspecific_epithet
+  type: STRING
+  description: infraspecific epithet
+- name: taxon_rank
+  type: STRING
+  description: taxon rank
+- name: scientific_name
+  type: STRING
+  description: scientific name
+- name: verbatim_scientific_name
+  type: STRING
+  description: verbatim scientific name
+- name: country_code
+  type: STRING
+  description: country code
+- name: locality
+  type: STRING
+  description: locality
+- name: state_province
+  type: STRING
+  description: state province
+- name: occurrence_status
+  type: STRING
+  description: occurrence status
+- name: individual_count
+  type: INT64
+  description: individual count
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: coordinate_uncertainty_m
+  type: STRING
+  description: coordinate uncertainty m
+- name: elevation_m
+  type: STRING
+  description: elevation m
+- name: year
+  type: INT64
+  description: year
+- name: month
+  type: INT64
+  description: month
+- name: day
+  type: STRING
+  description: day
+- name: event_date
+  type: STRING
+  description: event date
+- name: basis_of_record
+  type: STRING
+  description: basis of record
+- name: taxon_key
+  type: STRING
+  description: taxon key
+- name: species_key
+  type: STRING
+  description: species key
+- name: ingested_at
+  type: STRING
+  description: ingested at
+- name: feature_name
+  type: STRING
+  description: feature name
+- name: area_km2
+  type: STRING
+  description: area km2
+- name: prop_gadm
+  type: STRING
+  description: prop gadm
+- name: rich_all
+  type: STRING
+  description: rich all
+- name: rich_amph
+  type: STRING
+  description: rich amph
+- name: rich_bird
+  type: STRING
+  description: rich bird
+- name: rich_cact
+  type: STRING
+  description: rich cact
+- name: rich_coni
+  type: STRING
+  description: rich coni
+- name: rich_mamm
+  type: STRING
+  description: rich mamm
+- name: rich_rept
+  type: STRING
+  description: rich rept
+- name: rar_all
+  type: STRING
+  description: rar all
+- name: rar_amph
+  type: STRING
+  description: rar amph
+- name: rar_bird
+  type: STRING
+  description: rar bird
+- name: rar_cact
+  type: STRING
+  description: rar cact
+- name: rar_coni
+  type: STRING
+  description: rar coni
+- name: rar_mamm
+  type: STRING
+  description: rar mamm
+- name: rar_rept
+  type: STRING
+  description: rar rept
+- name: area_protected
+  type: STRING
+  description: area protected
+- name: geometry_wkt
+  type: STRING
+  description: geometry wkt
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: spatial
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_protected_areas
+    'on':
+    - spatial overlap
+    how: enrich
+    note: Occurrences/rarity with protection
+  - table: stg_germplasm
+    'on':
+    - taxon≈scientific_name/geography
+    how: compare
+    note: Wild occurrence vs germplasm holdings
+  companions:
+  - table: stg_vegetation_ndvi
+    when: habitat greenness
+    role: enrich_context
+  do_not_join:
+  - table: stg_faostat_prices
+    reason: commodity prices

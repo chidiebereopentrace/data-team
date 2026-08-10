@@ -1,6 +1,6 @@
 """
-BigQuery retriever: natural-language questions → BigQuery SQL over the bronze dataset only.
-Uses Llama 3.1 via Hugging Face for NL-to-SQL; validates and runs only SELECTs.
+BigQuery retriever: natural-language questions → BigQuery SQL over staging_dev only.
+Uses an LLM for NL-to-SQL; validates and runs only SELECTs against BQ_DATASET_SILVER.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ml.rag.chatbot.acf_metadata import project_bq_row_acf
+from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, truncate_utf8
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 from ml.rag.observability import (
@@ -30,11 +31,6 @@ logger = logging.getLogger(__name__)
 
 _observe_span = get_observe_decorator()
 
-# Production note: The main API (app/api.py) calls load_rag_dotenv early using the
-# unified loader (respecting config/.env and pure env vars for GCE).
-# This private helper is retained for direct script usage / backward compat only.
-# It now delegates to the standard loader so there is no separate data/local logic
-# in production code paths.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -43,14 +39,13 @@ def _load_dotenv() -> None:
     try:
         load_rag_dotenv(_REPO_ROOT)
     except Exception:
-        # Never break callers; vars may already be present via container env.
         pass
 
 
 def _get_datasets_config() -> dict[str, str]:
-    """Bronze dataset IDs from env (for NL-to-SQL and validation)."""
+    """Staging (silver) dataset ID from env — sole NL-to-SQL target."""
     return {
-        "bronze": os.environ.get("BQ_DATASET_BRONZE", "bronze").strip(),
+        "staging": os.environ.get("BQ_DATASET_SILVER", "staging_dev").strip(),
     }
 
 
@@ -68,28 +63,28 @@ def _call_llama_for_sql(messages: list[dict[str, str]], *, max_tokens: int | Non
     )
 
 
-# Filter-column mapping aligned with bronze dbt sources. Use exact names from the Schema section.
+# Filter-column mapping aligned with staging_dev stg_* models.
 _SCHEMA_FILTER_GUIDE = """
-Filter columns by question intent (use exact column names from the schema below):
-- Country/region: country, country_code, country_name, area (FAO tables), adm0_name, reporting_country, Reference area, geographic_unit_name, fewsnet_region, admin_1, admin_2, admin_0
-- Season / time: season_name, planting_year, harvest_year, year, TIME_PERIOD, period_date, projection_start, projection_end, reporting_date, mp_year, mp_month, first_period_date, last_period_date
-- Product / crop: product, item (FAO), Commodity, cpcv2_description, product_name, cm_name
-- Admin/geography: admin_1, admin_2, admin_0, geographic_unit_name, fewsnet_region, admin_region, agroecological_zone
-- Scenario: scenario_name
+Filter columns by question intent (use exact column names from the Schema / table hints):
+- Country/region: country, country_code, country_name, admin_0, admin_1, admin_2, geographic_unit_name, fewsnet_region, fnid
+- Season / time: season_name, planting_year, harvest_year, year, month, observation_year, observation_time
+- Product / crop: product, product_name, item, item_code
+- Markets / prices: market_name, price_type, currency, value, common_currency_price
+- Food security: phase_code, phase_name, pct_phase3, pct_phase4, pct_phase5, measure_type, scenario_name
 
-Query patterns (use these so the result directly answers the question):
-- "Past decade" / "over the past N years" -> add WHERE planting_year >= (e.g. 2014) OR harvest_year BETWEEN ... OR year >= ... so only recent data is returned.
-- "Which regions" / "which countries" / "which districts" -> GROUP BY the region column (country, admin_1, geographic_unit_name, etc.) and return one row per region; do not use SELECT * LIMIT 10.
-- "Most significant changes" / "biggest changes" / "largest increase" -> compute a change metric (e.g. MAX(yield) - MIN(yield), or (yield in latest year - yield in earliest year)), GROUP BY region, ORDER BY that change DESC, LIMIT 10 or 20.
-- "Compare" / "trends over time" -> GROUP BY region and year (or period), optionally aggregate (AVG(yield), SUM(production)), ORDER BY year/period.
-- Always filter time when the question mentions a period; always aggregate and order when the question asks for "which" or "most".
+Query patterns:
+- Time-bounded questions -> WHERE year/harvest_year/planting_year in range
+- Which regions/countries -> GROUP BY geography column; avoid bare SELECT * LIMIT
+- Trends / compare -> GROUP BY geography and year; ORDER BY year
 
-Table hints (bronze dataset only — use only tables that appear in the Schema section):
-- Yield/crop production: yield_raw_data (country, product, season_name, planting_year, harvest_year, area, production, yield)
-- Food security / IPC: fews_net_food_security_master (country, geographic_unit_name, scenario_name, projection_start/end, ipc_phase_value)
-- FAO: fao_rfn, fao_rl, fao_rp, fao_tcl, fao_ti, fao_fbs, fao_qcl (area/country_name, item, year, value)
-- Cropland: cropland_area_summary_2019_africa (agroecological_zone and related columns per schema)
-- GDP / development: africa_gdp_ppp, africa_Human_development_index (country, year)
+Staging tables (use only tables in the Schema / table hints — examples):
+- Yield/crop: stg_yield_raw_data
+- Food security / IPC: stg_fews_food_security
+- Market prices: stg_fews_market_prices, stg_wfp_vampire_prices, stg_faostat_prices
+- Production / trade: stg_faostat_production, stg_faostat_trade
+- Climate: stg_nasa_power, stg_copernicus_era5
+- Soil: stg_isric_africa_soil, stg_isda_soil_enriched
+- HDI / GDP: stg_africa_hdi, stg_africa_gdp_ppp
 """
 
 # Forbidden SQL tokens (case-insensitive) for safety
@@ -198,7 +193,7 @@ def _validate_sql(sql: str, allowed_dataset_ids: set[str], default_limit: int) -
         return None
     if _FORBIDDEN_SQL.search(normalized):
         return None
-    # Ensure referenced datasets are in the allowed set (e.g. bronze only for RAG)
+    # Ensure referenced datasets are in the allowed set (staging_dev only for RAG)
     if allowed_dataset_ids:
         allowed_lower = {a.lower() for a in allowed_dataset_ids}
         for part in re.findall(r"`?[\w.]+`?", normalized):
@@ -216,8 +211,8 @@ def _validate_sql(sql: str, allowed_dataset_ids: set[str], default_limit: int) -
 
 class BQRetriever(BaseRetriever):
     """
-    Retrieve context by querying BigQuery. Uses the bronze dataset only (BQ_DATASET_BRONZE).
-    Uses Llama 3.1 (HF) for NL-to-SQL when no explicit sql is provided.
+    Retrieve context by querying BigQuery. Uses staging_dev only (BQ_DATASET_SILVER).
+    Uses an LLM for NL-to-SQL when no explicit sql is provided.
     """
 
     def __init__(
@@ -250,7 +245,7 @@ class BQRetriever(BaseRetriever):
         return ":".join(parts)
 
     def _get_schema(self) -> str:
-        """Build a compact schema summary for configured datasets (bronze only); cached across processes via Redis when configured."""
+        """Build a compact schema summary for staging_dev; cached via Redis when configured."""
         cache_key = self._schema_cache_key()
         cached = get_bq_schema_cache(cache_key)
         if cached is not None:
@@ -288,7 +283,7 @@ class BQRetriever(BaseRetriever):
         return schema_text
 
     def _schema_for_nl2sql(self, table_hints: list[str] | None) -> str:
-        """Compact schema text; skip live BQ catalog when rich per-table hints are present."""
+        """Compact schema text; skip live BQ catalog when rich per-table YAML hints are present."""
         skip_live = os.environ.get("RAG_BQ_SKIP_LIVE_SCHEMA", "on").strip().lower() in (
             "1",
             "true",
@@ -296,10 +291,10 @@ class BQRetriever(BaseRetriever):
             "yes",
         )
         if skip_live and table_hints:
-            ds = self.datasets_config.get("bronze", "").strip()
+            ds = self.datasets_config.get("staging", "").strip()
             return (
-                f"Project: `{self.project_id}`. Bronze dataset: `{ds}`. "
-                "Use only the table and columns described in the table hint below."
+                f"Project: `{self.project_id}`. Staging dataset: `{ds}`. "
+                "Use only the stg_* tables and columns described in the table hints below."
             )
         return self._get_schema()
 
@@ -327,16 +322,36 @@ class BQRetriever(BaseRetriever):
             domains=domains,
         )
         hints_block = ""
+        hints_truncated = False
         if table_hints:
             cleaned = [str(h).strip() for h in table_hints if str(h).strip()]
             if cleaned:
-                per_hint_cap = int(os.environ.get("RAG_BQ_HINT_MAX_CHARS", "2500") or 2500)
+                total_budget = hint_max_bytes()
+                per_hint_cap = max(400, total_budget // max(1, len(cleaned)))
+                packed: list[str] = []
+                used = 0
+                for h in cleaned:
+                    frag, was_cut = truncate_utf8(h, per_hint_cap)
+                    cost = len(frag.encode("utf-8"))
+                    if used + cost > total_budget:
+                        remain = total_budget - used
+                        if remain > 64:
+                            frag, _ = truncate_utf8(h, remain)
+                            packed.append(f"- {frag}")
+                            hints_truncated = True
+                        else:
+                            hints_truncated = True
+                        break
+                    packed.append(f"- {frag}")
+                    used += cost
+                    hints_truncated = hints_truncated or was_cut
                 hints_block = (
-                    "\n\nPrioritized table descriptions from the knowledge base "
-                    "(use the table(s) below; honor sql_generation_hints, filtering_guidance, "
-                    "and aggregation_rules):\n"
-                    + "\n".join(f"- {h[:per_hint_cap]}" for h in cleaned)
+                    "\n\nSelected staging_dev table schemas from YAML "
+                    "(use only these tables; honor sql_generation_hints and filtering_guidance):\n"
+                    + "\n".join(packed)
                 )
+                if hints_truncated:
+                    hints_block += "\n[bq_hint_truncated=true]"
         if multi_query:
             output_rule = (
                 f"6) Output up to {max_queries} separate BigQuery SELECT queries — one per relevant "
@@ -348,15 +363,16 @@ class BQRetriever(BaseRetriever):
                 "6) Output exactly one SELECT for the single table hint provided. "
                 "No explanation, no markdown, no code fence."
             )
+        ds = self.datasets_config.get("staging", "staging_dev")
         system = (
-            "You are a BigQuery expert for OpenTrace agricultural and food-security data in the bronze dataset only. "
+            f"You are a BigQuery expert for OpenTrace agricultural data in the `{ds}` dataset only. "
             "Rules: "
-            "1) Use ONLY tables and columns from the Schema section (bronze dataset). "
+            f"1) Use ONLY stg_* tables and columns from the Schema / table hints (`{self.project_id}.{ds}.stg_*`). "
             "Use full names: `project.dataset.table`. "
             "2) When Query constraints are present, REQUIRED country and time filters MUST appear in every SELECT. "
-            "3) Match country columns to schema (country, country_name, Area, adm0_name, geographic_unit_name). "
-            "4) Match time columns to schema (year, planting_year, harvest_year, observation_year, TIME_PERIOD). "
-            "5) Use table hints for table/column choice; prefer GROUP BY / ORDER BY over bare SELECT * LIMIT. "
+            "3) Match country columns to schema (country, country_name, country_code, geographic_unit_name, fnid). "
+            "4) Match time columns to schema (year, planting_year, harvest_year, observation_year, month). "
+            "5) Prefer GROUP BY / ORDER BY over bare SELECT * LIMIT. "
             f"{output_rule}"
         )
         constraints_section = f"\n\n{constraints_block}\n" if constraints_block else ""
@@ -530,49 +546,14 @@ class BQRetriever(BaseRetriever):
             )
             return queries[:max_queries]
 
-    def _fallback_sql(self, question: str) -> str:
-        """Minimal fallback when NL-to-SQL returns nothing (connectivity / LLM down)."""
-        q = (question or "").lower()
-        proj = self.project_id
-        bronze_ds = self.datasets_config.get("bronze", "").strip()
-        if not bronze_ds:
-            return ""
-        if any(x in q for x in ("which region", "which country", "which district", "most significant change", "past decade", "over the past")) and any(x in q for x in ("yield", "productivity", "crop", "production")):
-            return (
-                f"SELECT country, "
-                f"MAX(yield) - MIN(yield) AS yield_change, "
-                f"ROUND(AVG(yield), 2) AS avg_yield, "
-                f"COUNT(*) AS n_obs "
-                f"FROM `{proj}.{bronze_ds}.yield_raw_data` "
-                f"WHERE planting_year >= 2014 AND yield IS NOT NULL "
-                f"GROUP BY country "
-                f"ORDER BY yield_change DESC "
-                f"LIMIT {min(20, self.max_rows)}"
-            )
-        try:
-            from google.cloud.bigquery import DatasetReference
-            for _layer, ds_id in self.datasets_config.items():
-                if not ds_id:
-                    continue
-                try:
-                    dataset_ref = DatasetReference(proj, ds_id)
-                    table_list = list(self._get_client().list_tables(dataset_ref))
-                    if table_list:
-                        t = table_list[0]
-                        return f"SELECT * FROM `{proj}.{ds_id}.{t.table_id}` LIMIT {min(10, self.max_rows)}"
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        return ""
-
     @_observe_span(as_type="span", name="retrieval.bq", capture_input=False, capture_output=False)
     def retrieve(self, query: str, top_k: int = 10, **kwargs: Any) -> list[dict[str, Any]]:
         """
         Run one or more BQ queries and return rows as context items.
 
-        NL-to-SQL generates up to RAG_BQ_MAX_SQL_QUERIES (default 10) SELECTs, typically
-        one per vector-matched table hint. kwargs["sql"] may be a single string or list.
+        NL-to-SQL generates up to RAG_BQ_MAX_SQL_QUERIES (default 10) SELECTs from
+        reasoner-selected YAML table hints. kwargs["sql"] may be a single string or list.
+        Fail closed: if no validated SQL is produced, return [] (no canned fallback query).
 
         Optional kwargs: geo_country, time_start, time_end, entities, domains, table_hints.
         Graph node aggregates distinct executed SQL into state ``bq_sql_queries``.
@@ -637,10 +618,6 @@ class BQRetriever(BaseRetriever):
                 entities=entities,
                 domains=domains,
             )
-        if not sql_queries:
-            fb = self._fallback_sql(query)
-            if fb:
-                sql_queries = [fb]
 
         if not sql_queries:
             update_current_span_metadata(
@@ -649,6 +626,7 @@ class BQRetriever(BaseRetriever):
                     "sql_query_count": 0,
                     "row_count": 0,
                     "latency_ms": trace_elapsed_ms(t0),
+                    "status": "no_valid_sql",
                 }
             )
             return []

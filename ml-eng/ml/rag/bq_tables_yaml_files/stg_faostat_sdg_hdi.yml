@@ -1,0 +1,122 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_sdg_hdi
+description: FAOSTAT SDG indicators, healthy diet cost, food value chain, census.
+grain: country × indicator × year
+entity_type: faostat
+source:
+  layer: staging_dev
+  domain: faostat
+relationships:
+  primary_key:
+    type: logical
+    fields: country × indicator × year
+semantic_role:
+  primary_domain: faostat
+  supports: &id001
+  - sdg
+  - nutrition
+  - faostat
+business_questions_supported:
+- What is the cost of a healthy diet?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter item/indicator carefully
+columns:
+- name: area_code
+  type: STRING
+  description: area code
+- name: area_code_m49
+  type: STRING
+  description: area code m49
+- name: country_name
+  type: STRING
+  description: country name
+- name: item_code
+  type: STRING
+  description: item code
+- name: item_code_sdg
+  type: STRING
+  description: item code sdg
+- name: item
+  type: STRING
+  description: item
+- name: food_value_code
+  type: STRING
+  description: food value code
+- name: food_value
+  type: STRING
+  description: food value
+- name: industry_code
+  type: STRING
+  description: industry code
+- name: industry
+  type: STRING
+  description: industry
+- name: factor_code
+  type: STRING
+  description: factor code
+- name: factor
+  type: STRING
+  description: factor
+- name: release_code
+  type: STRING
+  description: release code
+- name: release
+  type: STRING
+  description: release
+- name: census_year_code
+  type: STRING
+  description: census year code
+- name: census_year
+  type: STRING
+  description: census year
+- name: element_code
+  type: STRING
+  description: element code
+- name: element
+  type: STRING
+  description: element
+- name: year
+  type: INT64
+  description: year
+- name: unit
+  type: STRING
+  description: unit
+- name: value
+  type: FLOAT64
+  description: value
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: faostat
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_africa_hdi
+    'on':
+    - country≈country_name
+    - year
+    how: compare
+    note: FAOSTAT SDG/HDI-related vs Africa HDI series
+  - table: stg_faostat_food_balances
+    'on':
+    - country_name
+    - year
+    how: enrich
+    note: Diet affordability with supply
+  - table: stg_faostat_population_employment
+    'on':
+    - country_name
+    - year
+    how: enrich
+    note: SDG with employment
+  companions:
+  - table: stg_climatewatch_health
+    when: health/climate SDG angles
+    role: enrich_context
+  do_not_join:
+  - table: stg_biodiversity
+    reason: species occurrences; not SDG diet metrics

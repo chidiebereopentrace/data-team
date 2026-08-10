@@ -1,0 +1,99 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_food_balances
+description: FAOSTAT food balances and supply utilization accounts.
+grain: country × product × element × year
+entity_type: faostat
+source:
+  layer: staging_dev
+  domain: faostat
+relationships:
+  primary_key:
+    type: logical
+    fields: country × product × element × year
+semantic_role:
+  primary_domain: faostat
+  supports: &id001
+  - food balances
+  - nutrition
+  - faostat
+business_questions_supported:
+- What is food supply for a commodity?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter country_name and year
+- Filter element for the metric needed
+- GROUP BY country_name, product_name, year when comparing
+columns:
+- name: area_code
+  type: STRING
+  description: area code
+- name: area_code_m49
+  type: STRING
+  description: area code m49
+- name: country_name
+  type: STRING
+  description: country name
+- name: item_code
+  type: STRING
+  description: item code
+- name: item_code_fbs
+  type: STRING
+  description: item code fbs
+- name: item_code_cpc
+  type: STRING
+  description: item code cpc
+- name: product_name
+  type: STRING
+  description: product name
+- name: element_code
+  type: STRING
+  description: element code
+- name: element
+  type: STRING
+  description: element
+- name: year
+  type: INT64
+  description: year
+- name: unit
+  type: STRING
+  description: unit
+- name: value
+  type: FLOAT64
+  description: value
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: faostat
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_faostat_production
+    'on':
+    - country_name
+    - product_name
+    - year
+    how: enrich
+    note: Supply accounts vs production
+  - table: stg_faostat_trade
+    'on':
+    - country_name
+    - product_name
+    - year
+    how: enrich
+    note: Import/export in balances
+  - table: stg_fews_food_security
+    'on':
+    - country≈country_name
+    - year
+    how: compare
+    note: National availability vs IPC
+  companions:
+  - table: stg_faostat_sdg_hdi
+    when: diet cost / SDG nutrition indicators
+    role: enrich_context
+  do_not_join:
+  - table: stg_germplasm
+    reason: accession geography; not food balances

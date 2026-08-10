@@ -1,0 +1,183 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_isric_africa_soil
+description: ISRIC Africa soil properties by depth (wide).
+grain: lat/lon
+entity_type: soil_and_land
+source:
+  layer: staging_dev
+  domain: soil_and_land
+relationships:
+  primary_key:
+    type: logical
+    fields: lat/lon
+semantic_role:
+  primary_domain: soil_and_land
+  supports: &id001
+  - soil
+  - isric
+business_questions_supported:
+- What insights does stg_isric_africa_soil provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Select only needed depth columns
+columns:
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: fetched_date
+  type: STRING
+  description: fetched date
+- name: bdod_0_5cm
+  type: FLOAT64
+  description: bdod 0 5cm
+- name: bdod_5_15cm
+  type: FLOAT64
+  description: bdod 5 15cm
+- name: bdod_15_30cm
+  type: FLOAT64
+  description: bdod 15 30cm
+- name: bdod_30_60cm
+  type: FLOAT64
+  description: bdod 30 60cm
+- name: bdod_60_100cm
+  type: FLOAT64
+  description: bdod 60 100cm
+- name: cec_0_5cm
+  type: FLOAT64
+  description: cec 0 5cm
+- name: cec_5_15cm
+  type: FLOAT64
+  description: cec 5 15cm
+- name: cec_15_30cm
+  type: FLOAT64
+  description: cec 15 30cm
+- name: cec_30_60cm
+  type: FLOAT64
+  description: cec 30 60cm
+- name: cec_60_100cm
+  type: FLOAT64
+  description: cec 60 100cm
+- name: clay_0_5cm
+  type: FLOAT64
+  description: clay 0 5cm
+- name: clay_5_15cm
+  type: FLOAT64
+  description: clay 5 15cm
+- name: clay_15_30cm
+  type: FLOAT64
+  description: clay 15 30cm
+- name: clay_30_60cm
+  type: FLOAT64
+  description: clay 30 60cm
+- name: clay_60_100cm
+  type: FLOAT64
+  description: clay 60 100cm
+- name: nitrogen_0_5cm
+  type: FLOAT64
+  description: nitrogen 0 5cm
+- name: nitrogen_5_15cm
+  type: FLOAT64
+  description: nitrogen 5 15cm
+- name: nitrogen_15_30cm
+  type: FLOAT64
+  description: nitrogen 15 30cm
+- name: nitrogen_30_60cm
+  type: FLOAT64
+  description: nitrogen 30 60cm
+- name: nitrogen_60_100cm
+  type: FLOAT64
+  description: nitrogen 60 100cm
+- name: phh2o_0_5cm
+  type: FLOAT64
+  description: phh2o 0 5cm
+- name: phh2o_5_15cm
+  type: FLOAT64
+  description: phh2o 5 15cm
+- name: phh2o_15_30cm
+  type: FLOAT64
+  description: phh2o 15 30cm
+- name: phh2o_30_60cm
+  type: FLOAT64
+  description: phh2o 30 60cm
+- name: phh2o_60_100cm
+  type: FLOAT64
+  description: phh2o 60 100cm
+- name: sand_0_5cm
+  type: FLOAT64
+  description: sand 0 5cm
+- name: sand_5_15cm
+  type: FLOAT64
+  description: sand 5 15cm
+- name: sand_15_30cm
+  type: FLOAT64
+  description: sand 15 30cm
+- name: sand_30_60cm
+  type: FLOAT64
+  description: sand 30 60cm
+- name: sand_60_100cm
+  type: FLOAT64
+  description: sand 60 100cm
+- name: silt_0_5cm
+  type: FLOAT64
+  description: silt 0 5cm
+- name: silt_5_15cm
+  type: FLOAT64
+  description: silt 5 15cm
+- name: silt_15_30cm
+  type: FLOAT64
+  description: silt 15 30cm
+- name: silt_30_60cm
+  type: FLOAT64
+  description: silt 30 60cm
+- name: silt_60_100cm
+  type: FLOAT64
+  description: silt 60 100cm
+- name: soc_0_5cm
+  type: FLOAT64
+  description: soc 0 5cm
+- name: soc_5_15cm
+  type: FLOAT64
+  description: soc 5 15cm
+- name: soc_15_30cm
+  type: FLOAT64
+  description: soc 15 30cm
+- name: soc_30_60cm
+  type: FLOAT64
+  description: soc 30 60cm
+- name: soc_60_100cm
+  type: FLOAT64
+  description: soc 60 100cm
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: soil_and_land
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_isda_soil_enriched
+    'on':
+    - latitude≈latitude
+    - longitude≈longitude
+    how: compare
+    note: Prefer one primary soil source per question
+  - table: stg_yield_raw_data
+    'on':
+    - spatial proximity to fnid
+    how: enrich
+    note: Soil constraints on yield (spatial join)
+  companions:
+  - table: stg_nasa_power
+    when: climate+soil
+    role: enrich_context
+  - table: stg_s4a_field_surveys
+    when: field validation plots
+    role: enrich_context
+  do_not_join:
+  - table: stg_faostat_trade
+    reason: national trade aggregates

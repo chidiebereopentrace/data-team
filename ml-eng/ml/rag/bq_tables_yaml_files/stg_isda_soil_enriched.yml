@@ -1,0 +1,72 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_isda_soil_enriched
+description: iSDA soil properties in long format (property × depth × value).
+grain: lat/lon × soil_property × depth
+entity_type: soil_and_land
+source:
+  layer: staging_dev
+  domain: soil_and_land
+relationships:
+  primary_key:
+    type: logical
+    fields: lat/lon × soil_property × depth
+semantic_role:
+  primary_domain: soil_and_land
+  supports: &id001
+  - soil
+  - isda
+business_questions_supported:
+- What insights does stg_isda_soil_enriched provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter soil_property and depth
+columns:
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: country
+  type: STRING
+  description: country
+- name: city
+  type: STRING
+  description: city
+- name: soil_property
+  type: STRING
+  description: soil property
+- name: depth
+  type: STRING
+  description: depth
+- name: value
+  type: FLOAT64
+  description: value
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: soil_and_land
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_isric_africa_soil
+    'on':
+    - latitude
+    - longitude
+    how: compare
+    note: Long vs wide soil representations — pick one
+  - table: stg_yield_raw_data
+    'on':
+    - spatial proximity
+    how: enrich
+    note: Property/depth filters for crop stress
+  companions:
+  - table: stg_cifor_icraf
+    when: plot nutrient samples
+    role: enrich_context
+  do_not_join:
+  - table: stg_fews_cross_border_trade
+    reason: trade flows

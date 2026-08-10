@@ -73,7 +73,8 @@ docker build -t opentrace-chat-hf .
 | Variable | Purpose |
 |----------|---------|
 | `BQ_PROJECT` | GCP project ID for BigQuery |
-| `BQ_DATASET_BRONZE` | Bronze dataset the RAG queries |
+| `BQ_DATASET_BRONZE` | Bronze/raw dataset (data-eng tooling; not queried by RAG NL2SQL) |
+| `BQ_DATASET_SILVER` | Staging dataset RAG NL-to-SQL queries (default `staging_dev`) |
 | `HF_API_TOKEN` | Hugging Face Inference API (LLM / embeddings as configured in RAG) |
 | `QDRANT_URL` | Qdrant cluster URL (RAG vector retrieval) |
 | `QDRANT_API_KEY` | Qdrant API key |

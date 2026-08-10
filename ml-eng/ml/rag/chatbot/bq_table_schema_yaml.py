@@ -1,15 +1,15 @@
 """Per-table YAML loader for BigQuery semantic schemas under ``ml/rag/bq_tables_yaml_files``.
 
-Each YAML carries SQL-relevant context the flat ``bronze_dataset_model.yml`` column
-list does not have: grain, primary/foreign keys, join_logic, aggregation_rules,
-filtering_guidance, sql_generation_hints, and columns annotated with semantic_role
-and example values. This module loads the files once (mtime-cached) and exposes a
-compact formatter suitable for injection into the NL-to-SQL prompt as ``table_hints``.
+Staging_dev ``stg_*`` YAMLs are the sole table catalog for Ask ADZA NL-to-SQL
+(no Qdrant table-description matching). Each YAML carries grain, keys, hints,
+and columns for the SQL reasoner and NL-to-SQL prompts.
 
 Public API:
 - ``load_table_schema(name)``       -> raw dict for the table, or None.
 - ``format_table_schema(name, ...)`` -> compact SQL-prompt block string, or "".
 - ``known_table_names()``           -> set[str] of all indexed names (bare + FQN).
+- ``list_staging_table_index()``    -> compact index rows for the SQL reasoner.
+- ``pack_selected_table_hints(...)`` -> byte-capped full YAML packs for NL2SQL.
 """
 from __future__ import annotations
 
@@ -18,6 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, pack_lines, reasoner_index_max_bytes, truncate_utf8, utf8_len
+from ml.rag.helpers.staging_semantic_relationships import compact_rels_summary
 
 # bq_table_schema_yaml.py lives at ml/rag/chatbot/, YAMLs live at ml/rag/bq_tables_yaml_files/.
 _DEFAULT_DIR = Path(__file__).resolve().parents[1] / "bq_tables_yaml_files"
@@ -203,6 +206,7 @@ _SECTION_ORDER: list[tuple[str, str]] = [
     ("grain", "Grain"),
     ("primary_keys", "Primary keys"),
     ("relationships", "Relationships"),
+    ("semantic_relationships", "Semantic relationships"),
     ("join_logic", "Join logic"),
     ("time_dimensions", "Time dimensions"),
     ("geography", "Geography columns"),
@@ -218,16 +222,62 @@ _SECTION_ORDER: list[tuple[str, str]] = [
 ]
 
 
+def _format_semantic_relationships(value: Any) -> str | None:
+    """Compact multi-table relationship block for NL2SQL / reasoner packs."""
+    if not isinstance(value, dict):
+        return None
+    lines: list[str] = ["Semantic relationships:"]
+    joins = value.get("joins_with")
+    if isinstance(joins, list) and joins:
+        lines.append("  joins_with:")
+        for item in joins[:8]:
+            if not isinstance(item, dict):
+                continue
+            table = str(item.get("table") or "").strip()
+            if not table:
+                continue
+            on = item.get("on")
+            on_s = ",".join(str(x) for x in on) if isinstance(on, list) else str(on or "")
+            how = str(item.get("how") or "").strip()
+            note = str(item.get("note") or "").strip()
+            lines.append(
+                f"    - {table} on=[{on_s}] how={how}" + (f" ({note})" if note else "")
+            )
+    comps = value.get("companions")
+    if isinstance(comps, list) and comps:
+        lines.append("  companions:")
+        for item in comps[:6]:
+            if not isinstance(item, dict):
+                continue
+            table = str(item.get("table") or "").strip()
+            when = str(item.get("when") or "").strip()
+            role = str(item.get("role") or "").strip()
+            if table:
+                lines.append(f"    - {table} when={when}" + (f" role={role}" if role else ""))
+    avoid = value.get("do_not_join")
+    if isinstance(avoid, list) and avoid:
+        lines.append("  do_not_join:")
+        for item in avoid[:6]:
+            if not isinstance(item, dict):
+                continue
+            table = str(item.get("table") or "").strip()
+            reason = str(item.get("reason") or "").strip()
+            if table:
+                lines.append(f"    - {table}: {reason}" if reason else f"    - {table}")
+    return "\n".join(lines) if len(lines) > 1 else None
+
+
 def format_table_schema(
     table_name: str,
     *,
     max_chars: int = 2400,
+    max_bytes: int | None = None,
     include_columns: bool = True,
 ) -> str:
     """Compact, SQL-prompt-friendly rendering of a per-table YAML schema.
 
     Returns "" when no YAML is known for the table. Output is bounded by
-    ``max_chars`` to keep the NL-to-SQL prompt within the LM Studio context.
+    ``max_bytes`` (preferred) or ``max_chars``.
     """
     schema = load_table_schema(table_name)
     if not schema:
@@ -240,6 +290,11 @@ def format_table_schema(
     for key, label in _SECTION_ORDER:
         if key not in schema:
             continue
+        if key == "semantic_relationships":
+            block = _format_semantic_relationships(schema[key])
+            if block:
+                parts.append(block)
+            continue
         line = _format_list_field(label, schema[key])
         if line:
             parts.append(line)
@@ -251,6 +306,112 @@ def format_table_schema(
             parts.append(col_block)
 
     text = "\n".join(parts)
-    if len(text) <= max_chars:
+    budget = max_bytes if max_bytes is not None else max_chars
+    if budget <= 0:
+        return ""
+    if max_bytes is not None:
+        out, _ = truncate_utf8(text, budget)
+        return out
+    if len(text) <= budget:
         return text
-    return text[: max(0, max_chars - 1)].rstrip() + "…"
+    return text[: max(0, budget - 1)].rstrip() + "…"
+
+
+def list_staging_table_index() -> list[dict[str, Any]]:
+    """Compact catalog for the SQL reasoner (one row per unique ``stg_*`` YAML)."""
+    index = _build_index()
+    seen: set[str] = set()
+    rows: list[dict[str, Any]] = []
+    for key, schema in index.items():
+        if not isinstance(schema, dict):
+            continue
+        fqn = str(schema.get("table_name") or "").strip().strip("`")
+        bare = _strip_fqn(fqn) or (key if key.startswith("stg_") else "")
+        if not bare.startswith("stg_") or bare in seen:
+            continue
+        seen.add(bare)
+        raw_role = schema.get("semantic_role")
+        role: dict[str, Any] = raw_role if isinstance(raw_role, dict) else {}
+        raw_tags = role.get("supports")
+        tags: list[Any] = raw_tags if isinstance(raw_tags, list) else []
+        raw_source = schema.get("source")
+        source: dict[str, Any] = raw_source if isinstance(raw_source, dict) else {}
+        domain = str(
+            role.get("primary_domain")
+            or source.get("domain")
+            or schema.get("entity_type")
+            or ""
+        ).strip()
+        rows.append(
+            {
+                "table_id": bare,
+                "fqn": fqn or bare,
+                "description": str(schema.get("description") or "").strip(),
+                "grain": str(schema.get("grain") or "").strip(),
+                "domain": domain,
+                "tags": [str(t).strip() for t in tags if str(t).strip()],
+                "rels": compact_rels_summary(bare),
+            }
+        )
+    rows.sort(key=lambda r: r["table_id"])
+    return rows
+
+
+def format_reasoner_index(*, max_bytes: int | None = None) -> tuple[str, bool]:
+    """Byte-capped one-line-per-table index for the SQL reasoner prompt."""
+    budget = reasoner_index_max_bytes() if max_bytes is None else max(0, max_bytes)
+    lines: list[str] = []
+    for row in list_staging_table_index():
+        tags = ", ".join(row.get("tags") or [])
+        desc = str(row.get("description") or "")
+        if len(desc) > 120:
+            desc = desc[:119].rstrip() + "…"
+        rels = str(row.get("rels") or compact_rels_summary(str(row["table_id"])))
+        if len(rels) > 140:
+            rels = rels[:139].rstrip() + "…"
+        lines.append(
+            f"- {row['table_id']} | domain={row.get('domain') or '-'} | "
+            f"grain={row.get('grain') or '-'} | tags={tags or '-'} | "
+            f"rels={rels} | {desc}"
+        )
+    return pack_lines(lines, budget)
+
+
+def pack_selected_table_hints(
+    table_ids: list[str],
+    *,
+    max_bytes: int | None = None,
+) -> tuple[list[str], bool]:
+    """Full YAML packs for selected tables, truncated to the NL2SQL hint byte budget."""
+    budget = hint_max_bytes() if max_bytes is None else max(0, max_bytes)
+    if budget <= 0 or not table_ids:
+        return [], bool(table_ids)
+    per = max(400, budget // max(1, len(table_ids)))
+    hints: list[str] = []
+    used = 0
+    truncated = False
+    known_count = 0
+    for tid in table_ids:
+        if not load_table_schema(tid):
+            continue
+        known_count += 1
+        if used > 0:
+            remain_total = budget - used - 1  # newline separator when joined
+        else:
+            remain_total = budget - used
+        if remain_total <= 0:
+            truncated = True
+            break
+        block = format_table_schema(tid, max_bytes=min(per, remain_total), include_columns=True)
+        if not block:
+            continue
+        cost = utf8_len(block) + (1 if hints else 0)
+        if used + cost > budget:
+            frag, _ = truncate_utf8(block, remain_total)
+            if frag:
+                hints.append(frag)
+            truncated = True
+            break
+        hints.append(block)
+        used += cost
+    return hints, truncated or len(hints) < known_count
