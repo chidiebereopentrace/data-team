@@ -1,0 +1,151 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_ilri_household_food_security
+description: ILRI household food security survey indicators.
+grain: household_id
+entity_type: ilri
+source:
+  layer: staging_dev
+  domain: ilri
+relationships:
+  primary_key:
+    type: logical
+    fields: household_id
+semantic_role:
+  primary_domain: ilri
+  supports: &id001
+  - food security
+  - household
+  - ilri
+business_questions_supported:
+- What is average FIES by region?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Aggregate carefully; survey microdata
+columns:
+- name: household_id
+  type: STRING
+  description: household id
+- name: country
+  type: STRING
+  description: country
+- name: region
+  type: STRING
+  description: region
+- name: district
+  type: STRING
+  description: district
+- name: village_code
+  type: STRING
+  description: village code
+- name: hh_size
+  type: INT64
+  description: hh size
+- name: hh_size_mae
+  type: STRING
+  description: hh size mae
+- name: household_type
+  type: STRING
+  description: household type
+- name: head_education_level
+  type: STRING
+  description: head education level
+- name: land_cultivated
+  type: STRING
+  description: land cultivated
+- name: livestock_holdings
+  type: STRING
+  description: livestock holdings
+- name: fies_score
+  type: STRING
+  description: fies score
+- name: total_income
+  type: STRING
+  description: total income
+- name: farm_income
+  type: STRING
+  description: farm income
+- name: offfarm_income
+  type: STRING
+  description: offfarm income
+- name: value_farm_produce
+  type: STRING
+  description: value farm produce
+- name: crop_sales
+  type: STRING
+  description: crop sales
+- name: value_crop_produce
+  type: STRING
+  description: value crop produce
+- name: value_crop_consumed
+  type: STRING
+  description: value crop consumed
+- name: livestock_product_sales
+  type: STRING
+  description: livestock product sales
+- name: value_livestock_production
+  type: STRING
+  description: value livestock production
+- name: value_livestock_consumed
+  type: STRING
+  description: value livestock consumed
+- name: food_availability
+  type: STRING
+  description: food availability
+- name: food_self_sufficiency
+  type: STRING
+  description: food self sufficiency
+- name: total_energy_available
+  type: STRING
+  description: total energy available
+- name: gender_male_control
+  type: STRING
+  description: gender male control
+- name: gender_female_control
+  type: STRING
+  description: gender female control
+- name: gender_male_youth_control
+  type: STRING
+  description: gender male youth control
+- name: gender_female_youth_control
+  type: STRING
+  description: gender female youth control
+- name: crop_diversity
+  type: STRING
+  description: crop diversity
+- name: livestock_diversity
+  type: STRING
+  description: livestock diversity
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: ilri
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_fews_food_security
+    'on':
+    - country
+    - year via survey timing
+    how: compare
+    note: Survey FIES vs FEWS IPC (interpret carefully)
+  - table: stg_ilri_animal_health
+    'on':
+    - household_id
+    - country
+    how: enrich
+    note: HH welfare with livestock health
+  - table: stg_ilri_vendor_consumer
+    'on':
+    - country
+    how: enrich
+    note: Food environment context
+  companions:
+  - table: stg_ilri_food_hazards
+    when: food safety risk backdrop
+    role: enrich_context
+  do_not_join:
+  - table: stg_protected_areas
+    reason: conservation polygons; not HH surveys

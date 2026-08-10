@@ -1,0 +1,77 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_nakuru_air_quality
+description: Nakuru air quality sensor archive.
+grain: sensor × observation_timestamp
+entity_type: socio_economic
+source:
+  layer: staging_dev
+  domain: socio_economic
+relationships:
+  primary_key:
+    type: logical
+    fields: sensor × observation_timestamp
+semantic_role:
+  primary_domain: socio_economic
+  supports: &id001
+  - air quality
+  - nakuru
+business_questions_supported:
+- What are recent PM2.5 levels in Nakuru?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter time range
+columns:
+- name: sensor_id
+  type: STRING
+  description: sensor id
+- name: sensor_type
+  type: STRING
+  description: sensor type
+- name: location
+  type: STRING
+  description: location
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: observation_timestamp
+  type: STRING
+  description: observation timestamp
+- name: pm10
+  type: FLOAT64
+  description: pm10
+- name: pm2_5
+  type: FLOAT64
+  description: pm2 5
+- name: humidity_pct
+  type: FLOAT64
+  description: humidity pct
+- name: temperature_c
+  type: STRING
+  description: temperature c
+- name: source_archive
+  type: STRING
+  description: source archive
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: socio_economic
+_index_tags: *id001
+semantic_relationships:
+  joins_with: []
+  companions:
+  - table: stg_climatewatch_health
+    when: health framing for air quality (national scenarios differ in grain)
+    role: enrich_context
+  do_not_join:
+  - table: stg_yield_raw_data
+    reason: national/subnational yields; not Nakuru sensors
+  - table: stg_faostat_trade
+    reason: national trade
+  - table: stg_openaire_projects
+    reason: research projects

@@ -1,0 +1,88 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_openaire_product_links
+description: OpenAIRE product relationship links.
+grain: entity row
+entity_type: research
+source:
+  layer: staging_dev
+  domain: research
+relationships:
+  primary_key:
+    type: logical
+    fields: entity row
+semantic_role:
+  primary_domain: research
+  supports: &id001
+  - research
+  - openaire
+business_questions_supported:
+- What insights does stg_openaire_product_links provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_openaire_product_links`
+- Always include LIMIT
+columns:
+- name: openaire_id
+  type: STRING
+  description: openaire id
+- name: title
+  type: STRING
+  description: title
+- name: entity_type
+  type: STRING
+  description: entity type
+- name: pub_date
+  type: STRING
+  description: pub date
+- name: publisher
+  type: STRING
+  description: publisher
+- name: language
+  type: STRING
+  description: language
+- name: rel_name
+  type: STRING
+  description: rel name
+- name: target_id
+  type: STRING
+  description: target id
+- name: target_type
+  type: STRING
+  description: target type
+- name: fetched_at
+  type: STRING
+  description: fetched at
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: research
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_openaire_projects
+    'on':
+    - target/source ids
+    how: enrich
+    note: Links resolve project entities
+  - table: stg_openaire_organisations
+    'on':
+    - target/source ids
+    how: enrich
+    note: Links resolve organisations
+  - table: stg_openaire_persons
+    'on':
+    - target/source ids
+    how: enrich
+    note: Links resolve persons
+  - table: stg_openaire_data_sources
+    'on':
+    - target/source ids
+    how: enrich
+    note: Links resolve data sources
+  companions: []
+  do_not_join:
+  - table: stg_faostat_production
+    reason: production facts

@@ -1,9 +1,0 @@
-name: openaire_agriculture_and_environment_Research_publications_Persons_bronze
-description: 'TODO: Add a concise human-readable table description.'
-columns:
-- name: TODO_column_name
-  description: 'TODO: Add column description (type, meaning, units, constraints).'
-examples:
-- 'TODO: Provide 1–3 example questions this table can answer.'
-notes:
-- 'TODO: Add joins/keys, grain, update frequency, caveats.'

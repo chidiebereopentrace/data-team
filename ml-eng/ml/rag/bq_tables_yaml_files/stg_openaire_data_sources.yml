@@ -1,0 +1,81 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_openaire_data_sources
+description: OpenAIRE data sources.
+grain: entity row
+entity_type: research
+source:
+  layer: staging_dev
+  domain: research
+relationships:
+  primary_key:
+    type: logical
+    fields: entity row
+semantic_role:
+  primary_domain: research
+  supports: &id001
+  - research
+  - openaire
+business_questions_supported:
+- What insights does stg_openaire_data_sources provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_openaire_data_sources`
+- Always include LIMIT
+columns:
+- name: ingestion_id
+  type: STRING
+  description: ingestion id
+- name: fetched_at
+  type: STRING
+  description: fetched at
+- name: openaire_id
+  type: STRING
+  description: openaire id
+- name: official_name
+  type: STRING
+  description: official name
+- name: english_name
+  type: STRING
+  description: english name
+- name: website_url
+  type: STRING
+  description: website url
+- name: source_type
+  type: STRING
+  description: source type
+- name: compatibility
+  type: STRING
+  description: compatibility
+- name: subjects
+  type: STRING
+  description: subjects
+- name: issn_online
+  type: STRING
+  description: issn online
+- name: issn_printed
+  type: STRING
+  description: issn printed
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: research
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_openaire_product_links
+    'on':
+    - openaire_id
+    how: enrich
+    note: Sources with linked products
+  - table: stg_openaire_projects
+    'on':
+    - shared research graph
+    how: enrich
+    note: Sources with projects
+  companions: []
+  do_not_join:
+  - table: stg_isda_soil_enriched
+    reason: soil properties

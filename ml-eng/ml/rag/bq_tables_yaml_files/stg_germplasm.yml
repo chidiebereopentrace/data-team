@@ -1,0 +1,66 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_germplasm
+description: Crop and rice germplasm accessions with geography.
+grain: germplasm_id
+entity_type: spatial
+source:
+  layer: staging_dev
+  domain: spatial
+relationships:
+  primary_key:
+    type: logical
+    fields: germplasm_id
+semantic_role:
+  primary_domain: spatial
+  supports: &id001
+  - germplasm
+  - crops
+business_questions_supported:
+- What insights does stg_germplasm provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_germplasm`
+- Always include LIMIT
+columns:
+- name: germplasm_id
+  type: STRING
+  description: germplasm id
+- name: taxon
+  type: STRING
+  description: taxon
+- name: objectid
+  type: STRING
+  description: objectid
+- name: geography
+  type: STRING
+  description: geography
+- name: geometry_wkt
+  type: STRING
+  description: geometry wkt
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: spatial
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_biodiversity
+    'on':
+    - taxon
+    how: compare
+    note: Accessions vs occurrence records
+  - table: stg_faostat_production
+    'on':
+    - taxon≈product_name
+    how: enrich
+    note: Genetic resources vs production crops
+  companions:
+  - table: stg_protected_areas
+    when: conservation geography
+    role: enrich_context
+  do_not_join:
+  - table: stg_nakuru_air_quality
+    reason: urban air quality

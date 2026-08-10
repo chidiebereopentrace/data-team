@@ -1,0 +1,115 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_fews_market_prices
+description: FEWS NET market prices for staple commodities.
+grain: country × market × product × year × month × price_type
+entity_type: fews
+source:
+  layer: staging_dev
+  domain: fews
+relationships:
+  primary_key:
+    type: logical
+    fields: country × market × product × year × month × price_type
+semantic_role:
+  primary_domain: fews
+  supports: &id001
+  - markets
+  - prices
+  - fews
+business_questions_supported:
+- What are maize prices in key markets?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Prefer common_currency_price for cross-market compare
+columns:
+- name: country
+  type: STRING
+  description: country
+- name: country_code
+  type: STRING
+  description: country code
+- name: admin_1
+  type: STRING
+  description: admin 1
+- name: admin_2
+  type: STRING
+  description: admin 2
+- name: market_name
+  type: STRING
+  description: market name
+- name: product_name
+  type: STRING
+  description: product name
+- name: cpcv2
+  type: STRING
+  description: cpcv2
+- name: price_type
+  type: STRING
+  description: price type
+- name: unit
+  type: STRING
+  description: unit
+- name: currency
+  type: STRING
+  description: currency
+- name: value
+  type: FLOAT64
+  description: value
+- name: common_unit_price
+  type: STRING
+  description: common unit price
+- name: common_currency_price
+  type: STRING
+  description: common currency price
+- name: year
+  type: INT64
+  description: year
+- name: month
+  type: INT64
+  description: month
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: fews
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_wfp_vampire_prices
+    'on':
+    - country
+    - product_name
+    - year
+    - month
+    how: compare
+    note: Align units/currency before comparing
+  - table: stg_faostat_prices
+    'on':
+    - country_name≈country
+    - product_name
+    - year
+    how: compare
+    note: Producer/CPI vs FEWS market prices
+  - table: stg_fews_food_security
+    'on':
+    - country
+    - year
+    - month
+    how: enrich
+    note: Prices with IPC context
+  - table: stg_yield_raw_data
+    'on':
+    - country
+    - product≈product_name
+    - year
+    how: enrich
+    note: Prices with production outcomes
+  companions:
+  - table: stg_fews_cross_border_trade
+    when: cross-border flow pressure on markets
+    role: enrich_context
+  do_not_join:
+  - table: stg_isric_africa_soil
+    reason: soil grids; no market grain

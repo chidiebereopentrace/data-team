@@ -1,0 +1,107 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_population_employment
+description: FAOSTAT population and agricultural/rural employment.
+grain: country × indicator × year
+entity_type: faostat
+source:
+  layer: staging_dev
+  domain: faostat
+relationships:
+  primary_key:
+    type: logical
+    fields: country × indicator × year
+semantic_role:
+  primary_domain: faostat
+  supports: &id001
+  - population
+  - employment
+  - faostat
+business_questions_supported:
+- What share of employment is in agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter indicator and sex when relevant
+columns:
+- name: area_code
+  type: STRING
+  description: area code
+- name: area_code_m49
+  type: STRING
+  description: area code m49
+- name: country_name
+  type: STRING
+  description: country name
+- name: item_code
+  type: STRING
+  description: item code
+- name: item
+  type: STRING
+  description: item
+- name: element_code
+  type: STRING
+  description: element code
+- name: element
+  type: STRING
+  description: element
+- name: indicator_code
+  type: STRING
+  description: indicator code
+- name: indicator
+  type: STRING
+  description: indicator
+- name: source_code
+  type: STRING
+  description: source code
+- name: source
+  type: STRING
+  description: source
+- name: sex_code
+  type: STRING
+  description: sex code
+- name: sex
+  type: STRING
+  description: sex
+- name: year
+  type: INT64
+  description: year
+- name: unit
+  type: STRING
+  description: unit
+- name: value
+  type: FLOAT64
+  description: value
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: faostat
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_africa_hdi
+    'on':
+    - country≈country_name
+    - year
+    how: enrich
+    note: Employment with HDI
+  - table: stg_africa_gdp_ppp
+    'on':
+    - country_code
+    - year≈observation_year
+    how: enrich
+    note: Labor with income
+  - table: stg_faostat_production
+    'on':
+    - country_name
+    - year
+    how: enrich
+    note: Ag employment vs production
+  companions:
+  - table: stg_faostat_sdg_hdi
+    when: SDG labor/nutrition indicators
+    role: enrich_context
+  do_not_join:
+  - table: stg_copernicus_era5
+    reason: reanalysis grids; no employment grain

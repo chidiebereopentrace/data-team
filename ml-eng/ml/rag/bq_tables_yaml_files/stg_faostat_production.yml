@@ -1,0 +1,104 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_production
+description: FAOSTAT crop/livestock production, indices, and value of production.
+grain: country × product × element × year
+entity_type: faostat
+source:
+  layer: staging_dev
+  domain: faostat
+relationships:
+  primary_key:
+    type: logical
+    fields: country × product × element × year
+semantic_role:
+  primary_domain: faostat
+  supports: &id001
+  - production
+  - yield
+  - faostat
+business_questions_supported:
+- What is production of a crop in a country?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter country_name and year
+- Filter element for the metric needed
+- GROUP BY country_name, product_name, year when comparing
+columns:
+- name: area_code
+  type: STRING
+  description: area code
+- name: area_code_m49
+  type: STRING
+  description: area code m49
+- name: country_name
+  type: STRING
+  description: country name
+- name: item_code
+  type: STRING
+  description: item code
+- name: item_code_cpc
+  type: STRING
+  description: item code cpc
+- name: product_name
+  type: STRING
+  description: product name
+- name: element_code
+  type: STRING
+  description: element code
+- name: element
+  type: STRING
+  description: element
+- name: year
+  type: INT64
+  description: year
+- name: unit
+  type: STRING
+  description: unit
+- name: value
+  type: FLOAT64
+  description: value
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: faostat
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_yield_raw_data
+    'on':
+    - country≈country_name
+    - product≈product_name
+    - year≈harvest_year
+    how: compare
+    note: National vs subnational production
+  - table: stg_faostat_trade
+    'on':
+    - country_name
+    - product_name
+    - year
+    how: enrich
+    note: Production with trade balance
+  - table: stg_faostat_food_balances
+    'on':
+    - country_name
+    - product_name
+    - year
+    how: enrich
+    note: Production vs food supply accounts
+  - table: stg_faostat_prices
+    'on':
+    - country_name
+    - product_name
+    - year
+    how: enrich
+    note: Production with price signals
+  companions:
+  - table: stg_africa_gdp_ppp
+    when: macro context for production trends
+    role: enrich_context
+  do_not_join:
+  - table: stg_vegetation_ndvi
+    reason: raster grids; prefer climate/soil companions instead

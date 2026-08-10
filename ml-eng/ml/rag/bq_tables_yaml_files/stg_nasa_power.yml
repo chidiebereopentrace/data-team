@@ -1,0 +1,97 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_nasa_power
+description: NASA POWER daily/hourly solar and climate observations.
+grain: lat/lon × observation_time
+entity_type: climate
+source:
+  layer: staging_dev
+  domain: climate
+relationships:
+  primary_key:
+    type: logical
+    fields: lat/lon × observation_time
+semantic_role:
+  primary_domain: climate
+  supports: &id001
+  - climate
+  - solar
+  - nasa
+business_questions_supported:
+- What insights does stg_nasa_power provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_nasa_power`
+- Always include LIMIT
+columns:
+- name: country_code
+  type: STRING
+  description: country code
+- name: country_name
+  type: STRING
+  description: country name
+- name: admin_region
+  type: STRING
+  description: admin region
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: elevation_meters
+  type: STRING
+  description: elevation meters
+- name: par_solar_at_noon
+  type: STRING
+  description: par solar at noon
+- name: shortwave_irradiance_at_noon
+  type: STRING
+  description: shortwave irradiance at noon
+- name: uva_radiation_at_noon
+  type: STRING
+  description: uva radiation at noon
+- name: uvb_radiation_at_noon
+  type: STRING
+  description: uvb radiation at noon
+- name: observation_time
+  type: STRING
+  description: observation time
+- name: fetched_at
+  type: STRING
+  description: fetched at
+- name: processed_at
+  type: STRING
+  description: processed at
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: climate
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_yield_raw_data
+    'on':
+    - country_code≈country_code
+    - spatial+time
+    how: enrich
+    note: Solar/climate drivers of yield
+  - table: stg_copernicus_era5
+    'on':
+    - latitude
+    - longitude
+    - time
+    how: compare
+    note: NASA POWER vs ERA5 (align timestamps)
+  companions:
+  - table: stg_isric_africa_soil
+    when: soil+climate constraints
+    role: enrich_context
+  - table: stg_vegetation_ndvi
+    when: greenness response
+    role: enrich_context
+  do_not_join:
+  - table: stg_openaire_organisations
+    reason: org registry; no climate grain

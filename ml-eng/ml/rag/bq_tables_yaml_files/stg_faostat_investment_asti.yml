@@ -1,0 +1,127 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_investment_asti
+description: FAOSTAT agricultural investment flows and ASTI indicators.
+grain: country × indicator/purpose × year
+entity_type: faostat
+source:
+  layer: staging_dev
+  domain: faostat
+relationships:
+  primary_key:
+    type: logical
+    fields: country × indicator/purpose × year
+semantic_role:
+  primary_domain: faostat
+  supports: &id001
+  - investment
+  - faostat
+business_questions_supported:
+- How much ag R&D spending is there?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter indicator/purpose and year
+columns:
+- name: area_code
+  type: STRING
+  description: area code
+- name: area_code_m49
+  type: STRING
+  description: area code m49
+- name: country_name
+  type: STRING
+  description: country name
+- name: donor_code
+  type: STRING
+  description: donor code
+- name: donor_code_m49
+  type: STRING
+  description: donor code m49
+- name: donor
+  type: STRING
+  description: donor
+- name: purpose_code
+  type: STRING
+  description: purpose code
+- name: purpose
+  type: STRING
+  description: purpose
+- name: item_code
+  type: STRING
+  description: item code
+- name: item
+  type: STRING
+  description: item
+- name: element_code
+  type: STRING
+  description: element code
+- name: element
+  type: STRING
+  description: element
+- name: indicator_code
+  type: STRING
+  description: indicator code
+- name: indicator
+  type: STRING
+  description: indicator
+- name: institution_code
+  type: STRING
+  description: institution code
+- name: institution
+  type: STRING
+  description: institution
+- name: degree_code
+  type: STRING
+  description: degree code
+- name: degree
+  type: STRING
+  description: degree
+- name: sex_code
+  type: STRING
+  description: sex code
+- name: sex
+  type: STRING
+  description: sex
+- name: cost_category_code
+  type: STRING
+  description: cost category code
+- name: cost_category
+  type: STRING
+  description: cost category
+- name: year
+  type: INT64
+  description: year
+- name: unit
+  type: STRING
+  description: unit
+- name: value
+  type: FLOAT64
+  description: value
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: faostat
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_faostat_production
+    'on':
+    - country_name
+    - year
+    how: enrich
+    note: R&D/investment vs production outcomes
+  - table: stg_africa_hdi
+    'on':
+    - country≈country_name
+    - year
+    how: enrich
+    note: Development context
+  companions:
+  - table: stg_openaire_projects
+    when: project funding narratives (qualitative)
+    role: enrich_context
+  do_not_join:
+  - table: stg_fews_market_prices
+    reason: market prices; different decision use

@@ -1,6 +1,6 @@
 """
-RAG graph: query → decompose → parallel retrieval (BQ table match + news + academic)
-→ BigQuery lookup → merge → rerank → generate.
+RAG graph: query → decompose → parallel retrieval (news + academic + OTA)
+→ BQ SQL reasoner (staging_dev YAML) → BigQuery → merge → rerank → generate.
 """
 from __future__ import annotations
 
@@ -35,7 +35,8 @@ from ml.rag.chatbot.query_gate import (
     is_greeting_query,
     is_out_of_scope_query,
 )
-from ml.rag.chatbot.bq_table_matcher import match_bq_tables_from_descriptions
+from ml.rag.chatbot.bq_byte_budget import trim_bq_result_contents
+from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
 from ml.rag.chatbot.generator import filter_context_items, generate, is_usable_context_item
 from ml.rag.chatbot.query_decomposer import (
     decompose_query,
@@ -283,6 +284,7 @@ class RAGGraphState(TypedDict, total=False):
     query: str
     decomposition: dict[str, Any]
     bq_table_candidates: list[dict[str, Any]]
+    bq_sql_plan: dict[str, Any]
     vector_news_results: list[dict[str, Any]]
     vector_academic_results: list[dict[str, Any]]
     vector_ota_results: list[dict[str, Any]]
@@ -629,31 +631,15 @@ def _research_context_label(meta: dict[str, Any]) -> tuple[str, str]:
     return "academic", prefix
 
 
-def _retrieve_bq_tables(state: RAGGraphState) -> list[dict[str, Any]]:
-    q = (state.get("query") or "").strip()
-    t0 = time.perf_counter()
-    with observed_span("retrieval.bq_tables", input_data={"query": q[:200]}):
-        result = match_bq_tables_from_descriptions(q, top_k=10)
-        update_current_span_metadata(
-            {
-                "candidate_count": len(result),
-                "latency_ms": trace_elapsed_ms(t0),
-            }
-        )
-        return result
-
-
 def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
-    """Run BQ table-description match, news, academic, and OTA retrieval in parallel."""
-    bq_cands: list[dict[str, Any]] = []
+    """Run news, academic, and OTA retrieval in parallel (BQ uses YAML reasoner separately)."""
     news_out: list[dict[str, Any]] = []
     academic_out: list[dict[str, Any]] = []
     ota_out: list[dict[str, Any]] = []
     corpus_errors: list[str] = []
 
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=3) as ex:
         futs = {
-            ex.submit(run_with_tracing_context(_retrieve_bq_tables, state)): "bq_tables",
             ex.submit(run_with_tracing_context(_retrieve_news, state)): "news",
             ex.submit(run_with_tracing_context(_retrieve_academic, state)): "academic",
             ex.submit(run_with_tracing_context(_retrieve_ota, state)): "ota",
@@ -666,9 +652,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
                 logger.exception("Parallel retrieval failed for %s; returning empty list", kind)
                 corpus_errors.append(f"{kind}:{type(exc).__name__}")
                 res = []
-            if kind == "bq_tables":
-                bq_cands = res
-            elif kind == "news":
+            if kind == "news":
                 news_out = res
             elif kind == "academic":
                 academic_out = res
@@ -680,7 +664,6 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
 
     combined = list(news_out) + list(academic_out) + list(ota_out)
     return {
-        "bq_table_candidates": bq_cands,
         "vector_news_results": news_out,
         "vector_academic_results": academic_out,
         "vector_ota_results": ota_out,
@@ -688,12 +671,72 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     }
 
 
+def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
+    """YAML-index SQL reasoner: select staging_dev tables and query intents."""
+    q = (state.get("query") or "").strip()
+    plan = reason_bq_sql_plan(
+        q,
+        decomposition=state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None,
+        plan_type=str(state.get("plan_type") or "") or None,
+        category=str(state.get("category") or "") or None,
+    )
+    hints = list(plan.get("table_hints") or [])
+    cands = [
+        {
+            "content": hint,
+            "table_name": tid,
+            "metadata": {"table_name": tid, "source": "staging_yaml"},
+        }
+        for tid, hint in zip(list(plan.get("selected_tables") or []), hints)
+    ]
+    # If hint count differs, still expose selected table ids as candidates.
+    if not cands:
+        for tid in list(plan.get("selected_tables") or []):
+            cands.append(
+                {
+                    "content": "",
+                    "table_name": tid,
+                    "metadata": {"table_name": tid, "source": "staging_yaml"},
+                }
+            )
+    return {
+        "bq_sql_plan": plan,
+        "bq_table_candidates": cands,
+    }
+
+
 def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
-    dec = state.get("decomposition") or {}
-    cands = state.get("bq_table_candidates") or []
-    max_sql = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
-    hints = [str(c.get("content") or "") for c in cands[:max_sql] if c.get("content")]
+    raw_dec = state.get("decomposition")
+    dec: dict[str, Any] = raw_dec if isinstance(raw_dec, dict) else {}
+    raw_plan = state.get("bq_sql_plan")
+    plan: dict[str, Any] = raw_plan if isinstance(raw_plan, dict) else {}
+    if plan.get("skip_bq"):
+        return {"bq_results": [], "bq_sql_queries": []}
+
+    hints = [str(h).strip() for h in (plan.get("table_hints") or []) if str(h).strip()]
+    if not hints:
+        cands = state.get("bq_table_candidates") or []
+        hints = [str(c.get("content") or "") for c in cands if c.get("content")]
+
+    # Enrich NL2SQL question with reasoner intents when present.
+    raw_intents = plan.get("query_intents")
+    intents: list[Any] = raw_intents if isinstance(raw_intents, list) else []
+    intent_lines = []
+    for intent in intents[:5]:
+        if not isinstance(intent, dict):
+            continue
+        goal = str(intent.get("goal") or "").strip()
+        notes = str(intent.get("notes") or "").strip()
+        filters = str(intent.get("filters") or "").strip()
+        tables = ", ".join(str(t) for t in (intent.get("tables") or []))
+        bit = "; ".join(x for x in (goal, f"tables={tables}" if tables else "", filters, notes) if x)
+        if bit:
+            intent_lines.append(bit)
+    question = q
+    if intent_lines:
+        question = q + "\n\nSQL plan intents:\n- " + "\n- ".join(intent_lines)
+
     top_k = int(state.get("bq_top_k") or 15)
     countries = resolve_retrieval_geographies(
         geo_override=str(state.get("geo_override") or ""),
@@ -710,7 +753,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     elif len(countries) == 1:
         bq_geo["geo_country"] = countries[0]
     results = retriever.retrieve(
-        q,
+        question,
         top_k=top_k,
         table_hints=hints,
         time_start=ts or None,
@@ -719,6 +762,9 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         domains=domains,
         **bq_geo,
     )
+    results, ctx_truncated = trim_bq_result_contents(results)
+    if ctx_truncated:
+        update_current_span_metadata({"bq_context_truncated": True})
     sql_seen: set[str] = set()
     bq_sql_queries: list[str] = []
     for row in results:
@@ -1162,6 +1208,7 @@ def build_graph():
 
     graph.add_node("decompose", node_decompose)
     graph.add_node("parallel_retrieve", node_parallel_retrieve)
+    graph.add_node("bq_reason", node_bq_reason)
     graph.add_node("bq_retrieve", node_bq_retrieve)
     graph.add_node("merge", node_merge)
     graph.add_node("rerank", node_rerank)
@@ -1188,7 +1235,8 @@ def build_graph():
         return "parallel_retrieve"
 
     graph.add_conditional_edges("decompose", _route_after_decompose)
-    graph.add_edge("parallel_retrieve", "bq_retrieve")
+    graph.add_edge("parallel_retrieve", "bq_reason")
+    graph.add_edge("bq_reason", "bq_retrieve")
     graph.add_edge("bq_retrieve", "merge")
     graph.add_edge("merge", "rerank")
     graph.add_conditional_edges("rerank", route_after_rerank)

@@ -1,0 +1,108 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_land_inputs
+description: FAOSTAT land use, fertilizers, pesticides, manure, nutrient balance.
+grain: country × item × element × year
+entity_type: faostat
+source:
+  layer: staging_dev
+  domain: faostat
+relationships:
+  primary_key:
+    type: logical
+    fields: country × item × element × year
+semantic_role:
+  primary_domain: faostat
+  supports: &id001
+  - land
+  - fertilizer
+  - faostat
+business_questions_supported:
+- What is fertilizer use by country?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter country_name and year
+- Filter element for the metric needed
+- GROUP BY country_name, product_name, year when comparing
+columns:
+- name: area_code
+  type: STRING
+  description: area code
+- name: area_code_m49
+  type: STRING
+  description: area code m49
+- name: country_name
+  type: STRING
+  description: country name
+- name: partner_country_code
+  type: STRING
+  description: partner country code
+- name: partner_country_code_m49
+  type: STRING
+  description: partner country code m49
+- name: partner_countries
+  type: STRING
+  description: partner countries
+- name: item_code
+  type: STRING
+  description: item code
+- name: item_code_cpc
+  type: STRING
+  description: item code cpc
+- name: item
+  type: STRING
+  description: item
+- name: months_code
+  type: STRING
+  description: months code
+- name: months
+  type: STRING
+  description: months
+- name: element_code
+  type: STRING
+  description: element code
+- name: element
+  type: STRING
+  description: element
+- name: year
+  type: INT64
+  description: year
+- name: unit
+  type: STRING
+  description: unit
+- name: value
+  type: FLOAT64
+  description: value
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: faostat
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_faostat_production
+    'on':
+    - country_name
+    - year
+    how: enrich
+    note: Inputs vs production
+  - table: stg_faostat_emissions
+    'on':
+    - country_name
+    - year
+    how: enrich
+    note: Fertilizer/land-use vs emissions
+  - table: stg_isric_africa_soil
+    'on':
+    - country via spatial
+    how: enrich
+    note: Soil constraints (spatial join caution)
+  companions:
+  - table: stg_unccd_land_degradation
+    when: degradation pressure
+    role: enrich_context
+  do_not_join:
+  - table: stg_ilri_vendor_consumer
+    reason: survey microdata

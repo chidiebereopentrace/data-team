@@ -1,0 +1,73 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_africa_gdp_ppp
+description: Africa GDP per capita PPP by country and year.
+grain: country × observation_year
+entity_type: socio_economic
+source:
+  layer: staging_dev
+  domain: socio_economic
+relationships:
+  primary_key:
+    type: logical
+    fields: country × observation_year
+semantic_role:
+  primary_domain: socio_economic
+  supports: &id001
+  - gdp
+  - economics
+business_questions_supported:
+- What is GDP per capita PPP?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter country_code
+columns:
+- name: country_name
+  type: STRING
+  description: country name
+- name: country_code
+  type: STRING
+  description: country code
+- name: observation_year
+  type: INT64
+  description: observation year
+- name: gdp_per_capita_ppp
+  type: FLOAT64
+  description: gdp per capita ppp
+- name: ingested_at
+  type: STRING
+  description: ingested at
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: socio_economic
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_africa_hdi
+    'on':
+    - country_code
+    - observation_year≈year
+    how: enrich
+    note: Income with HDI
+  - table: stg_faostat_production
+    'on':
+    - country_code/name
+    - year
+    how: enrich
+    note: Macro context for ag production
+  - table: stg_wfp_vampire_prices
+    'on':
+    - country_code≈country
+    - year
+    how: enrich
+    note: Affordability backdrop
+  companions:
+  - table: stg_faostat_prices
+    when: price level context
+    role: enrich_context
+  do_not_join:
+  - table: stg_germplasm
+    reason: accession geography

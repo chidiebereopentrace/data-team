@@ -1,0 +1,98 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_unccd_land_degradation
+description: UNCCD land degradation indicators.
+grain: geo_area × indicator × time
+entity_type: soil_and_land
+source:
+  layer: staging_dev
+  domain: soil_and_land
+relationships:
+  primary_key:
+    type: logical
+    fields: geo_area × indicator × time
+semantic_role:
+  primary_domain: soil_and_land
+  supports: &id001
+  - land degradation
+  - unccd
+business_questions_supported:
+- What insights does stg_unccd_land_degradation provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_unccd_land_degradation`
+- Always include LIMIT
+columns:
+- name: goal
+  type: STRING
+  description: goal
+- name: target
+  type: STRING
+  description: target
+- name: indicator
+  type: STRING
+  description: indicator
+- name: series
+  type: STRING
+  description: series
+- name: series_description
+  type: STRING
+  description: series description
+- name: series_count
+  type: STRING
+  description: series count
+- name: geo_area_code
+  type: STRING
+  description: geo area code
+- name: geo_area_name
+  type: STRING
+  description: geo area name
+- name: time_period_start
+  type: STRING
+  description: time period start
+- name: value
+  type: FLOAT64
+  description: value
+- name: value_type
+  type: STRING
+  description: value type
+- name: time_detail
+  type: STRING
+  description: time detail
+- name: time_coverage
+  type: STRING
+  description: time coverage
+- name: upper_bound
+  type: STRING
+  description: upper bound
+- name: lower_bound
+  type: STRING
+  description: lower bound
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: soil_and_land
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_faostat_land_inputs
+    'on':
+    - geo_area≈country
+    - year≈time
+    how: enrich
+    note: Degradation with land/input pressure
+  - table: stg_africa_hdi
+    'on':
+    - country≈geo_area_name
+    - year
+    how: enrich
+    note: Degradation with development
+  companions:
+  - table: stg_isric_africa_soil
+    when: soil property backdrop
+    role: enrich_context
+  do_not_join:
+  - table: stg_ilri_dairy_genetics
+    reason: farm genetics

@@ -1,0 +1,104 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_fews_cross_border_trade
+description: FEWS NET cross-border trade flows for agricultural products.
+grain: border_point × product × year × month × trade_flow
+entity_type: fews
+source:
+  layer: staging_dev
+  domain: fews
+relationships:
+  primary_key:
+    type: logical
+    fields: border_point × product × year × month × trade_flow
+semantic_role:
+  primary_domain: fews
+  supports: &id001
+  - trade
+  - markets
+  - fews
+business_questions_supported:
+- Which border points move the most maize?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter trade_flow and product_name
+columns:
+- name: country
+  type: STRING
+  description: country
+- name: country_code
+  type: STRING
+  description: country code
+- name: border_point
+  type: STRING
+  description: border point
+- name: source_country
+  type: STRING
+  description: source country
+- name: source_country_code
+  type: STRING
+  description: source country code
+- name: destination_country
+  type: STRING
+  description: destination country
+- name: destination_country_code
+  type: STRING
+  description: destination country code
+- name: product_name
+  type: STRING
+  description: product name
+- name: cpcv2
+  type: STRING
+  description: cpcv2
+- name: trade_flow
+  type: STRING
+  description: trade flow
+- name: trade_type
+  type: STRING
+  description: trade type
+- name: unit
+  type: STRING
+  description: unit
+- name: value
+  type: FLOAT64
+  description: value
+- name: common_unit_quantity
+  type: STRING
+  description: common unit quantity
+- name: year
+  type: INT64
+  description: year
+- name: month
+  type: INT64
+  description: month
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: fews
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_fews_market_prices
+    'on':
+    - country
+    - product_name
+    - year
+    - month
+    how: enrich
+    note: Trade flows vs market prices
+  - table: stg_faostat_trade
+    'on':
+    - country_name≈country
+    - product_name
+    - year
+    how: compare
+    note: FEWS border flows vs FAOSTAT trade
+  companions:
+  - table: stg_wfp_vampire_prices
+    when: price shocks along corridors
+    role: enrich_context
+  do_not_join:
+  - table: stg_ilri_dairy_genetics
+    reason: farm microdata; no trade grain
