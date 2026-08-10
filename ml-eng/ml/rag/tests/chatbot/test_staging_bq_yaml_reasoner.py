@@ -54,6 +54,39 @@ def test_format_table_schema_includes_semantic_relationships() -> None:
     assert "stg_faostat_production" in text or "joins_with" in text.lower()
 
 
+def test_format_table_schema_filters_joins_to_selected_set() -> None:
+    full = format_table_schema("stg_yield_raw_data", max_bytes=8000)
+    filtered = format_table_schema(
+        "stg_yield_raw_data",
+        max_bytes=8000,
+        selected_tables={"stg_yield_raw_data"},
+    )
+    assert "stg_faostat_production" in full
+    assert "stg_faostat_production" not in filtered
+
+
+def test_multi_table_pack_includes_both_schemas() -> None:
+    hints, _ = pack_selected_table_hints(
+        ["stg_faostat_production", "stg_yield_raw_data"],
+        max_bytes=12000,
+    )
+    assert len(hints) >= 2
+    joined = "\n".join(hints)
+    assert "stg_faostat_production" in joined
+    assert "stg_yield_raw_data" in joined
+    assert "Columns:" in joined
+
+
+def test_multi_table_pack_shows_join_when_both_selected() -> None:
+    hints, _ = pack_selected_table_hints(
+        ["stg_yield_raw_data", "stg_faostat_production"],
+        max_bytes=12000,
+    )
+    joined = "\n".join(hints)
+    assert "joins_with" in joined.lower()
+    assert "stg_faostat_production" in joined
+
+
 def test_reasoner_index_mentions_rels() -> None:
     text, _ = format_reasoner_index(max_bytes=20000)
     assert "rels=" in text

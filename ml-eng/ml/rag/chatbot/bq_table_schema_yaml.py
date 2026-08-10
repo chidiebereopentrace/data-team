@@ -222,7 +222,18 @@ _SECTION_ORDER: list[tuple[str, str]] = [
 ]
 
 
-def _format_semantic_relationships(value: Any) -> str | None:
+def _in_selected_set(table: str, selected_tables: set[str] | None) -> bool:
+    if not selected_tables:
+        return True
+    bare = table.strip().split(".")[-1].lower()
+    return bare in {t.lower() for t in selected_tables}
+
+
+def _format_semantic_relationships(
+    value: Any,
+    *,
+    selected_tables: set[str] | None = None,
+) -> str | None:
     """Compact multi-table relationship block for NL2SQL / reasoner packs."""
     if not isinstance(value, dict):
         return None
@@ -235,6 +246,8 @@ def _format_semantic_relationships(value: Any) -> str | None:
                 continue
             table = str(item.get("table") or "").strip()
             if not table:
+                continue
+            if selected_tables and not _in_selected_set(table, selected_tables):
                 continue
             on = item.get("on")
             on_s = ",".join(str(x) for x in on) if isinstance(on, list) else str(on or "")
@@ -250,6 +263,8 @@ def _format_semantic_relationships(value: Any) -> str | None:
             if not isinstance(item, dict):
                 continue
             table = str(item.get("table") or "").strip()
+            if selected_tables and not _in_selected_set(table, selected_tables):
+                continue
             when = str(item.get("when") or "").strip()
             role = str(item.get("role") or "").strip()
             if table:
@@ -273,6 +288,7 @@ def format_table_schema(
     max_chars: int = 2400,
     max_bytes: int | None = None,
     include_columns: bool = True,
+    selected_tables: set[str] | None = None,
 ) -> str:
     """Compact, SQL-prompt-friendly rendering of a per-table YAML schema.
 
@@ -291,7 +307,10 @@ def format_table_schema(
         if key not in schema:
             continue
         if key == "semantic_relationships":
-            block = _format_semantic_relationships(schema[key])
+            block = _format_semantic_relationships(
+                schema[key],
+                selected_tables=selected_tables,
+            )
             if block:
                 parts.append(block)
             continue
@@ -386,6 +405,7 @@ def pack_selected_table_hints(
     budget = hint_max_bytes() if max_bytes is None else max(0, max_bytes)
     if budget <= 0 or not table_ids:
         return [], bool(table_ids)
+    selected = {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
     per = max(400, budget // max(1, len(table_ids)))
     hints: list[str] = []
     used = 0
@@ -402,7 +422,12 @@ def pack_selected_table_hints(
         if remain_total <= 0:
             truncated = True
             break
-        block = format_table_schema(tid, max_bytes=min(per, remain_total), include_columns=True)
+        block = format_table_schema(
+            tid,
+            max_bytes=min(per, remain_total),
+            include_columns=True,
+            selected_tables=selected,
+        )
         if not block:
             continue
         cost = utf8_len(block) + (1 if hints else 0)

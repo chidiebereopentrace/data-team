@@ -10,6 +10,7 @@ from ml.rag.chatbot.generator import (
     SourceRef,
     _append_structured_citations,
     _build_context_block,
+    _build_prompt,
     _clean_answer,
     _context_max_chars,
     _finalize_generation_result,
@@ -595,6 +596,40 @@ def test_generate_strips_preamble_from_llm_output() -> None:
     assert not result.answer.lower().startswith("based on the context")
     assert "Rice policy shifted in Senegal." in result.answer
     assert "[1]" in result.answer
+
+
+def test_build_prompt_structured_bq_unavailable_guard() -> None:
+    messages = _build_prompt(
+        "Which country in Africa had the highest production in 2020?",
+        context_block="[News] policy chunk",
+        structured_bq_unavailable=True,
+    )
+    sys_msg = messages[0]["content"]
+    assert "CRITICAL" in sys_msg
+    assert "no usable rows" in sys_msg.lower()
+    assert "highest/lowest country" in sys_msg
+
+
+def test_generate_structured_bq_unavailable_injects_guard() -> None:
+    captured: dict = {}
+
+    def fake_call(messages, **_kwargs):
+        captured["messages"] = messages
+        return "Structured data is unavailable; policy context only.[1]"
+
+    items = [_news_item()]
+    with mock.patch("ml.rag.chatbot.generator._call_llama", side_effect=fake_call):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+            os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
+            generate(
+                "Which country in Africa had the highest production in 2020?",
+                items,
+                structured_bq_unavailable=True,
+            )
+    sys_msg = captured["messages"][0]["content"]
+    assert "CRITICAL" in sys_msg
+    assert "no usable rows" in sys_msg.lower()
 
 
 def test_finalize_generation_result_emits_citations_span_metadata() -> None:

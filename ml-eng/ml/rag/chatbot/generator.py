@@ -378,6 +378,7 @@ def _build_prompt(
     category: str = "",
     plan_type: str = "",
     answer_lang: str | None = None,
+    structured_bq_unavailable: bool = False,
 ) -> list[dict[str, str]]:
     lang = (answer_lang or "").strip() or detect_answer_language(query)
     system = (
@@ -467,6 +468,16 @@ def _build_prompt(
             + "\n\nAnswer in the user's language while keeping the category audience rules "
             "(plainness, framing, and jargon limits) — do not switch to English academic prose."
         )
+    if structured_bq_unavailable:
+        system = (
+            "CRITICAL: BigQuery structured data was attempted but returned no usable rows. "
+            "Do NOT invent specific numeric rankings (highest/lowest country, exact production "
+            "totals, precise yield figures) from news or policy text alone. "
+            "If the question asks for a ranked numeric answer from structured data, state clearly "
+            "that OpenTrace structured data is unavailable for this query and avoid naming a "
+            "specific country or number as the answer unless a structured-data source in Context "
+            "explicitly provides it.\n\n"
+        ) + system
 
     mb = (memory_block.strip() + "\n\n") if memory_block.strip() else ""
     user = f"{mb}Context:\n{context_block}\n\nQuestion: {query}"
@@ -936,6 +947,7 @@ def generate(
     category = str(kwargs.get("category") or "").strip()
     plan_type = str(kwargs.get("plan_type") or "").strip()
     answer_lang = str(kwargs.get("answer_lang") or "").strip() or None
+    structured_bq_unavailable = bool(kwargs.get("structured_bq_unavailable"))
 
     if not context_items:
         allow_ungrounded = os.environ.get("RAG_ALLOW_UNGROUNDED", "").strip().lower() in (
@@ -956,6 +968,7 @@ def generate(
                 category=category,
                 plan_type=plan_type,
                 answer_lang=answer_lang,
+                structured_bq_unavailable=structured_bq_unavailable,
             )
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = (
@@ -1012,6 +1025,7 @@ def generate(
         category=category,
         plan_type=plan_type,
         answer_lang=answer_lang,
+        structured_bq_unavailable=structured_bq_unavailable,
     )
     llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
     if llama_answer:

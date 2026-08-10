@@ -14,6 +14,12 @@ from typing import Any
 
 from ml.rag.chatbot.acf_metadata import project_bq_row_acf
 from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, truncate_utf8
+from ml.rag.chatbot.bq_sql_validate import (
+    dry_run_sql,
+    sql_retry_enabled,
+    validate_sql_table_allowlist,
+)
+from ml.rag.chatbot.query_decomposer import _NON_COUNTRY_GEO
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 from ml.rag.observability import (
@@ -96,6 +102,31 @@ _FORBIDDEN_SQL = re.compile(
 _QUERY_SPLIT_RE = re.compile(r"\n---+\s*(?:QUERY)?\s*---+\n", re.IGNORECASE)
 
 
+def _continental_scope_hint(
+    query: str | None,
+    entities: list[str] | None,
+) -> str | None:
+    """Detect Africa/subregion scope for BQ filtering (not a single country)."""
+    found: list[str] = []
+    q = (query or "").lower()
+    for region in _NON_COUNTRY_GEO:
+        if region in q and region not in found:
+            found.append(region)
+    if entities:
+        for ent in entities:
+            el = str(ent).strip().lower()
+            if el in _NON_COUNTRY_GEO and el not in found:
+                found.append(el)
+    if not found:
+        return None
+    return (
+        "- CONTINENTAL/REGIONAL scope (Africa or subregion): rank or aggregate across "
+        "African countries using country_name (or equivalent) on the fact table; "
+        "do NOT filter country_name = 'Africa'; do NOT join GDP/HDI tables for a "
+        "country list unless that table is in the selected table set"
+    )
+
+
 def _format_query_constraints(
     *,
     geo_country: str | None,
@@ -104,6 +135,7 @@ def _format_query_constraints(
     time_end: str | None,
     entities: list[str] | None,
     domains: list[str] | None,
+    query: str | None = None,
 ) -> str:
     """Structured filters from query decomposition (must appear in generated SQL)."""
     lines: list[str] = []
@@ -134,6 +166,9 @@ def _format_query_constraints(
         dom = [str(d).strip() for d in domains if str(d).strip()]
         if dom:
             lines.append(f"- Topic domains: {', '.join(dom)}")
+    continental = _continental_scope_hint(query, entities)
+    if continental:
+        lines.append(continental)
     if not lines:
         return ""
     return "Query constraints from decomposition (MUST honor in WHERE / GROUP BY):\n" + "\n".join(lines)
@@ -311,6 +346,8 @@ class BQRetriever(BaseRetriever):
         domains: list[str] | None,
         multi_query: bool,
         max_queries: int,
+        selected_tables: list[str] | None = None,
+        query: str | None = None,
     ) -> list[dict[str, str]]:
         schema_text = self._schema_for_nl2sql(table_hints)
         constraints_block = _format_query_constraints(
@@ -320,6 +357,7 @@ class BQRetriever(BaseRetriever):
             time_end=time_end,
             entities=entities,
             domains=domains,
+            query=query or question,
         )
         hints_block = ""
         hints_truncated = False
@@ -354,24 +392,37 @@ class BQRetriever(BaseRetriever):
                     hints_block += "\n[bq_hint_truncated=true]"
         if multi_query:
             output_rule = (
-                f"6) Output up to {max_queries} separate BigQuery SELECT queries — one per relevant "
-                f"table hint when possible. Put each query on its own block separated by a line "
-                f"containing only ---QUERY---. No explanation, no markdown fences."
+                f"8) Output up to {max_queries} separate BigQuery SELECT queries when needed. "
+                f"Put each query on its own block separated by a line containing only ---QUERY---. "
+                "No explanation, no markdown fences."
             )
         else:
             output_rule = (
-                "6) Output exactly one SELECT for the single table hint provided. "
-                "No explanation, no markdown, no code fence."
+                "8) Output exactly one SELECT. No explanation, no markdown, no code fence."
             )
         ds = self.datasets_config.get("staging", "staging_dev")
+        allowed_tables = [
+            str(t).strip().split(".")[-1]
+            for t in (selected_tables or [])
+            if str(t).strip()
+        ]
+        tables_rule = (
+            f"Tables you may use (exactly these stg_* tables): {', '.join(allowed_tables)}. "
+            "JOINs are allowed ONLY between these tables using on= keys from semantic_relationships "
+            "in the hints. Never reference a stg_* table outside this list."
+            if allowed_tables
+            else "Use ONLY stg_* tables and columns from the Schema / table hints."
+        )
         system = (
             f"You are a BigQuery expert for OpenTrace agricultural data in the `{ds}` dataset only. "
             "Rules: "
-            f"1) Use ONLY stg_* tables and columns from the Schema / table hints (`{self.project_id}.{ds}.stg_*`). "
-            "Use full names: `project.dataset.table`. "
-            "2) When Query constraints are present, REQUIRED country and time filters MUST appear in every SELECT. "
-            "3) Match country columns to schema (country, country_name, country_code, geographic_unit_name, fnid). "
-            "4) Match time columns to schema (year, planting_year, harvest_year, observation_year, month). "
+            f"1) {tables_rule} "
+            f"Use full names: `{self.project_id}.{ds}.stg_*`. "
+            "2) Use exact column names from the Columns blocks — never invent columns "
+            "(e.g. use country_name, not country). "
+            "3) When Query constraints are present, REQUIRED country and time filters MUST appear. "
+            "4) For FAOSTAT production rankings: filter element and year, then "
+            "SUM(value) GROUP BY country_name ORDER BY total DESC — not MAX per product row. "
             "5) Prefer GROUP BY / ORDER BY over bare SELECT * LIMIT. "
             f"{output_rule}"
         )
@@ -399,6 +450,8 @@ class BQRetriever(BaseRetriever):
         time_end: str | None = None,
         entities: list[str] | None = None,
         domains: list[str] | None = None,
+        selected_tables: list[str] | None = None,
+        query: str | None = None,
     ) -> str:
         """Generate one BigQuery SELECT (focused on a single table hint when provided)."""
         messages = self._build_nl2sql_messages(
@@ -412,12 +465,78 @@ class BQRetriever(BaseRetriever):
             domains=domains,
             multi_query=False,
             max_queries=1,
+            selected_tables=selected_tables,
+            query=query,
         )
         raw = _call_llama_for_sql(messages)
         sql = _extract_single_select(raw)
         if not sql and raw:
             logger.warning("NL-to-SQL: LLM returned non-SELECT text (first 200 chars): %s", raw[:200])
         return sql
+
+    def _prepare_sql(
+        self,
+        raw_sql: str,
+        *,
+        question: str,
+        table_hints: list[str] | None,
+        selected_tables: set[str],
+        allowed_datasets: set[str],
+        limit: int,
+        client: Any,
+        geo_country: str | None = None,
+        geo_countries: list[str] | None = None,
+        time_start: str | None = None,
+        time_end: str | None = None,
+        entities: list[str] | None = None,
+        domains: list[str] | None = None,
+        query: str | None = None,
+    ) -> tuple[str | None, str | None]:
+        """
+        Validate SQL, enforce table allowlist, dry-run, and optionally retry once.
+
+        Returns (validated_sql, error_message). error_message is set when SQL cannot run.
+        """
+        validated = _validate_sql(raw_sql, allowed_datasets, limit)
+        if validated is None:
+            return None, "validation_failed"
+
+        allow_err = validate_sql_table_allowlist(validated, selected_tables)
+        if allow_err:
+            return None, allow_err
+
+        dry_err = dry_run_sql(client, validated)
+        if dry_err and sql_retry_enabled():
+            retry_question = (
+                f"{question}\n\n"
+                f"Previous SQL failed BigQuery dry-run:\n{dry_err}\n\n"
+                "Fix the SQL. Use ONLY columns from the Columns blocks in the table hints. "
+                "JOIN only tables in the selected set using documented on= keys. "
+                "Do not reference stg_* tables outside the selected set."
+            )
+            retry_sql = self._nl_to_sql_one(
+                retry_question,
+                table_hints=table_hints,
+                geo_country=geo_country,
+                geo_countries=geo_countries,
+                time_start=time_start,
+                time_end=time_end,
+                entities=entities,
+                domains=domains,
+                selected_tables=sorted(selected_tables),
+                query=query,
+            )
+            if retry_sql:
+                validated = _validate_sql(retry_sql, allowed_datasets, limit)
+                if validated is None:
+                    return None, f"retry_validation_failed: {dry_err[:200]}"
+                allow_err = validate_sql_table_allowlist(validated, selected_tables)
+                if allow_err:
+                    return None, allow_err
+                dry_err = dry_run_sql(client, validated)
+        if dry_err:
+            return None, f"dry_run_failed: {dry_err[:300]}"
+        return validated, None
 
     def _nl_to_sql_queries(
         self,
@@ -430,6 +549,8 @@ class BQRetriever(BaseRetriever):
         time_end: str | None = None,
         entities: list[str] | None = None,
         domains: list[str] | None = None,
+        selected_tables: list[str] | None = None,
+        query: str | None = None,
     ) -> list[str]:
         """
         Generate up to RAG_BQ_MAX_SQL_QUERIES (default 10) SELECT statements via NL-to-SQL.
@@ -439,8 +560,9 @@ class BQRetriever(BaseRetriever):
         - batch: one LLM call returning multiple queries separated by ---QUERY---.
         """
         max_queries = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
-        mode = os.environ.get("RAG_BQ_NL2SQL_MODE", "per_hint").strip().lower()
         cleaned_hints = [str(h).strip() for h in (table_hints or []) if str(h).strip()]
+        default_mode = "batch" if len(cleaned_hints) > 1 else "per_hint"
+        mode = os.environ.get("RAG_BQ_NL2SQL_MODE", default_mode).strip().lower()
         nl2sql_t0 = time.perf_counter()
 
         with observed_span(
@@ -466,6 +588,8 @@ class BQRetriever(BaseRetriever):
                     domains=domains,
                     multi_query=True,
                     max_queries=max_queries,
+                    selected_tables=selected_tables,
+                    query=query,
                 )
                 parsed = _parse_sql_queries(_call_llama_for_sql(messages), max_queries)
                 if parsed:
@@ -484,13 +608,15 @@ class BQRetriever(BaseRetriever):
                 def _gen_one(hint: str | None) -> str:
                     return self._nl_to_sql_one(
                         question,
-                        table_hints=[hint] if hint else None,
+                        table_hints=[hint] if hint else cleaned_hints or None,
                         geo_country=geo_country,
                         geo_countries=geo_countries,
                         time_start=time_start,
                         time_end=time_end,
                         entities=entities,
                         domains=domains,
+                        selected_tables=selected_tables,
+                        query=query,
                     )
 
                 seen: set[str] = set()
@@ -600,6 +726,14 @@ class BQRetriever(BaseRetriever):
         if not isinstance(domains, list):
             domains = None
 
+        raw_selected = kwargs.get("selected_tables")
+        selected_tables: set[str] = set()
+        if isinstance(raw_selected, (list, tuple)):
+            for item in raw_selected:
+                tid = str(item).strip().split(".")[-1].lower()
+                if tid.startswith("stg_"):
+                    selected_tables.add(tid)
+
         sql_input = kwargs.get("sql")
         sql_queries: list[str] = []
         if isinstance(sql_input, str) and sql_input.strip():
@@ -617,6 +751,8 @@ class BQRetriever(BaseRetriever):
                 time_end=time_end,
                 entities=entities,
                 domains=domains,
+                selected_tables=sorted(selected_tables) if selected_tables else None,
+                query=query,
             )
 
         if not sql_queries:
@@ -641,22 +777,41 @@ class BQRetriever(BaseRetriever):
             if budget <= 0:
                 break
             limit = min(rows_per_query, budget)
-            validated = _validate_sql(raw_sql, allowed, limit)
+            validated, prep_err = self._prepare_sql(
+                raw_sql,
+                question=query,
+                table_hints=hint_list,
+                selected_tables=selected_tables,
+                allowed_datasets=allowed,
+                limit=limit,
+                client=client,
+                geo_country=geo_country,
+                geo_countries=geo_countries,
+                time_start=time_start,
+                time_end=time_end,
+                entities=entities,
+                domains=domains,
+                query=query,
+            )
             if validated is None:
                 logger.warning(
-                    "BQ NL2SQL: validation rejected SQL #%d (first 300 chars): %s",
-                    idx + 1, (raw_sql or "")[:300]
+                    "BQ NL2SQL: validation rejected SQL #%d (%s): %s",
+                    idx + 1,
+                    prep_err or "unknown",
+                    (raw_sql or "")[:300],
                 )
-                # Still surface the attempted SQL for debugging (software team handoff)
+                meta: dict[str, Any] = {
+                    "sql": raw_sql,
+                    "sql_index": idx + 1,
+                    "sql_count": len(sql_queries),
+                    "validation_failed": True,
+                }
+                if prep_err:
+                    meta["prep_error"] = prep_err[:500]
                 items.append({
-                    "content": "[BQ validation failed for this query]",
+                    "content": f"[BQ validation failed: {(prep_err or 'invalid SQL')[:200]}]",
                     "source": "bigquery",
-                    "metadata": {
-                        "sql": raw_sql,
-                        "sql_index": idx + 1,
-                        "sql_count": len(sql_queries),
-                        "validation_failed": True,
-                    },
+                    "metadata": meta,
                 })
                 continue
             try:

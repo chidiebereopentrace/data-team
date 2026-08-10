@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ml.rag.chatbot.query_decomposer import _extract_countries
 from ml.rag.retrievers.bq_retriever import (
+    _continental_scope_hint,
     _extract_single_select,
     _format_query_constraints,
     _parse_sql_queries,
@@ -52,3 +53,26 @@ def test_extract_single_select_prose_returns_empty() -> None:
 def test_extract_single_select_plain_select_unchanged() -> None:
     raw = "SELECT country, year FROM `proj.ds.t1` LIMIT 10"
     assert _extract_single_select(raw).startswith("SELECT")
+
+
+def test_continental_scope_hint_africa_query() -> None:
+    hint = _continental_scope_hint(
+        "which country in africa had the highest agricultural production in 2020",
+        None,
+    )
+    assert hint is not None
+    assert "country_name" in hint
+    assert "Africa" in hint
+
+
+def test_format_query_constraints_africa_scope() -> None:
+    block = _format_query_constraints(
+        geo_country=None,
+        time_start="2020-01-01",
+        time_end="2020-12-31",
+        entities=["agricultural production"],
+        domains=["agriculture"],
+        query="highest agricultural production in Africa 2020",
+    )
+    assert "CONTINENTAL/REGIONAL scope" in block
+    assert "2020" in block
