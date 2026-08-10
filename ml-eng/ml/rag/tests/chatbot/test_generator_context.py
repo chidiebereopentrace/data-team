@@ -623,13 +623,39 @@ def test_generate_structured_bq_unavailable_injects_guard() -> None:
             os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
             os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
             generate(
-                "Which country in Africa had the highest production in 2020?",
+                "What does the policy brief say about millet?",
                 items,
                 structured_bq_unavailable=True,
             )
     sys_msg = captured["messages"][0]["content"]
     assert "CRITICAL" in sys_msg
     assert "no usable rows" in sys_msg.lower()
+
+
+def test_generate_ranking_hard_blocks_when_bq_unavailable() -> None:
+    items = [_news_item()]
+    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
+        mock_llm.return_value = "should not be called"
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+            os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
+            result = generate(
+                "Which country in Africa had the highest agricultural production in 2020?",
+                items,
+                structured_bq_unavailable=True,
+            )
+    assert "I don't have OpenTrace data" in result.answer
+    assert "ACF: no evidence" in result.answer
+    mock_llm.assert_not_called()
+
+
+def test_is_ranking_numeric_query() -> None:
+    from ml.rag.chatbot.generator import is_ranking_numeric_query
+
+    assert is_ranking_numeric_query(
+        "which country in africa had the highest agricultural production in 2020"
+    )
+    assert not is_ranking_numeric_query("What does the policy brief say about millet?")
 
 
 def test_finalize_generation_result_emits_citations_span_metadata() -> None:
