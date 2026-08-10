@@ -273,6 +273,7 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
         or result.get("is_product_query")
         or result.get("is_greeting_query")
         or result.get("is_out_of_scope_query")
+        or result.get("is_language_unknown")
     )
     empty_retrieval = (not is_shortcut) and (news_n + academic_n + ota_n + bq_n + web_n == 0)
     web_status = result.get("web_fallback_status")
@@ -346,6 +347,8 @@ def infer_rag_route(result: dict[str, Any]) -> str:
         return "greeting"
     if result.get("is_out_of_scope_query"):
         return "out_of_scope"
+    if result.get("is_language_unknown"):
+        return "language_unknown"
     if result.get("insufficient_context"):
         return "insufficient"
     if result.get("web_results"):

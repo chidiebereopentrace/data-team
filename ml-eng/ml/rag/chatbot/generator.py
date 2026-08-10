@@ -21,10 +21,22 @@ from ml.rag.chat_memory import (
     default_verbatim_max_chars,
 )
 from ml.rag.chatbot.acf_scoring import ACFResult, no_evidence_acf, score_cited_evidence
-from ml.rag.chatbot.answer_language import detect_answer_language, language_instruction
+from ml.rag.chatbot.answer_language import (
+    detect_answer_language,
+    is_english_answer_lang,
+    language_instruction,
+)
+from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
+
+_DOC_TABLE_FIGURE_RE = re.compile(
+    r"\b(?:tables?|figures?|figs?\.?|appendices|appendix)\s+"
+    r"(?:[A-Z]?\d+(?:\.\d+)*|[IVXLC]+)\b",
+    re.IGNORECASE,
+)
+
 _BQ_TABLE_RE = re.compile(
     r"FROM\s+`?(?:[\w-]+\.)*([\w-]+)`?",
     re.IGNORECASE,
@@ -365,7 +377,9 @@ def _build_prompt(
     memory_block: str = "",
     category: str = "",
     plan_type: str = "",
+    answer_lang: str | None = None,
 ) -> list[dict[str, str]]:
+    lang = (answer_lang or "").strip() or detect_answer_language(query)
     system = (
         "You are an agricultural business-intelligence assistant for OpenTrace stakeholders "
         "(government, NGOs, agribusiness, finance, farmers). "
@@ -387,6 +401,9 @@ def _build_prompt(
         "Do not paste raw context headers, Type lines, Citation lines, or pipe-delimited "
         "[Source N | ...] strings into the answer. "
         "Do not output a Sources, References, or Bibliography section; the system appends one. "
+        "Never refer to in-document labels from the context such as 'Table 6.1', 'Figure 2', "
+        "'Fig. 3', or 'Appendix A' — paraphrase the finding and cite with the Citation line + [N] only. "
+        "Never echo BigQuery or SQL table identifiers (e.g. stg_*, bronze table names) in the prose. "
         "Sources labeled Type: Wikipedia or Type: Web search are supplemental external context — "
         "prefer OpenTrace news, research, and structured data when available; treat web sources as "
         "partial background and state limits when relying on them. "
@@ -407,7 +424,7 @@ def _build_prompt(
         "'Unfortunately', 'It is important to note', 'It is worth noting', 'This study examines', "
         "'The evidence suggests', 'In recent years', 'Across the literature', or any similar academic / "
         "meta-commentary opener. Start with the substantive answer instead. "
-        + language_instruction(detect_answer_language(query))
+        + language_instruction(lang)
         + " "
         "If evidence is partial, state limits briefly after the substantive answer. "
         "Do not invent sources, cite Source IDs not in the Context, or invent statistics. "
@@ -442,6 +459,14 @@ def _build_prompt(
     plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
     if plan_addendum:
         system = system + "\n\n" + plan_addendum
+    # Keep category plainness/precision when answering in a named non-English language
+    # (avoids English academic bleed on e.g. Igbo + Farmers).
+    if category and cat_tone and not is_english_answer_lang(lang) and lang not in ("unknown", ""):
+        system = (
+            system
+            + "\n\nAnswer in the user's language while keeping the category audience rules "
+            "(plainness, framing, and jargon limits) — do not switch to English academic prose."
+        )
 
     mb = (memory_block.strip() + "\n\n") if memory_block.strip() else ""
     user = f"{mb}Context:\n{context_block}\n\nQuestion: {query}"
@@ -452,6 +477,8 @@ def _build_prompt(
 
 
 def _resolve_memory_block(**kwargs: Any) -> str:
+    query = str(kwargs.get("query") or kwargs.get("_query") or "")
+    dec = kwargs.get("decomposition") if isinstance(kwargs.get("decomposition"), dict) else None
     conv_summary = kwargs.get("conversation_summary")
     recent_turns = kwargs.get("recent_turns")
     raw_history = kwargs.get("chat_history")
@@ -459,14 +486,30 @@ def _resolve_memory_block(**kwargs: Any) -> str:
     if isinstance(recent_turns, list) or isinstance(conv_summary, str):
         s = (conv_summary if isinstance(conv_summary, str) else "").strip()
         rt = normalize_messages(recent_turns if isinstance(recent_turns, list) else None)
+        if not memory_relevant_for_query(query, s, rt, dec):
+            return ""
         block = build_memory_prompt_block(s, rt)
     elif isinstance(raw_history, list) and raw_history:
         rt = truncate_chat_history(raw_history)
+        hist_text = "\n".join(m.get("content") or "" for m in rt)
+        if not memory_relevant_for_query(query, hist_text, rt, dec):
+            return ""
         block = build_memory_prompt_block("", rt)
     cap = default_verbatim_max_chars() + default_summary_max_chars()
     if len(block) > cap:
         block = block[-cap:]
     return block
+
+
+def _strip_doc_table_figure_labels(text: str) -> str:
+    """Remove leftover Table/Figure/Appendix labels from model prose."""
+    if not text:
+        return text
+    cleaned = _DOC_TABLE_FIGURE_RE.sub("", text)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([,.;:])", r"\1", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip() or text.strip()
 
 
 def _strip_sql_from_answer(text: str) -> str:
@@ -526,6 +569,7 @@ def _clean_answer(text: str) -> str:
     text = re.sub(r"^(Context:|Question:).*$", "", text, flags=re.MULTILINE | re.IGNORECASE).strip()
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = _strip_sql_from_answer(text) or text.strip()
+    text = _strip_doc_table_figure_labels(text) or text.strip()
     text = _strip_model_sources_appendix(text)
     return _strip_preamble_openers(text)
 
@@ -884,10 +928,14 @@ def generate(
     if not isinstance(decomposition, dict):
         decomposition = None
 
-    memory_block = _resolve_memory_block(**kwargs)
+    mem_kwargs = dict(kwargs)
+    mem_kwargs["query"] = query
+    mem_kwargs["decomposition"] = decomposition
+    memory_block = _resolve_memory_block(**mem_kwargs)
 
     category = str(kwargs.get("category") or "").strip()
     plan_type = str(kwargs.get("plan_type") or "").strip()
+    answer_lang = str(kwargs.get("answer_lang") or "").strip() or None
 
     if not context_items:
         allow_ungrounded = os.environ.get("RAG_ALLOW_UNGROUNDED", "").strip().lower() in (
@@ -907,6 +955,7 @@ def generate(
                 memory_block=memory_block,
                 category=category,
                 plan_type=plan_type,
+                answer_lang=answer_lang,
             )
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = (
@@ -962,6 +1011,7 @@ def generate(
         memory_block=memory_block,
         category=category,
         plan_type=plan_type,
+        answer_lang=answer_lang,
     )
     llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
     if llama_answer:

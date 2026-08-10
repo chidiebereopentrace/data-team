@@ -21,6 +21,7 @@ _ml_eng = Path(__file__).resolve().parents[3]
 from ml.rag.chatbot.geo_policy import FARMER_PLAN_TYPE
 from ml.rag.chatbot.plan_policy import PLAN_TYPES
 from ml.rag.chatbot.stakeholder_prompts import CATEGORIES
+from ml.rag.chatbot.qa_run_kwargs import build_run_kwargs
 from ml.rag.chatbot.streamlit_inspector import (
     PRESET_QUERIES,
     BackendMode,
@@ -84,56 +85,6 @@ def _delete_active_session() -> None:
     del st.session_state.rag_sessions[cur]
     st.session_state.active_session_id = opts[0] if opts[0] != cur else opts[1]
     st.session_state.api_session_id = None
-
-
-def _build_run_kwargs(
-    *,
-    news_top_k: int,
-    academic_top_k: int,
-    bq_top_k: int,
-    ota_top_k: int,
-    rerank_top_k: int,
-    plan_type: str,
-    category: str,
-    profile_country: str,
-    t_start: str,
-    t_end: str,
-    prior_summary: str,
-    prior_recent: list[dict[str, str]],
-    preset_overrides: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    kwargs: dict[str, Any] = {
-        "news_top_k": int(news_top_k),
-        "academic_top_k": int(academic_top_k),
-        "bq_top_k": int(bq_top_k),
-        "ota_top_k": int(ota_top_k),
-        "rerank_top_k": int(rerank_top_k),
-    }
-    overrides = preset_overrides or {}
-    pt = str(overrides.get("plan_type") or plan_type or "")
-    cat = str(overrides.get("category") or category or "")
-    profile = overrides.get("user_profile") if isinstance(overrides.get("user_profile"), dict) else None
-
-    if pt:
-        kwargs["plan_type"] = pt
-    if cat:
-        kwargs["category"] = cat
-    if profile:
-        kwargs["user_profile"] = profile
-    elif pt or cat or profile_country.strip():
-        kwargs["user_profile"] = {
-            "country": profile_country.strip() or None,
-            "plan_type": pt or "Integrated",
-            "category": cat or pt or "Government",
-        }
-    if t_start.strip():
-        kwargs["time_start_override"] = t_start.strip()[:10]
-    if t_end.strip():
-        kwargs["time_end_override"] = t_end.strip()[:10]
-    if prior_summary.strip() or prior_recent:
-        kwargs["conversation_summary"] = prior_summary
-        kwargs["recent_turns"] = prior_recent
-    return kwargs
 
 
 def _run_pipeline(
@@ -267,25 +218,29 @@ with st.sidebar:
     ota_top_k = st.number_input("OTA chunks (top_k)", min_value=1, max_value=30, value=10)
     rerank_top_k = st.number_input("Rerank context size", min_value=1, max_value=50, value=20)
     st.divider()
-    plan_type_options = [""] + [p["id"] for p in PLAN_TYPES]
-    category_options = [""] + [c["id"] for c in CATEGORIES]
+    plan_type_options = [p["id"] for p in PLAN_TYPES]
+    category_options = [c["id"] for c in CATEGORIES]
+    _default_plan = "Farmers"
+    _default_category = "Farmers"
+    _plan_ix = plan_type_options.index(_default_plan) if _default_plan in plan_type_options else 0
+    _cat_ix = category_options.index(_default_category) if _default_category in category_options else 0
 
     def _catalog_label(catalog: list[dict[str, str]], item_id: str) -> str:
-        if not item_id:
-            return "(none)"
         for item in catalog:
             if item["id"] == item_id:
                 return str(item["label"])
         return item_id
 
     plan_type = st.selectbox(
-        "Plan type (optional)",
+        "Plan type",
         plan_type_options,
+        index=_plan_ix,
         format_func=lambda x: _catalog_label(PLAN_TYPES, x),
     )
     category = st.selectbox(
-        "Category (optional)",
+        "Category (audience lens)",
         category_options,
+        index=_cat_ix,
         format_func=lambda x: _catalog_label(CATEGORIES, x),
     )
     profile_country = ""
@@ -319,7 +274,7 @@ if not prompt and st.session_state.get("pending_prompt"):
 preset_overrides = st.session_state.pop("pending_preset_kwargs", None)
 
 if prompt:
-    kwargs = _build_run_kwargs(
+    kwargs = build_run_kwargs(
         news_top_k=int(news_top_k),
         academic_top_k=int(academic_top_k),
         bq_top_k=int(bq_top_k),

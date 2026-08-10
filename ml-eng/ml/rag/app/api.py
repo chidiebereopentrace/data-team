@@ -35,10 +35,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from ml.rag.acf_signal import acf_signal_from_result
 from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats, UserProfile
 from ml.rag.chat_history import normalize_messages
-from ml.rag.chat_memory import append_turn_and_compact, flat_messages_to_memory
+from ml.rag.chat_memory import flat_messages_to_memory
+from ml.rag.chat_turn import persist_session_turn
 from ml.rag.observability import flush_langfuse, get_current_trace_id, rag_trace_context, record_trace_score
 from ml.rag.request_context import resolve_request_context
-from ml.rag.session_store import delete_session, get_session_blob, save_session_blob, redis_status
+from ml.rag.session_store import delete_session, get_session_blob, redis_status
 
 logger = logging.getLogger("ml.rag.api")
 
@@ -197,15 +198,23 @@ def _resolve_prior_memory(
     return sid, summary, recent
 
 
-def _persist_session_turn(session_id: str, user_msg: str, assistant_msg: str) -> None:
-    blob = get_session_blob(session_id) or {"conversation_summary": "", "recent_turns": []}
-    summary, recent = append_turn_and_compact(
-        str(blob.get("conversation_summary") or ""),
-        blob.get("recent_turns"),
+def _persist_session_turn(
+    session_id: str,
+    user_msg: str,
+    assistant_msg: str,
+    *,
+    category: str | None = None,
+    plan_type: str | None = None,
+    country: str | None = None,
+) -> None:
+    persist_session_turn(
+        session_id,
         user_msg,
         assistant_msg,
+        category=category,
+        plan_type=plan_type,
+        country=country,
     )
-    save_session_blob(session_id, {"conversation_summary": summary, "recent_turns": recent})
 
 
 @app.post("/query", response_model=QueryResponse)
@@ -292,7 +301,15 @@ async def query(request: QueryRequest):
 
         answer = result.get("answer", "") or ""
         if not ctx.has_client_history:
-            _persist_session_turn(session_id, request.query.strip(), answer)
+            profile = ctx.user_profile or {}
+            _persist_session_turn(
+                session_id,
+                request.query.strip(),
+                answer,
+                category=ctx.category,
+                plan_type=ctx.plan_type,
+                country=str(profile.get("country") or "").strip() or None,
+            )
 
         raw_citations = result.get("citations") or []
         citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]

@@ -160,7 +160,7 @@ async def v1_create_plan_session(plan_type_slug: str):
         default_cat = CATEGORIES[0]["id"] if CATEGORIES else "Government"
     category = cast(CategoryType, default_cat)
     try:
-        sid = create_session(category)
+        sid = create_session(category, plan_type=plan_type)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return SessionCreateResponse(
@@ -202,13 +202,16 @@ async def _plan_chat(
     sid = (body.session_id or "").strip() or None
 
     try:
+        country = None
+        if isinstance(ctx.user_profile, dict):
+            country = str(ctx.user_profile.get("country") or "").strip() or None
         if hist is None:
             if not sid:
                 if bootstrap_cat is None:
                     bootstrap_cat = CATEGORIES[0]["id"] if CATEGORIES else "Government"
-                sid = create_session(bootstrap_cat)
+                sid = create_session(bootstrap_cat, plan_type=plan_type, country=country)
         elif not sid and bootstrap_cat is not None:
-            sid = create_session(bootstrap_cat)
+            sid = create_session(bootstrap_cat, plan_type=plan_type, country=country)
 
         turn = execute_chat_turn(
             body.user_text(),
@@ -353,9 +356,23 @@ async def v1_chat(body: ChatRequest):
                             "user_profile with plan_type and category to bootstrap"
                         ),
                     )
-                sid = create_session(bootstrap_cat)
+                country = None
+                if isinstance(ctx.user_profile, dict):
+                    country = str(ctx.user_profile.get("country") or "").strip() or None
+                sid = create_session(
+                    bootstrap_cat,
+                    plan_type=ctx.plan_type,
+                    country=country,
+                )
         elif not sid and bootstrap_cat is not None:
-            sid = create_session(bootstrap_cat)
+            country = None
+            if isinstance(ctx.user_profile, dict):
+                country = str(ctx.user_profile.get("country") or "").strip() or None
+            sid = create_session(
+                bootstrap_cat,
+                plan_type=ctx.plan_type,
+                country=country,
+            )
 
         turn = execute_chat_turn(
             body.user_text(),

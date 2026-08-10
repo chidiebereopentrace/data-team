@@ -161,6 +161,38 @@ def apply_plan_decomposition_gates(
     return out
 
 
+# Soft retrieval bias when the decomposer left domains empty.
+_CATEGORY_DOMAIN_HINTS: dict[str, list[str]] = {
+    "Farmers": ["rainfall", "markets", "yield"],
+    "Agribusinesses": ["prices", "trade"],
+    "Government": ["food security", "policy"],
+    "NGOs": ["climate", "nutrition", "markets"],
+}
+
+
+def apply_category_domain_hints(
+    decomposition: dict[str, Any],
+    category: str | None,
+) -> dict[str, Any]:
+    """
+    Soft-fill empty domains from category hints.
+
+    Explicit query domains always win; only fill when domains are missing or blank.
+    """
+    if not category or not isinstance(decomposition, dict):
+        return decomposition
+    hints = _CATEGORY_DOMAIN_HINTS.get(category.strip())
+    if not hints:
+        return decomposition
+
+    out = copy.deepcopy(decomposition)
+    domains = out.get("domains")
+    if isinstance(domains, list) and any(str(d).strip() for d in domains):
+        return out
+    out["domains"] = list(hints)
+    return out
+
+
 def default_category_for_plan(plan_type: str | None) -> str | None:
     """Return the natural default category for a plan tier, or None if no default.
 
@@ -221,6 +253,7 @@ __all__ = [
     "PLAN_TYPES",
     "allows_cross_country",
     "allows_export",
+    "apply_category_domain_hints",
     "apply_plan_decomposition_gates",
     "default_category_for_plan",
     "instruction_for_category",
