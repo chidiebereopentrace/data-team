@@ -141,16 +141,16 @@ def _flow_narrative(route: str) -> str:
         return "decompose → generate_language_help → END"
     if route == "insufficient":
         return (
-            "decompose → parallel_retrieve → bq_retrieve → merge → rerank "
+            "decompose → parallel_retrieve → bq_reason → bq_retrieve → merge → rerank "
             "→ web_fallback → insufficient_context → END"
         )
     if route == "full_rag + web_fallback":
         return (
-            "decompose → parallel_retrieve → bq_retrieve → merge → rerank "
+            "decompose → parallel_retrieve → bq_reason → bq_retrieve → merge → rerank "
             "→ web_fallback → generate → END"
         )
     return (
-        "decompose → parallel_retrieve → bq_retrieve → merge → rerank → generate → END"
+        "decompose → parallel_retrieve → bq_reason → bq_retrieve → merge → rerank → generate → END"
     )
 
 
