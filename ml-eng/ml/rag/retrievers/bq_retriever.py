@@ -244,6 +244,28 @@ def _validate_sql(sql: str, allowed_dataset_ids: set[str], default_limit: int) -
     return normalized
 
 
+def _bq_diagnostic_item(
+    *,
+    status: str,
+    message: str,
+    sql: str = "",
+    prep_error: str | None = None,
+) -> dict[str, Any]:
+    """Inspector-visible BQ failure row (filtered out of generation context)."""
+    meta: dict[str, Any] = {
+        "sql": sql,
+        "status": status,
+        "validation_failed": True,
+    }
+    if prep_error:
+        meta["prep_error"] = prep_error[:500]
+    return {
+        "content": f"[BQ {status}: {message[:200]}]",
+        "source": "bigquery",
+        "metadata": meta,
+    }
+
+
 class BQRetriever(BaseRetriever):
     """
     Retrieve context by querying BigQuery. Uses staging_dev only (BQ_DATASET_SILVER).
@@ -257,7 +279,10 @@ class BQRetriever(BaseRetriever):
         nl2sql_enabled: bool | None = None,
     ):
         _load_dotenv()
-        self.project_id = (project_id or os.environ.get("BQ_PROJECT", "")).strip()
+        if project_id is not None:
+            self.project_id = project_id.strip()
+        else:
+            self.project_id = (os.environ.get("BQ_PROJECT", "") or "").strip()
         self.datasets_config = _get_datasets_config()
         self.max_rows = max_rows
         if nl2sql_enabled is not None:
@@ -679,15 +704,21 @@ class BQRetriever(BaseRetriever):
 
         NL-to-SQL generates up to RAG_BQ_MAX_SQL_QUERIES (default 10) SELECTs from
         reasoner-selected YAML table hints. kwargs["sql"] may be a single string or list.
-        Fail closed: if no validated SQL is produced, return [] (no canned fallback query).
+        Fail closed: if no validated SQL is produced, return diagnostic items (no canned fallback).
 
-        Optional kwargs: geo_country, time_start, time_end, entities, domains, table_hints.
-        Graph node aggregates distinct executed SQL into state ``bq_sql_queries``.
+        Optional kwargs: geo_country, time_start, time_end, entities, domains, table_hints,
+        selected_tables. Graph node aggregates SQL into state ``bq_sql_queries`` / ``bq_sql_debug``.
         """
         t0 = time.perf_counter()
         if not self.project_id:
             update_current_span_metadata({"status": "no_project", "row_count": 0})
-            return []
+            return [
+                _bq_diagnostic_item(
+                    status="no_project",
+                    message="BQ_PROJECT is not set; NL2SQL/execute skipped",
+                    prep_error="BQ_PROJECT is not set",
+                )
+            ]
         client = self._get_client()
         table_hints = kwargs.get("table_hints")
         hint_list: list[str] | None = None
@@ -756,6 +787,11 @@ class BQRetriever(BaseRetriever):
             )
 
         if not sql_queries:
+            reason = (
+                "NL2SQL disabled and no explicit SQL provided"
+                if not self.nl2sql_enabled
+                else "NL2SQL produced 0 SELECT queries"
+            )
             update_current_span_metadata(
                 {
                     "table_hints_count": len(hint_list or []),
@@ -765,7 +801,13 @@ class BQRetriever(BaseRetriever):
                     "status": "no_valid_sql",
                 }
             )
-            return []
+            return [
+                _bq_diagnostic_item(
+                    status="no_valid_sql",
+                    message=reason,
+                    prep_error=reason,
+                )
+            ]
 
         max_queries = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
         rows_per_query = max(1, int(os.environ.get("RAG_BQ_ROWS_PER_QUERY", "10") or 10))
@@ -804,6 +846,7 @@ class BQRetriever(BaseRetriever):
                     "sql": raw_sql,
                     "sql_index": idx + 1,
                     "sql_count": len(sql_queries),
+                    "status": "validation_failed",
                     "validation_failed": True,
                 }
                 if prep_err:
@@ -829,6 +872,7 @@ class BQRetriever(BaseRetriever):
                         "sql": validated,
                         "sql_index": idx + 1,
                         "sql_count": len(sql_queries),
+                        "status": "execution_error",
                         "execution_error": str(exc)[:500],
                     },
                 })

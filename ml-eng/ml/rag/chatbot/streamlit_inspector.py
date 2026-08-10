@@ -24,11 +24,13 @@ INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "user_profile",
     "geo_override",
     "bq_table_candidates",
+    "bq_sql_plan",
     "vector_news_results",
     "vector_academic_results",
     "vector_ota_results",
     "bq_results",
     "bq_sql_queries",
+    "bq_sql_debug",
     "merged_context",
     "reranked_context",
     "web_results",
@@ -439,28 +441,92 @@ def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = Non
             st.caption(f"ACF explanation: {expl[:200]}")
 
 
+def _bq_was_attempted(result: dict[str, Any]) -> bool:
+    """True when the BQ path ran (candidates, plan, SQL debug, or results)."""
+    if result.get("bq_sql_debug") or result.get("bq_sql_queries") or result.get("bq_results"):
+        return True
+    if result.get("bq_table_candidates"):
+        return True
+    plan = result.get("bq_sql_plan")
+    if isinstance(plan, dict) and plan and not plan.get("skip_bq"):
+        return True
+    return False
+
+
 def render_sql_panel(result: dict[str, Any]) -> None:
-    if not show_sql_debug():
+    """Always show BQ SQL / failure diagnostics in the pipeline inspector when BQ ran."""
+    if not _bq_was_attempted(result):
         return
+
+    debug_rows = [d for d in (result.get("bq_sql_debug") or []) if isinstance(d, dict)]
     bq_sql_list = list(result.get("bq_sql_queries") or [])
     if not bq_sql_list:
-        bq_rows = result.get("bq_results") or []
         seen_sql: set[str] = set()
-        for row in bq_rows:
+        for row in result.get("bq_results") or []:
             if not isinstance(row, dict):
                 continue
             s = str((row.get("metadata") or {}).get("sql") or "").strip()
             if s and s not in seen_sql:
                 seen_sql.add(s)
                 bq_sql_list.append(s)
-    if not bq_sql_list:
-        return
-    with st.expander(f"Generated SQL ({len(bq_sql_list)})", expanded=False):
-        st.caption("Internal only. Set RAG_SHOW_SQL_DEBUG=0 to hide.")
-        for i, sql in enumerate(bq_sql_list, start=1):
-            st.caption(f"Query {i}")
-            st.code(sql, language="sql")
+        for d in debug_rows:
+            s = str(d.get("sql") or "").strip()
+            if s and s not in seen_sql:
+                seen_sql.add(s)
+                bq_sql_list.append(s)
 
+    title = "BQ SQL"
+    if debug_rows:
+        title = f"BQ SQL ({len(debug_rows)} attempt(s))"
+    elif bq_sql_list:
+        title = f"BQ SQL ({len(bq_sql_list)})"
+    else:
+        title = "BQ SQL (none generated)"
+
+    with st.expander(title, expanded=True):
+        if show_sql_debug():
+            st.caption("Inspector always shows BQ SQL attempts. RAG_SHOW_SQL_DEBUG also gates public answer SQL.")
+        if debug_rows:
+            for i, entry in enumerate(debug_rows, start=1):
+                status = str(entry.get("status") or "unknown")
+                st.caption(f"Attempt {i} — status={status}")
+                sql = str(entry.get("sql") or "").strip()
+                if sql:
+                    st.code(sql, language="sql")
+                else:
+                    st.warning("No SQL generated for this attempt.")
+                prep = entry.get("prep_error")
+                if prep:
+                    st.error(f"prep_error: {prep}")
+                exec_err = entry.get("execution_error")
+                if exec_err:
+                    st.error(f"execution_error: {exec_err}")
+        elif bq_sql_list:
+            for i, sql in enumerate(bq_sql_list, start=1):
+                st.caption(f"Query {i}")
+                st.code(sql, language="sql")
+        else:
+            raw_plan = result.get("bq_sql_plan")
+            if isinstance(raw_plan, dict):
+                plan = dict(raw_plan)
+            else:
+                plan = {}
+            if plan.get("skip_bq"):
+                st.info(f"BQ skipped by reasoner: {plan.get('rationale') or 'skip_bq'}")
+            else:
+                st.warning(
+                    "BQ was attempted but no SQL was recorded. "
+                    "Check BQ_PROJECT, NL2SQL LLM, and bq_sql_plan in raw JSON."
+                )
+            if plan:
+                st.caption("Reasoner plan (selected_tables)")
+                st.json(
+                    {
+                        "selected_tables": plan.get("selected_tables"),
+                        "skip_bq": plan.get("skip_bq"),
+                        "rationale": plan.get("rationale"),
+                    }
+                )
 
 def render_retrieval_tabs(result: dict[str, Any]) -> None:
     tabs = st.tabs([

@@ -77,9 +77,22 @@ _MAX_PREAMBLE_UNWIND = 3
 _BQ_FAILURE_MARKERS = (
     "[bq execution error",
     "[bq validation failed",
+    "[bq no_project",
+    "[bq no_valid_sql",
 )
 _BQ_ROW_HINT_KEYS = ("country", "product", "fnid", "planting_year", "harvest_year", "year", "region")
 _BQ_PUBLIC_LABEL = "OpenTrace agricultural data"
+
+_RANKING_QUERY_RE = re.compile(
+    r"\b("
+    r"highest|lowest|top\s+\d+|bottom\s+\d+|"
+    r"which\s+country|which\s+countries|"
+    r"rank(?:ing|ed)?|most\s+(?:produced|production)|"
+    r"least\s+(?:produced|production)|"
+    r"largest|smallest|biggest"
+    r")\b",
+    re.IGNORECASE,
+)
 
 _BQ_MIN_CHARS = 800
 
@@ -171,8 +184,16 @@ def is_usable_context_item(item: dict[str, Any]) -> bool:
     meta = _item_metadata(item)
     if meta.get("validation_failed") or meta.get("execution_error"):
         return False
+    status = str(meta.get("status") or "").strip().lower()
+    if status in {"no_project", "no_valid_sql", "validation_failed", "execution_error"}:
+        return False
     raw = str(item.get("content") or item.get("text") or "").strip().lower()
     return not any(marker in raw for marker in _BQ_FAILURE_MARKERS)
+
+
+def is_ranking_numeric_query(query: str) -> bool:
+    """True for highest/lowest/which-country style ranking questions."""
+    return bool(_RANKING_QUERY_RE.search(query or ""))
 
 
 def filter_context_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -948,6 +969,18 @@ def generate(
     plan_type = str(kwargs.get("plan_type") or "").strip()
     answer_lang = str(kwargs.get("answer_lang") or "").strip() or None
     structured_bq_unavailable = bool(kwargs.get("structured_bq_unavailable"))
+
+    if structured_bq_unavailable and is_ranking_numeric_query(query):
+        return GenerationResult(
+            answer=_no_data_fallback_message(query, decomposition),
+            citations=[],
+            acf=no_evidence_acf(
+                explanation=(
+                    "Structured BigQuery data was required for this ranking question "
+                    "but returned no usable rows."
+                )
+            ),
+        )
 
     if not context_items:
         allow_ungrounded = os.environ.get("RAG_ALLOW_UNGROUNDED", "").strip().lower() in (

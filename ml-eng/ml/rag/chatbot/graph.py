@@ -291,6 +291,7 @@ class RAGGraphState(TypedDict, total=False):
     vector_results: list[dict[str, Any]]
     bq_results: list[dict[str, Any]]
     bq_sql_queries: list[str]
+    bq_sql_debug: list[dict[str, Any]]
     merged_context: list[dict[str, Any]]
     reranked_context: list[dict[str, Any]]
     web_results: list[dict[str, Any]]
@@ -705,6 +706,55 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
     }
 
 
+def aggregate_bq_sql_debug(results: list[dict[str, Any]]) -> tuple[list[str], list[dict[str, Any]]]:
+    """Collect distinct SQL strings and per-attempt debug rows from BQ retrieve items."""
+    sql_seen: set[str] = set()
+    bq_sql_queries: list[str] = []
+    bq_sql_debug: list[dict[str, Any]] = []
+    debug_seen: set[tuple[Any, ...]] = set()
+    for row in results:
+        raw_meta = row.get("metadata")
+        if isinstance(raw_meta, dict):
+            meta = dict(raw_meta)
+        else:
+            meta = {}
+        sql = str(meta.get("sql") or "").strip()
+        if sql and sql not in sql_seen:
+            sql_seen.add(sql)
+            bq_sql_queries.append(sql)
+        status = str(meta.get("status") or "").strip()
+        if not status:
+            if meta.get("validation_failed"):
+                status = "validation_failed"
+            elif meta.get("execution_error"):
+                status = "execution_error"
+            elif sql:
+                status = "ok"
+            else:
+                status = "unknown"
+        debug_key = (
+            sql,
+            status,
+            meta.get("sql_index"),
+            meta.get("prep_error"),
+            meta.get("execution_error"),
+        )
+        if debug_key in debug_seen:
+            continue
+        debug_seen.add(debug_key)
+        prep = meta.get("prep_error")
+        exec_err = meta.get("execution_error")
+        bq_sql_debug.append(
+            {
+                "sql": sql,
+                "status": status,
+                "prep_error": str(prep)[:500] if prep else None,
+                "execution_error": str(exec_err)[:500] if exec_err else None,
+            }
+        )
+    return bq_sql_queries, bq_sql_debug
+
+
 def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
     raw_dec = state.get("decomposition")
@@ -712,7 +762,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     raw_plan = state.get("bq_sql_plan")
     plan: dict[str, Any] = raw_plan if isinstance(raw_plan, dict) else {}
     if plan.get("skip_bq"):
-        return {"bq_results": [], "bq_sql_queries": []}
+        return {"bq_results": [], "bq_sql_queries": [], "bq_sql_debug": []}
 
     hints = [str(h).strip() for h in (plan.get("table_hints") or []) if str(h).strip()]
     if not hints:
@@ -766,14 +816,12 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     results, ctx_truncated = trim_bq_result_contents(results)
     if ctx_truncated:
         update_current_span_metadata({"bq_context_truncated": True})
-    sql_seen: set[str] = set()
-    bq_sql_queries: list[str] = []
-    for row in results:
-        sql = str((row.get("metadata") or {}).get("sql") or "").strip()
-        if sql and sql not in sql_seen:
-            sql_seen.add(sql)
-            bq_sql_queries.append(sql)
-    return {"bq_results": results, "bq_sql_queries": bq_sql_queries}
+    bq_sql_queries, bq_sql_debug = aggregate_bq_sql_debug(results)
+    return {
+        "bq_results": results,
+        "bq_sql_queries": bq_sql_queries,
+        "bq_sql_debug": bq_sql_debug,
+    }
 
 
 def node_merge(state: RAGGraphState) -> dict[str, Any]:
