@@ -23,13 +23,13 @@ class CollectionSpec:
     High-level ingestion target for one RAG corpus.
 
     Attributes:
-        kind: Rebuild CLI key (e.g. ``news``, ``data_descriptions``).
-        corpus: ``chunking_config`` profile key (e.g. ``data_description``).
+        kind: Rebuild CLI key (e.g. ``news``, ``research``, ``ota``).
+        corpus: ``chunking_config`` profile key.
         collection_env: Env var for Qdrant collection name override.
         gdrive_folder_env: Env var for Google Drive folder ID (optional for OTA/manual).
         default_collection_name: Qdrant collection (from profile, respects env at runtime).
         default_doc_kind: Payload filter value for ``VectorRetriever`` / graph.
-        qdrant_vector_mode: How points are stored and queried (dense_named, research_dual, …).
+        qdrant_vector_mode: How points are stored and queried (dense_named, ota_triple, …).
         allowed_suffixes: File types synced from Drive for this corpus.
         preprocessed_jsonl: Basename under ``data/local/preprocessed_data/``.
     """
@@ -86,15 +86,6 @@ RESEARCH_PAPERS = _spec(
     allowed_suffixes=(".pdf",),
 )
 
-DATA_DESCRIPTIONS = _spec(
-    kind="data_descriptions",
-    corpus="data_description",
-    collection_env="QDRANT_COLLECTION_DATA_DESCRIPTIONS",
-    gdrive_folder_env="GDRIVE_FOLDER_DATA_DESCRIPTIONS_ID",
-    default_doc_kind="bq_table_description",
-    allowed_suffixes=(".docx",),
-)
-
 OTA_INSIGHTS = _spec(
     kind="ota",
     corpus="ota",
@@ -105,16 +96,14 @@ OTA_INSIGHTS = _spec(
 )
 
 # Kinds with a full Drive → preprocess → upsert path in rebuild_qdrant.py
-DRIVE_REBUILD_KINDS: tuple[str, ...] = ("research", "news", "data_descriptions", "ota")
+DRIVE_REBUILD_KINDS: tuple[str, ...] = ("research", "news", "ota")
 
 ALL_SPECS: dict[str, CollectionSpec] = {
     RESEARCH_PAPERS.kind: RESEARCH_PAPERS,
     NEWS.kind: NEWS,
-    DATA_DESCRIPTIONS.kind: DATA_DESCRIPTIONS,
     OTA_INSIGHTS.kind: OTA_INSIGHTS,
 }
 
 # Legacy Qdrant names still accepted via chunking_config.COLLECTION_ALIASES:
 #   opentrace_news → news_data
 #   opentrace_research_papers → research_other_papers
-#   opentrace_data_descriptions → BQ_table_descriptions

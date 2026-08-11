@@ -18,12 +18,15 @@ business_questions_supported:
 - How has HDI changed for a country?
 filtering_guidance:
 - Filter by geography and time when present
+- country holds country labels only — never filter country = 'Africa'
+- Use only when the question asks for HDI/development; do not join as an Africa country list for production rankings
 sql_generation_hints:
 - Filter country_code and year
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: country
   type: STRING
-  description: country
+  description: Country name only. Never 'Africa' or a region label.
 - name: country_code
   type: STRING
   description: country code
@@ -68,3 +71,5 @@ semantic_relationships:
   do_not_join:
   - table: stg_ilri_vegetation_feed
     reason: plot vegetation surveys
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims / country lists for unrelated rankings

@@ -19,15 +19,24 @@ services:
       - "8080:8080"
     environment:
       # === REQUIRED - replace with real values or use .env ===
+      # Full checklist: deploy/PRODUCTION_ENV.md
       QDRANT_URL: ${QDRANT_URL:-https://your-cluster.qdrant.io}
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      # Six retrieve paths (must match Qdrant Cloud collection names):
+      # QDRANT_COLLECTION_NEWS: news_data
+      # QDRANT_COLLECTION_ACADEMIC_PAPERS: academic_papers
+      # QDRANT_COLLECTION_POLICIES: policies
+      # QDRANT_COLLECTION_PUBLIC_REPORTS: public_reports
+      # QDRANT_COLLECTION_FORMATION: formation
+      # QDRANT_COLLECTION_OTA_INSIGHTS: OTA_insights
       RAG_LLM_BASE_URL: ${RAG_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
-      RAG_LLM_MODEL_ID: ${RAG_LLM_MODEL_ID:-meta-llama-3.1-8b-instruct}
+      RAG_LLM_MODEL_ID: ${RAG_LLM_MODEL_ID:-meta-llama/llama-3.1-8b-instruct}
       RAG_GENERATE_TEMPERATURE: ${RAG_GENERATE_TEMPERATURE:-0.5}
       RAG_GENERATE_MAX_TOKENS: "1024"
 
       # BQ (use ADC or mounted key)
       BQ_PROJECT: ${BQ_PROJECT:-opentrace-prod-5ga4}
+      BQ_DATASET_SILVER: ${BQ_DATASET_SILVER:-staging_dev}
       # GOOGLE_APPLICATION_CREDENTIALS: /secrets/key.json   # mount below if needed
 
       # Redis for durable chat memory + shared caches (recommended for any scaled / multi-worker test)

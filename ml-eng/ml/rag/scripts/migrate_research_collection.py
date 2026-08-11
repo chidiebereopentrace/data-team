@@ -1,10 +1,11 @@
 """
-Split the mixed ``research_other_papers`` Qdrant collection into three
+Split the mixed ``research_other_papers`` Qdrant collection into dedicated
 document-type collections, migrating points by their ``doc_kind`` metadata.
 
-    academic_article  -> academic_papers
-    policy_document   -> policies
-    public_report     -> news_public_reports
+    academic_article       -> academic_papers
+    policy_document        -> policies
+    public_report          -> public_reports
+    agricultural_practise  -> formation
 
 The source collection is left untouched (kept as a backup / fallback). New
 collections mirror the source's vector layout exactly (1 dense named "dense" +
@@ -35,7 +36,8 @@ SOURCE_COLLECTION = "research_other_papers"
 DOC_KIND_TO_COLLECTION: dict[str, str] = {
     "academic_article": "academic_papers",
     "policy_document": "policies",
-    "public_report": "news_public_reports",
+    "public_report": "public_reports",
+    "agricultural_practise": "formation",
 }
 
 # research-corpus payload fields worth indexing on the new collections

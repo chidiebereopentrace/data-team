@@ -1,5 +1,9 @@
 table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_population_employment
-description: FAOSTAT population and agricultural/rural employment.
+description: >
+  FAOSTAT population stocks and agricultural/rural employment and labour
+  indicators. Rows are country-level facts (not continent aggregates). Filter
+  by exact element and/or indicator (+ sex/source when relevant); never invent
+  labels. Do not mix population counts and employment shares in one SUM.
 grain: country × indicator × year
 entity_type: faostat
 source:
@@ -17,65 +21,200 @@ semantic_role:
   - faostat
 business_questions_supported:
 - What share of employment is in agriculture?
+- What is total / urban / rural population?
+- What is employment in agriculture or agrifood systems (AFS)?
+- What is rural labour force participation or employment-to-population ratio?
 filtering_guidance:
 - Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa' or a region
+- For continental/Africa rankings stay on this table; do not join a geo dimension
+- This table mixes population stock elements (Total Population / Urban / Rural) with employment/labour indicators — never SUM population counts with employment shares
+- Use one element or one indicator per query as appropriate; never SUM across unlike metrics
+- Always interpret value with the matching unit; never SUM across unlike units
+- Prefer headline employment metrics: Share of employment in agriculture in total employment (or ILO modelled variant), Employment in agriculture - ILO modelled estimates, Total employment in agrifood systems (AFS)
+- Prefer age total (15+) indicators over age-band slices unless an age group is asked; prefer status total over employees / self-employed / not classified unless asked
+- Filter sex when gender is asked using exact labels present in the data; do not invent sex values
+- Prefer concrete survey/census sources when comparing methodologies; note modelled estimates (ILO - ILO Modelled Estimates, FAO Model) vs survey sources
+- Filter year for time-bounded questions
 sql_generation_hints:
-- Filter indicator and sex when relevant
+- Filter country_name and year
+- For population questions filter element = 'Total Population - Both sexes' (or Urban/Rural/Male/Female as asked)
+- For employment questions filter indicator = '<exact label>' and typically element = 'Value'
+- Filter sex when the question is gender-specific
+- GROUP BY country_name, year plus indicator/element/sex as filtered
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: area_code
   type: STRING
-  description: area code
+  description: FAO area code
 - name: area_code_m49
   type: STRING
-  description: area code m49
+  description: UN M49 area code for the country row (not a continent filter key)
 - name: country_name
   type: STRING
-  description: country name
+  description: Country name only (e.g. Nigeria, Kenya). Never 'Africa' or a region label.
 - name: item_code
   type: STRING
   description: item code
 - name: item
   type: STRING
-  description: item
+  description: item (when populated; prefer element/indicator filters)
 - name: element_code
   type: STRING
   description: element code
 - name: element
   type: STRING
-  description: element
+  description: >
+    Metric dimension for the row. Filter with an exact element. Population
+    questions use population stock elements; employment/labour rows typically
+    use Value together with indicator. Never invent labels. Do not SUM
+    population stocks with employment Value rows.
+
+    Family rules:
+    Population stocks — Total Population - Both sexes, Total Population - Male,
+    Total Population - Female, Urban population, Rural population.
+    Employment measure carrier — Value (pair with indicator for employment /
+    labour / AFS / productivity metrics).
 - name: indicator_code
   type: STRING
   description: indicator code
 - name: indicator
   type: STRING
-  description: indicator
+  description: >
+    Employment / labour / AFS / productivity indicator label. Filter with an
+    exact indicator. Prefer totals (15+, status total) over age/status slices
+    unless asked. Prefer exact FAOSTAT labels; do not invent.
+
+    Family rules:
+    Productivity — Agriculture value added per worker (constant 2015 US$).
+    Rural employment — Employment by age / by status of employment, rural areas.
+    Ag employment — Employment in agriculture (ILO modelled; by age; by status);
+    crop/animal, fishing/aquaculture, forestry and logging.
+    Rural rates — Employment-to-population ratio and Labour force participation
+    rate by age, rural areas.
+    Hours — Mean weekly hours worked in agriculture (employed / employees).
+    AFS — Total employment in agrifood systems (AFS), non-agricultural AFS,
+    and related shares vs total / AFS employment.
+    Shares — Share of employment in agriculture in total employment (incl. ILO
+    modelled); sector shares; gender shares in ag employment; status shares.
 - name: source_code
   type: STRING
   description: source code
 - name: source
   type: STRING
-  description: source
+  description: >
+    Data source / methodology label for the row. Filter with an exact source
+    when comparing survey vs modelled estimates. Prefer exact labels; do not
+    invent.
+
+    Family rules:
+    Modelled — ILO - ILO Modelled Estimates; ILO - Modelled Estimates; FAOSTAT -
+    Value added (2015 US$); FAO Model.
+    Surveys / census — Labour force survey, Household survey, Household income
+    and expenditure survey, Population census, Employment surveys,
+    Establishment census.
+    Other — Official estimates, Administrative records.
 - name: sex_code
   type: STRING
   description: sex code
 - name: sex
   type: STRING
-  description: sex
+  description: >
+    Sex breakdown when present. Filter with the exact sex label in the data
+    when the question is gender-specific; do not invent values.
 - name: year
   type: INT64
-  description: year
+  description: Observation year
 - name: unit
   type: STRING
-  description: unit
+  description: >
+    Unit of value for this element/indicator. Always interpret value with the
+    metric + unit; never compare or SUM unlike units.
 - name: value
   type: FLOAT64
-  description: value
+  description: >
+    Numeric measure for the element or indicator. SUM across years/countries
+    only when element/indicator and unit are homogeneous. Never SUM population
+    stocks with employment shares or unlike metrics.
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+element_value_samples:
+- Urban population
+- Total Population - Female
+- Total Population - Both sexes
+- Total Population - Male
+- Rural population
+- Value
+indicator_value_samples:
+- Agriculture value added per worker (constant 2015 US$)
+- "Employment by age, 15 to 24, rural areas"
+- "Employment by age, 25 to 54, rural areas"
+- "Employment by age, 55 to 64, rural areas"
+- "Employment by age, 65+, rural areas"
+- "Employment by age, total (15+), rural areas"
+- "Employment by status of employment, employees, rural areas"
+- "Employment by status of employment, self-employed, rural areas"
+- "Employment by status of employment, total, rural areas"
+- "Employment by status of employment, workers not classified, rural areas"
+- Employment in agriculture - ILO modelled estimates
+- "Employment in agriculture by age, 15 to 24"
+- "Employment in agriculture by age, 25 to 54"
+- "Employment in agriculture by age, 55 to 64"
+- "Employment in agriculture by age, 65+"
+- "Employment in agriculture by age, total (15+)"
+- "Employment in agriculture by status of employment, employees"
+- "Employment in agriculture by status of employment, self-employed"
+- "Employment in agriculture by status of employment, total"
+- "Employment in agriculture by status of employment, workers not classified"
+- "Employment in crop and animal production, hunting and related service activities"
+- Employment in fishing and aquaculture
+- Employment in forestry and logging
+- "Employment-to-population ratio by age, 15 to 24, rural areas"
+- "Employment-to-population ratio by age, 25 to 54, rural areas"
+- "Employment-to-population ratio by age, 55 to 64, rural areas"
+- "Employment-to-population ratio by age, 65+, rural areas"
+- "Employment-to-population ratio by age, total (15+), rural areas"
+- "Labour force participation rate by age, 15 to 24, rural areas"
+- "Labour force participation rate by age, 25 to 54, rural areas"
+- "Labour force participation rate by age, 55 to 64, rural areas"
+- "Labour force participation rate by age, 65+, rural areas"
+- "Labour force participation rate by age, total (15+), rural areas"
+- Mean weekly hours actually worked per employed person in agriculture
+- Mean weekly hours actually worked per employee in agriculture
+- Share of AFS employment in total employment
+- Share of agricultural employment in total AFS employment
+- Share of employees in agriculture in total employees
+- "Share of employment by status of employment, employees, rural areas"
+- "Share of employment by status of employment, self-employed, rural areas"
+- "Share of employment by status of employment, total, rural areas"
+- "Share of employment by status of employment, workers not classified, rural areas"
+- Share of employment in agriculture in total employment
+- Share of employment in agriculture in total employment - ILO Modelled Estimates
+- "Share of employment in crop and animal production, hunting and related service activities"
+- Share of employment in fishing and aquaculture
+- Share of employment in forestry and logging
+- Share of female employees in total employees in agriculture
+- Share of females in total employment in agriculture
+- Share of non-agricultural AFS employment in total AFS employment
+- Share of non-agricultural AFS employment in total employment
+- Total employment in agrifood systems (AFS)
+- Total non-agricultural AFS employment
+source_value_samples:
+- "ILO - Modelled Estimates; FAOSTAT - Value added (2015 US$)"
+- Labour force survey
+- Household income and expenditure survey
+- Population census
+- Household survey
+- ILO - ILO Modelled Estimates
+- Establishment census
+- FAO Model
+- Official estimates
+- Employment surveys
+- Administrative records
 _index_domain: faostat
 _index_tags: *id001
 semantic_relationships:

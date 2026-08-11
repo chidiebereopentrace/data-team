@@ -1,5 +1,10 @@
 table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_investment_asti
-description: FAOSTAT agricultural investment flows and ASTI indicators.
+description: >
+  FAOSTAT agricultural investment flows (ODA/CRS, credit, FDI, government
+  expenditure) and ASTI R&D indicators. Rows are country-level facts (not
+  continent aggregates). Filter by exact donor/purpose/item/element or
+  indicator/institution/degree plus unit; never invent labels. Do not SUM
+  across unrelated metric families (ODA flows vs ASTI R&D vs FDI) in one query.
 grain: country × indicator/purpose × year
 entity_type: faostat
 source:
@@ -15,21 +20,41 @@ semantic_role:
   - investment
   - faostat
 business_questions_supported:
-- How much ag R&D spending is there?
+- How much agricultural R&D spending is there?
+- How much ODA / disbursement goes to agricultural research or development?
+- What is government agriculture expenditure or the Agriculture Orientation Index?
+- What is FDI or credit to agriculture, forestry, and fishing?
 filtering_guidance:
 - Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa' or a region
+- For continental/Africa rankings stay on this table; do not join a geo dimension
+- This table mixes ODA/CRS flows (donor × purpose × item/element), ASTI R&D (indicator × institution × degree), and government expenditure / credit / FDI items — filter only the dimensions that apply
+- Never SUM across unrelated metric families in one query
+- Filter element to exactly one metric (or one indicator for ASTI); never SUM across different elements/indicators
+- Always interpret value with the matching unit; never SUM across unlike units
+- Prefer named bilateral/multilateral/foundation donors over rollups (All Donors, Bilateral Donors, Multilateral Donors, Private Donors) unless totals are asked
+- Prefer concrete CRS purposes (Agricultural research, Agricultural development, …) over All CRS purposes unless totals are asked
+- For generic ag R&D spend prefer ASTI indicators (e.g. Total Expenditure in Agricultural R&D (US$, 2015 prices)) with institution/degree when present
+- For aid flows prefer Disbursement / Commitment / ODA item variants with a matching element value metric
+- Purpose labels may differ only by casing or plural (Rural development vs Rural Development; Agro-industry vs Agro-industries) — use the exact sample string
+- Filter year for time-bounded questions
 sql_generation_hints:
-- Filter indicator/purpose and year
+- Filter country_name and year
+- Always filter element = '<exact label>' or indicator = '<exact label>' for the metric needed
+- Filter donor / purpose / item with exact FAOSTAT labels when named
+- GROUP BY country_name, year plus the entity dims used in the filter
+- Prefer element = 'Value US$, 2015 prices' or 'Value US$' for comparable money totals unless a share/AOI/SDG metric is asked
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: area_code
   type: STRING
-  description: area code
+  description: FAO area code
 - name: area_code_m49
   type: STRING
-  description: area code m49
+  description: UN M49 area code for the country row (not a continent filter key)
 - name: country_name
   type: STRING
-  description: country name
+  description: Country name only (e.g. Nigeria, Kenya). Never 'Africa' or a region label.
 - name: donor_code
   type: STRING
   description: donor code
@@ -38,70 +63,420 @@ columns:
   description: donor code m49
 - name: donor
   type: STRING
-  description: donor
+  description: >
+    Funding source / donor label for ODA and related flows. Filter with an exact
+    donor. Prefer named countries, MDBs, UN agencies, and foundations over
+    rollups. Never invent labels. Do not SUM named donors with All Donors /
+    Bilateral / Multilateral / Private Donors rollups together.
+
+    Family rules:
+    Countries — Belgium, Germany, France, United States of America, Japan, etc.
+    MDBs / UN / public funds — AfDB, IFAD, IDA, IBRD, FAO, UNDP, GEF, Green
+    Climate Fund, EU Institutions, etc.
+    Foundations / private — Gates, Rockefeller, Packard, MasterCard Foundation, etc.
+    Rollups — All Donors, Bilateral Donors, Multilateral Donors, Private Donors
+    (use only when totals are asked).
 - name: purpose_code
   type: STRING
   description: purpose code
 - name: purpose
   type: STRING
-  description: purpose
+  description: >
+    CRS purpose / sector for aid flows. Filter with an exact purpose. Prefer
+    concrete purposes over All CRS purposes. Watch near-duplicates in samples
+    (Rural development vs Rural Development; Agro-industry vs Agro-industries).
+
+    Family rules:
+    Agriculture / livestock / fishery / forestry — production, policy, services,
+    research, education/training, extension, inputs, water, land, co-operatives.
+    Rural development — Rural development / Rural Development.
+    Environment — General Environment Protection, Bio-diversity, Biosphere
+    protection, environmental policy/research/education.
+    Agro-industry / other — Agro-industry(ies), fertilizer, biofuels, textiles,
+    cottage industries.
+    Totals — All CRS purposes (only when totals are asked).
 - name: item_code
   type: STRING
   description: item code
 - name: item
   type: STRING
-  description: item
+  description: >
+    Flow or expenditure item. Filter with an exact item. Prefer the item family
+    matching the question (aid commitment/disbursement vs government expenditure
+    vs credit vs FDI vs ASTI/SDG). Never invent labels.
+
+    Family rules:
+    Aid flows — Commitment, Disbursement, Commitment/Disbursement ODA or OOF,
+    private grant / private sector instrument variants.
+    Government expenditure — Agriculture / forestry / fishing / environmental
+    protection / biodiversity; central vs general government; capital vs
+    recurrent; R&D variants; Total Expenditure.
+    Credit — Credit to Agriculture / Fishery / Forestry and combinations.
+    FDI — Total FDI inflows/outflows; sector FDI to AFF or Food/Beverages/Tobacco.
+    Macro — Gross Fixed Capital Formation (AFF), Value Added (AFF).
+    SDG / orientation — SDG 2.a.1 highest government level and related.
 - name: element_code
   type: STRING
   description: element code
 - name: element
   type: STRING
-  description: element
+  description: >
+    Metric type for the row's value (flows/expenditure/FDI). Filter with an
+    exact element (one metric per query). Do not mix elements in the same
+    SUM/AVG. Always read value together with unit.
+
+    Family rules:
+    Absolute values — Value US$; Value US$, 2015 prices; Value US$, 2023 prices;
+    Value Standard Local Currency (with/without 2015 prices).
+    Shares / ratios — Share of Total*, Share of Value Added, Share of Total
+    Expenditure / Credit / FDI; Ratio of Value Added (AFF).
+    AOI / SDG 2.a.1 — Agriculture orientation index*; Agriculture share of
+    Government Expenditure; Agriculture value added share of GDP.
+    Growth — Annual growth US$, 2015 prices.
+
+    Default money totals → Value US$, 2015 prices or Value US$ unless a share
+    or AOI/SDG metric is asked.
 - name: indicator_code
   type: STRING
   description: indicator code
 - name: indicator
   type: STRING
-  description: indicator
+  description: >
+    ASTI agricultural R&D indicator label. Use when the question is ASTI/R&D
+    spend or researcher intensity. Filter with an exact indicator. Pair with
+    institution / degree when present. Prefer US$ 2015-price expenditure for
+    comparable R&D spend rankings.
 - name: institution_code
   type: STRING
   description: institution code
 - name: institution
   type: STRING
-  description: institution
+  description: >
+    ASTI institutional coverage. Sample value is Government, Higher Education
+    and Private Non-profit. Filter when ASTI rows use this dimension.
 - name: degree_code
   type: STRING
   description: degree code
 - name: degree
   type: STRING
-  description: degree
+  description: >
+    ASTI degree / aggregation grain. Sample value is Total. Filter when ASTI
+    rows use this dimension.
 - name: sex_code
   type: STRING
   description: sex code
 - name: sex
   type: STRING
-  description: sex
+  description: sex (when populated)
 - name: cost_category_code
   type: STRING
   description: cost category code
 - name: cost_category
   type: STRING
-  description: cost category
+  description: cost category (when populated)
 - name: year
   type: INT64
-  description: year
+  description: Observation year
 - name: unit
   type: STRING
-  description: unit
+  description: >
+    Unit of value for this element/indicator. Always interpret value with
+    element or indicator + unit; never compare or SUM unlike units.
+
+    % — shares, AOI, intensity ratios.
+    million USD — monetary values in million US dollars.
+    million SLC — monetary values in million standard local currency.
+    No — counts (e.g. FTE researchers).
 - name: value
   type: FLOAT64
-  description: value
+  description: >
+    Numeric measure for the element or indicator. SUM across donors/purposes/
+    years only when element (or indicator) and unit are homogeneous. Never SUM
+    across different elements/indicators or unlike units.
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+donor_value_samples:
+- Belgium
+- Greece
+- Republic of Korea
+- Spain
+- Türkiye
+- "African Development Bank (AfDB)"
+- "African Development Fund (AfDF)"
+- "International Labour Organization (ILO)"
+- "United Nations Children's Fund (UNICEF)"
+- "United Nations Population Fund (UNFPA)"
+- Multilateral Donors
+- Oak Foundation
+- "Netherlands (Kingdom of the)"
+- Poland
+- New Zealand
+- Saudi Arabia
+- "United Nations Peacebuilding Fund (UNPBF)"
+- "David & Lucile Packard Foundation"
+- Arcus Foundation
+- Slovenia
+- Arcadia Fund
+- German Postcode Lottery
+- "World Food Programme (WFP)"
+- "Nordic Development Fund (NDF)"
+- "United Nations Industrial Development Organization (UNIDO)"
+- Gatsby Charitable Foundation
+- Monaco
+- "European Bank for Reconstruction and Development (EBRD)"
+- "Omidyar Network Fund, Inc."
+- "People's Postcode Lottery"
+- MAVA Foundation
+- Hungary
+- Italy
+- Lithuania
+- United Arab Emirates
+- "Islamic Development Bank (IsDB)"
+- "International Fund for Agricultural Development (IFAD)"
+- Bilateral Donors
+- Private Donors
+- Rockefeller Foundation
+- Margaret A. Cargill Foundation
+- Czechia
+- Denmark
+- Ireland
+- "International Development Association (IDA)"
+- UBS Optimus Foundation
+- "International Finance Corporation (IFC)"
+- WTO - International Trade Centre
+- "John D. & Catherine T. MacArthur Foundation"
+- "OPEC Fund for International Development (OFID)"
+- "Arab Bank for Economic Development in Africa (BADEA)"
+- Global Fund
+- Dutch Postcode Lottery
+- Latvia
+- McKnight Foundation
+- Slovakia
+- Open Society Foundations
+- World Trade Organization
+- Wellcome Trust
+- Private Infrastructure Development Group
+- "United Nations Economic and Social Commission for Western Asia (UNESCWA)"
+- Howard G. Buffett Foundation
+- International Centre for Genetic Engineering and Biotechnology
+- Australia
+- Germany
+- Japan
+- Sweden
+- "European Union (EU) Institutions"
+- "Food and Agriculture Organization of the United Nations (FAO)"
+- "United Nations Development Programme (UNDP)"
+- "International Bank for Reconstruction and Development (IBRD)"
+- All Donors
+- MasterCard Foundation
+- Norway
+- Portugal
+- Luxembourg
+- Bezos Earth Fund
+- Iceland
+- Kuwait
+- "Arab Fund for Economic and Social Development (AFESD)"
+- "Charity Projects Ltd (Comic Relief)"
+- La Caixa Banking Foundation
+- Bloomberg Family Foundation
+- "William & Flora Hewlett Foundation"
+- "Children's Investment Fund Foundation"
+- Conrad N. Hilton Foundation
+- Laudes Foundation
+- "China, Taiwan Province of"
+- Austria
+- Green Climate Fund
+- Canada
+- Finland
+- France
+- Israel
+- Switzerland
+- "Global Environment Facility (GEF)"
+- United Kingdom of Great Britain and Northern Ireland
+- United States of America
+- "Bill & Melinda Gates Foundation"
+- Adaptation Fund
+- Romania
+- "Climate Investment Funds (CIF)"
+- Joint Sustainable Development Goals Fund
+- Qatar
+- "Global Green Growth Institute (GGGI)"
+- IKEA Foundation
+- Ford Foundation
+- "United Nations Environment Programme (UNEP)"
+- Leo M. and Harry B. Helmsley Charitable Trust
+- Estonia
+- Swedish Postcode Lottery
+- Liechtenstein
+- "Michael & Susan Dell Foundation"
+purpose_value_samples:
+- "Agriculture, forestry, fishing"
+- Agriculture
+- Agro-industry
+- Livestock
+- General Environment Protection
+- Agricultural co-operatives
+- Forest industries
+- Biosphere protection
+- Rural development
+- "Fishery education/training"
+- Forestry research
+- Agricultural extension
+- All CRS purposes
+- Agricultural financial services
+- "Forestry education/training"
+- Agricultural development
+- Agricultural policy and administrative management
+- "Other Agriculture, Forestry and Fishing"
+- Agricultural land resources
+- Plant and post-harvest protection and pest control
+- Environmental research
+- "Environmental education/ training"
+- Fishing
+- "Fuelwood/charcoal"
+- Forestry development
+- "Fishing, unspecified"
+- Agricultural research
+- Fertilizer plants
+- Forestry policy and administrative management
+- Rural Development
+- Food crop production
+- "Livestock/veterinary services"
+- Fishing policy and administrative management
+- "Textiles, leather and substitutes"
+- Fishery services
+- "Industrial crops/export crops"
+- Agricultural alternative development
+- Forestry services
+- Modern biofuels manufacturing
+- "Forestry, unspecified"
+- "Agricultural education/training"
+- Environmental policy and administrative management
+- Agro-industries
+- Forestry
+- Agricultural services
+- Bio-diversity
+- Agricultural water resources
+- Site preservation
+- Cottage industries and handicraft
+- Agricultural inputs
+- Fishery development
+- Fishery research
+- Agrarian reform
+- "Agriculture, unspecified"
+- Fertilizer minerals
+item_value_samples:
+- Total FDI outflows
+- Total Credit
+- "SDG 2.a.1: highest government level"
+- "Agriculture (central government expenditure)"
+- Commitment
+- Disbursement ODA
+- Disbursement
+- "Fishing, Capital (general government expenditure)"
+- "Agriculture, forestry, fishing (general government expenditure)"
+- "Fishing (central government expenditure)"
+- "Agriculture, Capital (central government expenditure)"
+- "R&D Environmental Protection, Recurrent (central government expenditure)"
+- "Forestry, Capital (general government expenditure)"
+- "Forestry, Recurrent (general government expenditure)"
+- "Fishing, Recurrent (general government expenditure)"
+- "Agriculture, forestry, fishing, Capital (general government expenditure)"
+- "Protection of Biodiversity and Landscape, Capital (general government expenditure)"
+- "R&D Agriculture, forestry, fishing (general government expenditure)"
+- Commitment Private Sector Instrument
+- Credit to Forestry
+- Disbursement Private Grant
+- "R&D Agriculture, forestry, fishing (central government expenditure)"
+- "R&D Environmental Protection (central government expenditure)"
+- "R&D Environmental Protection, Recurrent (general government expenditure)"
+- "R&D Environmental Protection, Capital (general government expenditure)"
+- "Agriculture, forestry, fishing, Capital (central government expenditure)"
+- Credit to Fishery
+- "Protection of Biodiversity and Landscape, Recurrent (general government expenditure)"
+- "R&D Environmental Protection, Capital (central government expenditure)"
+- "Protection of Biodiversity and Landscape, Capital (central government expenditure)"
+- Credit to Agriculture
+- "Forestry, Capital (central government expenditure)"
+- Credit to Agriculture and Fishery
+- "FDI outflows to Agriculture, Forestry and Fishing"
+- "FDI outflows to Food, Beverages and Tobacco"
+- "FDI inflows to Agriculture, Forestry and Fishing"
+- "Total Expenditure (central government)"
+- "Agriculture, forestry, fishing (central government expenditure)"
+- "Environmental protection (central government expenditure)"
+- Disbursement OOF
+- Commitment Private Grant
+- "Credit to Agriculture, Forestry and Fishing"
+- "Forestry, Recurrent (central government expenditure)"
+- "Agriculture, Capital (general government expenditure)"
+- "Agriculture, Recurrent (central government expenditure)"
+- "Total Expenditure (general government)"
+- "Protection of Biodiversity and Landscape (central government expenditure)"
+- "Fishing, Recurrent (central government expenditure)"
+- "Fishing (general government expenditure)"
+- "Agriculture, forestry, fishing, Recurrent (central government expenditure)"
+- "R&D Environmental Protection (general government expenditure)"
+- Disbursement Private Sector Instrument
+- "FDI inflows to Food, Beverages and Tobacco"
+- "Gross Fixed Capital Formation (Agriculture, Forestry and Fishing)"
+- "Value Added (Agriculture, Forestry and Fishing)"
+- Total FDI inflows
+- "DFA Disbursement to Agriculture, Forestry and Fishing"
+- Commitment ODA
+- Commitment OOF
+- "Forestry (general government expenditure)"
+- "Agriculture, forestry, fishing, Recurrent (general government expenditure)"
+- "Protection of Biodiversity and Landscape (general government expenditure)"
+- "Protection of Biodiversity and Landscape, Recurrent (central government expenditure)"
+- "Agriculture, Recurrent (general government expenditure)"
+- "Agriculture (general government expenditure)"
+- "Environmental protection (general government expenditure)"
+- "Forestry (central government expenditure)"
+- Credit to Agriculture and Forestry
+- "Fishing, Capital (central government expenditure)"
+- Credit to Forestry and Fishery
+element_value_samples:
+- "Annual growth US$, 2015 prices"
+- Value Standard Local Currency
+- "Share of Total FDI inflows US$, 2015 prices"
+- "Share of Value Added US$, 2015 prices"
+- "Ratio of Value Added (Agriculture, Forestry and Fishing) US$, 2015 prices"
+- "Value US$, 2015 prices"
+- "Value US$, 2023 prices"
+- Share of Total US$
+- "Share of Total Credit US$, 2015 prices"
+- "Share of Total FDI outflows US$, 2015 prices"
+- "Share of Total US$, 2015 prices"
+- Value US$
+- "SDG 2.a.1: Agriculture value added share of GDP"
+- Share of Total Expenditure
+- Agriculture orientation index US$
+- "SDG 2.a.1: Agriculture Orientation Index (AOI) for Government Expenditure"
+- "Agriculture orientation index US$, 2015 prices"
+- "SDG 2.a.1: Agriculture share of Government Expenditure"
+- "Value Standard Local Currency, 2015 prices"
+indicator_value_samples:
+- "Total Expenditure in Agricultural R&D (Standard Local Currency, 2015 prices)"
+- "Total Expenditure in Agricultural R&D (US$, 2015 prices)"
+- "Agricultural Researchers (FTE) per 100 000 Agricultural Workers"
+- "Total Expenditure in Agricultural R&D (Standard Local Currency)"
+- "Expenditure in Agricultural R&D as Share of Agricultural Value Added (Standard Local Currency)"
+- "Agricultural Researchers (FTE)"
+- "Total Expenditure in Agricultural R&D (US$ PPP, 2015 prices)"
+institution_value_samples:
+- "Government, Higher Education and Private Non-profit"
+degree_value_samples:
+- Total
+unit_value_samples:
+- "%"
+- million USD
+- million SLC
+- "No"
 _index_domain: faostat
 _index_tags: *id001
 semantic_relationships:

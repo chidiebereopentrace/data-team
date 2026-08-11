@@ -23,16 +23,20 @@ Streamlit runs **in-process** `run_rag()` by default so the inspector shows full
 
 Copy from the API service, then add Streamlit-specific vars.
 
+Copy from the API service — full list: [PRODUCTION_ENV.md](./PRODUCTION_ENV.md). Minimum:
+
 ### Required (same as API)
 
 | Variable | Notes |
 |----------|--------|
 | `QDRANT_URL` / `QDRANT_API_KEY` | Qdrant Cloud |
+| Six `QDRANT_COLLECTION_*` | news, academic, policies, public_reports, formation, OTA |
 | `RAG_LLM_BASE_URL` | e.g. `https://openrouter.ai/api/v1` |
 | `RAG_LLM_API_KEY` | OpenRouter key |
-| `RAG_LLM_MODEL_ID` | e.g. `openrouter/owl-alpha` |
-| `BQ_PROJECT` / `BQ_DATASET_BRONZE` | BigQuery bronze |
+| `RAG_LLM_MODEL_ID` | `meta-llama/llama-3.1-8b-instruct` (same 8B for all plan tiers) |
+| `BQ_PROJECT` / `BQ_DATASET_SILVER` | e.g. `opentrace-prod-5ga4` / `staging_dev` |
 | `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | Base64 GCP SA JSON ([encode script](../scripts/encode-gcp-key.sh)) |
+| `COHERE_API_KEY` / `RAG_RERANKER_MODE=cohere` | Rerank on Railway |
 
 ### Baked in image (override only if needed)
 
@@ -58,7 +62,7 @@ Copy from the API service, then add Streamlit-specific vars.
 | `RAG_API_BASE_URL` | Point sidebar at deployed API for HTTP-only traces |
 | `RAG_REDIS_URL` | Session store (usually not needed for solo QA) |
 | `LANGFUSE_*` | Tracing |
-| `RAG_LLM_RERANK` | `off` unless rerank endpoint is configured |
+| `RAG_RERANKER_MODE=openrouter` | Alternative rerank via OpenRouter if not using Cohere |
 
 **Do not** mount local key paths (`GOOGLE_APPLICATION_CREDENTIALS=config/keys/...`). Use `GOOGLE_APPLICATION_CREDENTIALS_BASE64` only.
 
@@ -126,5 +130,6 @@ Treat the public Railway URL as **team-internal only**:
 ## Related docs
 
 - [ml/rag/README.md](../ml/rag/README.md) — Streamlit inspector features and local run
+- [deploy/PRODUCTION_ENV.md](./PRODUCTION_ENV.md) — canonical production env checklist
 - [deploy/README.md](./README.md) — Production API on GCE
 - [config/.env.example](../config/.env.example) — full env reference

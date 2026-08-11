@@ -3,7 +3,7 @@ Redis-backed (or in-memory fallback) store for chat sessions and shared caches.
 
 This enables the RAG FastAPI service to scale horizontally across workers/replicas
 while keeping multi-turn conversation state durable and allowing cross-process reuse
-of expensive lookups (BQ schema text, bronze catalog).
+of expensive lookups (BQ schema text).
 
 Design:
 - Opaque JSON blobs keyed by namespaced strings (e.g. rag:session:<sid>).
@@ -15,7 +15,7 @@ Design:
 
 Intended use:
 - api.py and chat_turn.py for sessions.
-- BQRetriever and bronze_dataset_catalog for their caches.
+- BQRetriever for its schema cache.
 """
 
 from __future__ import annotations
@@ -219,17 +219,6 @@ def set_bq_schema_cache(cache_key: str, schema_text: str, ttl_s: int | None = No
     """Store BQ schema text. Use long TTL (hours) or versioned key for invalidation."""
     eff = ttl_s if ttl_s is not None else _CACHE_TTL_S
     set_json(_make_key("bq", f"schema:{cache_key}"), schema_text, ttl_s=eff)
-
-
-def get_bronze_catalog_cache(cache_key: str) -> dict[str, str] | None:
-    """Retrieve cached bronze table->columns mapping."""
-    val = get_json(_make_key("catalog", f"bronze:{cache_key}"))
-    return val if isinstance(val, dict) else None
-
-
-def set_bronze_catalog_cache(cache_key: str, mapping: dict[str, str], ttl_s: int | None = None) -> None:
-    eff = ttl_s if ttl_s is not None else _CACHE_TTL_S
-    set_json(_make_key("catalog", f"bronze:{cache_key}"), mapping, ttl_s=eff)
 
 
 # --- Diagnostics for /ready and ops ---

@@ -76,24 +76,48 @@ def _ota_chunk() -> dict:
     }
 
 
-class _FakeBQRetriever:
-    """Stand-in for BQRetriever that returns no structured rows."""
-
-    def retrieve(self, *args, **kwargs):
-        return []
-
-
-def _install_pipeline_mocks(stack, *, news=None, academic=None, ota=None, llm_answer="ok"):
+def _install_pipeline_mocks(
+    stack,
+    *,
+    news=None,
+    academic=None,
+    policies=None,
+    public_reports=None,
+    formation=None,
+    ota=None,
+    llm_answer="ok",
+):
     """Patch every external boundary of the graph for deterministic runs."""
     stack.enter_context(
-        mock.patch.object(graph_mod, "_retrieve_bq_tables", return_value=[])
+        mock.patch.object(
+            graph_mod,
+            "node_bq_reason",
+            return_value={"bq_sql_plan": {"skip_bq": True, "selected_tables": []}, "bq_table_candidates": []},
+        )
     )
-    stack.enter_context(mock.patch.object(graph_mod, "BQRetriever", _FakeBQRetriever))
+    stack.enter_context(
+        mock.patch.object(
+            graph_mod,
+            "node_bq_retrieve",
+            return_value={"bq_results": [], "bq_sql_queries": [], "bq_sql_debug": []},
+        )
+    )
     stack.enter_context(
         mock.patch.object(graph_mod, "_retrieve_news", return_value=news or [])
     )
     stack.enter_context(
-        mock.patch.object(graph_mod, "_retrieve_academic", return_value=academic or [])
+        mock.patch.object(graph_mod, "_retrieve_academic_papers", return_value=academic or [])
+    )
+    stack.enter_context(
+        mock.patch.object(graph_mod, "_retrieve_policies", return_value=policies or [])
+    )
+    stack.enter_context(
+        mock.patch.object(
+            graph_mod, "_retrieve_public_reports", return_value=public_reports or []
+        )
+    )
+    stack.enter_context(
+        mock.patch.object(graph_mod, "_retrieve_formation", return_value=formation or [])
     )
     stack.enter_context(
         mock.patch.object(graph_mod, "_retrieve_ota", return_value=ota or [])

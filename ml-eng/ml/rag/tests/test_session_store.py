@@ -67,11 +67,8 @@ def test_cache_helpers_memory():
     os.environ.pop("RAG_REDIS_URL", None)
     os.environ.pop("REDIS_URL", None)
 
-    ss.set_bq_schema_cache("proj:bronze", "CREATE TABLE ...", ttl_s=10)
-    assert ss.get_bq_schema_cache("proj:bronze") == "CREATE TABLE ..."
-
-    ss.set_bronze_catalog_cache("v1:foo", {"t1": "`col` desc"}, ttl_s=10)
-    assert ss.get_bronze_catalog_cache("v1:foo") == {"t1": "`col` desc"}
+    ss.set_bq_schema_cache("proj:ds", "CREATE TABLE ...", ttl_s=10)
+    assert ss.get_bq_schema_cache("proj:ds") == "CREATE TABLE ..."
 
 
 @pytest.mark.skipif(

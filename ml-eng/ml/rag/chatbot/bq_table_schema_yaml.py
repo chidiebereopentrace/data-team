@@ -117,7 +117,33 @@ def load_table_schema(table_name: str) -> dict[str, Any] | None:
 # --- formatting -------------------------------------------------------------
 
 _MAX_LINE = 140
+_MAX_COL_DESC = 600
 _MAX_COLUMNS = 30
+_MAX_VALUE_SAMPLES = 400
+_VALUE_SAMPLE_KEYS = frozenset(
+    {
+        "element_value_samples",
+        "product_value_samples",
+        "item_value_samples",
+        "unit_value_samples",
+        "donor_value_samples",
+        "purpose_value_samples",
+        "indicator_value_samples",
+        "institution_value_samples",
+        "degree_value_samples",
+        "source_value_samples",
+        "currency_value_samples",
+    }
+)
+_GUIDANCE_LIST_KEYS = frozenset(
+    {
+        "filtering_guidance",
+        "sql_generation_hints",
+        "business_questions_supported",
+        "aggregation_rules",
+    }
+)
+_MAX_GUIDANCE_ITEMS = 24
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -125,6 +151,48 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _format_value_samples(label: str, value: Any, *, max_items: int = _MAX_VALUE_SAMPLES) -> str | None:
+    """Render element/product sample lists as multi-line bullets for NL2SQL packs."""
+    if not isinstance(value, list) or not value:
+        return None
+    items = [
+        str(x).strip()
+        for x in value
+        if isinstance(x, (str, int, float, bool)) and str(x).strip()
+    ]
+    if not items:
+        return None
+    shown = items[:max_items]
+    lines = [f"{label}:"]
+    for item in shown:
+        lines.append(f"  - {item}")
+    remaining = len(items) - len(shown)
+    if remaining > 0:
+        lines.append(f"  - … +{remaining} more")
+    return "\n".join(lines)
+
+
+def _format_guidance_list(label: str, value: Any, *, max_items: int = _MAX_GUIDANCE_ITEMS) -> str | None:
+    """Render filtering/SQL hint lists as multi-line bullets (not one truncated line)."""
+    if not isinstance(value, list) or not value:
+        return None
+    items = [
+        str(x).strip()
+        for x in value
+        if isinstance(x, (str, int, float, bool)) and str(x).strip()
+    ]
+    if not items:
+        return None
+    shown = items[:max_items]
+    lines = [f"{label}:"]
+    for item in shown:
+        lines.append(f"  - {_truncate(item, 220)}")
+    remaining = len(items) - len(shown)
+    if remaining > 0:
+        lines.append(f"  - … +{remaining} more")
+    return "\n".join(lines)
 
 
 def _format_list_field(label: str, value: Any) -> str | None:
@@ -179,7 +247,7 @@ def _format_columns(columns: Any, *, max_columns: int = _MAX_COLUMNS) -> str:
             continue
         typ = str(col.get("type") or "").strip()
         role = str(col.get("semantic_role") or "").strip()
-        desc = str(col.get("description") or "").strip()
+        desc = " ".join(str(col.get("description") or "").split())
         example = col.get("example")
         head = name
         meta_bits = []
@@ -193,7 +261,11 @@ def _format_columns(columns: Any, *, max_columns: int = _MAX_COLUMNS) -> str:
         if example not in (None, ""):
             ex = _truncate(str(example), 40)
             tail = f"{tail} [ex: {ex}]" if tail else f"[ex: {ex}]"
-        line = f"  - {head}" + (f": {_truncate(tail, _MAX_LINE - len(head) - 4)}" if tail else "")
+        # Long metric/product glossaries need more than the compact line budget.
+        desc_limit = _MAX_COL_DESC if name in ("product_name", "item", "element", "unit", "value") else max(
+            40, _MAX_LINE - len(head) - 4
+        )
+        line = f"  - {head}" + (f": {_truncate(tail, desc_limit)}" if tail else "")
         lines.append(line)
     if isinstance(columns, list) and len(columns) > max_columns:
         lines.append(f"  - … {len(columns) - max_columns} more columns")
@@ -217,6 +289,17 @@ _SECTION_ORDER: list[tuple[str, str]] = [
     ("aggregation_rules", "Aggregation rules"),
     ("filtering_guidance", "Filtering guidance"),
     ("sql_generation_hints", "SQL generation hints"),
+    ("element_value_samples", "Element value samples"),
+    ("product_value_samples", "Product value samples"),
+    ("item_value_samples", "Item value samples"),
+    ("unit_value_samples", "Unit value samples"),
+    ("donor_value_samples", "Donor value samples"),
+    ("purpose_value_samples", "Purpose value samples"),
+    ("indicator_value_samples", "Indicator value samples"),
+    ("institution_value_samples", "Institution value samples"),
+    ("degree_value_samples", "Degree value samples"),
+    ("source_value_samples", "Source value samples"),
+    ("currency_value_samples", "Currency value samples"),
     ("data_quality", "Data quality"),
     ("temporal_model", "Temporal model"),
 ]
@@ -311,6 +394,16 @@ def format_table_schema(
                 schema[key],
                 selected_tables=selected_tables,
             )
+            if block:
+                parts.append(block)
+            continue
+        if key in _VALUE_SAMPLE_KEYS:
+            block = _format_value_samples(label, schema[key])
+            if block:
+                parts.append(block)
+            continue
+        if key in _GUIDANCE_LIST_KEYS:
+            block = _format_guidance_list(label, schema[key])
             if block:
                 parts.append(block)
             continue

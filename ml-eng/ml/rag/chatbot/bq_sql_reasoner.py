@@ -33,16 +33,11 @@ def _max_tables() -> int:
 
 
 def _reasoner_model(plan_type: str | None) -> str:
+    """Same chat model as the rest of the pipeline (8B by default)."""
     dedicated = os.environ.get("RAG_BQ_REASONER_MODEL_ID", "").strip()
     if dedicated:
         return dedicated
-    plan_model = model_for_plan(plan_type)
-    if plan_model and "8b" not in plan_model.lower():
-        return plan_model
-    return os.environ.get(
-        "RAG_BQ_REASONER_FALLBACK_MODEL_ID",
-        "meta-llama/llama-3.1-70b-instruct",
-    ).strip() or llm_model_id()
+    return model_for_plan(plan_type) or llm_model_id()
 
 
 def _known_table_ids() -> set[str]:

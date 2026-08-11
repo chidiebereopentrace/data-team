@@ -7,6 +7,11 @@ from typing import Any
 
 _STG_TABLE_RE = re.compile(r"\bstg_[a-z0-9_]+\b", re.IGNORECASE)
 _TABLE_HEADER_RE = re.compile(r"^Table:\s*[`\w.-]*\.?(\bstg_[a-z0-9_]+)", re.IGNORECASE | re.MULTILINE)
+# FROM/JOIN target: backticked FQN or dotted/bare identifier (not a subquery paren).
+_FROM_JOIN_TABLE_RE = re.compile(
+    r"\b(?:FROM|JOIN)\s+(?![\(\s])(`[^`]+`|(?:[A-Za-z_][\w-]*)(?:\.[A-Za-z_][\w-]*)*)",
+    re.IGNORECASE,
+)
 
 
 def dry_run_enabled() -> bool:
@@ -41,14 +46,39 @@ def bare_table_ids_from_hints(hints: list[str]) -> set[str]:
     return out
 
 
+def _bare_table_name(raw: str) -> str:
+    text = (raw or "").strip().strip("`").strip()
+    if not text:
+        return ""
+    return text.split(".")[-1].lower()
+
+
+def referenced_tables(sql: str) -> set[str]:
+    """Extract bare table names from FROM/JOIN clauses (any id, not only stg_*)."""
+    out: set[str] = set()
+    for match in _FROM_JOIN_TABLE_RE.finditer(sql or ""):
+        bare = _bare_table_name(match.group(1))
+        if bare:
+            out.add(bare)
+    return out
+
+
 def referenced_stg_tables(sql: str) -> set[str]:
-    """Extract stg_* table names referenced in SQL."""
+    """Extract stg_* table names referenced in SQL (hint/compat helper)."""
+    refs = referenced_tables(sql)
+    stg = {t for t in refs if t.startswith("stg_")}
+    if stg:
+        return stg
+    # Fallback for odd SQL shapes that omit FROM/JOIN capture but still mention stg_*.
     return {m.lower() for m in _STG_TABLE_RE.findall(sql or "")}
 
 
 def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
     """
-    Return an error message if SQL references stg_* tables outside ``allowed``.
+    Return an error message if SQL references tables outside ``allowed``.
+
+    When ``allowed`` is non-empty, every FROM/JOIN table (including ``dim_*`` and
+    non-stg names) must be in the allowed set (typically reasoner-selected ``stg_*``).
     Empty ``allowed`` skips the check.
     """
     if not allowed:
@@ -56,14 +86,18 @@ def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
     allowed_lower = {t.lower() for t in allowed if str(t).strip()}
     if not allowed_lower:
         return None
-    refs = referenced_stg_tables(sql)
+    refs = referenced_tables(sql)
+    if not refs:
+        # No FROM/JOIN parse — still catch loose stg_* mentions outside the set.
+        refs = referenced_stg_tables(sql)
     if not refs:
         return None
     extra = sorted(refs - allowed_lower)
     if extra:
         return (
             f"SQL references tables not in the reasoner selection: {', '.join(extra)}. "
-            f"Allowed: {', '.join(sorted(allowed_lower))}"
+            f"Allowed: {', '.join(sorted(allowed_lower))}. "
+            "Do not invent dim_* or other warehouse tables; use only the allowed stg_* tables."
         )
     return None
 

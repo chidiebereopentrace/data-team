@@ -18,12 +18,15 @@ business_questions_supported:
 - What is GDP per capita PPP?
 filtering_guidance:
 - Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa'
+- Use only when the question asks for GDP/macro context; do not join as an Africa country list for production rankings
 sql_generation_hints:
-- Filter country_code
+- Filter country_code or country_name and observation_year
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: country_name
   type: STRING
-  description: country name
+  description: Country name only. Never 'Africa' or a region label.
 - name: country_code
   type: STRING
   description: country code
@@ -71,3 +74,5 @@ semantic_relationships:
   do_not_join:
   - table: stg_germplasm
     reason: accession geography
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims / country lists for unrelated rankings

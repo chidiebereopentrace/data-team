@@ -7,6 +7,7 @@ from ml.rag.chatbot.bq_sql_validate import (
     bare_table_ids_from_hints,
     dry_run_sql,
     referenced_stg_tables,
+    referenced_tables,
     validate_sql_table_allowlist,
 )
 
@@ -18,6 +19,32 @@ def test_referenced_stg_tables() -> None:
     )
     refs = referenced_stg_tables(sql)
     assert refs == {"stg_faostat_production", "stg_africa_gdp_ppp"}
+
+
+def test_referenced_tables_includes_dim() -> None:
+    sql = (
+        "SELECT country_name FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE area_code_m49 IN ("
+        "SELECT country_code FROM `proj.staging_dev.dim_geography` "
+        "WHERE country_name = 'Africa')"
+    )
+    refs = referenced_tables(sql)
+    assert "stg_faostat_production" in refs
+    assert "dim_geography" in refs
+
+
+def test_validate_sql_table_allowlist_rejects_dim_geography() -> None:
+    sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2020 AND area_code_m49 IN ("
+        "SELECT country_code FROM `proj.staging_dev.dim_geography` "
+        "WHERE country_name = 'Africa') "
+        "GROUP BY country_name ORDER BY total DESC"
+    )
+    err = validate_sql_table_allowlist(sql, {"stg_faostat_production"})
+    assert err is not None
+    assert "dim_geography" in err
 
 
 def test_validate_sql_table_allowlist_rejects_extra() -> None:

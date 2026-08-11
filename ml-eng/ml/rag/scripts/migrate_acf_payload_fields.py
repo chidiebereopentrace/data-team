@@ -53,10 +53,10 @@ _ACF_PATCH_KEYS = (
 
 logger = logging.getLogger(__name__)
 
-CORPORA = ("news", "research", "ota", "data_description")
+CORPORA = ("news", "research", "ota")
 
-# Research split targets (env override → default), aligned with graph._RESEARCH_SPLIT_COLLECTIONS
-# plus migrate_research_collection destination alias news_public_reports.
+# Research split targets (env override → default), aligned with graph dense corpora
+# plus legacy alias news_public_reports (readable only; not the live default).
 _RESEARCH_SPLIT_TARGETS: tuple[tuple[str, str], ...] = (
     ("QDRANT_COLLECTION_ACADEMIC_PAPERS", "academic_papers"),
     ("QDRANT_COLLECTION_POLICIES", "policies"),

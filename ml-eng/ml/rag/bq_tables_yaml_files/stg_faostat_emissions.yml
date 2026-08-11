@@ -1,5 +1,8 @@
 table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_emissions
-description: FAOSTAT agrifood systems emissions.
+description: >
+  FAOSTAT agrifood systems emissions (gases, shares, intensities, and related
+  activity). Rows are country-level facts (not continent aggregates). Filter by
+  exact item + element + unit; never invent labels.
 grain: country × item × element × year
 entity_type: faostat
 source:
@@ -17,22 +20,37 @@ semantic_role:
   - faostat
 business_questions_supported:
 - What are agrifood emissions for a country?
+- Which country has the highest livestock CH4 / CO2eq emissions?
+- What is emissions intensity or emissions per capita?
 filtering_guidance:
 - Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa' or a region
+- For continental/Africa rankings stay on this table; do not join a geo dimension
+- Filter element to exactly one metric; never SUM across different elements
+- Always interpret value with the matching unit; never SUM across unlike units
+- Prefer headline gas totals for generic questions: Emissions (CO2eq) (AR5), Emissions (CH4), Emissions (N2O), Emissions (CO2)
+- Use manure / fertilizer / residue / energy / land pathway elements only when the question asks for that pathway
+- Prefer primary item commodities/animals/activity categories over sector aggregates unless totals are asked
+- Sector aggregates (AFOLU, Agrifood systems, All sectors with/without LULUCF, IPCC Agriculture, Farm gate, etc.) only when the question asks for totals
+- Do not mix N-content / activity rows with gas-emission rows in the same SUM
+- Filter year for time-bounded questions
 sql_generation_hints:
 - Filter country_name and year
-- Filter element for the metric needed
-- GROUP BY country_name, product_name, year when comparing
+- Always filter element = '<exact label>' for the metric needed
+- Filter item = '<exact FAOSTAT label>' when a commodity, animal, or activity is named
+- GROUP BY country_name, item, year when comparing
+- Prefer element = 'Emissions (CO2eq) (AR5)' for total climate-impact rankings unless a specific gas is named
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: area_code
   type: STRING
-  description: area code
+  description: FAO area code
 - name: area_code_m49
   type: STRING
-  description: area code m49
+  description: UN M49 area code for the country row (not a continent filter key)
 - name: country_name
   type: STRING
-  description: country name
+  description: Country name only (e.g. Nigeria, Kenya). Never 'Africa' or a region label.
 - name: item_code
   type: STRING
   description: item code
@@ -41,34 +59,300 @@ columns:
   description: item code cpc
 - name: item
   type: STRING
-  description: item
+  description: >
+    FAOSTAT emissions item (commodity, animal, activity, land class, or sector).
+    Filter with an exact item label. Prefer primary commodities/animals/activity
+    categories over sector totals. Never invent labels. Do not SUM primary rows
+    with aggregate sector rows together.
+
+    Family rules:
+    Animals and products — Goats, Sheep, Cattle, dairy/non-dairy, poultry, meats,
+    raw milk, eggs, Poultry Birds, All Animals.
+    Crops — Wheat, Maize (corn), Rice, Millet, Sorghum, Soya beans, Potatoes,
+    Sugar cane, Beans dry, Rye, Oats, Barley, All Crops, Cereals excluding rice.
+    IPCC / activity categories — Enteric Fermentation, Manure Management,
+    Rice Cultivation, Crop Residues, Burning - Crop residues, Agricultural Soils,
+    Synthetic Fertilizers, Manure applied to Soils, Manure left on Pasture.
+    Land / LULUCF / fires — Forestland, Grassland, Savanna*, shrubland*, Net Forest
+    conversion, Carbon stock change in forests, drained organic soils, fire types.
+    Energy carriers — Electricity, Natural gas, Coal, Petroleum products,
+    Total Energy, On-farm energy use, Energy Use (Pre- and Post-Production).
+    Agrifood stages — Farm gate, Food Transport, Food Retail, Food Processing,
+    Food Packaging, Food Household Consumption, Pre- and post-production,
+    Fertilizers/Pesticides Manufacturing, Cold Chain F-Gas, waste disposal.
+    Sector aggregates — AFOLU, Agrifood systems, Emissions from crops/livestock,
+    Emissions on agricultural land, IPCC Agriculture, All sectors with/without
+    LULUCF, IPPU, Waste, Energy, LULUCF — use only when totals are asked.
 - name: element_code
   type: STRING
   description: element code
 - name: element
   type: STRING
-  description: element
+  description: >
+    Metric type for the row's value. Filter with an exact element label
+    (one metric per query). Do not mix elements in the same SUM/AVG.
+    Always read value together with unit.
+
+    Family rules:
+    Gas totals — Emissions (CH4), Emissions (N2O), Emissions (CO2),
+    Emissions (CO2eq) (AR5), Emissions (CO2eq) from CH4/N2O/F-gases (AR5),
+    Net emissions/removals (CO2) (Forest land). Default for generic emissions
+    questions: Emissions (CO2eq) (AR5).
+    Shares — Emissions Share (CO2/CH4/N2O/CO2eq AR5 / F-gases); unit usually %.
+    Intensity / normalized — Emissions intensity, Emissions per capita,
+    Emissions per area of agricultural land, Emissions per value of agricultural
+    production (not absolute mass).
+    Manure pathways — applied / left on pasture / manure management; Direct vs
+    Indirect (leaches / volatilises); Emissions N2O/CH4 vs N content. Do not mix
+    N-content with gas emissions.
+    Synthetic fertilizers — Direct/Indirect N2O, Emissions N2O, Agricultural use,
+    N fertilizer content that leaches/volatilises.
+    Crop residues / burning / rice — N content, Direct/Indirect N2O, CH4 from
+    burning or rice cultivation, biomass burned, Burned Area.
+    Enteric fermentation — Emissions CH4.
+    Livestock/crops totals — Livestock/Crops total (Emissions CH4 or N2O).
+    Energy — Energy Use (Total / Electricity / Coal / Natural Gas including LNG),
+    Energy use in agriculture.
+    Land / activity — Area, Area harvested, Production, Stocks.
 - name: source_code
   type: STRING
   description: source code
 - name: source
   type: STRING
-  description: source
+  description: Emissions source label when present
 - name: year
   type: INT64
-  description: year
+  description: Observation year
 - name: unit
   type: STRING
-  description: unit
+  description: >
+    Unit of value for this element. Always interpret value with element + unit;
+    never compare or SUM unlike units.
+
+    An — animal numbers (heads).
+    % — share / percentage.
+    1000 ha — thousand hectares.
+    ha — hectares.
+    kg — kilograms (often N content or mass).
+    t — tonnes.
+    kt — kilotonnes (often gas mass).
+    kg CO2eq/kg — emissions intensity per kg product.
+    kg CO2eq/Int$ — emissions per international-dollar of production.
+    t CO2eq/cap — tonnes CO2eq per capita.
+    t CO2eq/ha — tonnes CO2eq per hectare.
+    TJ — terajoules (energy).
 - name: value
   type: FLOAT64
-  description: value
+  description: >
+    Numeric measure for the element. SUM across items/years only when element
+    and unit are homogeneous. Never SUM across different elements or unlike units.
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+element_value_samples:
+- Indirect emissions (N2O that leaches) (Manure applied)
+- Manure left on pasture (Emissions N2O)
+- Livestock total (Emissions N2O)
+- Indirect emissions (N2O that volatilises) (Manure on pasture)
+- Manure left on pasture (Direct emissions N2O)
+- Manure applied to soils that leaches (N content)
+- Manure left on pasture that volatilises (N content)
+- Direct emissions (N2O)
+- Emissions (CO2eq) from N2O (AR5)
+- Indirect emissions (N2O)
+- Area harvested
+- Indirect emissions (N2O that volatilises) (Synthetic fertilizers)
+- Synthetic fertilizers (Direct emissions N2O)
+- Synthetic fertilizers (Emissions N2O)
+- Emissions Share (CO2eq) (AR5) (F-gases)
+- Manure management (manure treated, N content)
+- Manure applied to soils that volatilises (N content)
+- Indirect emissions (N2O that leaches) (Manure on pasture)
+- Enteric fermentation (Emissions CH4)
+- Emissions (N2O) (Manure applied)
+- Manure left on pasture (N content)
+- Manure applied to soils (Direct emissions N2O)
+- Indirect emissions (N2O that volatilises) (Manure applied)
+- Emissions intensity
+- Production
+- Crop residues (N content)
+- Burning crop residues (Biomass burned, dry matter)
+- Emissions Share (CO2)
+- Emissions (CH4)
+- Emissions (N2O)
+- Emissions (CO2eq) from CH4 (AR5)
+- Rice cultivation (Emissions CH4)
+- Energy Use (Electricity)
+- Energy Use (Total)
+- Emissions (CO2eq) from F-gases (AR5)
+- Burned Area
+- Energy use in agriculture
+- Manure management (Direct emissions N2O)
+- Stocks
+- Manure management (Emissions N2O)
+- Manure left on pasture (Indirect emissions N2O)
+- Burning crop residues (Emissions CH4)
+- Emissions Share (CH4)
+- Emissions Share (N2O)
+- Emissions per value of agricultural production
+- Emissions per area of agricultural land
+- Crop residues (Emissions N2O)
+- Crops total (Emissions N2O)
+- Burning crop residues (Emissions N2O)
+- Synthetic fertilizers (Agricultural use)
+- Indirect emissions (N2O that leaches) (Synthetic fertilizers)
+- Energy Use (Natural Gas, including LNG)
+- Area
+- Manure left on pasture that leaches (N content)
+- Manure applied to soils (Indirect emissions N2O)
+- Manure management (Indirect emissions N2O)
+- Manure management (Emissions CH4)
+- Livestock total (Emissions CH4)
+- Manure applied to soils (N content)
+- Emissions (CO2eq) (AR5)
+- Emissions (CO2)
+- Emissions Share (CO2eq) (AR5)
+- Emissions per capita
+- Crops total (Emissions CH4)
+- Crop residues (Direct emissions N2O)
+- Crop residues (Indirect emissions N2O)
+- Nitrogen fertilizer content applied that leaches
+- Nitrogen fertilizer content applied that volatilises
+- Energy Use (Coal)
+- Net emissions/removals (CO2) (Forest land)
+item_value_samples:
+- Goats
+- Hen eggs in shell, fresh
+- Poultry Birds
+- Synthetic Fertilizers
+- Manure applied to Soils
+- Manure left on Pasture
+- Emissions from crops
+- Emissions from livestock
+- Maize (corn)
+- Land-use change
+- Pre- and post-production
+- Agrifood systems
+- Drained organic soils (N2O)
+- Forestland
+- Savanna
+- Savanna and woody savanna
+- Open shrubland
+- Closed and open shrubland
+- Other forest
+- Petroleum products
+- AFOLU
+- All sectors with LULUCF
+- Solid Food Waste
+- Sheep
+- Raw milk of camel
+- Raw milk of sheep
+- Mules and hinnies
+- Meat of buffalo, fresh or chilled
+- Rye
+- Meat of goat, fresh or chilled
+- Meat of pig with the bone, fresh or chilled
+- Swine
+- Chickens
+- Cereals excluding rice
+- All Animals
+- Energy Use (Pre- and Post-Production)
+- Food Retail
+- Grassland organic soils
+- Net Forest conversion
+- Closed shrubland
+- Grassland
+- Food Transport
+- IPPU
+- Waste
+- Energy
+- Agrifood Systems Waste Disposal
+- Fires in organic soils
+- On-farm energy use
+- Emissions on agricultural land
+- Cattle, non-dairy
+- Camels
+- Wheat
+- Camels and Llamas
+- Mules and Asses
+- Ducks
+- Turkeys
+- Swine, breeding
+- Potatoes
+- Sugar cane
+- LULUCF
+- Agricultural Soils
+- All Crops
+- Sheep and Goats
+- Cattle
+- Soya beans
+- Nutrient nitrogen N (total)
+- Enteric Fermentation
+- Burning - Crop residues
+- Food Household Consumption
+- Drained organic soils (CO2)
+- Carbon stock change in forests
+- Savanna fires
+- Electricity
+- Total Energy (excl.eletricity & heat)
+- Total Energy
+- Other
+- Industrial Wastewater
+- Forest fires
+- Fires in humid tropical forests
+- Farm gate
+- Millet
+- Sorghum
+- Cattle, dairy
+- Barley
+- Fertilizers Manufacturing
+- Buffalo
+- Natural gas
+- Raw milk of buffalo
+- Swine, market
+- Chickens, layers
+- Chickens, broilers
+- Meat of chickens, fresh or chilled
+- IPCC Agriculture
+- Beans, dry
+- Rice
+- Manure Management
+- Rice Cultivation
+- Crop Residues
+- Food Packaging
+- Food Processing
+- Cropland organic soils
+- Drained organic soils
+- Woody savanna
+- Humid tropical forest
+- All sectors without LULUCF
+- Domestic Wastewater
+- Pesticides Manufacturing
+- Cold Chain F-Gas
+- Meat of cattle with the bone, fresh or chilled
+- Raw milk of cattle
+- Meat of sheep, fresh or chilled
+- Raw milk of goats
+- Horses
+- Oats
+- Asses
+- Coal
+unit_value_samples:
+- An
+- "%"
+- 1000 ha
+- kg CO2eq/kg
+- kg CO2eq/Int$
+- TJ
+- kt
+- t CO2eq/cap
+- t CO2eq/ha
+- kg
+- t
+- ha
 _index_domain: faostat
 _index_tags: *id001
 semantic_relationships:

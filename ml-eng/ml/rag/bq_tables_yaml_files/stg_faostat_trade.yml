@@ -18,20 +18,25 @@ business_questions_supported:
 - What are import/export volumes?
 filtering_guidance:
 - Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa' or a region
+- For continental/Africa rankings stay on this table; do not invent dim_* geo tables
+- Filter element to Import/Export quantity or value as asked (not indices unless asked)
 sql_generation_hints:
 - Filter country_name and year
-- Filter element for the metric needed
+- Filter element for the metric needed (e.g. Import Quantity, Export Quantity)
 - GROUP BY country_name, product_name, year when comparing
+- "Continental trade ranking: SUM(value) GROUP BY country_name ORDER BY total DESC; single-table; no dim_geography"
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: area_code
   type: STRING
   description: area code
 - name: area_code_m49
   type: STRING
-  description: area code m49
+  description: UN M49 area code for the country row (not a continent filter key)
 - name: country_name
   type: STRING
-  description: country name
+  description: Country name only. Never 'Africa' or a region label.
 - name: item_code
   type: STRING
   description: item code
@@ -46,7 +51,9 @@ columns:
   description: element code
 - name: element
   type: STRING
-  description: element
+  description: >
+    Metric type. Common values: Import Quantity, Export Quantity,
+    Import Value, Export Value. Filter before aggregating.
 - name: year
   type: INT64
   description: year
@@ -55,13 +62,18 @@ columns:
   description: unit
 - name: value
   type: FLOAT64
-  description: value
+  description: Numeric measure for the element
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+element_value_samples:
+- Import Quantity
+- Export Quantity
+- Import Value
+- Export Value
 _index_domain: faostat
 _index_tags: *id001
 semantic_relationships:
@@ -94,3 +106,5 @@ semantic_relationships:
   do_not_join:
   - table: stg_nakuru_air_quality
     reason: local sensors only
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims for Africa country lists

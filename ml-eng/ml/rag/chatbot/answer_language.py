@@ -2,7 +2,7 @@
 Detect user query language and produce generation instructions that mirror it.
 
 Language affects answer prompts only — never translate the query before E5 retrieve.
-Named tags: en | sw | fr | pcm | ar | am | ig | yo | ha | pt | tw | efi | mixed | unknown.
+Named tags: en | sw | fr | pcm | ar | am | ig | yo | ha | pt | tw | efi | zu | xh | so | wo | rw | mixed | unknown.
 """
 from __future__ import annotations
 
@@ -30,6 +30,11 @@ SUPPORTED_ANSWER_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
     ("pt", "Portuguese"),
     ("tw", "Twi"),
     ("efi", "Efik"),
+    ("zu", "Zulu"),
+    ("xh", "Xhosa"),
+    ("so", "Somali"),
+    ("wo", "Wolof"),
+    ("rw", "Kinyarwanda"),
     ("mixed", "Code-mixed (user's mix)"),
 )
 
@@ -123,6 +128,34 @@ _MARKER_LANG: Final[dict[str, str]] = {
     # Efik
     "mbọk": "efi",
     "mbok": "efi",
+    # Zulu
+    "sawubona": "zu",
+    "ngiyabonga": "zu",
+    "unjani": "zu",
+    "yebo": "zu",
+    "ukulima": "zu",
+    "ukudla": "zu",
+    # Xhosa
+    "molo": "xh",
+    "enkosi": "xh",
+    "kunjani": "xh",
+    "ukutya": "xh",
+    # Somali
+    "salaan": "so",
+    "mahadsanid": "so",
+    "sidee": "so",
+    "beeraha": "so",
+    "cunto": "so",
+    # Wolof
+    "salaamalekum": "wo",
+    "jërëjëf": "wo",
+    "jerejef": "wo",
+    # Kinyarwanda
+    "muraho": "rw",
+    "murakoze": "rw",
+    "amakuru": "rw",
+    "ubuhinzi": "rw",
+    "ibiribwa": "rw",
 }
 
 _NON_EN_MARKERS: Final[frozenset[str]] = frozenset(_MARKER_LANG.keys())
@@ -164,6 +197,26 @@ _PT_PHRASE_RE = re.compile(
     r"\b(?:olá|ola|obrigad[oa]|você|voce|colheita|produção|producao)\b",
     re.IGNORECASE,
 )
+_ZU_PHRASE_RE = re.compile(
+    r"\b(?:sawubona|ngiyabonga|unjani|ukulima|ukudla)\b",
+    re.IGNORECASE,
+)
+_XH_PHRASE_RE = re.compile(
+    r"\b(?:molo|enkosi|kunjani|ukutya)\b",
+    re.IGNORECASE,
+)
+_SO_PHRASE_RE = re.compile(
+    r"\b(?:salaan|mahadsanid|sidee|beeraha|cunto)\b",
+    re.IGNORECASE,
+)
+_WO_PHRASE_RE = re.compile(
+    r"\b(?:salaamalekum|j[eë]r[eë]j[eë]f|jerejef|nanga\s+def)\b",
+    re.IGNORECASE,
+)
+_RW_PHRASE_RE = re.compile(
+    r"\b(?:muraho|murakoze|amakuru|ubuhinzi|ibiribwa)\b",
+    re.IGNORECASE,
+)
 
 _EN_FUNCTION: Final[frozenset[str]] = frozenset(
     {
@@ -199,7 +252,8 @@ _EN_INSTRUCTION = (
 _MIRROR_INSTRUCTION = (
     "Answer in the same language as the user question. This includes African and regional "
     "languages such as Igbo, Yoruba, Twi, Efik, Swahili, French, Hausa, Portuguese, Arabic, "
-    "Amharic, and Nigerian Pidgin, as well as code-mixing when that is how they wrote. "
+    "Amharic, Zulu, Xhosa, Somali, Wolof, Kinyarwanda, and Nigerian Pidgin, as well as "
+    "code-mixing when that is how they wrote. "
     "Keep citation footnote numbers [N], numbers, and proper nouns faithful. "
     "Do not switch to English unless the user wrote in English. "
     "Avoid academic hedges unless the context explicitly supports the qualification."
@@ -296,6 +350,16 @@ def _phrase_lang(text: str) -> str | None:
         return "ha"
     if _PT_PHRASE_RE.search(text):
         return "pt"
+    if _ZU_PHRASE_RE.search(text):
+        return "zu"
+    if _XH_PHRASE_RE.search(text):
+        return "xh"
+    if _SO_PHRASE_RE.search(text):
+        return "so"
+    if _WO_PHRASE_RE.search(text):
+        return "wo"
+    if _RW_PHRASE_RE.search(text):
+        return "rw"
     return None
 
 
@@ -315,7 +379,7 @@ def detect_answer_language(query: str) -> AnswerLang:
     """
     Named language tag for routing and generation.
 
-    Returns one of: en, sw, fr, pcm, ar, am, ig, yo, ha, pt, tw, efi, mixed, unknown.
+    Returns one of: en, sw, fr, pcm, ar, am, ig, yo, ha, pt, tw, efi, zu, xh, so, wo, rw, mixed, unknown.
     """
     text = (query or "").strip()
     if not text:
@@ -369,7 +433,7 @@ def detect_canned_insufficient_lang(query: str) -> str:
     tag = detect_answer_language(text)
     if tag in _INSUFFICIENT:
         return tag
-    if tag in ("mixed", "unknown", "ig", "yo", "ha", "pt", "tw", "efi", "non_en"):
+    if tag in ("mixed", "unknown", "ig", "yo", "ha", "pt", "tw", "efi", "zu", "xh", "so", "wo", "rw", "non_en"):
         return "en"
     return "en"
 

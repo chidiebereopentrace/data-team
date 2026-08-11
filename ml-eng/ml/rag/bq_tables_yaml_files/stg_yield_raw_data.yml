@@ -20,17 +20,20 @@ business_questions_supported:
 - How did yields change over the past decade?
 filtering_guidance:
 - Prefer clean qc_flag rows when available
+- country holds country labels only — never filter country = 'Africa' or a region
+- Subnational grain; for continental country ranks prefer stg_faostat_production
 sql_generation_hints:
 - Prefer harvest_year for time filters
 - Recompute yield as production/area when aggregating
 - GROUP BY product + geography + year
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: fnid
   type: STRING
   description: fnid
 - name: country
   type: STRING
-  description: country
+  description: Country name only. Never 'Africa' or a region label.
 - name: country_code
   type: STRING
   description: country code
@@ -123,3 +126,5 @@ semantic_relationships:
     reason: research metadata; no shared agronomic grain
   - table: stg_nakuru_air_quality
     reason: local air quality; not crop yield grain
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims for Africa country lists

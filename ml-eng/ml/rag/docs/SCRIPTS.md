@@ -22,7 +22,7 @@ Environment is loaded from `ml-eng/config/.env` and `ml-eng/data/local/.env` via
 | **Qdrant admin** | `ml.rag.scripts.create_qdrant_collections` |
 | **Ingest (Drive)** | `ml.rag.ingestion.cli` |
 | **Preprocess** | `ml.rag.text_processors.preprocess.cli` |
-| **Load to Qdrant** | `news/research/data_descriptions/ota_insights_load_to_vector_db`, `load_pdf_chunks_to_vector_db` |
+| **Load to Qdrant** | `news/research/ota_insights_load_to_vector_db`, `load_pdf_chunks_to_vector_db` |
 | **Corpus preprocess (legacy wrappers)** | `*_preprocessor.py`, `news_collection_preprocessor.py` |
 | **Eval** | `ml.rag.eval.run_retrieval_eval` |
 | **Diagnostics** | `ml.rag.inspect_vector_db`, `ml.rag.check_hf` |
@@ -155,7 +155,7 @@ End-to-end rebuild: sync Drive folder → preprocess → upsert Qdrant.
 
 | Argument | Values | Description |
 |----------|--------|-------------|
-| `--kind` | `news`, `research`, `data_descriptions`, `ota`, `all` | Which pipeline |
+| `--kind` | `news`, `research`, `ota`, `all` | Which pipeline |
 | `--reset` | flag | Delete Qdrant collection before upsert |
 | `--json` | flag | Machine-readable JSON output |
 
@@ -173,7 +173,6 @@ python -m ml.rag.ingestion.cli rebuild --kind research --json
 |----------|------------|
 | `news` | `news_chunks.jsonl` |
 | `research` | `research_chunks.jsonl` |
-| `data_descriptions` | `data_descriptions_chunks.jsonl` |
 | `ota` | `ota_insights_chunks.jsonl` |
 
 ---
@@ -190,14 +189,13 @@ Unified preprocessor using corpus **engines** under `preprocess/engines/`.
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `--corpus` | yes | `news`, `research`, `data_description`, `ota` |
+| `--corpus` | yes | `news`, `research`, `ota` |
 | `--input-dir` | yes | Folder of source files |
 | `--output` | no | JSONL path (default from [`paths.py`](../paths.py)) |
 
 ```bash
 python -m ml.rag.text_processors.preprocess.cli run --corpus news --input-dir data/local/raw/news
 python -m ml.rag.text_processors.preprocess.cli run --corpus research --input-dir data/local/raw/research
-python -m ml.rag.text_processors.preprocess.cli run --corpus data_description --input-dir data/local/raw/bq_descriptions
 python -m ml.rag.text_processors.preprocess.cli run --corpus ota --input-dir data/local/raw/ota
 ```
 
@@ -221,7 +219,6 @@ These call the same engines or older paths; prefer `preprocess.cli` for new work
 |--------|-------------|
 | `ml.rag.text_processors.news_collection_preprocessor` | News folder → JSONL |
 | `ml.rag.text_processors.research_papers_preprocessor` | Research PDFs → JSONL |
-| `ml.rag.text_processors.data_descriptions_preprocessor` | BQ description docs → JSONL |
 | `ml.rag.text_processors.ota_insights_preprocessor` | OTA docs → JSONL |
 | `ml.rag.text_processors.pdf_preprocessor` | Generic PDF → JSONL |
 | `ml.rag.text_processors.news_preprocessor` | Older news path |
@@ -257,13 +254,11 @@ All loaders use shared upsert logic in [`text_processors/load_pdf_chunks_to_vect
 |--------|------------------------|---------------|
 | `ml.rag.text_processors.news_load_to_vector_db` | `QDRANT_COLLECTION_NEWS` | `news_chunks.jsonl` |
 | `ml.rag.text_processors.research_papers_load_to_vector_db` | `QDRANT_COLLECTION_RESEARCH_PAPERS` | `research_chunks.jsonl` |
-| `ml.rag.text_processors.data_descriptions_load_to_vector_db` | `QDRANT_COLLECTION_DATA_DESCRIPTIONS` | `data_descriptions_chunks.jsonl` |
 | `ml.rag.text_processors.ota_insights_load_to_vector_db` | `QDRANT_COLLECTION_OTA_INSIGHTS` | `ota_insights_chunks.jsonl` |
 
 ```bash
 python -m ml.rag.text_processors.news_load_to_vector_db --reset
 python -m ml.rag.text_processors.research_papers_load_to_vector_db --input data/local/preprocessed_data/research_chunks.jsonl
-python -m ml.rag.text_processors.data_descriptions_load_to_vector_db --reset
 python -m ml.rag.text_processors.ota_insights_load_to_vector_db --reset
 ```
 
@@ -289,7 +284,7 @@ Smoke **recall@k** against live Qdrant using YAML questions in [`eval/questions/
 
 | Argument | Description |
 |----------|-------------|
-| `--corpus` | `news`, `research`, `data_description`, or `all` |
+| `--corpus` | `news`, `research`, or `all` |
 | `--k` | Top-k to score (default 5) |
 
 ```bash
@@ -378,7 +373,7 @@ streamlit run ml/rag/chatbot/streamlit_app.py
 | Load / eval / inspect | `QDRANT_URL`, `QDRANT_API_KEY` |
 | Ingest rebuild | Above + `GDRIVE_FOLDER_*_ID`, Drive credentials |
 | `ml.rag.run` / Streamlit / API | Above + `BQ_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`, LLM URL or `HF_API_TOKEN` |
-| NL-to-SQL quality | `RAG_LLM_BASE_URL`, `RAG_BRONZE_MODEL_YAML`, populated `BQ_table_descriptions` |
+| NL-to-SQL quality | `RAG_LLM_BASE_URL`, staging YAML under `bq_tables_yaml_files/` |
 
 ---
 

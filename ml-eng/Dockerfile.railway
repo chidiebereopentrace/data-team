@@ -7,14 +7,21 @@
 # Build from ml-eng/ (Railway root directory should be ml-eng):
 #   docker build -f Dockerfile.railway -t opentrace-rag-railway:latest .
 #
-# Railway secrets (minimum):
+# Railway secrets (minimum — see deploy/PRODUCTION_ENV.md):
 #   RAG_LLM_BASE_URL=https://openrouter.ai/api/v1
 #   RAG_LLM_API_KEY=<OPENROUTER_API_KEY>
-#   RAG_LLM_MODEL_ID=openrouter/owl-alpha
-#   No HF_API_TOKEN needed for embeddings (models baked into image via fastembed)
-#   QDRANT_URL, QDRANT_API_KEY, BQ_PROJECT, BQ_DATASET_BRONZE
+#   RAG_LLM_MODEL_ID=meta-llama/llama-3.1-8b-instruct
+#   QDRANT_URL, QDRANT_API_KEY
+#   QDRANT_COLLECTION_NEWS=news_data
+#   QDRANT_COLLECTION_ACADEMIC_PAPERS=academic_papers
+#   QDRANT_COLLECTION_POLICIES=policies
+#   QDRANT_COLLECTION_PUBLIC_REPORTS=public_reports
+#   QDRANT_COLLECTION_FORMATION=formation
+#   QDRANT_COLLECTION_OTA_INSIGHTS=OTA_insights
+#   BQ_PROJECT, BQ_DATASET_SILVER=staging_dev
 #   GOOGLE_APPLICATION_CREDENTIALS_BASE64 (base64 of GCP service account JSON)
-# Do NOT set RAG_LLM_BASE_URL to a local/LAN IP. Remove HF-only router vars if using OpenRouter.
+#   COHERE_API_KEY, RAG_RERANKER_MODE=cohere
+# Do NOT set RAG_LLM_BASE_URL to a local/LAN IP. Remove QDRANT_COLLECTION_DATA_DESCRIPTIONS.
 
 FROM python:3.11-slim
 

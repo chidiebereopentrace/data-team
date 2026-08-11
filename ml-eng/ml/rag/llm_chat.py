@@ -89,7 +89,7 @@ def add_llm_usage(raw: dict[str, Any] | None) -> None:
 
 
 def llm_model_id() -> str:
-    return os.environ.get("RAG_LLM_MODEL_ID", "meta-llama-3.1-8b-instruct").strip()
+    return os.environ.get("RAG_LLM_MODEL_ID", "meta-llama/llama-3.1-8b-instruct").strip()
 
 
 def llm_default_timeout_s() -> float:
