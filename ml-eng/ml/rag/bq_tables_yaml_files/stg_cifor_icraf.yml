@@ -1,5 +1,9 @@
 table_name: opentrace-prod-5ga4.staging_dev.stg_cifor_icraf
-description: CIFOR-ICRAF plot soil nutrients.
+description: >
+  CIFOR-ICRAF plot-level soil nutrient percentages under agroforestry
+  treatments (tree species plus maize vs Control). Grain is plot_id. Filter by
+  exact treatment (+ soil_type when present); never invent labels. Compare
+  nutrients within the same treatment and/or soil_type.
 grain: plot_id
 entity_type: soil_and_land
 source:
@@ -15,49 +19,73 @@ semantic_role:
   - soil
   - nutrients
 business_questions_supported:
-- What insights does stg_cifor_icraf provide for African agriculture?
+- How do soil carbon or nitrogen percentages differ by treatment (e.g. F. albida plus maize vs Control)?
+- What are average nutrient percentages by treatment?
+- How do nutrient levels vary by soil_type within a treatment?
 filtering_guidance:
-- Filter by geography and time when present
+- Filter treatment with an exact label from samples
+- Filter soil_type with an exact label when present in the data; do not invent soil_type values
+- Prefer Control as the baseline for treatment comparisons
+- Nutrient columns are percentages — AVG or compare only within homogeneous treatment/soil_type; do not invent units or convert
+- Plot nutrient protocols differ from S4A field surveys and iSDA grids — do not assume comparable methods when joining
 sql_generation_hints:
-- Query only `opentrace-prod-5ga4.staging_dev.stg_cifor_icraf`
-- Always include LIMIT
+- Filter treatment = '<exact label>' (e.g. Control, F. albida plus maize)
+- Filter soil_type when the question names a soil class
+- GROUP BY treatment (and soil_type when filtered) for nutrient averages
+- Select carbon_pct / nitrogen_pct / phosphorus_pct / potassium_pct / calcium_pct / magnesium_pct as asked
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: plot_id
   type: STRING
-  description: plot id
+  description: Unique plot identifier (table grain)
 - name: treatment
   type: STRING
-  description: treatment
+  description: >
+    Agroforestry treatment applied to the plot. Filter with an exact treatment.
+    Prefer Control as the baseline for comparisons. Never invent labels.
+
+    Family rules:
+    Control — no tree treatment (baseline).
+    C. africana plus maize — Cordia africana with maize.
+    F. albida plus maize — Faidherbia albida with maize.
+    Mixed spp plus maize — mixed tree species with maize.
 - name: soil_type
   type: STRING
-  description: soil type
+  description: >
+    Soil class label when populated. Filter with an exact soil_type present in
+    the data; do not invent values.
 - name: carbon_pct
   type: FLOAT64
-  description: carbon pct
+  description: Soil carbon content as percent of the soil sample
 - name: nitrogen_pct
   type: FLOAT64
-  description: nitrogen pct
+  description: Soil nitrogen content as percent of the soil sample
 - name: phosphorus_pct
   type: FLOAT64
-  description: phosphorus pct
+  description: Soil phosphorus content as percent of the soil sample
 - name: potassium_pct
   type: FLOAT64
-  description: potassium pct
+  description: Soil potassium content as percent of the soil sample
 - name: calcium_pct
   type: FLOAT64
-  description: calcium pct
+  description: Soil calcium content as percent of the soil sample
 - name: magnesium_pct
   type: FLOAT64
-  description: magnesium pct
+  description: Soil magnesium content as percent of the soil sample
 - name: source_doi
   type: STRING
-  description: source doi
+  description: Citation DOI for the source study when populated
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+treatment_value_samples:
+- C. africana plus maize
+- Control
+- F. albida plus maize
+- Mixed spp plus maize
 _index_domain: soil_and_land
 _index_tags: *id001
 semantic_relationships:

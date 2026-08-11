@@ -324,3 +324,17 @@ def test_openrouter_failure_degrades(monkeypatch) -> None:
 
 def test_empty_context_returns_empty() -> None:
     assert R.rerank("q", [], top_k=5) == []
+
+
+def test_passage_with_metadata_header() -> None:
+    item = {
+        "content": "Maize harvest outlook for Kenya.",
+        "metadata": {
+            "geo_country_primary": "Kenya",
+            "published_at": "2021-03-15",
+            "domains": "food_security",
+        },
+    }
+    text = R._passage_with_metadata(item, "content", 500)
+    assert text.startswith("[geo=Kenya; year=2021; domains=food_security]")
+    assert "Maize harvest" in text

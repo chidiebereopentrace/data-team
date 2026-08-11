@@ -37,6 +37,7 @@ from ml.rag.chatbot.query_gate import (
 )
 from ml.rag.chatbot.bq_byte_budget import trim_bq_result_contents
 from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
+from ml.rag.chatbot.corpus_catalog import select_corpora
 from ml.rag.chatbot.generator import filter_context_items, generate, is_usable_context_item
 from ml.rag.chatbot.query_decomposer import (
     decompose_query,
@@ -171,6 +172,63 @@ def _apply_geo_to_kwargs(kwargs: dict[str, Any], countries: list[str]) -> None:
         kwargs["geo_country"] = countries[0]
 
 
+def _widen_time_kwargs(base_kwargs: dict[str, Any]) -> dict[str, Any] | None:
+    """Expand published_at range by ±1 calendar year; None if no time bounds."""
+    ts = str(base_kwargs.get("published_at_from") or "").strip()[:10]
+    te = str(base_kwargs.get("published_at_to") or "").strip()[:10]
+    if not ts and not te:
+        return None
+    out = dict(base_kwargs)
+    if ts and len(ts) >= 4 and ts[:4].isdigit():
+        out["published_at_from"] = f"{max(1900, int(ts[:4]) - 1)}{ts[4:]}"
+    if te and len(te) >= 4 and te[:4].isdigit():
+        out["published_at_to"] = f"{min(2100, int(te[:4]) + 1)}{te[4:]}"
+    if out.get("published_at_from") == base_kwargs.get("published_at_from") and out.get(
+        "published_at_to"
+    ) == base_kwargs.get("published_at_to"):
+        return None
+    return out
+
+
+def _stamp_constraint_relaxed(
+    items: list[dict[str, Any]],
+    *,
+    label: str,
+) -> list[dict[str, Any]]:
+    if label == "none" or not items:
+        return items
+    out: list[dict[str, Any]] = []
+    for item in items:
+        meta = dict(_chunk_metadata(item))
+        meta["constraint_relaxed"] = label
+        out.append({**item, "metadata": meta})
+    return out
+
+
+def _cascade_attempt_label(base_kwargs: dict[str, Any], kwargs: dict[str, Any]) -> str:
+    base_geo = bool(base_kwargs.get("geo_country") or base_kwargs.get("geo_countries"))
+    base_time = bool(base_kwargs.get("published_at_from") or base_kwargs.get("published_at_to"))
+    has_geo = bool(kwargs.get("geo_country") or kwargs.get("geo_countries"))
+    has_time = bool(kwargs.get("published_at_from") or kwargs.get("published_at_to"))
+    if has_geo == base_geo and has_time == base_time:
+        # Distinguish time_widen from full by comparing year bounds.
+        if (
+            str(kwargs.get("published_at_from") or "") != str(base_kwargs.get("published_at_from") or "")
+            or str(kwargs.get("published_at_to") or "") != str(base_kwargs.get("published_at_to") or "")
+        ):
+            return "time_widen"
+        return "none"
+    if not has_geo and not has_time and base_geo and base_time:
+        return "no_geo_time"
+    if not has_geo and base_geo and has_time == base_time:
+        return "no_geo"
+    if not has_time and base_time and has_geo == base_geo:
+        return "no_time"
+    if not has_geo and not has_time:
+        return "no_geo_time"
+    return "relaxed"
+
+
 def _retrieve_vector_cascade(
     vr: VectorRetriever,
     query: str,
@@ -182,19 +240,26 @@ def _retrieve_vector_cascade(
     time_fallback_env: str,
     allow_geo_fallback: bool = True,
 ) -> list[dict[str, Any]]:
-    """Try retrieval with full filters, then relax geo and/or time when results are empty."""
+    """Try full filters, widen time ±1y, then drop time/geo when fallbacks allow."""
     attempts: list[dict[str, Any]] = [dict(base_kwargs)]
     has_geo = bool(countries)
-    if has_geo and allow_geo_fallback and _env_on(geo_fallback_env):
-        no_geo = dict(base_kwargs)
-        no_geo.pop("geo_country", None)
-        no_geo.pop("geo_countries", None)
-        attempts.append(no_geo)
+
+    widened = _widen_time_kwargs(base_kwargs) if has_time else None
+    if widened is not None:
+        attempts.append(widened)
+
     if has_time and _env_on(time_fallback_env):
         no_time = dict(base_kwargs)
         no_time.pop("published_at_from", None)
         no_time.pop("published_at_to", None)
         attempts.append(no_time)
+
+    if has_geo and allow_geo_fallback and _env_on(geo_fallback_env):
+        no_geo = dict(base_kwargs)
+        no_geo.pop("geo_country", None)
+        no_geo.pop("geo_countries", None)
+        attempts.append(no_geo)
+
     if (
         has_geo
         and has_time
@@ -210,7 +275,6 @@ def _retrieve_vector_cascade(
         attempts.append(relaxed)
 
     seen: set[str] = set()
-    base_key = _kwargs_attempt_key(base_kwargs)
     for kwargs in attempts:
         key = _kwargs_attempt_key(kwargs)
         if key in seen:
@@ -227,14 +291,15 @@ def _retrieve_vector_cascade(
             )
             raw = []
         if raw:
-            if key != base_key:
+            label = _cascade_attempt_label(base_kwargs, kwargs)
+            if label != "none":
                 logger.debug(
-                    "Vector retrieve fallback for %s: %d hits (filters=%s)",
+                    "Vector retrieve cascade for %s: %d hits (relaxed=%s)",
                     vr.collection_name,
                     len(raw),
-                    {k: kwargs[k] for k in kwargs if k not in ("top_k", "vector_search_mode", "doc_kind", "doc_kinds")},
+                    label,
                 )
-            return raw
+            return _stamp_constraint_relaxed(raw, label=label)
     return []
 
 
@@ -268,7 +333,7 @@ def _vector_retrieve_for_corpus(
         kwargs["published_at_to"] = te
 
     allow_geo_fb = not _strict_compare_filters(dec)
-    return _retrieve_vector_cascade(
+    raw = _retrieve_vector_cascade(
         vr,
         q,
         base_kwargs=kwargs,
@@ -278,6 +343,9 @@ def _vector_retrieve_for_corpus(
         time_fallback_env=time_fallback_env,
         allow_geo_fallback=allow_geo_fb,
     )
+    if countries:
+        return _post_filter_geography(raw, countries)
+    return raw
 
 
 class RAGGraphState(TypedDict, total=False):
@@ -327,6 +395,7 @@ class RAGGraphState(TypedDict, total=False):
     plan_type: str | None
     category: str | None
     user_profile: dict[str, Any] | None
+    corpus_selection: dict[str, Any] | None
     # ACF Path B (ADZA Confidence Framework) — cited evidence scoring
     acf_band: str | None
     acf_band_label: str | None
@@ -403,11 +472,20 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         }
 
 
-def _tag_vector(item: dict[str, Any], kind: str) -> dict[str, Any]:
+def _tag_vector(
+    item: dict[str, Any],
+    kind: str,
+    *,
+    corpus_boost: float | None = None,
+) -> dict[str, Any]:
+    meta = dict(_chunk_metadata(item))
+    if corpus_boost is not None:
+        meta["corpus_boost"] = float(corpus_boost)
     return {
         **item,
         "source": kind,
         "_context_kind": kind,
+        "metadata": meta,
     }
 
 
@@ -418,7 +496,7 @@ def _news_kwargs(state: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
         "top_k": top_k,
         "vector_search_mode": "dense_named",
     }
-    if os.environ.get("RAG_NEWS_DOMAIN_FILTER", "").strip().lower() in ("1", "true", "on", "yes"):
+    if _env_on("RAG_NEWS_DOMAIN_FILTER", default=True):
         domains = dec.get("domains") or []
         if domains:
             kwargs["domains_substring"] = str(domains[0])
@@ -670,6 +748,8 @@ def _retrieve_ota(state: RAGGraphState) -> list[dict[str, Any]]:
         logger.exception("OTA retrieval failed for collection %s", coll)
         raw = []
 
+    if countries:
+        raw = _post_filter_geography(raw or [], countries)
     return [_tag_vector(x, "ota_insight") for x in (raw or [])]
 
 
@@ -707,7 +787,16 @@ def _title_merge_label(prefix: str, meta: dict[str, Any]) -> str:
 
 
 def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
-    """Run all six corpus retrieves (+ optional legacy research) in parallel."""
+    """Run selected corpus retrieves (+ optional legacy research) in parallel."""
+    dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
+    selection = select_corpora(
+        dec,
+        plan_type=str(state.get("plan_type") or "") or None,
+        query=str(state.get("query") or ""),
+    )
+    active = set(selection.active)
+    boosts = selection.boosts
+
     buckets: dict[str, list[dict[str, Any]]] = {
         "news": [],
         "academic_papers": [],
@@ -719,14 +808,21 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     }
     corpus_errors: list[str] = []
 
+    retrievers = {
+        "news": _retrieve_news,
+        "academic_papers": _retrieve_academic_papers,
+        "policies": _retrieve_policies,
+        "public_reports": _retrieve_public_reports,
+        "formation": _retrieve_formation,
+        "ota": _retrieve_ota,
+    }
+
     jobs: dict[Any, str] = {}
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        jobs[ex.submit(run_with_tracing_context(_retrieve_news, state))] = "news"
-        jobs[ex.submit(run_with_tracing_context(_retrieve_academic_papers, state))] = "academic_papers"
-        jobs[ex.submit(run_with_tracing_context(_retrieve_policies, state))] = "policies"
-        jobs[ex.submit(run_with_tracing_context(_retrieve_public_reports, state))] = "public_reports"
-        jobs[ex.submit(run_with_tracing_context(_retrieve_formation, state))] = "formation"
-        jobs[ex.submit(run_with_tracing_context(_retrieve_ota, state))] = "ota"
+    workers = max(1, min(6, len(active) + (1 if _use_legacy_research_collection() else 0)))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for key, fn in retrievers.items():
+            if key in active:
+                jobs[ex.submit(run_with_tracing_context(fn, state))] = key
         if _use_legacy_research_collection():
             jobs[ex.submit(run_with_tracing_context(_retrieve_legacy_research, state))] = "legacy_research"
 
@@ -740,16 +836,30 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
                 res = []
             buckets[kind] = res if isinstance(res, list) else []
 
-    if corpus_errors:
-        update_current_span_metadata({"corpus_error": ",".join(corpus_errors)})
+    def _with_boost(items: list[dict[str, Any]], corpus_key: str) -> list[dict[str, Any]]:
+        boost = float(boosts.get(corpus_key, 0.0))
+        out: list[dict[str, Any]] = []
+        for item in items:
+            meta = dict(_chunk_metadata(item))
+            meta["corpus_boost"] = boost
+            out.append({**item, "metadata": meta})
+        return out
 
-    news_out = buckets["news"]
-    academic_papers_out = buckets["academic_papers"]
-    policies_out = buckets["policies"]
-    public_reports_out = buckets["public_reports"]
-    formation_out = buckets["formation"]
-    ota_out = buckets["ota"]
+    news_out = _with_boost(buckets["news"], "news")
+    academic_papers_out = _with_boost(buckets["academic_papers"], "academic_papers")
+    policies_out = _with_boost(buckets["policies"], "policies")
+    public_reports_out = _with_boost(buckets["public_reports"], "public_reports")
+    formation_out = _with_boost(buckets["formation"], "formation")
+    ota_out = _with_boost(buckets["ota"], "ota")
     legacy_out = buckets["legacy_research"]
+
+    meta_update: dict[str, Any] = {
+        "corpus_active": ",".join(selection.active),
+        "corpus_rationale": selection.rationale,
+    }
+    if corpus_errors:
+        meta_update["corpus_error"] = ",".join(corpus_errors)
+    update_current_span_metadata(meta_update)
 
     combined = (
         list(news_out)
@@ -774,6 +884,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
         + list(formation_out)
         + list(legacy_out),
         "vector_results": combined,
+        "corpus_selection": selection.to_dict(),
     }
 
 
@@ -859,6 +970,8 @@ def aggregate_bq_sql_debug(results: list[dict[str, Any]]) -> tuple[list[str], li
             row_debug["sql_source"] = meta.get("sql_source")
         if meta.get("template"):
             row_debug["template"] = meta.get("template")
+        if meta.get("pattern"):
+            row_debug["pattern"] = meta.get("pattern")
         if meta.get("nl2sql_model"):
             row_debug["nl2sql_model"] = meta.get("nl2sql_model")
         if meta.get("nl2sql_raw"):
@@ -891,8 +1004,26 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         goal = str(intent.get("goal") or "").strip()
         notes = str(intent.get("notes") or "").strip()
         filters = str(intent.get("filters") or "").strip()
+        pattern = str(intent.get("pattern") or "").strip()
+        metric = str(intent.get("metric") or "").strip()
+        grain = intent.get("grain")
+        grain_s = ""
+        if isinstance(grain, list) and grain:
+            grain_s = "grain=" + ",".join(str(g) for g in grain)
         tables = ", ".join(str(t) for t in (intent.get("tables") or []))
-        bit = "; ".join(x for x in (goal, f"tables={tables}" if tables else "", filters, notes) if x)
+        bit = "; ".join(
+            x
+            for x in (
+                goal,
+                f"tables={tables}" if tables else "",
+                f"pattern={pattern}" if pattern else "",
+                f"metric={metric}" if metric else "",
+                grain_s,
+                filters,
+                notes,
+            )
+            if x
+        )
         if bit:
             intent_lines.append(bit)
     question = q
@@ -919,6 +1050,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         top_k=top_k,
         table_hints=hints,
         selected_tables=list(plan.get("selected_tables") or []),
+        query_intents=intents,
         time_start=ts or None,
         time_end=te or None,
         entities=entities,

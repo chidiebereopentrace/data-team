@@ -53,11 +53,64 @@ _SOURCE_BOOST: dict[str, float] = {
     "academic": 0.06,
     "policy": 0.06,
     "public_report": 0.06,
+    "formation": 0.05,
     "ota_insight": 0.05,
     "news": 0.04,
     "web_wikipedia": 0.0,
     "web_search": 0.0,
 }
+
+
+def _item_source_boost(item: dict[str, Any]) -> float:
+    kind = str(item.get("_context_kind") or item.get("source") or "").lower()
+    boost = float(_SOURCE_BOOST.get(kind, 0.0))
+    raw_meta = item.get("metadata")
+    meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
+    extra = meta.get("corpus_boost")
+    if extra is not None:
+        try:
+            # corpus_boost already includes default catalog boost; use delta over static
+            # only when it exceeds the static map (router raised it).
+            extra_f = float(extra)
+            if extra_f > boost:
+                boost = extra_f
+            elif extra_f > 0 and kind not in _SOURCE_BOOST:
+                boost = extra_f
+            else:
+                # Router may add preference on top of default; prefer max of static and stamped.
+                boost = max(boost, extra_f)
+        except (TypeError, ValueError):
+            pass
+    if str(meta.get("constraint_relaxed") or "").strip() in ("", "none"):
+        boost += 0.05
+    return boost
+
+
+def _passage_with_metadata(item: dict[str, Any], content_key: str, max_chars: int) -> str:
+    """Prepend a compact geo/year/domains header so rerankers see constraints."""
+    raw = str(item.get(content_key) or item.get("text") or item)
+    raw_meta = item.get("metadata")
+    meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
+    geo = str(
+        meta.get("geo_country_primary") or meta.get("country") or meta.get("geo_countries") or ""
+    ).strip()
+    year = str(meta.get("published_at") or meta.get("publication_year") or "").strip()
+    if len(year) >= 4 and year[:4].isdigit():
+        year = year[:4]
+    domains = str(meta.get("domains") or meta.get("domain") or "").strip()
+    bits: list[str] = []
+    if geo:
+        bits.append(f"geo={geo[:80]}")
+    if year:
+        bits.append(f"year={year}")
+    if domains:
+        bits.append(f"domains={domains[:120]}")
+    body = raw[: max(0, max_chars)]
+    if not bits:
+        return body
+    header = "[" + "; ".join(bits) + "]\n"
+    remain = max(0, max_chars - len(header))
+    return header + body[:remain]
 
 
 # --- env helpers --------------------------------------------------------------
@@ -265,7 +318,7 @@ def _rerank_cross_encoder(
 
     max_chars = _max_text_chars()
     passages = [
-        (item.get(content_key) or item.get("text", str(item)))[:max_chars]
+        _passage_with_metadata(item, content_key, max_chars)
         for item in context_items
     ]
     raw_scores = _ce_score(encoder, query, passages)
@@ -275,8 +328,7 @@ def _rerank_cross_encoder(
     norm = _normalize_scores(raw_scores)
     scored = []
     for i, (item, raw, ns) in enumerate(zip(context_items, raw_scores, norm)):
-        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
-        boost = _SOURCE_BOOST.get(kind, 0.0)
+        boost = _item_source_boost(item)
         scored.append(
             {
                 **item,
@@ -330,10 +382,9 @@ def _rerank_llm(
     max_chars = _max_text_chars()
     scored = []
     for i, item in enumerate(context_items):
-        text = (item.get(content_key) or item.get("text", str(item)))[:max_chars]
+        text = _passage_with_metadata(item, content_key, max_chars)
         raw = _score_with_llama(query, text)
-        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
-        boost = _SOURCE_BOOST.get(kind, 0.0)
+        boost = _item_source_boost(item)
         adjusted = (raw + boost) if raw >= 0 else raw
         scored.append(
             {
@@ -368,9 +419,8 @@ def _rerank_off(
     """
     scored = []
     for i, item in enumerate(context_items):
-        text = item.get(content_key) or item.get("text", str(item))
-        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
-        boost = _SOURCE_BOOST.get(kind, 0.0)
+        text = _passage_with_metadata(item, content_key, _max_text_chars())
+        boost = _item_source_boost(item)
         scored.append(
             {
                 **item,
@@ -404,7 +454,7 @@ def _rerank_openrouter(
 
     max_chars = _max_text_chars()
     passages = [
-        (item.get(content_key) or item.get("text", str(item)))[:max_chars]
+        _passage_with_metadata(item, content_key, max_chars)
         for item in context_items
     ]
     model_name = _openrouter_rerank_model()
@@ -417,8 +467,7 @@ def _rerank_openrouter(
         if idx < 0 or idx >= len(context_items):
             continue
         item = context_items[idx]
-        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
-        boost = _SOURCE_BOOST.get(kind, 0.0)
+        boost = _item_source_boost(item)
         scored.append(
             {
                 **item,
@@ -475,7 +524,7 @@ def _rerank_cohere(
 
     max_chars = _max_text_chars()
     passages = [
-        (item.get(content_key) or item.get("text", str(item)))[:max_chars]
+        _passage_with_metadata(item, content_key, max_chars)
         for item in context_items
     ]
 
@@ -503,8 +552,7 @@ def _rerank_cohere(
         idx = int(hit.index)
         relevance = float(getattr(hit, "relevance_score", 0.0))
         item = context_items[idx]
-        kind = str(item.get("_context_kind") or item.get("source") or "").lower()
-        boost = _SOURCE_BOOST.get(kind, 0.0)
+        boost = _item_source_boost(item)
         scored.append(
             {
                 **item,

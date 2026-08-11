@@ -28,7 +28,7 @@ START → decompose ─┬─ identity meta? ──→ generate_meta ──→ E
 - **parallel_retrieve**: news + research (+ other corpora) Qdrant search (thread pool).
 - **bq_reason**: staging YAML reasoner (`bq_tables_yaml_files` + `node_bq_reason`) selects tables and emits `bq_table_candidates` / `bq_sql_plan` (no Qdrant).
 - **bq_retrieve**: NL-to-SQL (LM Studio or HF) from table hints → execute SELECTs; up to `RAG_BQ_MAX_SQL_QUERIES` queries.
-- **merge / rerank / web_fallback / generate**: fuse context; rerank via `RAG_RERANKER_MODE` (Cohere on Railway, cross-encoder locally); when `RAG_WEB_FALLBACK_ENABLED=1` and internal context is weak, fetch Wikipedia (then Tavily if wiki empty) via [`retrievers/web_retriever.py`](retrievers/web_retriever.py); answer via [`llm_chat.py`](llm_chat.py).
+- **merge / rerank / web_fallback / generate**: fuse context; rerank via `RAG_RERANKER_MODE=cross_encoder` (fastembed ONNX on Railway and locally); when `RAG_WEB_FALLBACK_ENABLED=1` and internal context is weak, fetch Wikipedia (then Tavily if wiki empty) via [`retrievers/web_retriever.py`](retrievers/web_retriever.py); answer via [`llm_chat.py`](llm_chat.py).
 
 Details: [ARCHITECTURE.md §4](ARCHITECTURE.md#4-runtime-pipeline-run_rag).
 
@@ -408,7 +408,7 @@ Root metadata includes corpus counts, `empty_retrieval`, BQ soft-fail flags, `we
 | Six `QDRANT_COLLECTION_*` | news, academic, policies, public_reports, formation, OTA |
 | `BQ_PROJECT` / `BQ_DATASET_SILVER` | e.g. `opentrace-prod-5ga4` / `staging_dev` |
 | `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | Base64 of GCP service account JSON |
-| `COHERE_API_KEY` / `RAG_RERANKER_MODE=cohere` | Rerank on Railway (no torch in slim image) |
+| `RAG_RERANKER_MODE=cross_encoder` / `RAG_RERANKER_MODEL=BAAI/bge-reranker-base` | Local rerank via fastembed ONNX (baked in image; set explicitly when using OpenRouter LLM) |
 
 4. **Recommended:** `RAG_LLM_TIMEOUT_S=300`, `RAG_BQ_SKIP_LIVE_SCHEMA=on`, BQ hint byte budgets from [`.env.example`](../config/.env.example).
 5. **Do not set** `RAG_LLM_BASE_URL` to a LAN IP, `QDRANT_COLLECTION_DATA_DESCRIPTIONS`, or `GOOGLE_APPLICATION_CREDENTIALS=config/keys/...`.

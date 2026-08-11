@@ -21,8 +21,10 @@ empty items; the graph never sees a raised exception.
 """
 from __future__ import annotations
 
+import html
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -42,6 +44,84 @@ _observe_span = get_observe_decorator()
 
 _WIKI_API = "https://en.wikipedia.org/w/api.php"
 _WIKI_REST = "https://en.wikipedia.org/api/rest_v1/page/summary"
+_WIKI_UA = {"User-Agent": "OpenTrace-RAG/1.0 (agricultural advisory)"}
+_SUMMARY_THIN_CHARS = 120
+_SECTION_EXTRACT_CAP = 1000
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{1,}")
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "of",
+        "in",
+        "on",
+        "for",
+        "to",
+        "from",
+        "with",
+        "by",
+        "as",
+        "at",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "how",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "where",
+        "when",
+        "why",
+        "does",
+        "do",
+        "did",
+        "can",
+        "could",
+        "should",
+        "would",
+        "will",
+        "have",
+        "has",
+        "had",
+        "that",
+        "this",
+        "these",
+        "those",
+        "into",
+        "about",
+        "over",
+        "under",
+        "than",
+        "then",
+        "there",
+        "their",
+        "its",
+        "it",
+        "we",
+        "you",
+        "your",
+        "our",
+        "most",
+        "least",
+        "best",
+        "worst",
+        "please",
+        "tell",
+        "me",
+        "show",
+        "give",
+        "explain",
+    }
+)
 
 WebFallbackStatus = Literal["ok", "empty", "rate_limited", "disabled", "error"]
 
@@ -195,27 +275,169 @@ def route_after_rerank(state: dict[str, Any]) -> str:
     return "generate"
 
 
+def _dec_entities(decomposition: dict[str, Any] | None) -> list[str]:
+    dec = decomposition or {}
+    raw = dec.get("entities")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for ent in raw:
+        s = str(ent).strip()
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
+def _dec_domain_tokens(decomposition: dict[str, Any] | None) -> list[str]:
+    dec = decomposition or {}
+    raw = dec.get("domains")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for d in raw:
+        for tok in _TOKEN_RE.findall(str(d).lower()):
+            if tok not in out and tok not in _STOPWORDS:
+                out.append(tok)
+    return out
+
+
+def _strip_question_tokens(query: str, *, max_tokens: int = 10) -> str:
+    tokens = [
+        t
+        for t in _TOKEN_RE.findall(query or "")
+        if t.lower() not in _STOPWORDS and len(t) > 1
+    ]
+    return " ".join(tokens[:max_tokens]).strip()
+
+
+def _shape_wiki_queries(
+    query: str,
+    decomposition: dict[str, Any] | None,
+    *,
+    geo_override: str = "",
+) -> list[str]:
+    """Build 1–3 short Wikipedia search strings (entity+country first)."""
+    dec = decomposition or {}
+    countries = resolve_retrieval_geographies(
+        geo_override=geo_override,
+        geography=dec.get("geography") if isinstance(dec.get("geography"), list) else None,
+    )
+    entities = _dec_entities(dec)
+    country = countries[0] if countries else ""
+    entity = entities[0] if entities else ""
+
+    shaped: list[str] = []
+
+    def _add(s: str) -> None:
+        text = " ".join(s.split()).strip()
+        if len(text) < 2:
+            return
+        if text.lower() not in {x.lower() for x in shaped}:
+            shaped.append(text[:120])
+
+    if entity and country:
+        _add(f"{entity} {country}")
+    elif entity:
+        _add(entity)
+    elif country:
+        _add(country)
+
+    stripped = _strip_question_tokens(query)
+    if stripped:
+        if country and country.lower() not in stripped.lower():
+            _add(f"{stripped} {country}")
+        else:
+            _add(stripped)
+
+    if not shaped:
+        # Last-resort short concat (legacy behavior, tighter cap).
+        parts = [query.strip()]
+        parts.extend(countries[:2])
+        parts.extend(entities[:3])
+        _add(" ".join(p for p in parts if p)[:120])
+
+    return shaped[:3]
+
+
 def _build_wiki_search_query(
     query: str,
     decomposition: dict[str, Any] | None,
     *,
     geo_override: str = "",
 ) -> str:
-    parts: list[str] = [query.strip()]
-    dec = decomposition or {}
-    countries = resolve_retrieval_geographies(
-        geo_override=geo_override,
-        geography=dec.get("geography") if isinstance(dec.get("geography"), list) else None,
-    )
-    parts.extend(countries[:2])
-    raw_entities = dec.get("entities")
-    entities = raw_entities if isinstance(raw_entities, list) else []
-    for ent in entities[:3]:
-        s = str(ent).strip()
-        if s:
-            parts.append(s)
-    text = " ".join(p for p in parts if p).strip()
-    return text[:300] if len(text) > 300 else text
+    """Primary shaped Wikipedia/Tavily query (backward-compatible helper)."""
+    shaped = _shape_wiki_queries(query, decomposition, geo_override=geo_override)
+    return shaped[0] if shaped else ""
+
+
+def _whole_word(haystack: str, needle: str) -> bool:
+    if not haystack or not needle:
+        return False
+    return re.search(r"\b" + re.escape(needle) + r"\b", haystack, flags=re.IGNORECASE) is not None
+
+
+def _wiki_title_passes(
+    title: str,
+    *,
+    countries: list[str],
+    entity_tokens: list[str],
+) -> bool:
+    """Soft geo/topic filter: drop titles that only name a different country."""
+    t = (title or "").strip()
+    if len(t) < 2:
+        return False
+    if not countries:
+        return True
+    allowed = {c.strip().lower() for c in countries if c.strip()}
+    if any(_whole_word(t, c) for c in allowed):
+        return True
+    # Title names some other country-like token from a conflicting set:
+    # if it contains "in <Country>" style and none of our countries, drop when
+    # the foreign country appears as a whole word and no entity overlap.
+    known_conflict = False
+    for other in ("nigeria", "kenya", "ghana", "ethiopia", "uganda", "tanzania", "senegal", "rwanda"):
+        if other in allowed:
+            continue
+        if _whole_word(t, other):
+            known_conflict = True
+            break
+    if known_conflict:
+        # Keep if topical entity still matches (e.g. "Maize" page while searching Kenya maize).
+        if entity_tokens and any(_whole_word(t, e) for e in entity_tokens):
+            return True
+        return False
+    return True
+
+
+def _wiki_opensearch_titles(search_query: str, *, limit: int, timeout_s: float) -> list[str]:
+    if not search_query.strip():
+        return []
+    params = {
+        "action": "opensearch",
+        "search": search_query,
+        "limit": max(1, limit),
+        "namespace": 0,
+        "format": "json",
+        "origin": "*",
+    }
+    try:
+        resp = requests.get(_WIKI_API, params=params, timeout=timeout_s, headers=_WIKI_UA)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("Wikipedia opensearch failed: %s", exc)
+        return []
+
+    # Response: [query, [titles...], [descriptions...], [urls...]]
+    if not isinstance(data, list) or len(data) < 2:
+        return []
+    titles_raw = data[1] if isinstance(data[1], list) else []
+    titles: list[str] = []
+    for row in titles_raw:
+        title = str(row or "").strip()
+        if title and title not in titles:
+            titles.append(title)
+    return titles[:limit]
 
 
 def _wiki_search_titles(search_query: str, *, limit: int, timeout_s: float) -> list[str]:
@@ -230,7 +452,7 @@ def _wiki_search_titles(search_query: str, *, limit: int, timeout_s: float) -> l
         "origin": "*",
     }
     try:
-        resp = requests.get(_WIKI_API, params=params, timeout=timeout_s)
+        resp = requests.get(_WIKI_API, params=params, timeout=timeout_s, headers=_WIKI_UA)
         resp.raise_for_status()
         data = resp.json()
     except Exception as exc:
@@ -241,9 +463,18 @@ def _wiki_search_titles(search_query: str, *, limit: int, timeout_s: float) -> l
     titles: list[str] = []
     for row in search:
         title = str(row.get("title") or "").strip()
-        if title:
+        if title and title not in titles:
             titles.append(title)
     return titles[:limit]
+
+
+def _wiki_resolve_titles(search_query: str, *, limit: int, timeout_s: float) -> tuple[list[str], str]:
+    """Prefer opensearch; fall back to list=search. Returns (titles, api_used)."""
+    titles = _wiki_opensearch_titles(search_query, limit=limit, timeout_s=timeout_s)
+    if titles:
+        return titles, "opensearch"
+    titles = _wiki_search_titles(search_query, limit=limit, timeout_s=timeout_s)
+    return titles, ("search" if titles else "none")
 
 
 def _wiki_page_summary(title: str, *, timeout_s: float) -> dict[str, Any] | None:
@@ -253,7 +484,7 @@ def _wiki_page_summary(title: str, *, timeout_s: float) -> dict[str, Any] | None
         resp = requests.get(
             url,
             timeout=timeout_s,
-            headers={"User-Agent": "OpenTrace-RAG/1.0 (agricultural advisory)"},
+            headers=_WIKI_UA,
         )
         if resp.status_code == 404:
             return None
@@ -264,21 +495,123 @@ def _wiki_page_summary(title: str, *, timeout_s: float) -> dict[str, Any] | None
         return None
 
 
+def _html_to_text(raw_html: str) -> str:
+    text = _HTML_TAG_RE.sub(" ", raw_html or "")
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _wiki_section_extract(title: str, *, timeout_s: float) -> str | None:
+    """Fetch first content section plain text when the lead summary is thin."""
+    try:
+        sections_resp = requests.get(
+            _WIKI_API,
+            params={
+                "action": "parse",
+                "page": title,
+                "prop": "sections",
+                "format": "json",
+                "origin": "*",
+            },
+            timeout=timeout_s,
+            headers=_WIKI_UA,
+        )
+        sections_resp.raise_for_status()
+        sections = (sections_resp.json().get("parse") or {}).get("sections") or []
+    except Exception as exc:
+        logger.warning("Wikipedia sections failed for %r: %s", title, exc)
+        return None
+
+    section_idx: str | None = None
+    for sec in sections:
+        if not isinstance(sec, dict):
+            continue
+        # Prefer first top-level content section (toclevel 1), skip empty indexes.
+        if str(sec.get("toclevel") or "") == "1" and str(sec.get("index") or "").isdigit():
+            section_idx = str(sec.get("index"))
+            break
+    if section_idx is None:
+        for sec in sections:
+            if isinstance(sec, dict) and str(sec.get("index") or "").isdigit():
+                section_idx = str(sec.get("index"))
+                break
+    if section_idx is None:
+        return None
+
+    try:
+        text_resp = requests.get(
+            _WIKI_API,
+            params={
+                "action": "parse",
+                "page": title,
+                "prop": "text",
+                "section": section_idx,
+                "format": "json",
+                "origin": "*",
+                "disableeditsection": "1",
+            },
+            timeout=timeout_s,
+            headers=_WIKI_UA,
+        )
+        text_resp.raise_for_status()
+        raw = ((text_resp.json().get("parse") or {}).get("text") or {}).get("*") or ""
+    except Exception as exc:
+        logger.warning("Wikipedia section text failed for %r: %s", title, exc)
+        return None
+
+    plain = _html_to_text(str(raw))
+    if len(plain) < 40:
+        return None
+    return plain[:_SECTION_EXTRACT_CAP]
+
+
 def _retrieve_wikipedia(
     search_query: str,
     *,
     top_k: int,
     timeout_s: float,
+    countries: list[str] | None = None,
+    entity_tokens: list[str] | None = None,
+    stats: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    titles = _wiki_search_titles(search_query, limit=top_k, timeout_s=timeout_s)
+    titles, api_used = _wiki_resolve_titles(search_query, limit=max(top_k * 2, top_k), timeout_s=timeout_s)
+    if stats is not None:
+        stats["wiki_api"] = api_used
+        stats["wiki_filtered_out"] = int(stats.get("wiki_filtered_out") or 0)
+        stats["wiki_section_used"] = bool(stats.get("wiki_section_used"))
+
+    country_list = [c for c in (countries or []) if str(c).strip()]
+    entities = [e for e in (entity_tokens or []) if str(e).strip()]
     items: list[dict[str, Any]] = []
     for title in titles:
+        if not _wiki_title_passes(title, countries=country_list, entity_tokens=entities):
+            if stats is not None:
+                stats["wiki_filtered_out"] = int(stats.get("wiki_filtered_out") or 0) + 1
+            continue
         summary = _wiki_page_summary(title, timeout_s=timeout_s)
         if not summary:
             continue
         extract = str(summary.get("extract") or summary.get("description") or "").strip()
+        section_used = False
+        if len(extract) < _SUMMARY_THIN_CHARS:
+            section = _wiki_section_extract(title, timeout_s=timeout_s)
+            if section:
+                extract = section
+                section_used = True
+                if stats is not None:
+                    stats["wiki_section_used"] = True
         if len(extract) < 40:
             continue
+        # Soft geo check on body when countries set and title didn't mention them.
+        if country_list and not any(_whole_word(title, c) for c in country_list):
+            if any(
+                _whole_word(title, other)
+                for other in ("nigeria", "kenya", "ghana", "ethiopia", "uganda", "tanzania", "senegal", "rwanda")
+                if other not in {c.lower() for c in country_list}
+            ) and not any(_whole_word(extract, c) for c in country_list):
+                if stats is not None:
+                    stats["wiki_filtered_out"] = int(stats.get("wiki_filtered_out") or 0) + 1
+                continue
         page_url = str(
             summary.get("content_urls", {}).get("desktop", {}).get("page")
             or summary.get("canonicalurl")
@@ -293,9 +626,12 @@ def _retrieve_wikipedia(
                     "title": title,
                     "url": page_url,
                     "provider": "wikipedia",
+                    "wiki_section_used": section_used,
                 },
             }
         )
+        if len(items) >= top_k:
+            break
     return items
 
 
@@ -423,17 +759,36 @@ def _retrieve_tavily(
     return items, ("ok" if items else "empty"), ""
 
 
-def _finalize_web_trace(result: WebFallbackResult, *, start: float) -> WebFallbackResult:
+def _finalize_web_trace(
+    result: WebFallbackResult,
+    *,
+    start: float,
+    extra: dict[str, Any] | None = None,
+) -> WebFallbackResult:
     source = result.reason if result.status == "ok" else result.status
-    update_current_span_metadata(
-        {
-            "source": source,
-            "status": result.status,
-            "result_count": len(result.items),
-            "latency_ms": trace_elapsed_ms(start),
-        }
-    )
+    meta: dict[str, Any] = {
+        "source": source,
+        "status": result.status,
+        "result_count": len(result.items),
+        "latency_ms": trace_elapsed_ms(start),
+    }
+    if extra:
+        meta.update(extra)
+    update_current_span_metadata(meta)
     return result
+
+
+def _wiki_entity_tokens(decomposition: dict[str, Any] | None) -> list[str]:
+    tokens: list[str] = []
+    for ent in _dec_entities(decomposition):
+        for tok in _TOKEN_RE.findall(ent):
+            low = tok.lower()
+            if low not in _STOPWORDS and low not in tokens:
+                tokens.append(low)
+    for tok in _dec_domain_tokens(decomposition):
+        if tok not in tokens:
+            tokens.append(tok)
+    return tokens
 
 
 @_observe_span(as_type="span", name="retrieval.web", capture_input=False, capture_output=False)
@@ -463,29 +818,76 @@ def retrieve_web_fallback_detailed(
             start=t0,
         )
 
-    search_query = _build_wiki_search_query(
-        query, decomposition, geo_override=geo_override
-    )
-    if len(search_query) < 5:
+    dec = decomposition or {}
+    wiki_queries = _shape_wiki_queries(query, dec, geo_override=geo_override)
+    primary_query = wiki_queries[0] if wiki_queries else ""
+    if len(primary_query) < 2:
         return _finalize_web_trace(
             WebFallbackResult(status="empty", reason="search query too short"),
             start=t0,
         )
+
+    countries = resolve_retrieval_geographies(
+        geo_override=geo_override,
+        geography=dec.get("geography") if isinstance(dec.get("geography"), list) else None,
+    )
+    entity_tokens = _wiki_entity_tokens(dec)
 
     timeout_s = _web_timeout_s()
     wiki_top_k = _env_int("RAG_WEB_WIKI_TOP_K", 2)
     tavily_top_k = _env_int("RAG_WEB_TAVILY_TOP_K", 2)
     total_cap = _env_int("RAG_WEB_TOP_K", 3)
 
-    wiki_items = _retrieve_wikipedia(search_query, top_k=wiki_top_k, timeout_s=timeout_s)
+    wiki_stats: dict[str, Any] = {
+        "wiki_queries": wiki_queries,
+        "wiki_api": "none",
+        "wiki_filtered_out": 0,
+        "wiki_section_used": False,
+    }
+    wiki_items: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    for wq in wiki_queries:
+        need = wiki_top_k - len(wiki_items)
+        if need <= 0:
+            break
+        q_stats: dict[str, Any] = {
+            "wiki_filtered_out": 0,
+            "wiki_section_used": False,
+        }
+        batch = _retrieve_wikipedia(
+            wq,
+            top_k=need,
+            timeout_s=timeout_s,
+            countries=countries,
+            entity_tokens=entity_tokens,
+            stats=q_stats,
+        )
+        if q_stats.get("wiki_api") and q_stats["wiki_api"] != "none":
+            wiki_stats["wiki_api"] = q_stats["wiki_api"]
+        wiki_stats["wiki_filtered_out"] = int(wiki_stats["wiki_filtered_out"]) + int(
+            q_stats.get("wiki_filtered_out") or 0
+        )
+        if q_stats.get("wiki_section_used"):
+            wiki_stats["wiki_section_used"] = True
+        for item in batch:
+            title_key = str((item.get("metadata") or {}).get("title") or "").strip().lower()
+            if title_key and title_key in seen_titles:
+                continue
+            if title_key:
+                seen_titles.add(title_key)
+            wiki_items.append(item)
+        if len(wiki_items) >= wiki_top_k:
+            break
+
     if wiki_items:
         return _finalize_web_trace(
             WebFallbackResult(items=wiki_items[:total_cap], status="ok", reason="wikipedia"),
             start=t0,
+            extra=wiki_stats,
         )
 
     tavily_items, status, reason = _retrieve_tavily(
-        search_query,
+        primary_query,
         top_k=tavily_top_k,
         time_start=time_start,
         time_end=time_end,
@@ -494,10 +896,12 @@ def retrieve_web_fallback_detailed(
         return _finalize_web_trace(
             WebFallbackResult(items=tavily_items[:total_cap], status="ok", reason="tavily"),
             start=t0,
+            extra=wiki_stats,
         )
     return _finalize_web_trace(
         WebFallbackResult(items=[], status=status, reason=reason or "no usable web results"),
         start=t0,
+        extra=wiki_stats,
     )
 
 

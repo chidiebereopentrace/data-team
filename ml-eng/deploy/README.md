@@ -2,7 +2,7 @@
 
 This guide is for the **production FastAPI surface** (`ml.rag.app.api`).
 
-**Environment variables:** use the canonical checklist in [PRODUCTION_ENV.md](./PRODUCTION_ENV.md) (six Qdrant collections, staging BQ, OpenRouter 8B, Cohere rerank on Railway).
+**Environment variables:** use the canonical checklist in [PRODUCTION_ENV.md](./PRODUCTION_ENV.md) (six Qdrant collections, staging BQ, OpenRouter 8B, local cross_encoder rerank on Railway).
 
 **Streamlit** is for **internal QA only** (local or Railway second service). Do not expose it as the Ask ADZA user-facing chat. See [DEPLOY_STREAMLIT_RAILWAY.md](./DEPLOY_STREAMLIT_RAILWAY.md) (step-by-step) and [ml/rag/README.md](../ml/rag/README.md) — *Deploy Streamlit on Railway*.
 
@@ -107,7 +107,9 @@ Set the env vars accordingly in your GCE / Cloud Run config.
 
 ## 7. Redis for sessions & caches (required for scaled deployments)
 
-The production image does **not** bundle Redis. Deploy Redis separately (Google Memorystore for Redis, Upstash, or a small sidecar/container) and point `RAG_REDIS_URL` at it.
+The production image does **not** bundle Redis. Deploy Redis separately (Google Memorystore for Redis, Upstash, Railway Redis, or a small sidecar/container) and point `RAG_REDIS_URL` at it.
+
+**Railway:** put Redis in the **same environment** as the API and use the private URL, e.g. `redis://redis.railway.internal:6379/0` or `${{Redis.REDIS_URL}}`. Do not use `REDIS_PUBLIC_URL` / `*.proxy.rlwy.net` for API↔Redis. Streamlit in a **different** environment should leave `RAG_REDIS_URL` unset — see [PRODUCTION_ENV.md](./PRODUCTION_ENV.md) and [DEPLOY_STREAMLIT_RAILWAY.md](./DEPLOY_STREAMLIT_RAILWAY.md).
 
 Example environment (Cloud Run or GCE startup script / Secret Manager):
 

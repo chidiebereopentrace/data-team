@@ -240,6 +240,81 @@ def _publication_years_in_range(
     return [str(y) for y in range(y0, y1 + 1)]
 
 
+def _norm_geo_tokens(s: str) -> set[str]:
+    if not s:
+        return set()
+    parts = re.split(r"[;,/]", s)
+    return {p.strip().lower() for p in parts if p.strip()}
+
+
+def _geo_whole_word_match(text: str, country: str) -> bool:
+    if not text or not country:
+        return False
+    return re.search(r"\b" + re.escape(country) + r"\b", text, flags=re.IGNORECASE) is not None
+
+
+def score_metadata_constraints(
+    meta: dict[str, Any],
+    *,
+    geo_list: list[str] | None = None,
+    time_from: str | None = None,
+    time_to: str | None = None,
+    domains_substring: str | None = None,
+) -> float:
+    """Soft additive score in roughly [-0.5, +0.5] for geo/time/domain alignment."""
+    score = 0.0
+    countries = [c.strip().lower() for c in (geo_list or []) if str(c).strip()]
+    primary = str(meta.get("geo_country_primary") or meta.get("country") or "").strip()
+    blob = str(meta.get("geo_countries") or "").strip()
+    primary_l = primary.lower()
+    meta_set = _norm_geo_tokens(primary) | _norm_geo_tokens(blob)
+
+    if countries:
+        primary_hit = any(
+            primary_l == c or _geo_whole_word_match(primary, c) for c in countries
+        )
+        listed_hit = bool(meta_set & set(countries)) or any(
+            _geo_whole_word_match(blob, c) for c in countries
+        )
+        if primary_hit:
+            score += 0.25
+        elif listed_hit:
+            score += 0.1
+        elif primary_l and not any(_geo_whole_word_match(primary, c) for c in countries):
+            # Conflicting primary country when geo was requested.
+            if not listed_hit:
+                score -= 0.5
+
+    pub = str(meta.get("published_at") or "").strip()[:10]
+    year = ""
+    if pub and re.match(r"^\d{4}-\d{2}-\d{2}$", pub):
+        year = pub[:4]
+        if time_from and pub < time_from:
+            score -= 0.35
+        elif time_to and pub > time_to:
+            score -= 0.35
+        elif time_from or time_to:
+            score += 0.15
+    else:
+        py_raw = meta.get("publication_year")
+        if py_raw is not None and str(py_raw).strip():
+            year = str(py_raw).strip()[:4]
+            if re.match(r"^\d{4}$", year):
+                if time_from and year < time_from[:4]:
+                    score -= 0.35
+                elif time_to and year > time_to[:4]:
+                    score -= 0.35
+                elif time_from or time_to:
+                    score += 0.15
+
+    if domains_substring:
+        ds = str(meta.get("domains") or meta.get("domain") or "")
+        if domains_substring.lower() in ds.lower():
+            score += 0.1
+
+    return max(-0.5, min(0.5, score))
+
+
 def build_qdrant_filter(
     *,
     doc_kind: str | None = None,
@@ -504,9 +579,15 @@ class VectorRetriever(BaseRetriever):
             geo_list = [geo_country.strip().lower()]
 
         if geo_list:
-            primary = str(meta.get("geo_country_primary") or meta.get("country") or "").lower()
-            blob = str(meta.get("geo_countries") or "").lower()
-            if not any(gc in primary or gc in blob for gc in geo_list):
+            primary = str(meta.get("geo_country_primary") or meta.get("country") or "")
+            blob = str(meta.get("geo_countries") or "")
+            meta_countries = _norm_geo_tokens(primary) | _norm_geo_tokens(blob)
+            allowed = set(geo_list)
+            if meta_countries & allowed:
+                pass
+            elif any(_geo_whole_word_match(primary, gc) or _geo_whole_word_match(blob, gc) for gc in geo_list):
+                pass
+            else:
                 return False
 
         pub = str(meta.get("published_at") or "").strip()[:10]
@@ -861,11 +942,20 @@ class VectorRetriever(BaseRetriever):
                 exclude_section_roles=exclude_section_roles,
             ):
                 continue
+            geo_list = geo_countries or ([geo_country] if geo_country else None)
+            soft = score_metadata_constraints(
+                meta,
+                geo_list=geo_list,
+                time_from=post_filter_from,
+                time_to=post_filter_to,
+                domains_substring=domains_substring,
+            )
+            base_score = float(getattr(h, "score", 0.0) or 0.0)
             items.append(
                 {
                     "content": content,
-                    "score": float(getattr(h, "score", 0.0) or 0.0),
-                    "metadata": meta,
+                    "score": base_score + soft,
+                    "metadata": {**meta, "soft_metadata_score": soft},
                     "source": "vector",
                 }
             )

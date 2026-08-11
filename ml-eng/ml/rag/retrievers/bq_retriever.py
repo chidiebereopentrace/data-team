@@ -14,6 +14,7 @@ from typing import Any
 
 from ml.rag.chatbot.acf_metadata import project_bq_row_acf
 from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, truncate_utf8
+from ml.rag.chatbot.bq_sql_patterns import try_sql_patterns
 from ml.rag.chatbot.bq_sql_templates import try_sql_template
 from ml.rag.chatbot.bq_sql_validate import (
     dry_run_sql,
@@ -21,6 +22,7 @@ from ml.rag.chatbot.bq_sql_validate import (
     validate_sql_table_allowlist,
 )
 from ml.rag.chatbot.query_decomposer import _NON_COUNTRY_GEO
+from ml.rag.helpers.staging_semantic_relationships import format_join_fragments_for_nl2sql
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 from ml.rag.observability import (
@@ -56,13 +58,18 @@ def _get_datasets_config() -> dict[str, str]:
     }
 
 
+def _nl2sql_model_id() -> str:
+    """Dedicated NL2SQL model when set; otherwise the global chat model."""
+    return (os.environ.get("RAG_BQ_NL2SQL_MODEL_ID") or "").strip() or llm_model_id()
+
+
 def _call_llama_for_sql(messages: list[dict[str, str]], *, max_tokens: int | None = None) -> str:
     """Call LLM for NL-to-SQL; return raw text (expected to be SQL) or empty string."""
     cap = max_tokens or int(os.environ.get("RAG_BQ_NL2SQL_MAX_TOKENS", "1024") or 1024)
     bq_timeout = float(os.environ.get("RAG_BQ_NL2SQL_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
     return llm_chat_complete(
         messages,
-        model=llm_model_id(),
+        model=_nl2sql_model_id(),
         max_tokens=cap,
         temperature=0.0,
         timeout_s=bq_timeout,
@@ -184,16 +191,20 @@ def _extract_single_select(raw: str) -> str:
     text = re.sub(r"\[/?INST\]", "", text, flags=re.IGNORECASE).strip()
     if "```" in text:
         for block in re.findall(r"```(?:\w+)?\s*([\s\S]*?)```", text):
-            if block.strip().upper().startswith("SELECT"):
-                return block.strip().rstrip(";")
+            cleaned = block.strip().rstrip(";")
+            upper = cleaned.upper()
+            if upper.startswith("SELECT") or upper.startswith("WITH"):
+                return cleaned
         text = re.sub(r"```[\s\S]*?```", "", text).strip()
-    # Accept a leading SELECT or the first SELECT embedded after template/prose noise
-    if text.upper().startswith("SELECT"):
+    # Accept a leading SELECT/WITH or the first SELECT/WITH embedded after noise
+    upper = text.upper()
+    if upper.startswith("SELECT") or upper.startswith("WITH"):
         return text.rstrip(";")
-    match = re.search(r"(SELECT\b[\s\S]*)", text, flags=re.IGNORECASE)
+    match = re.search(r"((?:WITH|SELECT)\b[\s\S]*)", text, flags=re.IGNORECASE)
     if match:
         candidate = match.group(1).strip().rstrip(";")
-        if candidate.upper().startswith("SELECT"):
+        cupper = candidate.upper()
+        if cupper.startswith("SELECT") or cupper.startswith("WITH"):
             return candidate
     return ""
 
@@ -204,12 +215,13 @@ def _parse_sql_queries(raw: str, max_queries: int) -> list[str]:
         return []
     chunks = _QUERY_SPLIT_RE.split(raw)
     if len(chunks) <= 1:
-        chunks = re.split(r"\n(?=SELECT\s)", raw, flags=re.IGNORECASE)
+        chunks = re.split(r"\n(?=(?:WITH|SELECT)\s)", raw, flags=re.IGNORECASE)
     seen: set[str] = set()
     out: list[str] = []
     for chunk in chunks:
         sql = _extract_single_select(chunk)
-        if not sql.upper().startswith("SELECT"):
+        cupper = sql.upper()
+        if not (cupper.startswith("SELECT") or cupper.startswith("WITH")):
             continue
         norm = " ".join(sql.split())
         if norm in seen:
@@ -224,20 +236,23 @@ def _parse_sql_queries(raw: str, max_queries: int) -> list[str]:
 def _validate_sql(sql: str, allowed_dataset_ids: set[str], default_limit: int) -> str | None:
     """
     Ensure SQL is a safe SELECT-only query over allowed datasets. Returns cleaned SQL or None.
+    Accepts WITH … SELECT CTEs (read-only pattern builders).
     """
     normalized = " ".join(sql.split()).strip()
-    if not normalized.upper().startswith("SELECT"):
+    upper = normalized.upper()
+    if not (upper.startswith("SELECT") or upper.startswith("WITH")):
+        return None
+    if upper.startswith("WITH") and " SELECT " not in f" {upper} ":
         return None
     if _FORBIDDEN_SQL.search(normalized):
         return None
-    # Ensure referenced datasets are in the allowed set (staging_dev only for RAG)
+    # Ensure referenced datasets are in the allowed set (staging_dev only for RAG).
+    # Only inspect backtick-quoted FQNs so aliases like curr.year are ignored.
     if allowed_dataset_ids:
         allowed_lower = {a.lower() for a in allowed_dataset_ids}
-        for part in re.findall(r"`?[\w.]+`?", normalized):
-            part = part.strip("`")
+        for part in re.findall(r"`([^`]+)`", normalized):
             if "." in part:
                 segments = part.split(".")
-                # dataset.table or project.dataset.table
                 ds = segments[-2].lower()
                 if ds not in allowed_lower:
                     return None
@@ -452,13 +467,20 @@ class BQRetriever(BaseRetriever):
         tables_rule = (
             f"Tables you may use (exactly these stg_* tables): {', '.join(allowed_tables)}. "
             "JOINs are allowed ONLY between these tables using on= keys from semantic_relationships "
-            "in the hints. Never reference a stg_* table outside this list. "
+            "in the hints / JOIN fragments. Never reference a stg_* table outside this list. "
             "Never invent dim_*, dim_geography, or any table not in this list."
             if allowed_tables
             else (
                 "Use ONLY stg_* tables and columns from the Schema / table hints. "
                 "Never invent dim_* or other warehouse dimension tables."
             )
+        )
+        join_fragments = format_join_fragments_for_nl2sql(allowed_tables)
+        join_rule = (
+            "7) When JOIN fragments are listed, use those ON predicates exactly; "
+            "if fragments say to run separate SELECTs, do not invent joins. "
+            if join_fragments
+            else "7) Prefer single-table SELECTs unless documented joins are present. "
         )
         system = (
             f"You are a BigQuery expert for OpenTrace agricultural data in the `{ds}` dataset only. "
@@ -473,13 +495,16 @@ class BQRetriever(BaseRetriever):
             "for Africa/continental questions stay on the fact table (no geo-dim subquery). "
             "5) Prefer GROUP BY / ORDER BY over bare SELECT * LIMIT. "
             "6) country_name values are countries only — never filter country_name = 'Africa'. "
+            f"{join_rule}"
             f"{output_rule}"
         )
         constraints_section = f"\n\n{constraints_block}\n" if constraints_block else ""
+        join_section = f"\n\n{join_fragments}\n" if join_fragments else ""
         user = (
             f"Filter and table hints:\n{_SCHEMA_FILTER_GUIDE}"
             f"{constraints_section}"
-            f"{hints_block}\n\n"
+            f"{hints_block}"
+            f"{join_section}\n"
             f"Schema:\n{schema_text}\n\n"
             f"Question: {question}"
         )
@@ -742,7 +767,8 @@ class BQRetriever(BaseRetriever):
         Fail closed: if no validated SQL is produced, return diagnostic items (no canned fallback).
 
         Optional kwargs: geo_country, time_start, time_end, entities, domains, table_hints,
-        selected_tables. Graph node aggregates SQL into state ``bq_sql_queries`` / ``bq_sql_debug``.
+        selected_tables, query_intents. Graph node aggregates SQL into state
+        ``bq_sql_queries`` / ``bq_sql_debug``.
         """
         t0 = time.perf_counter()
         if not self.project_id:
@@ -800,6 +826,9 @@ class BQRetriever(BaseRetriever):
                 if tid.startswith("stg_"):
                     selected_tables.add(tid)
 
+        raw_intents = kwargs.get("query_intents")
+        query_intents: list[Any] | None = raw_intents if isinstance(raw_intents, list) else None
+
         sql_input = kwargs.get("sql")
         sql_queries: list[str] = []
         explicit_sql = False
@@ -809,6 +838,29 @@ class BQRetriever(BaseRetriever):
         elif isinstance(sql_input, list):
             sql_queries = [str(s).strip() for s in sql_input if str(s).strip()]
             explicit_sql = bool(sql_queries)
+
+        template_meta: dict[str, Any] | None = None
+        pattern_meta: dict[str, Any] | None = None
+        ds_name = self.datasets_config.get("staging", "staging_dev")
+        rows_per_query = max(1, int(os.environ.get("RAG_BQ_ROWS_PER_QUERY", "10") or 10))
+        sql_source = "none"
+
+        if not sql_queries and not explicit_sql:
+            pattern_hit = try_sql_patterns(
+                query_intents,
+                project_id=self.project_id,
+                dataset=ds_name,
+                query=query,
+                entities=entities,
+                time_start=time_start,
+                time_end=time_end,
+                selected_tables=selected_tables,
+                limit=rows_per_query,
+            )
+            if pattern_hit:
+                pattern_meta = pattern_hit
+                sql_queries = [str(pattern_hit["sql"])]
+                sql_source = "pattern"
 
         if not sql_queries and self.nl2sql_enabled:
             sql_queries = self._nl_to_sql_queries(
@@ -826,13 +878,12 @@ class BQRetriever(BaseRetriever):
 
         if explicit_sql:
             sql_source = "explicit"
+        elif sql_source == "pattern":
+            pass
         elif sql_queries:
             sql_source = "nl2sql"
         else:
             sql_source = "none"
-        template_meta: dict[str, Any] | None = None
-        ds_name = self.datasets_config.get("staging", "staging_dev")
-        rows_per_query = max(1, int(os.environ.get("RAG_BQ_ROWS_PER_QUERY", "10") or 10))
 
         def _maybe_template() -> list[str]:
             nonlocal template_meta, sql_source
@@ -868,7 +919,7 @@ class BQRetriever(BaseRetriever):
                     "row_count": 0,
                     "latency_ms": trace_elapsed_ms(t0),
                     "status": "no_valid_sql",
-                    "nl2sql_model": llm_model_id(),
+                    "nl2sql_model": _nl2sql_model_id(),
                     "sql_source": sql_source,
                 }
             )
@@ -876,7 +927,7 @@ class BQRetriever(BaseRetriever):
                 _bq_diagnostic_item(
                     status="no_valid_sql",
                     message=reason,
-                    prep_error=f"{reason}; model={llm_model_id()}",
+                    prep_error=f"{reason}; model={_nl2sql_model_id()}",
                     nl2sql_raw="; ".join(self._last_nl2sql_raws) if self._last_nl2sql_raws else None,
                 )
             ]
@@ -924,12 +975,14 @@ class BQRetriever(BaseRetriever):
                         "status": "validation_failed",
                         "validation_failed": True,
                         "sql_source": source,
-                        "nl2sql_model": llm_model_id(),
+                        "nl2sql_model": _nl2sql_model_id(),
                     }
                     if prep_err:
                         meta["prep_error"] = prep_err[:500]
                     if template_meta and source == "template":
                         meta["template"] = template_meta.get("template")
+                    if pattern_meta and source == "pattern":
+                        meta["pattern"] = pattern_meta.get("pattern")
                     items.append({
                         "content": f"[BQ validation failed: {(prep_err or 'invalid SQL')[:200]}]",
                         "source": "bigquery",
@@ -952,10 +1005,12 @@ class BQRetriever(BaseRetriever):
                         "status": "execution_error",
                         "execution_error": str(exc)[:500],
                         "sql_source": source,
-                        "nl2sql_model": llm_model_id(),
+                        "nl2sql_model": _nl2sql_model_id(),
                     }
                     if template_meta and source == "template":
                         exec_meta["template"] = template_meta.get("template")
+                    if pattern_meta and source == "pattern":
+                        exec_meta["pattern"] = pattern_meta.get("pattern")
                     items.append({
                         "content": f"[BQ execution error: {str(exc)[:200]}]",
                         "source": "bigquery",
@@ -972,11 +1027,13 @@ class BQRetriever(BaseRetriever):
                             "sql_index": idx + 1,
                             "sql_count": len(batch),
                             "sql_source": source,
-                            "nl2sql_model": llm_model_id(),
+                            "nl2sql_model": _nl2sql_model_id(),
                         }
                     )
                     if template_meta and source == "template":
                         meta["template"] = template_meta.get("template")
+                    if pattern_meta and source == "pattern":
+                        meta["pattern"] = pattern_meta.get("pattern")
                     items.append({
                         "content": str(d),
                         "source": "bigquery",
@@ -989,9 +1046,9 @@ class BQRetriever(BaseRetriever):
 
         _run_sql_batch(sql_queries, source=sql_source)
 
-        # After NL2SQL prepare/execute failures, try ranking template once.
+        # After NL2SQL/pattern prepare/execute failures, try ranking template once.
         if (
-            sql_source == "nl2sql"
+            sql_source in {"nl2sql", "pattern"}
             and not any_usable_rows
             and not prepared_ok
             and selected_tables
@@ -1006,7 +1063,7 @@ class BQRetriever(BaseRetriever):
                 _bq_diagnostic_item(
                     status="no_valid_sql",
                     message=reason,
-                    prep_error=f"{reason}; model={llm_model_id()}",
+                    prep_error=f"{reason}; model={_nl2sql_model_id()}",
                     nl2sql_raw="; ".join(self._last_nl2sql_raws) if self._last_nl2sql_raws else None,
                 )
             )
@@ -1026,7 +1083,7 @@ class BQRetriever(BaseRetriever):
                 "sql_hashes": sql_hashes[:10],
                 "latency_ms": trace_elapsed_ms(t0),
                 "sql_source": sql_source,
-                "nl2sql_model": llm_model_id(),
+                "nl2sql_model": _nl2sql_model_id(),
             }
         )
         return items

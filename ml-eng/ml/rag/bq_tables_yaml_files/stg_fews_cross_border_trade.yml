@@ -1,5 +1,9 @@
 table_name: opentrace-prod-5ga4.staging_dev.stg_fews_cross_border_trade
-description: FEWS NET cross-border trade flows for agricultural products.
+description: >
+  FEWS NET observed cross-border corridor trade flows at named border points
+  (monthly). Covers staples, livestock, fuels, and related products. Filter by
+  exact product_name + trade_flow (+ countries / border_point / year / month);
+  never invent labels. Do not SUM across unlike products or units in one query.
 grain: border_point × product × year × month × trade_flow
 entity_type: fews
 source:
@@ -16,66 +20,242 @@ semantic_role:
   - markets
   - fews
 business_questions_supported:
-- Which border points move the most maize?
+- Which border points move the most of a named staple (e.g. maize, sorghum, beans)?
+- What volume moves from a source country to a destination country for a product?
+- How do monthly flows change for a corridor and product?
+- Which livestock or fuel products cross a border point?
 filtering_guidance:
 - Filter by geography and time when present
+- Filter country / source_country / destination_country / border_point with exact labels when geography is named
+- Always filter product_name to an exact FEWS label; prefer specific variants (e.g. Maize Grain (White)) over unspecified/mixed unless asked
+- Always filter trade_flow for the direction or metric asked
+- Filter year and month for time-bounded questions
+- Prefer primary staples over unspecified/mixed rollups (Cereal Crops (Mixed), Vegetables (unspecified), Root/tuber (unspecified), etc.) unless aggregates are asked
+- Prefer common_unit_quantity for cross-product or corridor compares when units differ; always read value with unit
+- Never invent warehouse dimension tables (dim_*)
+- Joins to FAOSTAT trade are approximate product-name compares only — do not assume identical labels
 sql_generation_hints:
-- Filter trade_flow and product_name
+- Filter trade_flow and product_name = '<exact FEWS label>'
+- Filter border_point and/or source_country / destination_country when the corridor is named
+- Filter year and month for time series
+- GROUP BY border_point, product_name, year, month (plus trade_flow) when ranking corridors
+- Prefer common_unit_quantity when comparing volumes across products or units
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: country
   type: STRING
-  description: country
+  description: >
+    Reporting / context country for the row. Filter with an exact country
+    label when the question names a country.
 - name: country_code
   type: STRING
-  description: country code
+  description: Country code for the reporting / context country
 - name: border_point
   type: STRING
-  description: border point
+  description: >
+    Named border crossing where the flow is observed. Filter with an exact
+    border_point for corridor-level questions.
 - name: source_country
   type: STRING
-  description: source country
+  description: >
+    Origin country of the trade flow. Filter when the question names where
+    goods come from.
 - name: source_country_code
   type: STRING
-  description: source country code
+  description: Country code for the source country
 - name: destination_country
   type: STRING
-  description: destination country
+  description: >
+    Destination country of the trade flow. Filter when the question names
+    where goods go to.
 - name: destination_country_code
   type: STRING
-  description: destination country code
+  description: Country code for the destination country
 - name: product_name
   type: STRING
-  description: product name
+  description: >
+    FEWS NET product label for the traded good. Filter with an exact
+    product_name. Prefer specific named variants over (unspecified) / Mixed /
+    Food Aid unless asked. Never invent labels. Do not SUM unlike products
+    together.
+
+    Family rules:
+    Cereals / flours — maize grain (white/yellow/fresh/mixed), sorghum
+    (brown/red/white/feterita), millet (finger/pearl/bulrush), mixed teff,
+    rice (milled/husked/paddy/parboiled), wheat grain/flour, barley, oats,
+    cereal flours, roller maize meal, pasta/spaghetti.
+    Pulses / oilseeds — beans (mixed/yellow/red/black/rosecoco/haricot),
+    lentils, chick peas, peas, groundnuts (in shell/shelled), sesame,
+    soybean, sunflower seed, cowpea, pigeon peas, gram pulse.
+    Roots / tubers / fruits / veg — cassava (incl. flour/chips), yams,
+    potatoes, sweet potatoes, banana/cooking banana, onions, tomato,
+    cabbage, kale, carrots, garlic, citrus, mango, pineapple, avocado,
+    melon/watermelon, ginger.
+    Livestock / animal products — cattle/sheep/goats/camels (incl. export
+    quality), chickens, swine / pigs, rabbits, shoats, oxen, horses and
+    other equines, natural honey, dried fish (incl. mukene/dagaa), raw
+    hides and skins.
+    Oils / processed / other — palm/vegetable/sunflower oils, refined sugar,
+    salt, coffee, tea leaves, cotton, natural gums and resins, high energy
+    biscuits, tobacco.
+    Fuels — Gasoline, Diesel, Kerosene, Fuel (unspecified).
 - name: cpcv2
   type: STRING
-  description: cpcv2
+  description: CPC v2 product classification code when populated
 - name: trade_flow
   type: STRING
-  description: trade flow
+  description: >
+    Trade flow direction or flow metric for the row. Filter with an exact
+    trade_flow label present in the data; do not invent values.
 - name: trade_type
   type: STRING
-  description: trade type
+  description: >
+    Trade type classification when populated. Filter with an exact trade_type
+    label present in the data; do not invent values.
 - name: unit
   type: STRING
-  description: unit
+  description: >
+    Unit of the reported value. Always interpret value with unit; never SUM
+    or compare unlike units without aligning via common_unit_quantity.
 - name: value
   type: FLOAT64
-  description: value
+  description: >
+    Numeric trade quantity for the product at this border point and time.
+    SUM only when product_name, trade_flow, and unit (or common_unit_quantity)
+    are homogeneous.
 - name: common_unit_quantity
   type: STRING
-  description: common unit quantity
+  description: >
+    Harmonized quantity measure for cross-product or cross-unit compares when
+    populated. Prefer this over raw value when units differ across rows.
 - name: year
   type: INT64
-  description: year
+  description: Observation year
 - name: month
   type: INT64
-  description: month
+  description: Observation month (1-12)
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+product_value_samples:
+- Potato (Irish)
+- Chickens
+- Other Cereal Flours (Unspecified)
+- Cassava
+- Rice (Milled)
+- Groundnuts (In Shell)
+- Yams
+- Gasoline
+- Date (unspecified)
+- Wheat Flour
+- Refined sugar
+- Salt
+- Pasta (Prepared, Unspecified)
+- Maize Flour
+- "Fish (Dried, Salted, or In Brine)"
+- Palm Oil (Refined)
+- Split Peas (Yellow)
+- Maize Grain (White)
+- Beans (mixed)
+- Refined Vegetable Oil
+- Lentils
+- Sorghum
+- Diesel
+- Oxen (Unspecified)
+- Groundnuts (Shelled)
+- Sorghum Flour
+- Millet Flour
+- Cassava Flour
+- High energy biscuits
+- Spaghetti
+- Wheat Grain
+- Maize Grain (Yellow)
+- Maize Grain (Fresh)
+- "Rice (Husked, Unspecified)"
+- Sorghum (Brown)
+- Sorghum (Red)
+- Sorghum (White)
+- Barley (Unspecified)
+- Millet (Finger)
+- Millet (Pearl)
+- Mixed Teff
+- Cereal Crops (Mixed)
+- Onions
+- Banana (unspecified)
+- Cooking Banana (unspecified)
+- Soybean (unspecified)
+- Sweet Potatoes
+- Root/tuber (unspecified)
+- Beans (Yellow)
+- Broad Beans
+- Lentils (Red)
+- Gram Pulse (Green)
+- Pigeon Peas
+- Coffee (unspecified)
+- Sheep
+- Cattle
+- Camels
+- Natural Honey
+- "Fish (Dried, Mukene/Dagaa/Silver Fish)"
+- Sesame Seed
+- Chick Peas
+- Goats
+- Sunflower-seed Oil (Refined)
+- Tomato
+- Potato (unspecified)
+- Garlic (fresh)
+- Maize Grain (Mixed)
+- Rice (Paddy)
+- Beans (Red)
+- Millet
+- Beans (Rosecoco)
+- Camels (Export Quality)
+- Carrots
+- Beans (Black)
+- Kerosene
+- Pea (unspecified)
+- Roller Maize Meal
+- Swine / pigs
+- Beans (Haricot)
+- Sorghum (Feterita)
+- Cassava Chips
+- Fuel (unspecified)
+- Sunflower Seed
+- Oats (Unspecified)
+- Cowpea (unspecified)
+- Cattle (Export Quality)
+- Dried Peas (Green)
+- Cabbage (Unspecified)
+- Pasta (Mixed)
+- Shoats
+- Raw Hides and Skins of Livestock (Mixed)
+- Natural gums and resins (mixed)
+- Rice (Parboiled)
+- Sheep (Export Quality)
+- Millet (Bulrush)
+- Horses and other equines
+- Lemon (unspecified)
+- Orange (unspecified)
+- Ginger
+- Rabbits and Hares
+- Goats (Export Quality)
+- Wheat Grain (Food Aid)
+- Vegetables (unspecified)
+- Mango (unspecified)
+- Tea leaves (Mixed)
+- Coconut (in shell)
+- Tobacco (unspecified)
+- Pineapple (unspecified)
+- Cotton (Unspecified)
+- Kale
+- Melon (unspecified)
+- Watermelon
+- Cumin
+- Avocado (unspecified)
+- Rabbits
 _index_domain: fews
 _index_tags: *id001
 semantic_relationships:

@@ -181,6 +181,21 @@ def test_prices_schema_pack_surfaces_samples_and_guidance() -> None:
     assert "index" in text.lower() or "PPI" in text or "producer" in text.lower()
 
 
+def test_entity_aware_pack_prefers_maize_samples() -> None:
+    hints, _ = pack_selected_table_hints(
+        ["stg_faostat_prices"],
+        max_bytes=8000,
+        query_terms=["maize"],
+    )
+    assert hints
+    joined = "\n".join(hints)
+    assert "Columns:" in joined
+    assert "Maize" in joined or "maize" in joined.lower()
+    # Filtering guidance / columns survive the budget ahead of full enum dumps.
+    assert "filtering_guidance" in joined.lower() or "element" in joined.lower()
+    assert utf8_len(joined) <= 8000
+
+
 def test_multi_table_pack_includes_both_schemas() -> None:
     hints, _ = pack_selected_table_hints(
         ["stg_faostat_production", "stg_yield_raw_data"],
@@ -302,6 +317,38 @@ def test_reasoner_uses_mock_llm_json() -> None:
     assert plan["selected_tables"] == ["stg_wfp_vampire_prices"]
     assert plan["table_hints"]
     assert plan["skip_bq"] is False
+    intent = plan["query_intents"][0]
+    assert intent["pattern"] == "custom"
+    assert "maize" in "\n".join(plan["table_hints"]).lower() or plan["table_hints"]
+
+
+def test_reasoner_accepts_structured_pattern_fields() -> None:
+    payload = (
+        '{"selected_tables":["stg_faostat_production"],'
+        '"query_intents":[{"goal":"rank maize","tables":["stg_faostat_production"],'
+        '"filters":"year=2020","pattern":"rank_by_sum","metric":"value",'
+        '"grain":["country_name"],"order_by":"total DESC","notes":""}],'
+        '"skip_bq":false,"rationale":"rank"}'
+    )
+    with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=payload):
+        plan = reason_bq_sql_plan("highest maize production Africa 2020")
+    intent = plan["query_intents"][0]
+    assert intent["pattern"] == "rank_by_sum"
+    assert intent["metric"] == "value"
+    assert intent["grain"] == ["country_name"]
+    assert intent["order_by"] == "total DESC"
+
+
+def test_reasoner_unknown_pattern_becomes_custom() -> None:
+    payload = (
+        '{"selected_tables":["stg_faostat_production"],'
+        '"query_intents":[{"goal":"x","tables":["stg_faostat_production"],'
+        '"pattern":"not_a_real_pattern","metric":"value","grain":[],"notes":""}],'
+        '"skip_bq":false,"rationale":"x"}'
+    )
+    with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=payload):
+        plan = reason_bq_sql_plan("something")
+    assert plan["query_intents"][0]["pattern"] == "custom"
 
 
 def test_reasoner_rejects_unknown_only_tables() -> None:

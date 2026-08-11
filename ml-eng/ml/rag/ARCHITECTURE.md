@@ -223,7 +223,20 @@ Passed from Streamlit, API, or CLI wrappers: `geo_override`, `time_start_overrid
 | `dense_named` | news, research | Single dense vector name |
 | `ota_triple` | OTA_insights | insight / metric / recommendation |
 
-**Filters** (payload + post-filter): `doc_kind`, `geo_country_primary`, `published_at` range, optional `domains_substring` (news, opt-in via `RAG_NEWS_DOMAIN_FILTER`).
+**Filters** (payload + client post-filter + soft rescore): `doc_kind`, geo (`geo_country_primary` / `country` / `geo_countries`, word-boundary), `published_at` / `publication_year`, `domains_substring` for news (**on by default** via `RAG_NEWS_DOMAIN_FILTER`).
+
+**Cascade** (`graph._retrieve_vector_cascade`): full filters → time ±1 year → drop time → drop geo → drop both (when `RAG_*_GEO_FALLBACK` / `RAG_*_TIME_FALLBACK` allow). Surviving hits stamp `constraint_relaxed`. Geo post-filter runs on **all** corpora after cascade.
+
+**Corpus router** ([`chatbot/corpus_catalog.py`](chatbot/corpus_catalog.py)): `select_corpora` gates which of the six collections to query (heuristic intent/keyword/`plan_type` cues) and stamps `corpus_boost`. `RAG_CORPUS_ROUTER=off` restores fan-out to all six. Never skips more than three corpora; never returns an empty set.
+
+| Key | Default collection | Role |
+|-----|-------------------|------|
+| `news` | `news_data` | Timely journalism |
+| `academic_papers` | `academic_papers` | Peer-reviewed research |
+| `policies` | `policies` | Policy documents |
+| `public_reports` | `public_reports` | Institutional reports |
+| `formation` | `formation` | Training / farmer practice |
+| `ota` | `OTA_insights` | Analyst insights / metrics / recommendations |
 
 ### 6.2 BigQuery retrieval — [`retrievers/bq_retriever.py`](retrievers/bq_retriever.py)
 
@@ -256,17 +269,20 @@ Four modes selected via `RAG_RERANKER_MODE`:
 
 | Mode | Behaviour |
 |------|-----------|
-| `cohere` (recommended for production) | One HTTP call to Cohere's managed rerank API (`rerank-v3.5`). No model in the container — zero memory overhead on Railway. Scores are already `[0, 1]`; the static source boost is applied additively. Requires `COHERE_API_KEY` (or `RAG_RERANKER_COHERE_API_KEY`). Auto-selected when a key is present and `RAG_RERANKER_MODE` is not set explicitly. Cost is ~$0.002/1k chunks — negligible at freemium scale. |
-| `cross_encoder` (default for local dev; fallback when no Cohere key) | Single batched pass through a cross-encoder. Loads via fastembed first, falls back to sentence-transformers if installed. Model id is configurable via `RAG_RERANKER_MODEL` (default `BAAI/bge-reranker-base`; multilingual, ~280 MB). Raw scores are min-max normalised to `[0, 1]` then combined additively with the static source boost. |
+| `cross_encoder` (production on Railway) | Single batched pass through a cross-encoder. Loads via fastembed ONNX first (Railway slim image), falls back to sentence-transformers on dev machines. Model id via `RAG_RERANKER_MODEL` (default `BAAI/bge-reranker-base`; multilingual, ~280 MB, baked in `Dockerfile.railway`). Raw scores are min-max normalised to `[0, 1]` then combined additively with the static source boost. **Set explicitly** when using OpenRouter LLM — otherwise auto-promotion picks OpenRouter rerank. |
+| `openrouter` | One `POST /rerank` via OpenRouter (default model `cohere/rerank-4-pro`). Reuses `RAG_LLM_API_KEY`. |
+| `cohere` | One HTTP call to Cohere's managed rerank API (`rerank-v3.5`). Requires `COHERE_API_KEY`. Scores are already `[0, 1]`; source boost applied additively. |
 | `llm` | Legacy per-chunk LLM scoring (one `llm_chat_complete` call per chunk). Kept for back-compat / A-B testing — too slow and too expensive for production. |
 | `off` | Dev/debug pass-through using the static source boost only. |
 
-**Auto-promotion:** when `COHERE_API_KEY` (or `RAG_RERANKER_COHERE_API_KEY`) is set and `RAG_RERANKER_MODE` is not explicitly configured, the reranker automatically uses `cohere`. Set `RAG_RERANKER_MODE=cross_encoder` explicitly to override.
+**Auto-promotion** (when `RAG_RERANKER_MODE` is unset): `openrouter` (OpenRouter URL + `RAG_LLM_API_KEY`) → `cohere` (Cohere key) → legacy `RAG_LLM_RERANK` → default `cross_encoder`.
+
+Set `RAG_RERANKER_MODE=cross_encoder` explicitly on Railway to override OpenRouter auto-promotion.
 
 **Back-compat:** the old `RAG_LLM_RERANK` flag still works when `RAG_RERANKER_MODE` is unset (`on` → `llm`, `off` → `off`).
 
 **Graceful degradation (never raises):**
-`cohere` (no key or API error) → `cross_encoder` → `llm` if an LLM backend is configured → `off`.
+`openrouter` / `cohere` (no key or API error) → `cross_encoder` → `llm` if an LLM backend is configured → `off`.
 `cross_encoder` unavailable → `llm` if configured → `off`.
 
 Output trimmed to `rerank_top_k` (default 20 in Streamlit), with optional global cap `RAG_RERANKER_TOP_K`.
@@ -281,7 +297,7 @@ Conditional node after rerank (`RAG_WEB_FALLBACK_ENABLED=1`, off by default).
 | No news + no BQ | Only academic/OTA (or other) usable chunks remain |
 | Low rerank score | Optional: top `_rerank_score` &lt; `RAG_WEB_FALLBACK_MIN_RERANK_SCORE` when `RAG_LLM_RERANK` on |
 
-**Tier 1:** Wikipedia search + REST summary (no API key). **Tier 2:** Tavily news search if Wikipedia empty and `TAVILY_API_KEY` set (optional `langchain-tavily`). Chunks append to `reranked_context` with `_context_kind` `web_wikipedia` or `web_search`. Fail-soft: timeouts/errors return no web chunks.
+**Tier 1:** Free Wikipedia via shaped queries (entity+country first, then stopword-stripped question), MediaWiki `opensearch` for titles (fallback `list=search`), soft geo/topic title filter, REST summary, and optional first-section extract when the lead is thin — no API key. **Tier 2:** Tavily news search if Wikipedia empty and `TAVILY_API_KEY` set (optional `langchain-tavily`), using the primary shaped query. Chunks append to `reranked_context` with `_context_kind` `web_wikipedia` or `web_search`. Fail-soft: timeouts/errors return no web chunks.
 
 **Guardrails (free-tier Tavily protection + no-hallucination contract):**
 - Per-UTC-day call counter (`RAG_TAVILY_DAILY_LIMIT`, default **900**) stays under the free-tier ~1k/day cap. Set to `0` as an operational kill-switch.
@@ -442,11 +458,12 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_LLM_BASE_URL` | e.g. `http://127.0.0.1:1234/v1` (LM Studio) |
 | `RAG_LLM_MODEL_ID` | Must match server model id |
 | `RAG_LLM_TIMEOUT_S` | Default HTTP timeout (e.g. 300) |
-| `RAG_RERANKER_MODE` | `cohere` (production) / `cross_encoder` (local dev) / `llm` / `off` |
-| `COHERE_API_KEY` | Enables the Cohere rerank API; auto-selects `cohere` mode when set |
+| `RAG_RERANKER_MODE` | `cross_encoder` (production Railway) / `openrouter` / `cohere` / `llm` / `off` |
+| `COHERE_API_KEY` | Optional; enables Cohere rerank API when mode is `cohere` |
 | `RAG_RERANKER_COHERE_API_KEY` | Alternative Cohere key var (takes precedence over `COHERE_API_KEY`) |
 | `RAG_RERANKER_COHERE_MODEL` | Cohere model id (default `rerank-v3.5`) |
-| `RAG_RERANKER_MODEL` | Cross-encoder model id (default `BAAI/bge-reranker-base`; multilingual) |
+| `RAG_RERANK_MODEL_ID` | OpenRouter rerank model slug (default `cohere/rerank-4-pro`) when mode is `openrouter` |
+| `RAG_RERANKER_MODEL` | Cross-encoder model id (default `BAAI/bge-reranker-base`; multilingual; baked in Railway image) |
 | `RAG_RERANKER_TOP_K` | Optional global cap on rerank output (`0` = use caller `top_k`) |
 | `RAG_RERANKER_MAX_TEXT_CHARS` | Per-chunk char cap fed to the encoder (default 2000) |
 | `RAG_LLM_RERANK` | **Legacy.** Honoured only when `RAG_RERANKER_MODE` is unset (`on` → `llm`, `off` → `off`) |
@@ -478,12 +495,14 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 |----------|---------|
 | `RAG_BQ_MAX_SQL_QUERIES` | Max SELECTs per question (default 10) |
 | `RAG_BQ_NL2SQL_MODE` | `per_hint` or `batch` |
-| `RAG_BQ_NL2SQL_PARALLEL` | Parallel per-hint calls (`off` for single-slot LM Studio) |
+| `RAG_BQ_NL2SQL_PARALLEL` | Parallel per-hint calls (`off` for single-slot LM Studio; `on` for Railway/OpenRouter) |
+| `RAG_BQ_NL2SQL_PARALLEL_WORKERS` | Thread pool size when parallel is on (default 4) |
 | `RAG_BQ_SKIP_LIVE_SCHEMA` | Use hint-only schema text (faster prompts) |
 | `RAG_BQ_ROWS_PER_QUERY` | Rows per executed SQL |
 | `RAG_BQ_HINT_MAX_CHARS` | Truncate each table hint in prompt |
-| `RAG_BQ_MAX_TABLES` | Max tables the staging YAML reasoner may select |
-| `RAG_BQ_REASONER_MODEL_ID` | Optional dedicated model for `bq_reason` |
+| `RAG_BQ_MAX_TABLES` | Max tables the staging YAML reasoner may select (default **6**) |
+| `RAG_BQ_REASONER_MODEL_ID` | Dedicated model for `bq_reason` (e.g. `deepseek/deepseek-v4-flash-0731`) |
+| `RAG_BQ_NL2SQL_MODEL_ID` | Dedicated model for NL-to-SQL (e.g. `deepseek/deepseek-v4-flash-0731`; falls back to `RAG_LLM_MODEL_ID`) |
 
 ### 12.6 Retrieval / hybrid
 
@@ -493,11 +512,12 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_EMBEDDING_MODEL_*` | Per-corpus embedding model |
 | `RAG_QDRANT_HYBRID_SEARCH` | Dense + sparse RRF |
 | `RAG_HYBRID_DENSE_PREFETCH` / `SPARSE_PREFETCH` / `FUSION_LIMIT` | Hybrid breadth |
-| `RAG_NEWS_DOMAIN_FILTER` | Opt-in strict news domain filter |
-| `RAG_NEWS_GEO_FALLBACK` | Retry news without geo if empty |
-| `RAG_NEWS_TIME_FALLBACK` | Retry news without date filter if still empty |
-| `RAG_RESEARCH_GEO_FALLBACK` | Retry research without geo if empty |
-| `RAG_RESEARCH_TIME_FALLBACK` | Retry research without year filter if still empty |
+| `RAG_NEWS_DOMAIN_FILTER` | News domains MatchText filter (**default on**; set `off` to disable) |
+| `RAG_NEWS_GEO_FALLBACK` | Retry news without geo if empty (default on; set `off` for strict country QA) |
+| `RAG_NEWS_TIME_FALLBACK` | Retry news without date filter if still empty (default on) |
+| `RAG_RESEARCH_GEO_FALLBACK` | Retry research corpora without geo if empty (default on) |
+| `RAG_RESEARCH_TIME_FALLBACK` | Retry research without year filter if still empty (default on) |
+| `RAG_CORPUS_ROUTER` | Heuristic gate/boost over six collections (`on` default; `off` = always all six) |
 | Compare + 2 countries | Geo fallback disabled so news is not replaced with unrelated regions |
 
 ### 12.7 Chat memory
