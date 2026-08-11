@@ -38,7 +38,6 @@ class IngestionSettings:
     gdrive_folder_research_papers_id: str
     gdrive_folder_other_papers_id: str
     gdrive_folder_news_id: str
-    gdrive_folder_data_descriptions_id: str
     gdrive_folder_ota_insights_id: str
     staging_root: Path
 
@@ -47,7 +46,6 @@ class IngestionSettings:
     qdrant_api_key: str
     qdrant_collection_research_papers: str
     qdrant_collection_news: str
-    qdrant_collection_data_descriptions: str
     qdrant_collection_ota_insights: str
 
 
@@ -60,7 +58,6 @@ def load_ingestion_settings_from_env() -> IngestionSettings:
     Required env:
       - GDRIVE_FOLDER_RESEARCH_PAPERS_ID
       - GDRIVE_FOLDER_NEWS_ID
-      - GDRIVE_FOLDER_DATA_DESCRIPTIONS_ID
 
     Optional env:
       - GDRIVE_FOLDER_OTHER_PAPERS_ID (policy / public reports; merged into research collection)
@@ -72,7 +69,6 @@ def load_ingestion_settings_from_env() -> IngestionSettings:
     rp = _folder_id("GDRIVE_FOLDER_RESEARCH_PAPERS_ID")
     other = _folder_id("GDRIVE_FOLDER_OTHER_PAPERS_ID", required=False)
     nw = _folder_id("GDRIVE_FOLDER_NEWS_ID")
-    dd = _folder_id("GDRIVE_FOLDER_DATA_DESCRIPTIONS_ID")
     ota = _folder_id("GDRIVE_FOLDER_OTA_INSIGHTS_ID", required=False)
 
     staging = _env("RAG_INGESTION_STAGING_ROOT")
@@ -82,7 +78,6 @@ def load_ingestion_settings_from_env() -> IngestionSettings:
         gdrive_folder_research_papers_id=rp,
         gdrive_folder_other_papers_id=other,
         gdrive_folder_news_id=nw,
-        gdrive_folder_data_descriptions_id=dd,
         gdrive_folder_ota_insights_id=ota,
         staging_root=staging_root,
         qdrant_url=_env("QDRANT_URL"),
@@ -90,17 +85,16 @@ def load_ingestion_settings_from_env() -> IngestionSettings:
         qdrant_collection_research_papers=_env(
             "QDRANT_COLLECTION_RESEARCH_PAPERS",
             ALL_SPECS["research"].default_collection_name,
-        ) or ALL_SPECS["research"].default_collection_name,
+        )
+        or ALL_SPECS["research"].default_collection_name,
         qdrant_collection_news=_env(
             "QDRANT_COLLECTION_NEWS",
             ALL_SPECS["news"].default_collection_name,
-        ) or ALL_SPECS["news"].default_collection_name,
-        qdrant_collection_data_descriptions=_env(
-            "QDRANT_COLLECTION_DATA_DESCRIPTIONS",
-            ALL_SPECS["data_descriptions"].default_collection_name,
-        ) or ALL_SPECS["data_descriptions"].default_collection_name,
+        )
+        or ALL_SPECS["news"].default_collection_name,
         qdrant_collection_ota_insights=_env(
             "QDRANT_COLLECTION_OTA_INSIGHTS",
             ALL_SPECS["ota"].default_collection_name,
-        ) or ALL_SPECS["ota"].default_collection_name,
+        )
+        or ALL_SPECS["ota"].default_collection_name,
     )

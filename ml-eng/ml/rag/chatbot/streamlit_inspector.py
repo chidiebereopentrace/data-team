@@ -26,6 +26,10 @@ INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "bq_table_candidates",
     "bq_sql_plan",
     "vector_news_results",
+    "vector_academic_papers_results",
+    "vector_policies_results",
+    "vector_public_reports_results",
+    "vector_formation_results",
     "vector_academic_results",
     "vector_ota_results",
     "bq_results",
@@ -222,6 +226,10 @@ def normalize_http_response(
         "decomposition": {},
         "bq_table_candidates": [],
         "vector_news_results": [],
+        "vector_academic_papers_results": [],
+        "vector_policies_results": [],
+        "vector_public_reports_results": [],
+        "vector_formation_results": [],
         "vector_academic_results": [],
         "bq_results": [],
         "vector_ota_results": [],
@@ -383,7 +391,7 @@ def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = Non
     usage = _as_dict(result.get("usage"))
     lat = latency_ms if latency_ms is not None else result.get("latency_ms")
 
-    r1 = st.columns(7)
+    r1 = st.columns(8)
     with r1[0]:
         st.metric("BQ table matches", len(result.get("bq_table_candidates") or []))
     with r1[1]:
@@ -391,12 +399,20 @@ def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = Non
     with r1[2]:
         st.metric("News", len(result.get("vector_news_results") or []))
     with r1[3]:
-        st.metric("Research", len(result.get("vector_academic_results") or []))
+        st.metric("Academic", len(result.get("vector_academic_papers_results") or []))
     with r1[4]:
-        st.metric("OTA", len(result.get("vector_ota_results") or []))
+        st.metric("Policy", len(result.get("vector_policies_results") or []))
     with r1[5]:
-        st.metric("Web", len(result.get("web_results") or []))
+        st.metric("Public", len(result.get("vector_public_reports_results") or []))
     with r1[6]:
+        st.metric("Formation", len(result.get("vector_formation_results") or []))
+    with r1[7]:
+        st.metric("OTA", len(result.get("vector_ota_results") or []))
+
+    r1b = st.columns(2)
+    with r1b[0]:
+        st.metric("Web", len(result.get("web_results") or []))
+    with r1b[1]:
         st.metric("→ generator", len(result.get("reranked_context") or []))
 
     r2 = st.columns(4)
@@ -531,9 +547,12 @@ def render_sql_panel(result: dict[str, Any]) -> None:
 def render_retrieval_tabs(result: dict[str, Any]) -> None:
     tabs = st.tabs([
         f"News ({len(result.get('vector_news_results') or [])})",
-        f"Research ({len(result.get('vector_academic_results') or [])})",
+        f"Academic ({len(result.get('vector_academic_papers_results') or [])})",
+        f"Policy ({len(result.get('vector_policies_results') or [])})",
+        f"Public reports ({len(result.get('vector_public_reports_results') or [])})",
+        f"Formation ({len(result.get('vector_formation_results') or [])})",
         f"OTA ({len(result.get('vector_ota_results') or [])})",
-        f"BQ descriptions ({len(result.get('bq_table_candidates') or [])})",
+        f"BQ tables ({len(result.get('bq_table_candidates') or [])})",
         f"BQ rows ({len(result.get('bq_results') or [])})",
         f"Merged ({len(result.get('merged_context') or [])})",
         f"Generator input ({len(result.get('reranked_context') or [])})",
@@ -542,19 +561,25 @@ def render_retrieval_tabs(result: dict[str, Any]) -> None:
     with tabs[0]:
         render_chunk_rows(list(result.get("vector_news_results") or []))
     with tabs[1]:
-        render_chunk_rows(list(result.get("vector_academic_results") or []))
+        render_chunk_rows(list(result.get("vector_academic_papers_results") or []))
     with tabs[2]:
-        render_chunk_rows(list(result.get("vector_ota_results") or []))
+        render_chunk_rows(list(result.get("vector_policies_results") or []))
     with tabs[3]:
-        render_chunk_rows(list(result.get("bq_table_candidates") or []))
+        render_chunk_rows(list(result.get("vector_public_reports_results") or []))
     with tabs[4]:
-        render_chunk_rows(list(result.get("bq_results") or []))
+        render_chunk_rows(list(result.get("vector_formation_results") or []))
     with tabs[5]:
-        render_chunk_rows(list(result.get("merged_context") or []))
+        render_chunk_rows(list(result.get("vector_ota_results") or []))
     with tabs[6]:
+        render_chunk_rows(list(result.get("bq_table_candidates") or []))
+    with tabs[7]:
+        render_chunk_rows(list(result.get("bq_results") or []))
+    with tabs[8]:
+        render_chunk_rows(list(result.get("merged_context") or []))
+    with tabs[9]:
         st.caption("Exact context block passed to the generator, in order.")
         render_chunk_rows(list(result.get("reranked_context") or []))
-    with tabs[7]:
+    with tabs[10]:
         status = result.get("web_fallback_status")
         if status:
             st.caption(f"Status: {status} · {result.get('web_fallback_reason') or ''}")

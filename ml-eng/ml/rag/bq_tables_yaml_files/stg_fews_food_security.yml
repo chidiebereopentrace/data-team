@@ -20,17 +20,21 @@ business_questions_supported:
 - How has food insecurity changed recently?
 filtering_guidance:
 - Filter by geography and time when present
+- country holds country labels only — never filter country = 'Africa' or a region
+- Prefer phase_code / pct_phase3+ for severity; filter year and month for recent status
+- Subnational grain (fnid/admin); do not invent dim_* for Africa country lists
 sql_generation_hints:
 - Filter by country/fnid and year/month
 - Use phase_code or pct_phase3-5 for severity
 - GROUP BY geography for which-region questions
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: fnid
   type: STRING
   description: fnid
 - name: country
   type: STRING
-  description: country
+  description: Country name only. Never 'Africa' or a region label.
 - name: country_code
   type: STRING
   description: country code
@@ -141,3 +145,5 @@ semantic_relationships:
   do_not_join:
   - table: stg_openaire_persons
     reason: no shared geo-time grain
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims for Africa country lists

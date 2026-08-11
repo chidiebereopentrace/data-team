@@ -9,10 +9,9 @@ Typical collection layouts (embedding model must match how points were indexed):
   news_data / research_other_papers        – single named ``dense`` vector (mode: **dense_named**; e5-small)
   legacy dual-vector collections           – named ``sentence`` + ``semantic`` (mode: **dual**)
   research_other_papers (legacy schema)    – ``abstract_vector`` + ``content_vector`` (mode: **research_dual**)
-  data descriptions (DOCX loader)          – named ``sentence`` only (mode: **sentence_named**)
   OTA_insights                             – insight / metric / recommendation (mode: **ota_triple**)
-  BQ_table_descriptions (triple schema)    – table / schema / business (mode: **bq_triple**)
   single-vector collections                – unnamed vector (mode: **legacy**)
+  legacy sentence-named collections        – named ``sentence`` only (mode: **sentence_named**)
 """
 
 from __future__ import annotations
@@ -381,7 +380,6 @@ def _merge_scored_hits(hits_lists: list[list[Any]], limit: int) -> list[Any]:
 RESEARCH_VECTORS = ("abstract_vector", "content_vector")
 DUAL_SENTENCE_SEMANTIC = ("sentence", "semantic")
 OTA_VECTORS = ("insight_vector", "metric_vector", "recommendation_vector")
-BQ_VECTORS = ("table_vector", "schema_vector", "business_vector")
 
 # Maps a query_using shorthand → actual named vector(s) to search.
 _RESEARCH_USING: dict[str, tuple[str, ...]] = {
@@ -394,12 +392,6 @@ _OTA_USING: dict[str, tuple[str, ...]] = {
     "metric": ("metric_vector",),
     "recommendation": ("recommendation_vector",),
     "merge": OTA_VECTORS,
-}
-_BQ_USING: dict[str, tuple[str, ...]] = {
-    "table": ("table_vector",),
-    "schema": ("schema_vector",),
-    "business": ("business_vector",),
-    "merge": BQ_VECTORS,
 }
 
 
@@ -428,11 +420,10 @@ class VectorRetriever(BaseRetriever):
       - QDRANT_URL / QDRANT_API_KEY / QDRANT_COLLECTION
       - RAG_EMBEDDINGS_MODE=local|fastembed (in-container only; fastembed on Railway)
       - RAG_EMBEDDING_MODEL_ID (default BAAI/bge-m3)
-      - RAG_QDRANT_VECTOR_SEARCH_MODE=legacy|dual|sentence_named|research_dual|ota_triple|bq_triple
+      - RAG_QDRANT_VECTOR_SEARCH_MODE=legacy|dual|sentence_named|research_dual|ota_triple
       - RAG_QDRANT_DUAL_QUERY_USING=sentence|semantic|both (only for mode dual; default both)
       - RAG_QDRANT_RESEARCH_QUERY_USING=abstract|content|both
       - RAG_QDRANT_OTA_QUERY_USING=insight|metric|recommendation|merge
-      - RAG_QDRANT_BQ_QUERY_USING=table|schema|business|merge
       - RAG_SPARSE_EMBEDDINGS=on|off (BM25 sparse vectors on upsert; default on)
       - RAG_QDRANT_HYBRID_SEARCH=on|off (dense+sparse RRF at query; default on)
       - RAG_HYBRID_DENSE_PREFETCH / RAG_HYBRID_SPARSE_PREFETCH / RAG_HYBRID_FUSION_LIMIT (default 20 each)
@@ -503,10 +494,6 @@ class VectorRetriever(BaseRetriever):
             dk = str(meta.get("doc_kind") or "").strip()
             it = str(meta.get("info_type") or "").strip()
             matched = dk in allowed_kinds or it in allowed_kinds
-            if not matched and "bq_table_description" in allowed_kinds:
-                matched = dk == "bq_table_description" or str(meta.get("type") or "").strip().lower().startswith(
-                    "bq "
-                )
             if not matched:
                 return False
 
@@ -689,7 +676,7 @@ class VectorRetriever(BaseRetriever):
         Each item: { "content", "score", "metadata", "source": "vector" }.
 
         Kwargs:
-          vector_search_mode: legacy | dual | sentence_named | research_dual | ota_triple | bq_triple
+          vector_search_mode: legacy | dual | sentence_named | research_dual | ota_triple
           doc_kind / doc_kinds / geo_country / published_at_from / published_at_to / domains_substring
         """
         doc_kind = kwargs.get("doc_kind")
@@ -849,16 +836,10 @@ class VectorRetriever(BaseRetriever):
             vector_names = _OTA_USING.get(using, OTA_VECTORS)
             hits = self._query_named_vectors(query, vector_names, fetch_n, q_filter, top_k=top_k)
 
-        # ----- bq_triple: table / schema / business -------------------------
-        elif vector_search_mode == "bq_triple":
-            using = _env("RAG_QDRANT_BQ_QUERY_USING", "merge").lower()
-            vector_names = _BQ_USING.get(using, BQ_VECTORS)
-            hits = self._query_named_vectors(query, vector_names, fetch_n, q_filter, top_k=top_k)
-
         else:
             raise ValueError(
                 f"Unknown vector_search_mode: {vector_search_mode!r} "
-                "(use legacy, dense_named, dual, sentence_named, research_dual, ota_triple, or bq_triple)"
+                "(use legacy, dense_named, dual, sentence_named, research_dual, or ota_triple)"
             )
 
         items: list[dict[str, Any]] = []

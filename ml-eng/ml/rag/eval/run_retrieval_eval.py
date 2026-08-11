@@ -28,7 +28,6 @@ EVAL_DIR = Path(__file__).resolve().parent / "questions"
 CORPUS_FILES: dict[CorpusKey, str] = {
     "news": "news.yaml",
     "research": "research.yaml",
-    "data_description": "bq_descriptions.yaml",
 }
 
 
@@ -80,13 +79,13 @@ def eval_corpus(*, corpus: CorpusKey, k: int) -> tuple[int, int]:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Retrieval@k eval for RAG corpora.")
-    p.add_argument("--corpus", choices=["news", "research", "data_description", "all"], default="all")
+    p.add_argument("--corpus", choices=["news", "research", "all"], default="all")
     p.add_argument("--k", type=int, default=5)
     args = p.parse_args()
 
     corpora: list[CorpusKey]
     if args.corpus == "all":
-        corpora = ["news", "research", "data_description"]
+        corpora = ["news", "research"]
     else:
         corpora = [args.corpus]  # type: ignore[list-item]
 

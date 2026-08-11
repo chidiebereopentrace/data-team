@@ -2,6 +2,8 @@
 
 This guide is for the **production FastAPI surface** (`ml.rag.app.api`).
 
+**Environment variables:** use the canonical checklist in [PRODUCTION_ENV.md](./PRODUCTION_ENV.md) (six Qdrant collections, staging BQ, OpenRouter 8B, Cohere rerank on Railway).
+
 **Streamlit** is for **internal QA only** (local or Railway second service). Do not expose it as the Ask ADZA user-facing chat. See [DEPLOY_STREAMLIT_RAILWAY.md](./DEPLOY_STREAMLIT_RAILWAY.md) (step-by-step) and [ml/rag/README.md](../ml/rag/README.md) — *Deploy Streamlit on Railway*.
 
 ## 1. Build the production image
@@ -21,9 +23,10 @@ docker run --rm -p 8080:8080 \
   -e QDRANT_URL="https://..." \
   -e QDRANT_API_KEY="..." \
   -e RAG_LLM_BASE_URL="http://host.docker.internal:1234/v1" \
-  -e RAG_LLM_MODEL_ID="meta-llama-3.1-8b-instruct" \
+  -e RAG_LLM_MODEL_ID="meta-llama/llama-3.1-8b-instruct" \
   -e RAG_GENERATE_TEMPERATURE="0.5" \
   -e BQ_PROJECT="opentrace-prod-5ga4" \
+  -e BQ_DATASET_SILVER="staging_dev" \
   -e GOOGLE_APPLICATION_CREDENTIALS="/secrets/opentrace-bq-key.json" \
   -v /path/to/bq-key.json:/secrets/opentrace-bq-key.json:ro \
   opentrace-rag-api:latest

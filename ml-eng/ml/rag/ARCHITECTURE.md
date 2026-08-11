@@ -10,8 +10,8 @@ The RAG stack answers natural-language questions about African agriculture and f
 
 | Source | Technology | Role |
 |--------|------------|------|
-| **Structured tables** | BigQuery (`BQ_DATASET_BRONZE`) | NL-to-SQL → row-level facts (yields, GDP, trade, etc.) |
-| **Unstructured text** | Qdrant Cloud (4 corpora) | News, research/policy reports, BQ table descriptions, OTA insights |
+| **Structured tables** | BigQuery (`BQ_DATASET_SILVER` / `staging_dev`) | Staging YAML reasoner + NL-to-SQL → row-level facts |
+| **Unstructured text** | Qdrant Cloud (six corpora) | News, academic papers, policies, public reports, formation, OTA insights |
 | **Orchestration** | LangGraph in [`chatbot/graph.py`](chatbot/graph.py) | Linear pipeline with one parallel retrieval stage |
 | **Generation** | [`llm_chat.py`](llm_chat.py) | LM Studio (`RAG_LLM_BASE_URL`) or Hugging Face router (`HF_API_TOKEN`) |
 
@@ -40,23 +40,23 @@ flowchart TB
   subgraph graph [LangGraph — chatbot/graph.py]
     D[decompose]
     PR[parallel_retrieve]
+    BQR[bq_reason]
     BQ[bq_retrieve]
     M[merge]
     R[rerank]
     G[generate]
-    D --> PR --> BQ --> M --> R --> G
+    D --> PR --> BQR --> BQ --> M --> R --> G
   end
 
   subgraph par [parallel_retrieve threads]
-    MT[match_bq_tables_from_descriptions]
     VN[VectorRetriever news]
     VA[VectorRetriever research]
   end
 
-  PR --> MT
   PR --> VN
   PR --> VA
 
+  BQR --> YAML[bq_tables_yaml_files + bq_sql_reasoner]
   BQ --> BR[BQRetriever NL-to-SQL + execute]
 
   subgraph external [External services]
@@ -65,11 +65,11 @@ flowchart TB
     LLM[LM Studio or HF router]
   end
 
-  MT --> QD
   VN --> QD
   VA --> QD
   BR --> BQDB
   D --> LLM
+  BQR --> LLM
   BR --> LLM
   G --> LLM
 
@@ -134,7 +134,8 @@ Implemented in [`chatbot/graph.py`](chatbot/graph.py). Entry: `run_rag(query, **
 | Node | Function | Reads state | Writes state |
 |------|----------|-------------|--------------|
 | **decompose** | `decompose_query` | `query` | `decomposition` |
-| **parallel_retrieve** | 3× thread pool | `query`, `decomposition`, overrides | `bq_table_candidates`, `vector_news_results`, `vector_academic_results`, `vector_results` |
+| **parallel_retrieve** | thread pool (vector corpora) | `query`, `decomposition`, overrides | `vector_news_results`, `vector_academic_results`, `vector_results`, … |
+| **bq_reason** | staging YAML SQL reasoner | `query`, `decomposition` | `bq_sql_plan`, `bq_table_candidates` |
 | **bq_retrieve** | `BQRetriever.retrieve` | `query`, `decomposition`, hints | `bq_results`, (SQL in row metadata) |
 | **merge** | concat + labels | BQ + vector lists | `merged_context` |
 | **rerank** | `rerank` | `query`, `merged_context` | `reranked_context` |
@@ -148,7 +149,7 @@ After `bq_retrieve`, the graph aggregates distinct executed SQL strings into **`
 |-------|-------------|
 | `query` | Latest user question |
 | `decomposition` | `intent`, `entities`, `geography`, `domains`, `time_start`, `time_end` |
-| `bq_table_candidates` | One fused hint dict per matched BQ table (from Qdrant) |
+| `bq_table_candidates` | One hint dict per staging table selected by the YAML reasoner (`source: staging_yaml`) |
 | `vector_news_results` | News chunks |
 | `vector_academic_results` | Research corpus chunks |
 | `vector_results` | `news + academic` (convenience) |
@@ -196,15 +197,9 @@ Passed from Streamlit, API, or CLI wrappers: `geo_override`, `time_start_overrid
 
 **Not used for:** academic vector filters today (academic also gets geo/time in `graph._retrieve_academic`).
 
-### 5.2 [`chatbot/bq_table_matcher.py`](chatbot/bq_table_matcher.py)
+### 5.2 Staging YAML reasoner — [`chatbot/bq_sql_reasoner.py`](chatbot/bq_sql_reasoner.py)
 
-1. Vector search on collection `QDRANT_COLLECTION_DATA_DESCRIPTIONS` with `doc_kind=bq_table_description`.
-2. Group hits by `table_name` (from metadata or content).
-3. Fuse top narrative snippets with:
-   - Rich schema from [`chatbot/bq_table_schema_yaml.py`](chatbot/bq_table_schema_yaml.py) (`ml/rag/bq_tables_yaml_files/*.yml`)
-   - Fallback column list from [`chatbot/bronze_dataset_catalog.py`](chatbot/bronze_dataset_catalog.py)
-
-Returns one candidate per table with `content` suitable for `BQRetriever` `table_hints`.
+`node_bq_reason` selects staging tables from the YAML index under [`bq_tables_yaml_files/`](bq_tables_yaml_files/) (loaded via [`chatbot/bq_table_schema_yaml.py`](chatbot/bq_table_schema_yaml.py)). It writes `bq_sql_plan` and `bq_table_candidates` (packed table hints) for `bq_retrieve`. Fail closed if the LLM is unavailable or returns an invalid plan — no Qdrant / no heuristic table inventing.
 
 ---
 
@@ -226,7 +221,6 @@ Returns one candidate per table with `content` suitable for `BQRetriever` `table
 | Mode | Typical collection | Behavior |
 |------|-------------------|----------|
 | `dense_named` | news, research | Single dense vector name |
-| `bq_triple` | BQ_table_descriptions | table / schema / business vectors |
 | `ota_triple` | OTA_insights | insight / metric / recommendation |
 
 **Filters** (payload + post-filter): `doc_kind`, `geo_country_primary`, `published_at` range, optional `domains_substring` (news, opt-in via `RAG_NEWS_DOMAIN_FILTER`).
@@ -320,7 +314,6 @@ Conditional node after rerank (`RAG_WEB_FALLBACK_ENABLED=1`, off by default).
 |------------|------------|----------------------------|------------|---------------|
 | `news` | `news` | `news_data` | `news_article` | `GDRIVE_FOLDER_NEWS_ID` |
 | `research` | `research` | `research_other_papers` | `academic_article`, `policy_document`, `public_report` | `GDRIVE_FOLDER_RESEARCH_PAPERS_ID`, `GDRIVE_FOLDER_OTHER_PAPERS_ID` |
-| `data_descriptions` | `data_description` | `BQ_table_descriptions` | `bq_table_description` | `GDRIVE_FOLDER_DATA_DESCRIPTIONS_ID` |
 | `ota` | `ota` | `OTA_insights` | (OTA-specific) | `GDRIVE_FOLDER_OTA_INSIGHTS_ID` |
 
 Profiles (chunk sizes, embedding model, vector mode) live in [`text_processors/chunking_config.py`](text_processors/chunking_config.py).
@@ -333,7 +326,6 @@ JSONL files under **`ml-eng/data/local/preprocessed_data/`** (see [`paths.py`](p
 |------|--------|
 | `news_chunks.jsonl` | news |
 | `research_chunks.jsonl` | research |
-| `data_descriptions_chunks.jsonl` | BQ descriptions |
 | `ota_insights_chunks.jsonl` | OTA |
 
 **Manifest:** `ingest_manifest.json` tracks `content_hash` per document for incremental skip.
@@ -350,7 +342,7 @@ Each line is one JSON object:
 
 **Common metadata keys:** `document_id`, `chunk_index`, `total_chunks`, `content_hash`, `ingest_version`, `section_path`, `doc_kind`.
 
-**Corpus-specific:** `published_at`, `title`, `country` (news); `table_name` (BQ); `strategy`, bibliographic fields (research).
+**Corpus-specific:** `published_at`, `title`, `country` (news); `strategy`, bibliographic fields (research).
 
 Loaders: [`text_processors/load_pdf_chunks_to_vector_db.py`](text_processors/load_pdf_chunks_to_vector_db.py) and thin wrappers (`*_load_to_vector_db.py`).
 
@@ -371,7 +363,6 @@ From [`chunking_config.py`](text_processors/chunking_config.py) `PROFILES` (over
 | news | `news_data` | `intfloat/multilingual-e5-base` | 384 | `recursive_semantic` | `dense_named` |
 | research | `research_other_papers` | `intfloat/multilingual-e5-small` | 384 | `hierarchical_semantic` | `dense_named` |
 | ota | `OTA_insights` | `intfloat/multilingual-e5-base` | 384 | `lane_semantic` | `ota_triple` |
-| data_description | `BQ_table_descriptions` | `intfloat/multilingual-e5-small` | 384 | `bq_structured` | `bq_triple` |
 
 **Reindex rule:** bump `INGEST_VERSION` in `chunking_config.py` or run loaders with `--reset` after changing chunking or embedding models.
 
@@ -425,8 +416,10 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | Variable | Purpose |
 |----------|---------|
 | `BQ_PROJECT` | GCP project |
-| `BQ_DATASET_BRONZE` | Dataset for NL-to-SQL + validation |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Service account JSON path |
+| `BQ_DATASET_SILVER` | Dataset for RAG NL-to-SQL + validation (default `staging_dev`) |
+| `BQ_DATASET_BRONZE` | Bronze/raw dataset (data-eng tooling; not queried by RAG NL2SQL) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Service account JSON path (local/GCE) |
+| `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | Base64 SA JSON (Railway; decoded at container start) |
 
 ### 12.3 Qdrant
 
@@ -434,9 +427,12 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 |----------|---------|
 | `QDRANT_URL`, `QDRANT_API_KEY` | Cluster access |
 | `QDRANT_COLLECTION_NEWS` | Default `news_data` |
-| `QDRANT_COLLECTION_RESEARCH_PAPERS` | Default `research_other_papers` |
-| `QDRANT_COLLECTION_DATA_DESCRIPTIONS` | Default `BQ_table_descriptions` |
+| `QDRANT_COLLECTION_ACADEMIC_PAPERS` | Default `academic_papers` |
+| `QDRANT_COLLECTION_POLICIES` | Default `policies` |
+| `QDRANT_COLLECTION_PUBLIC_REPORTS` | Default `public_reports` |
+| `QDRANT_COLLECTION_FORMATION` | Default `formation` |
 | `QDRANT_COLLECTION_OTA_INSIGHTS` | Default `OTA_insights` |
+| `QDRANT_COLLECTION_RESEARCH_PAPERS` | Legacy mixed research (optional; `RAG_USE_LEGACY_RESEARCH_COLLECTION=on`) |
 | `RAG_QDRANT_VECTOR_SIZE_*` | Dense dim per corpus (must match index) |
 
 ### 12.4 LLM
@@ -486,8 +482,8 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_BQ_SKIP_LIVE_SCHEMA` | Use hint-only schema text (faster prompts) |
 | `RAG_BQ_ROWS_PER_QUERY` | Rows per executed SQL |
 | `RAG_BQ_HINT_MAX_CHARS` | Truncate each table hint in prompt |
-| `RAG_BRONZE_MODEL_YAML` | Path to bronze catalog YAML |
-| `RAG_BRONZE_MODEL_SOURCE` | dbt source name filter (default `bronze`) |
+| `RAG_BQ_MAX_TABLES` | Max tables the staging YAML reasoner may select |
+| `RAG_BQ_REASONER_MODEL_ID` | Optional dedicated model for `bq_reason` |
 
 ### 12.6 Retrieval / hybrid
 
@@ -536,7 +532,7 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 
 1. Streamlit **pipeline debug** → check **BQ SQL queries** count and SQL text.
 2. Confirm `RAG_LLM_BASE_URL` and model id; NL-to-SQL empty → fallback SQL.
-3. Confirm `BQ_PROJECT`, credentials, `BQ_DATASET_BRONZE`.
+3. Confirm `BQ_PROJECT`, credentials, **`BQ_DATASET_SILVER`** (staging_dev).
 4. Set logging; check `bq_retriever` warnings for “0 queries from N hints”.
 5. Ensure decomposition shows correct `geography` / `time_*` (word-boundary country extraction).
 
@@ -557,7 +553,7 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | New graph node | `chatbot/graph.py` `build_graph()` |
 | Stronger reranker | `chatbot/reranker.py` (cross-encoder) |
 | Reserved BQ slots in context | `graph.node_merge` / `reranker` policy |
-| External session store + shared caches | `ml/rag/session_store.py` (Redis facade with memory fallback); used by `app/api.py`, `chat_turn.py`, `bq_retriever.py`, `bronze_dataset_catalog.py` |
+| External session store + shared caches | `ml/rag/session_store.py` (Redis facade with memory fallback); used by `app/api.py`, `chat_turn.py`, `bq_retriever.py` |
 
 ---
 

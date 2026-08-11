@@ -1,5 +1,8 @@
 table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_production
-description: FAOSTAT crop/livestock production, indices, and value of production.
+description: >
+  FAOSTAT crop/livestock production, indices, and value of production.
+  Rows are country-level facts (not continent aggregates). Use for production
+  rankings and time-bounded country comparisons within Africa-focused OpenTrace data.
 grain: country × product × element × year
 entity_type: faostat
 source:
@@ -17,22 +20,38 @@ semantic_role:
   - faostat
 business_questions_supported:
 - What is production of a crop in a country?
+- Which country had the highest agricultural production in a given year?
 filtering_guidance:
 - Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa' or a region
+- For continental/Africa rankings stay on this table; do not join a geo dimension
+- Filter element to exactly one metric family; never SUM across different elements
+- Default volume questions to element = 'Production' (physical output)
+- Use Yield / Area harvested only when the question asks for productivity or land use
+- Use index / per-capita index only when the question asks for indexed or relative trends
+- Use livestock-specific elements (Stocks, Milk Animals, Laying, Producing Animals/Slaughtered, Yield/Carcass Weight) only for animal products
+- Prefer primary product_name commodities for single-crop/livestock questions; use exact FAOSTAT labels
+- Use aggregate product_name values (Crops, Livestock, Milk Total, Meat totals, etc.) only when the question asks for totals
+- Match (indigenous) meat labels only when indigenous/local production is implied; otherwise prefer non-indigenous fresh labels
+- Never SUM primary commodities together with Total/aggregate product rows in the same query
+- Filter year (or planting/harvest year equivalents) for time-bounded questions
 sql_generation_hints:
 - Filter country_name and year
-- Filter element for the metric needed
+- Always filter element = '<exact label>' for the metric needed
+- Filter product_name = '<exact FAOSTAT label>' when a commodity is named; use LIKE only for known aliases
 - GROUP BY country_name, product_name, year when comparing
+- "Continental production ranking: element='Production'; SUM(value) GROUP BY country_name ORDER BY total DESC; single-table only; no dim_geography or country-list subquery"
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: area_code
   type: STRING
-  description: area code
+  description: FAO area code
 - name: area_code_m49
   type: STRING
-  description: area code m49
+  description: UN M49 area code for the country row (not a continent filter key)
 - name: country_name
   type: STRING
-  description: country name
+  description: Country name only (e.g. Nigeria, Kenya). Never 'Africa' or a region label.
 - name: item_code
   type: STRING
   description: item code
@@ -41,28 +60,202 @@ columns:
   description: item code cpc
 - name: product_name
   type: STRING
-  description: product name
+  description: >
+    FAOSTAT commodity / item label. Filter with an exact product_name when the
+    question names a crop, animal, or product. Prefer primary commodities over
+    sector totals. Never invent labels. Do not SUM primary rows with aggregate
+    (Total / Crops / Livestock) rows together.
+
+    Family rules:
+    Primary crops — single-commodity production/yield/area questions.
+    Live animals — pair with Stocks / Laying / Milk Animals / Producing Animals;
+    not meat tonnes.
+    Animal products — pair with Production (or Yield/Carcass Weight); distinguish
+    fresh vs (indigenous).
+    Oils / processed — oil ≠ oilseed; packed tea label ≠ Tea leaves.
+    Aggregates — Crops, Livestock, Non Food, Milk Total, meat totals, Cheese
+    (All Kinds), Treenuts Total: use only when the question asks for totals.
+
+    Wheat — cereal grain; primary crop production/yield.
+    Pumpkins, squash and gourds — cucurbit vegetables as a group.
+    Mushrooms and truffles — fungi production (not field cereals).
+    Bananas — banana fruit production.
+    Dates — date palm fruit.
+    Pomelos and grapefruits — citrus subgroup.
+    Cherries — stone fruit.
+    Almonds, in shell — treenut primary item (not Treenuts, Total).
+    Cotton seed — oilseed/fiber by-product seed; not lint cotton unless asked.
+    Lentils, dry — pulse; dry lentils.
+    Sugar beet — sugar crop root.
+    Goats — live animals; use Stocks/etc., not meat labels.
+    Geese — live waterfowl.
+    Ducks — live ducks.
+    Raw milk of cattle — cattle milk output (not Milk, Total).
+    Hen eggs in shell, fresh — hen egg production quantity.
+    Meat of pig with the bone, fresh or chilled — pig meat (non-indigenous).
+    Meat of pig with the bone, fresh or chilled (indigenous) — indigenous pig meat only.
+    Meat of sheep, fresh or chilled (indigenous) — indigenous sheep meat only.
+    Meat of camels, fresh or chilled — camel meat.
+    Meat of chickens, fresh or chilled — chicken meat (non-indigenous).
+    Meat of chickens, fresh or chilled (indigenous) — indigenous chicken meat only.
+    Meat of turkeys, fresh or chilled — turkey meat.
+    Edible offals of camels and other camelids, fresh, chilled or frozen — camelid offal.
+    Sheep fat, unrendered — sheep fat (not meat carcass).
+    Sunflower-seed oil, crude — crude sunflower oil (not sunflower seed).
+    Safflower-seed oil, crude — crude safflower oil (not seed).
+    Green tea (not fermented), black tea (fermented) and partly fermented tea, in immediate packings of a content not exceeding 3 kg — packed tea product; not Tea leaves.
+    Treenuts, Total — aggregate of treenuts; totals only.
+    Cheese (All Kinds) — cheese aggregate; not a single milk product.
+    Meat indigenous, total — all indigenous meat aggregate.
+    Milk, Total — all milk aggregate (≠ Raw milk of cattle).
+    Beef and Buffalo Meat, primary — bovine meat aggregate.
+    Sheep and Goat Meat — small-ruminant meat aggregate.
+    Meat, Poultry — poultry meat aggregate.
+    Poultry Birds — live poultry birds (not Meat, Poultry).
+    Crops — sector total for crops; totals only.
+    Livestock — sector total for livestock; totals only.
+    Non Food — non-food agricultural items aggregate.
+    Millet — cereal millet (primary crop).
+    Sesame seed — oilseed sesame.
+    Cassava, fresh — fresh cassava roots.
+    Sweet potatoes — sweet potato roots.
+    Sisal, raw — raw sisal fibre.
+    Palm oil — palm oil (not oil palm fruit unless asked).
+    Cream, fresh — fresh cream dairy product.
+    Tea leaves — harvested tea leaf; not the packed tea blend label.
+    Other nuts (excluding wild edible nuts and groundnuts), in shell, n.e.c. — residual in-shell nuts.
+    Ginger, raw — raw ginger rhizome.
+    Natural rubber in primary forms — primary natural rubber.
 - name: element_code
   type: STRING
   description: element code
 - name: element
   type: STRING
-  description: element
+  description: >
+    Metric type for the row's value. Filter with an exact element label
+    (one metric per query). Do not mix elements in the same SUM/AVG.
+
+    Production — Physical output quantity of a crop or livestock product
+    (tonnes / heads / units depending on product). Default for "how much was
+    produced", country production rankings, and volume time series.
+    Prefer element = 'Production' for these questions.
+
+    Yield — Output per unit area for crops (typically hg/ha or t/ha). Use for
+    productivity, yield gaps, or "yield of X in country Y" — not for total
+    production volume rankings.
+
+    Area harvested — Land area harvested for a crop. Use for cultivated/
+    harvested area, land dedicated to a crop, or when combining with Production
+    to reason about intensity. Not a production-volume substitute.
+
+    Gross Production Index Number (2014-2016 = 100) — Indexed production vs the
+    2014–2016 base (=100). Use only for relative/indexed production change or
+    comparisons to the base period. Do not treat as tonnes or use in volume
+    rankings.
+
+    Gross per capita Production Index Number (2014-2016 = 100) — Same index
+    family, scaled per person. Use only for per-capita indexed production
+    trends. Do not use for absolute production or yield questions.
+
+    Yield/Carcass Weight — Livestock productivity: yield per animal or average
+    carcass weight. Use for animal-product productivity (meat intensity), not
+    crop Yield and not total Production.
+
+    Stocks — Live animal inventory / herd size on hand. Use for "how many
+    animals" or herd stock questions. Not slaughter counts and not meat output.
+
+    Milk Animals — Number of animals in milk (dairy herd producing milk). Use
+    for dairy herd size / milking animals. Not milk Production tonnes and not
+    total Stocks unless asked.
+
+    Laying — Number of laying animals (e.g. laying hens). Use for egg-layer
+    flock size. Not egg Production quantity unless the question asks for layers.
+
+    Producing Animals/Slaughtered — Animals producing the product or animals
+    slaughtered in the period. Use for slaughter throughput / producing-animal
+    counts. Not Stocks (inventory) and not meat Production tonnes unless asked.
 - name: year
   type: INT64
-  description: year
+  description: Observation year
 - name: unit
   type: STRING
-  description: unit
+  description: >
+    Unit of the value for this element (e.g. tonnes, ha, hg/ha, Index, head).
+    Interpret value together with element + unit; do not compare unlike units.
 - name: value
   type: FLOAT64
-  description: value
+  description: >
+    Numeric measure for the element. SUM across products/years only when
+    element is homogeneous (usually Production). Never SUM across different
+    elements or unlike units.
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+element_value_samples:
+- Production
+- Yield
+- Area harvested
+- Gross Production Index Number (2014-2016 = 100)
+- Gross per capita Production Index Number (2014-2016 = 100)
+- Yield/Carcass Weight
+- Stocks
+- Milk Animals
+- Laying
+- Producing Animals/Slaughtered
+product_value_samples:
+- Wheat
+- Pumpkins, squash and gourds
+- Mushrooms and truffles
+- Bananas
+- Dates
+- Pomelos and grapefruits
+- Cherries
+- Almonds, in shell
+- Cotton seed
+- Lentils, dry
+- Sugar beet
+- Goats
+- Geese
+- Ducks
+- Raw milk of cattle
+- Hen eggs in shell, fresh
+- Meat of pig with the bone, fresh or chilled
+- Meat of pig with the bone, fresh or chilled (indigenous)
+- Meat of sheep, fresh or chilled (indigenous)
+- Meat of camels, fresh or chilled
+- Meat of chickens, fresh or chilled
+- Meat of chickens, fresh or chilled (indigenous)
+- Meat of turkeys, fresh or chilled
+- Edible offals of camels and other camelids, fresh, chilled or frozen
+- Sheep fat, unrendered
+- Sunflower-seed oil, crude
+- Safflower-seed oil, crude
+- Green tea (not fermented), black tea (fermented) and partly fermented tea, in immediate packings of a content not exceeding 3 kg
+- Treenuts, Total
+- Cheese (All Kinds)
+- Meat indigenous, total
+- Milk, Total
+- Beef and Buffalo Meat, primary
+- Sheep and Goat Meat
+- Meat, Poultry
+- Poultry Birds
+- Crops
+- Livestock
+- Non Food
+- Millet
+- Sesame seed
+- Cassava, fresh
+- Sweet potatoes
+- Sisal, raw
+- Palm oil
+- Cream, fresh
+- Tea leaves
+- Other nuts (excluding wild edible nuts and groundnuts), in shell, n.e.c.
+- Ginger, raw
+- Natural rubber in primary forms
 _index_domain: faostat
 _index_tags: *id001
 semantic_relationships:
@@ -97,8 +290,10 @@ semantic_relationships:
     note: Production with price signals
   companions:
   - table: stg_africa_gdp_ppp
-    when: macro context for production trends
+    when: macro context for production trends (only when the question asks for GDP/macro)
     role: enrich_context
   do_not_join:
   - table: stg_vegetation_ndvi
     reason: raster grids; prefer climate/soil companions instead
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims for Africa country lists

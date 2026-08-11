@@ -109,7 +109,7 @@ def _print_pipeline_trace(result: dict[str, Any]) -> None:
     if names:
         parts.append(f"bq_hint_tables=[{', '.join(names)}]")
     else:
-        parts.append("bq_hint_tables=[] (vector bq_table_description empty or no table_name)")
+        parts.append("bq_hint_tables=[] (no table_name on candidates)")
     bq = result.get("bq_results") or []
     if bq and isinstance(bq[0], dict):
         src = str(bq[0].get("rag_sql_source") or "").strip()
@@ -123,11 +123,16 @@ def _print_retrieval_summary(result: dict[str, Any]) -> None:
     n_bq = len(result.get("bq_results") or [])
     n_cat = len(result.get("bq_table_candidates") or [])
     n_news = len(result.get("vector_news_results") or [])
-    n_acad = len(result.get("vector_academic_results") or [])
+    n_acad = len(result.get("vector_academic_papers_results") or [])
+    n_pol = len(result.get("vector_policies_results") or [])
+    n_pub = len(result.get("vector_public_reports_results") or [])
+    n_form = len(result.get("vector_formation_results") or [])
+    n_ota = len(result.get("vector_ota_results") or [])
     n_merge = len(result.get("merged_context") or [])
     line = (
-        f"[rag] retrieval: bq_rows={n_bq} bq_catalog={n_cat} news={n_news} academic={n_acad} "
-        f"merged={n_merge}"
+        f"[rag] retrieval: bq_rows={n_bq} bq_catalog={n_cat} news={n_news} "
+        f"academic={n_acad} policy={n_pol} public_reports={n_pub} formation={n_form} "
+        f"ota={n_ota} merged={n_merge}"
     )
     print(line, file=sys.stderr)
     if n_merge == 0:

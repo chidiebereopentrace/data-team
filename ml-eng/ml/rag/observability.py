@@ -263,7 +263,13 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
     """Retrieval/rerank counts and soft-fail flags for root trace output metadata."""
     route = infer_rag_route(result)
     news_n = len(result.get("vector_news_results") or [])
-    academic_n = len(result.get("vector_academic_results") or [])
+    academic_papers_n = len(result.get("vector_academic_papers_results") or [])
+    policies_n = len(result.get("vector_policies_results") or [])
+    public_reports_n = len(result.get("vector_public_reports_results") or [])
+    formation_n = len(result.get("vector_formation_results") or [])
+    academic_n = len(result.get("vector_academic_results") or []) or (
+        academic_papers_n + policies_n + public_reports_n + formation_n
+    )
     ota_n = len(result.get("vector_ota_results") or [])
     bq_n = len(result.get("bq_results") or [])
     web_n = len(result.get("web_results") or [])
@@ -275,11 +281,17 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
         or result.get("is_out_of_scope_query")
         or result.get("is_language_unknown")
     )
-    empty_retrieval = (not is_shortcut) and (news_n + academic_n + ota_n + bq_n + web_n == 0)
+    empty_retrieval = (not is_shortcut) and (
+        news_n + academic_papers_n + policies_n + public_reports_n + formation_n + ota_n + bq_n + web_n == 0
+    )
     web_status = result.get("web_fallback_status")
     summary: dict[str, Any] = {
         "route": route,
         "vector_news_count": news_n,
+        "vector_academic_papers_count": academic_papers_n,
+        "vector_policies_count": policies_n,
+        "vector_public_reports_count": public_reports_n,
+        "vector_formation_count": formation_n,
         "vector_academic_count": academic_n,
         "vector_ota_count": ota_n,
         "bq_table_candidates_count": len(result.get("bq_table_candidates") or []),

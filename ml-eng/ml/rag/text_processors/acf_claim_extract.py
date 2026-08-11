@@ -330,11 +330,8 @@ def apply_claim_extract_to_meta(
 ) -> dict[str, Any]:
     """
     Stamp claim fields onto metadata. Idempotent if finding+direction already set.
-    Skips ``data_description`` corpus.
     """
     out = dict(meta or {})
-    if corpus == "data_description":
-        return out
 
     # Prefer OTA lane text for extraction when present
     extract_text = text

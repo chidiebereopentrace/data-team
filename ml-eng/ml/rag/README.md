@@ -1,6 +1,6 @@
 # RAG pipeline (graph / agentic)
 
-Modular RAG that queries **BigQuery** and **Qdrant** (news, research, BQ table descriptions, OTA), then merges → reranks → generates an answer. Implemented as a **LangGraph** in [`chatbot/graph.py`](chatbot/graph.py).
+Modular RAG that queries **BigQuery** and **Qdrant** (news, research, OTA), then merges → reranks → generates an answer. Implemented as a **LangGraph** in [`chatbot/graph.py`](chatbot/graph.py).
 
 | Document | Use when |
 |----------|----------|
@@ -15,19 +15,20 @@ Modular RAG that queries **BigQuery** and **Qdrant** (news, research, BQ table d
 ```
 START → decompose ─┬─ identity meta? ──→ generate_meta ──→ END
                    ├─ product query? ──→ generate_product ──→ END
-                   └─ else → parallel_retrieve → bq_retrieve → merge → rerank ─┬─ weak context? → web_fallback → generate → END
-                                                                              └─ else ───────────────────────────────→ generate → END
+                   └─ else → parallel_retrieve → bq_reason → bq_retrieve → merge → rerank ─┬─ weak context? → web_fallback → generate → END
+                                                                                          └─ else ───────────────────────────────→ generate → END
                                          │
                         ┌────────────────┼────────────────┐
                         ▼                ▼                ▼
-                  bq_table_match    news vector    academic vector
+                  news vector     research vector    (other corpora)
 ```
 
 - **decompose**: heuristics + optional LLM → geography, time range, entities, domains; routes identity meta (`who are you`), product KB (`what is the aim of OpenTrace`), or full RAG.
 - **generate_meta** / **generate_product**: short-circuit paths with no retrieval; product answers use [`chatbot/data/opentrace_product.json`](chatbot/data/opentrace_product.json).
-- **parallel_retrieve**: BQ table-description match + news + research Qdrant search (thread pool).
-- **bq_retrieve**: NL-to-SQL (LM Studio or HF) from table hints → execute bronze SELECTs; up to `RAG_BQ_MAX_SQL_QUERIES` queries.
-- **merge / rerank / web_fallback / generate**: fuse context; optional LLM rerank (`RAG_LLM_RERANK=off` recommended locally); when `RAG_WEB_FALLBACK_ENABLED=1` and internal context is weak, fetch Wikipedia (then Tavily if wiki empty) via [`retrievers/web_retriever.py`](retrievers/web_retriever.py); answer via [`llm_chat.py`](llm_chat.py).
+- **parallel_retrieve**: news + research (+ other corpora) Qdrant search (thread pool).
+- **bq_reason**: staging YAML reasoner (`bq_tables_yaml_files` + `node_bq_reason`) selects tables and emits `bq_table_candidates` / `bq_sql_plan` (no Qdrant).
+- **bq_retrieve**: NL-to-SQL (LM Studio or HF) from table hints → execute SELECTs; up to `RAG_BQ_MAX_SQL_QUERIES` queries.
+- **merge / rerank / web_fallback / generate**: fuse context; rerank via `RAG_RERANKER_MODE` (Cohere on Railway, cross-encoder locally); when `RAG_WEB_FALLBACK_ENABLED=1` and internal context is weak, fetch Wikipedia (then Tavily if wiki empty) via [`retrievers/web_retriever.py`](retrievers/web_retriever.py); answer via [`llm_chat.py`](llm_chat.py).
 
 Details: [ARCHITECTURE.md §4](ARCHITECTURE.md#4-runtime-pipeline-run_rag).
 
@@ -115,9 +116,9 @@ See `session_store.py`, `ARCHITECTURE.md`, and the production deploy guide for d
 
 ## Env and config
 
-- **BigQuery**: `BQ_PROJECT` and `BQ_DATASET_BRONZE` (see `data/local/.env`). The BQ retriever loads schema and runs NL-to-SQL **only** against the bronze dataset. Silver/gold env vars remain for dbt and other tooling.
-- **Bronze table hints (YAML + vectors)**: `match_bq_tables_from_descriptions` groups vector hits by `table_name` and fuses each with a compact column catalog from [`chatbot/bronze_dataset_catalog.py`](chatbot/bronze_dataset_catalog.py). Set **`RAG_BRONZE_MODEL_YAML`** to override the default path (`ml/rag/chatbot/bronze_dataset_model.yml`). **`RAG_BRONZE_MODEL_SOURCE`** selects the dbt `sources` entry by name (default **`bronze`**); set it empty to merge every source in that file. If the primary YAML is missing or parses to no tables, the loader falls back to **`dbt/models/sources.yml`** (still honoring `RAG_BRONZE_MODEL_SOURCE`). Live BigQuery introspection remains the source of truth for runnable SQL.
-- **Vector DB**: **Qdrant** (set `QDRANT_URL`, `QDRANT_API_KEY`, and per-collection names such as `QDRANT_COLLECTION_NEWS`, `QDRANT_COLLECTION_RESEARCH_PAPERS`, `QDRANT_COLLECTION_DATA_DESCRIPTIONS`, `QDRANT_COLLECTION_OTA_INSIGHTS`). Populate via [`ingestion/cli`](ingestion/cli.py) rebuild or the `*_preprocessor` / `*_load_to_vector_db` scripts below. Debug payload counts/metadata: `PYTHONPATH=ml-eng python -m ml.rag.inspect_vector_db`.
+- **BigQuery**: `BQ_PROJECT` and **`BQ_DATASET_SILVER=staging_dev`** (see `config/.env.example`). The BQ retriever runs NL-to-SQL against **staging_dev** using per-table YAML in [`bq_tables_yaml_files/`](bq_tables_yaml_files/). `BQ_DATASET_BRONZE` is for data-eng tooling only.
+- **BQ table selection (staging YAML reasoner)**: `node_bq_reason` / [`chatbot/bq_sql_reasoner.py`](chatbot/bq_sql_reasoner.py) picks staging tables from per-table YAML under [`bq_tables_yaml_files/`](bq_tables_yaml_files/) (via [`chatbot/bq_table_schema_yaml.py`](chatbot/bq_table_schema_yaml.py)) and writes `bq_table_candidates` for NL-to-SQL. Live BigQuery introspection remains the source of truth for runnable SQL.
+- **Vector DB**: **Qdrant** — set `QDRANT_URL`, `QDRANT_API_KEY`, and **six** collection names: `QDRANT_COLLECTION_NEWS`, `QDRANT_COLLECTION_ACADEMIC_PAPERS`, `QDRANT_COLLECTION_POLICIES`, `QDRANT_COLLECTION_PUBLIC_REPORTS`, `QDRANT_COLLECTION_FORMATION`, `QDRANT_COLLECTION_OTA_INSIGHTS`. See [deploy/PRODUCTION_ENV.md](../../deploy/PRODUCTION_ENV.md). Populate via [`ingestion/cli`](ingestion/cli.py) rebuild or the `*_preprocessor` / `*_load_to_vector_db` scripts below. Debug payload counts/metadata: `PYTHONPATH=ml-eng python -m ml.rag.inspect_vector_db`.
 - **Embeddings (Qdrant)** — per-corpus profiles in [`text_processors/chunking_config.py`](text_processors/chunking_config.py):
 
 | Corpus | Collection | Model (default) | Dim | Qdrant mode |
@@ -125,12 +126,11 @@ See `session_store.py`, `ARCHITECTURE.md`, and the production deploy guide for d
 | News | `news_data` | `intfloat/multilingual-e5-small` | 384 | `dense_named` (hybrid capable) |
 | Research | `research_other_papers` | `intfloat/multilingual-e5-small` | 384 | `dense_named` (RAM-optimized, hybrid capable) |
 | OTA | `OTA_insights` | `BAAI/bge-small-en-v1.5` | 384 | `ota_triple` |
-| BQ descriptions | `BQ_table_descriptions` | `BAAI/bge-small-en-v1.5` | 384 | `sentence_named` |
 
 | Variable | Meaning |
 |----------|---------|
 | `RAG_EMBEDDINGS_MODE` | `fastembed` (Railway, in-container ONNX) or `local` (dev with torch) |
-| `RAG_EMBEDDING_MODEL_NEWS` / `_RESEARCH` / `_OTA` / `_DATA_DESCRIPTION` | Override per-corpus model ids |
+| `RAG_EMBEDDING_MODEL_NEWS` / `_RESEARCH` / `_OTA` | Override per-corpus model ids |
 | `RAG_CHUNK_TARGET_TOKENS_*` / `RAG_CHUNK_OVERLAP_PCT_*` | Override chunk sizes (see `chunking_config.py`) |
 | `RAG_NEWS_GEO_FALLBACK` | Default **`1`**: retry news search without geo if geo filter returns nothing (disabled for multi-country **compare**) |
 | `RAG_NEWS_TIME_FALLBACK` | Default **`1`**: retry news without date filter if still empty |
@@ -150,7 +150,6 @@ See `session_store.py`, `ARCHITECTURE.md`, and the production deploy guide for d
 | `news_data` | Recursive paragraphs + semantic fallback (`recursive_semantic`) |
 | `research_other_papers` | Section blocks + semantic boundaries (`hierarchical_semantic`) |
 | `OTA_insights` | Semantic within each lane (`lane_semantic`) |
-| `BQ_table_descriptions` | Schema/table blocks, sentence cap only (`schema_only`) |
 
 Semantic splits use the same E5 model as ingest (`profile.embedding_model`). Disable with `RAG_SEMANTIC_CHUNKING=0`. Tune breakpoints with `RAG_SEMANTIC_BREAKPOINT_PERCENTILE` (default `95`).
 
@@ -201,13 +200,11 @@ python -m ml.rag.text_processors.preprocess.cli validate \
 python -m ml.rag.text_processors.research_papers_preprocessor \
   --input-dir ml/rag/data/Text_Documents
 python -m ml.rag.text_processors.news_collection_preprocessor --input-dir data/local/web_news_rss
-python -m ml.rag.text_processors.data_descriptions_preprocessor --input-dir /path/to/docx
 python -m ml.rag.text_processors.ota_insights_preprocessor  # via consolidate_ota_staging import
 
 # Load into Qdrant (separate step)
 python -m ml.rag.text_processors.research_papers_load_to_vector_db --reset
 python -m ml.rag.text_processors.news_load_to_vector_db --reset
-python -m ml.rag.text_processors.data_descriptions_load_to_vector_db --reset
 
 # Run with a question
 PYTHONPATH=ml-eng python -m ml.rag.run "What tables exist in bronze for yields?"
@@ -382,8 +379,8 @@ Root metadata includes corpus counts, `empty_retrieval`, BQ soft-fail flags, `we
 
 3. **Secrets (Space → Settings → Variables and Secrets)**  
    - `BQ_PROJECT` – GCP project ID  
-   - `BQ_DATASET_BRONZE` – BigQuery bronze dataset (RAG queries this dataset only)  
-   - **Qdrant**: `QDRANT_URL`, `QDRANT_API_KEY`, and collection variables as in [Env and config](#env-and-config)  
+   - **`BQ_DATASET_SILVER=staging_dev`** – dataset RAG NL-to-SQL queries (staging YAML tables)  
+   - **Qdrant**: `QDRANT_URL`, `QDRANT_API_KEY`, and six `QDRANT_COLLECTION_*` vars (see [deploy/PRODUCTION_ENV.md](../../deploy/PRODUCTION_ENV.md))  
    - For BigQuery auth: either attach a **GCP service account key** (e.g. paste JSON as a secret and set `GOOGLE_APPLICATION_CREDENTIALS` to a path you write it to at startup) or use Workload Identity if running on GCP.  
    - `HF_API_TOKEN` (and optional embedding / LLM model ids) as needed.
    - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (optional tracing)
@@ -397,21 +394,24 @@ Root metadata includes corpus counts, `empty_retrieval`, BQ soft-fail flags, `we
 ### Deploy to Railway
 
 1. **Service root directory:** `ml-eng/` (uses `Dockerfile.railway` + `railway.toml`).
-2. **Redeploy with build cache cleared** after dependency changes (e.g. `fastembed`).
-3. **Required variables** (Railway dashboard):
+2. **Redeploy with build cache cleared** after dependency or YAML/graph changes.
+3. **Required variables** — full checklist: [deploy/PRODUCTION_ENV.md](../../deploy/PRODUCTION_ENV.md). Minimum:
 
 | Variable | Value |
 |----------|--------|
 | `RAG_LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
 | `RAG_LLM_API_KEY` | Your OpenRouter API key |
-| `RAG_LLM_MODEL_ID` | `openrouter/owl-alpha` |
-| `RAG_EMBEDDINGS_MODE` | `fastembed` (recommended on Railway) |
+| `RAG_LLM_MODEL_ID` | `meta-llama/llama-3.1-8b-instruct` |
+| `RAG_SUMMARY_MODEL_ID` | `meta-llama/llama-3.1-8b-instruct` |
+| `RAG_EMBEDDINGS_MODE` | `fastembed` (baked in image) |
 | `QDRANT_URL` / `QDRANT_API_KEY` | Qdrant Cloud |
-| `BQ_PROJECT` / `BQ_DATASET_BRONZE` | BigQuery bronze |
+| Six `QDRANT_COLLECTION_*` | news, academic, policies, public_reports, formation, OTA |
+| `BQ_PROJECT` / `BQ_DATASET_SILVER` | e.g. `opentrace-prod-5ga4` / `staging_dev` |
 | `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | Base64 of GCP service account JSON |
+| `COHERE_API_KEY` / `RAG_RERANKER_MODE=cohere` | Rerank on Railway (no torch in slim image) |
 
-4. **Recommended:** `RAG_LLM_RERANK=off`, `RAG_LLM_TIMEOUT_S=300`, `RAG_EMBEDDINGS_MODE=fastembed` (or `local` — auto-falls back to fastembed without torch).
-5. **Do not set** `RAG_LLM_BASE_URL` to a LAN IP. Remove stale `GOOGLE_APPLICATION_CREDENTIALS=config/keys/...`.
+4. **Recommended:** `RAG_LLM_TIMEOUT_S=300`, `RAG_BQ_SKIP_LIVE_SCHEMA=on`, BQ hint byte budgets from [`.env.example`](../config/.env.example).
+5. **Do not set** `RAG_LLM_BASE_URL` to a LAN IP, `QDRANT_COLLECTION_DATA_DESCRIPTIONS`, or `GOOGLE_APPLICATION_CREDENTIALS=config/keys/...`.
 6. **Optional:** `OPENROUTER_HTTP_REFERER=https://opentrace.africa`, `OPENROUTER_APP_TITLE=Ask ADZA`.
 7. **Observability (optional):**
 
@@ -439,7 +439,7 @@ PYTHONPATH=ml-eng uvicorn ml.rag.api:app --host 0.0.0.0 --port 7860
 
 Prerequisites:
 
-- **`data/local/.env` must exist** (Compose `env_file`); create it with your secrets — e.g. `BQ_PROJECT`, `BQ_DATASET_BRONZE`, `HF_API_TOKEN`, **`QDRANT_URL`**, **`QDRANT_API_KEY`**, and optional `QDRANT_COLLECTION_*` / `RAG_*` vars. If the file is missing, `docker compose` fails when starting RAG services.
+- **`data/local/.env` must exist** (Compose `env_file`); create it with your secrets — e.g. `BQ_PROJECT`, **`BQ_DATASET_SILVER`**, `HF_API_TOKEN`, **`QDRANT_URL`**, **`QDRANT_API_KEY`**, six `QDRANT_COLLECTION_*`, and optional `RAG_*` vars. If the file is missing, `docker compose` fails when starting RAG services.
 - **GCP key** mounted read-only into the container (default host path **`data/local/keys/opentrace-bq-key.json`**). Override with env **`GCP_SA_KEY_HOST_PATH`** before `docker compose` if your key lives elsewhere.
 - **Qdrant**: vectors live in Qdrant (cloud or self-hosted), not in a bind-mounted `vector_db` directory. Populate collections using [Run](#run) (ingestion CLI or loaders) before expecting non-empty retrieval.
 - **Optional port overrides (shell env, not inside `.env` required):** `RAG_API_PORT` (default 7860), `RAG_STREAMLIT_PORT` (default 8501), `GCP_SA_KEY_HOST_PATH`.

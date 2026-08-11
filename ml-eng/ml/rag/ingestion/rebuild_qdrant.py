@@ -49,17 +49,6 @@ def _run_preprocessor(kind: str, staging_dir: Path, out_jsonl: Path) -> None:
         )
         return
 
-    if kind == "data_descriptions":
-        from ml.rag.text_processors.data_descriptions_preprocessor import preprocess_data_descriptions
-
-        preprocess_data_descriptions(
-            input_dir=staging_dir,
-            output_path=out_jsonl,
-            chunk_chars=1000,
-            overlap_chars=120,
-        )
-        return
-
     if kind == "ota":
         from ml.rag.text_processors.ota_insights_preprocessor import consolidate_ota_staging
 
@@ -97,8 +86,6 @@ def _collection_name(settings: IngestionSettings, kind: str) -> str:
         return settings.qdrant_collection_research_papers
     if kind == "news":
         return settings.qdrant_collection_news
-    if kind == "data_descriptions":
-        return settings.qdrant_collection_data_descriptions
     if kind == "ota":
         return settings.qdrant_collection_ota_insights
     raise ValueError(f"Unknown kind: {kind}")
@@ -170,14 +157,6 @@ def rebuild_one(
             allowed_suffixes=spec.allowed_suffixes,
         )
         other_staging = None
-    elif kind == "data_descriptions":
-        staging_dir, sync_stats = _sync_folder(
-            service=service,
-            folder_id=settings.gdrive_folder_data_descriptions_id,
-            cache_root=staging_root,
-            allowed_suffixes=spec.allowed_suffixes,
-        )
-        other_staging = None
     elif kind == "ota":
         staging_dir, sync_stats = _sync_folder(
             service=service,
@@ -218,15 +197,6 @@ def rebuild_one(
         from ml.rag.text_processors.news_load_to_vector_db import load_news_to_qdrant
 
         upserted = load_news_to_qdrant(
-            input_path=chunk_jsonl,
-            collection=collection,
-            reset=reset,
-            batch_size=batch_size,
-        )
-    elif kind == "data_descriptions":
-        from ml.rag.text_processors.data_descriptions_load_to_vector_db import load_data_descriptions_to_qdrant
-
-        upserted = load_data_descriptions_to_qdrant(
             input_path=chunk_jsonl,
             collection=collection,
             reset=reset,

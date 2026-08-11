@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 from pathlib import Path
 from typing import Any, Final, TypedDict
 
@@ -128,8 +127,8 @@ def _normalize_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     Add a small consistent metadata spine across sources without changing preprocessors.
 
     Adds:
-      - doc_kind: news_article | academic_article | bq_table_description | other
-      - label: optional human label (e.g. original BQ 'type')
+      - doc_kind: news_article | academic_article | other
+      - label: optional human label
       - geo_scope: country | multi_country | regional | global | unknown
       - geo_countries: '; '-separated country list (string)
       - geo_country_primary: first country in geo_countries (string)
@@ -142,21 +141,13 @@ def _normalize_metadata(meta: dict[str, Any]) -> dict[str, Any]:
         doc_kind = m["doc_kind"].strip()
     else:
         info_type = m.get("info_type")
-        bq_type = m.get("type")
         if isinstance(info_type, str) and info_type.strip():
             doc_kind = info_type.strip()
-        elif isinstance(bq_type, str) and bq_type.strip().lower().startswith("bq "):
-            doc_kind = "bq_table_description"
-            # Keep the original BQ description label in a non-ambiguous key.
-            m.setdefault("label", bq_type.strip())
         else:
             doc_kind = "other"
     m["doc_kind"] = doc_kind
 
-    # For BQ descriptions, also add a stable source_kind if not present.
-    if doc_kind == "bq_table_description":
-        m.setdefault("source_kind", "bq_table_description_docx")
-    elif doc_kind == "news_article":
+    if doc_kind == "news_article":
         m.setdefault("source_kind", "web_news_rss_txt")
     elif doc_kind == "academic_article":
         m.setdefault("source_kind", "pdf_text_document")
@@ -247,13 +238,6 @@ PAYLOAD_OTA: Final[frozenset[str]] = frozenset({
     "doc_kind", "geo_country_primary", "geo_countries", "geo_scope", "domains",
     "chunk_index", "total_chunks", "document_id", "content_hash",
     "ingest_version", "ota_record_id",
-}) | _PAYLOAD_ACF
-
-PAYLOAD_BQ_DESCRIPTIONS: Final[frozenset[str]] = frozenset({
-    "content", "doc_kind", "table_name", "bq_table_id", "label",
-    "chunk_index", "total_chunks", "document_id", "content_hash",
-    "section_path", "ingest_version", "type", "source_kind",
-    "hierarchy_path", "semantic_lane", "content_type",
 }) | _PAYLOAD_ACF
 
 
@@ -521,8 +505,6 @@ def upsert_jsonl_to_qdrant_for_collection(
         return upsert_jsonl_to_qdrant_sentence_named_profile(**common)
     if mode == "research_dual":
         return upsert_jsonl_to_qdrant_research_dual_profile(**common)
-    if mode == "bq_triple":
-        return upsert_jsonl_to_qdrant_bq_triple_profile(**common)
     if mode == "ota_triple":
         return upsert_jsonl_to_qdrant_ota_triple(
             input_path=input_path,
@@ -575,39 +557,6 @@ def _research_lane_texts(doc: str, meta: dict[str, Any]) -> tuple[str, str]:
         lead = doc[:700].strip()
         abstract = f"{section}\n\n{lead}".strip() if section else lead
     return abstract, doc
-
-
-def _bq_lane_texts(doc: str, meta: dict[str, Any]) -> tuple[str, str, str]:
-    table_name = str(meta.get("table_name") or "").strip()
-    bq_table_id = str(meta.get("bq_table_id") or table_name).strip()
-    header = f"Table: {table_name}"
-    if bq_table_id and bq_table_id != table_name:
-        header = f"{header}\nBQ table: {bq_table_id}"
-
-    lines = doc.splitlines()
-    schema_lines: list[str] = []
-    business_lines: list[str] = []
-    for ln in lines:
-        stripped = ln.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("|") and stripped.count("|") >= 2:
-            schema_lines.append(ln)
-        elif re.match(r"^Column Name", stripped, re.I):
-            schema_lines.append(ln)
-        elif " | " in stripped and re.search(r"\b(Description|Data Type|Example Value)\b", stripped, re.I):
-            schema_lines.append(ln)
-        else:
-            business_lines.append(ln)
-
-    schema = "\n".join(schema_lines).strip()
-    business = "\n".join(business_lines).strip()
-    if not schema:
-        schema = doc
-    if not business:
-        business = doc
-    table_doc = f"{header}\n\n{business}".strip()
-    return table_doc, schema, business
 
 
 def upsert_jsonl_to_qdrant_profile(
@@ -708,7 +657,7 @@ def upsert_jsonl_to_qdrant_sentence_named_profile(
     allowed_payload_keys: frozenset[str] | None,
     model_id: str,
     vector_dim: int,
-    corpus: str = "data_description",
+    corpus: str,
 ) -> int:
     return _upsert_single_named_vector_profile(
         input_path=input_path,
@@ -806,61 +755,6 @@ def upsert_jsonl_to_qdrant_research_dual_profile(
                 j,
             )
             points.append(PointStruct(id=pid, vector=point_vectors, payload=payload))
-        if points:
-            client.upsert(collection_name=collection, points=points)
-            total += len(points)
-    return total
-
-
-def upsert_jsonl_to_qdrant_bq_triple_profile(
-    *,
-    input_path: Path,
-    collection: str,
-    reset: bool,
-    batch_size: int,
-    allowed_payload_keys: frozenset[str] | None,
-    model_id: str,
-    vector_dim: int,
-    corpus: str,
-) -> int:
-    if not input_path.exists():
-        raise FileNotFoundError(str(input_path))
-    ids, docs, metadatas = load_jsonl_chunks(input_path)
-    if not docs:
-        return 0
-    from ml.rag.retrievers.vector_retriever import _embed_texts_for_indexing, make_qdrant_client
-    from qdrant_client.http.models import PointStruct
-
-    client = make_qdrant_client()
-    _ensure_collection_from_spec(client=client, collection=collection, corpus=corpus, reset=reset)
-    _ = vector_dim
-
-    total = 0
-    for i in range(0, len(docs), batch_size):
-        b_ids = ids[i : i + batch_size]
-        b_docs = docs[i : i + batch_size]
-        b_meta = metadatas[i : i + batch_size]
-        lanes = [_bq_lane_texts(d, m) for d, m in zip(b_docs, b_meta)]
-        table_docs = [t[0] for t in lanes]
-        schema_docs = [t[1] for t in lanes]
-        business_docs = [t[2] for t in lanes]
-        v_table = _embed_texts_for_indexing(table_docs, model_id=model_id, mode=_embed_mode(), is_query=False)
-        v_schema = _embed_texts_for_indexing(schema_docs, model_id=model_id, mode=_embed_mode(), is_query=False)
-        v_business = _embed_texts_for_indexing(business_docs, model_id=model_id, mode=_embed_mode(), is_query=False)
-        points = []
-        for pid, doc, meta, vt, vs, vb in zip(b_ids, b_docs, b_meta, v_table, v_schema, v_business):
-            payload = _filter_payload(meta, doc, allowed_payload_keys)
-            points.append(
-                PointStruct(
-                    id=pid,
-                    vector={
-                        "table_vector": vt,
-                        "schema_vector": vs,
-                        "business_vector": vb,
-                    },
-                    payload=payload,
-                )
-            )
         if points:
             client.upsert(collection_name=collection, points=points)
             total += len(points)

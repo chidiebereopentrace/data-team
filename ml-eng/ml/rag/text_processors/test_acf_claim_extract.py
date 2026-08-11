@@ -135,13 +135,6 @@ def test_apply_idempotent() -> None:
     assert out["direction"] == "increasing"
 
 
-def test_skip_data_description() -> None:
-    out = apply_claim_extract_to_meta(
-        {}, "Yields declined 12% YoY.", corpus="data_description", force_llm=False
-    )
-    assert "direction" not in out
-
-
 def test_ota_prefers_metric_text_lane() -> None:
     meta = {
         "metric_text": "Maize price fell 9% YoY in Nakuru.",

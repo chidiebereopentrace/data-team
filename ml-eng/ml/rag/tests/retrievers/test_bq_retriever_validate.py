@@ -11,18 +11,74 @@ from ml.rag.retrievers.bq_retriever import BQRetriever
 def test_prepare_sql_rejects_unselected_table() -> None:
     retriever = BQRetriever(project_id="proj", nl2sql_enabled=False)
     sql = "SELECT country_name FROM `proj.staging_dev.stg_africa_gdp_ppp` LIMIT 5"
-    validated, err = retriever._prepare_sql(
-        sql,
-        question="highest production in Africa",
-        table_hints=["hint"],
-        selected_tables={"stg_faostat_production"},
-        allowed_datasets={"staging_dev"},
-        limit=5,
-        client=MagicMock(),
-    )
+    with patch("ml.rag.retrievers.bq_retriever.sql_retry_enabled", return_value=False):
+        validated, err = retriever._prepare_sql(
+            sql,
+            question="highest production in Africa",
+            table_hints=["hint"],
+            selected_tables={"stg_faostat_production"},
+            allowed_datasets={"staging_dev"},
+            limit=5,
+            client=MagicMock(),
+        )
     assert validated is None
     assert err is not None
     assert "stg_africa_gdp_ppp" in err
+
+
+def test_prepare_sql_rejects_dim_geography() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=False)
+    sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2020 AND area_code_m49 IN ("
+        "SELECT country_code FROM `proj.staging_dev.dim_geography` "
+        "WHERE country_name = 'Africa') "
+        "GROUP BY country_name ORDER BY total DESC LIMIT 5"
+    )
+    with patch("ml.rag.retrievers.bq_retriever.sql_retry_enabled", return_value=False):
+        validated, err = retriever._prepare_sql(
+            sql,
+            question="highest production in Africa 2020",
+            table_hints=["hint"],
+            selected_tables={"stg_faostat_production"},
+            allowed_datasets={"staging_dev"},
+            limit=5,
+            client=MagicMock(),
+        )
+    assert validated is None
+    assert err is not None
+    assert "dim_geography" in err
+
+
+def test_prepare_sql_allowlist_triggers_retry() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=False)
+    bad_sql = (
+        "SELECT country_name FROM `proj.staging_dev.stg_faostat_production` "
+        "JOIN `proj.staging_dev.dim_geography` d USING (area_code_m49) LIMIT 5"
+    )
+    good_sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2020 GROUP BY country_name ORDER BY total DESC LIMIT 5"
+    )
+    with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
+        with patch("ml.rag.retrievers.bq_retriever.sql_retry_enabled", return_value=True):
+            with patch.object(retriever, "_nl_to_sql_one", return_value=good_sql) as retry_fn:
+                validated, err = retriever._prepare_sql(
+                    bad_sql,
+                    question="highest production Africa 2020",
+                    table_hints=["hint"],
+                    selected_tables={"stg_faostat_production"},
+                    allowed_datasets={"staging_dev"},
+                    limit=5,
+                    client=MagicMock(),
+                )
+    assert validated is not None
+    assert "dim_geography" not in validated
+    assert err is None
+    retry_fn.assert_called_once()
+    assert "dim_geography" in str(retry_fn.call_args)
 
 
 def test_prepare_sql_dry_run_retry() -> None:
@@ -66,17 +122,78 @@ def test_retrieve_no_project_returns_diagnostic() -> None:
 
 def test_retrieve_no_valid_sql_returns_diagnostic() -> None:
     retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    retriever._last_nl2sql_raws = ["Here is an explanation without SELECT"]
     with patch.object(retriever, "_nl_to_sql_queries", return_value=[]):
         with patch.object(retriever, "_get_client", return_value=MagicMock()):
-            items = retriever.retrieve(
-                "highest production",
-                table_hints=["Table: staging_dev.stg_faostat_production"],
-                selected_tables=["stg_faostat_production"],
-            )
+            with patch(
+                "ml.rag.retrievers.bq_retriever.try_sql_template",
+                return_value=None,
+            ):
+                items = retriever.retrieve(
+                    "highest production",
+                    table_hints=["Table: staging_dev.stg_faostat_production"],
+                    selected_tables=["stg_faostat_production"],
+                )
     assert len(items) == 1
     meta = items[0]["metadata"]
     assert meta["status"] == "no_valid_sql"
     assert "0 SELECT" in meta["prep_error"]
+    assert "explanation" in (meta.get("nl2sql_raw") or "")
+
+
+def test_retrieve_template_fallback_when_nl2sql_empty() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    client = MagicMock()
+    client.query.return_value.result.return_value = [
+        {"country_name": "Nigeria", "total": 100.0}
+    ]
+
+    with patch.object(retriever, "_nl_to_sql_queries", return_value=[]):
+        with patch.object(retriever, "_get_client", return_value=client):
+            with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
+                items = retriever.retrieve(
+                    "which country in africa had the highest agricultural production in 2020",
+                    selected_tables=["stg_faostat_production"],
+                    time_start="2020-01-01",
+                    time_end="2020-12-31",
+                )
+    assert any(
+        (it.get("metadata") or {}).get("sql_source") == "template"
+        or (it.get("metadata") or {}).get("template") == "faostat_country_rank"
+        or "Nigeria" in str(it.get("content"))
+        for it in items
+    )
+    assert any(
+        "stg_faostat_production" in str((it.get("metadata") or {}).get("sql") or "")
+        for it in items
+    )
+
+
+def test_retrieve_prefers_valid_nl2sql_over_template() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    good_sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2020 GROUP BY country_name ORDER BY total DESC LIMIT 10"
+    )
+    client = MagicMock()
+    client.query.return_value.result.return_value = [
+        {"country_name": "Kenya", "total": 50.0}
+    ]
+    with patch.object(retriever, "_nl_to_sql_queries", return_value=[good_sql]):
+        with patch.object(retriever, "_get_client", return_value=client):
+            with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
+                with patch(
+                    "ml.rag.retrievers.bq_retriever.try_sql_template"
+                ) as tmpl:
+                    items = retriever.retrieve(
+                        "highest agricultural production in Africa 2020",
+                        selected_tables=["stg_faostat_production"],
+                        time_start="2020-01-01",
+                    )
+    tmpl.assert_not_called()
+    assert any("Kenya" in str(it.get("content")) for it in items)
+    assert any((it.get("metadata") or {}).get("sql_source") == "nl2sql" for it in items)
 
 
 def test_aggregate_bq_sql_debug_includes_failures() -> None:

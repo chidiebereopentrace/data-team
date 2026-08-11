@@ -14,6 +14,7 @@ from typing import Any
 
 from ml.rag.chatbot.acf_metadata import project_bq_row_acf
 from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, truncate_utf8
+from ml.rag.chatbot.bq_sql_templates import try_sql_template
 from ml.rag.chatbot.bq_sql_validate import (
     dry_run_sql,
     sql_retry_enabled,
@@ -121,9 +122,10 @@ def _continental_scope_hint(
         return None
     return (
         "- CONTINENTAL/REGIONAL scope (Africa or subregion): rank or aggregate across "
-        "African countries using country_name (or equivalent) on the fact table; "
-        "do NOT filter country_name = 'Africa'; do NOT join GDP/HDI tables for a "
-        "country list unless that table is in the selected table set"
+        "African countries using country_name (or equivalent) on the fact table only; "
+        "do NOT filter country_name = 'Africa'; do NOT invent dim_geography / dim_* "
+        "or any country-list subquery; do NOT join GDP/HDI tables for a country list "
+        "unless that table is in the selected table set"
     )
 
 
@@ -250,6 +252,7 @@ def _bq_diagnostic_item(
     message: str,
     sql: str = "",
     prep_error: str | None = None,
+    nl2sql_raw: str | None = None,
 ) -> dict[str, Any]:
     """Inspector-visible BQ failure row (filtered out of generation context)."""
     meta: dict[str, Any] = {
@@ -259,6 +262,8 @@ def _bq_diagnostic_item(
     }
     if prep_error:
         meta["prep_error"] = prep_error[:500]
+    if nl2sql_raw:
+        meta["nl2sql_raw"] = nl2sql_raw[:500]
     return {
         "content": f"[BQ {status}: {message[:200]}]",
         "source": "bigquery",
@@ -290,6 +295,19 @@ class BQRetriever(BaseRetriever):
         else:
             self.nl2sql_enabled = os.environ.get("RAG_BQ_NL2SQL_ENABLED", "1").strip().lower() in ("1", "true", "on")
         self._client = None
+        self._last_nl2sql_raws: list[str] = []
+
+    def _record_nl2sql_raw(self, raw: str | None, *, parsed_ok: bool) -> None:
+        """Keep short snippets of failed/empty NL2SQL generations for inspector debug."""
+        if parsed_ok:
+            return
+        text = (raw or "").strip()
+        note = text[:500] if text else "(empty LLM response)"
+        if note not in self._last_nl2sql_raws:
+            self._last_nl2sql_raws.append(note)
+        # Cap memory for parallel multi-hint runs.
+        if len(self._last_nl2sql_raws) > 5:
+            self._last_nl2sql_raws = self._last_nl2sql_raws[-5:]
 
     def _get_client(self):
         if self._client is None:
@@ -434,9 +452,13 @@ class BQRetriever(BaseRetriever):
         tables_rule = (
             f"Tables you may use (exactly these stg_* tables): {', '.join(allowed_tables)}. "
             "JOINs are allowed ONLY between these tables using on= keys from semantic_relationships "
-            "in the hints. Never reference a stg_* table outside this list."
+            "in the hints. Never reference a stg_* table outside this list. "
+            "Never invent dim_*, dim_geography, or any table not in this list."
             if allowed_tables
-            else "Use ONLY stg_* tables and columns from the Schema / table hints."
+            else (
+                "Use ONLY stg_* tables and columns from the Schema / table hints. "
+                "Never invent dim_* or other warehouse dimension tables."
+            )
         )
         system = (
             f"You are a BigQuery expert for OpenTrace agricultural data in the `{ds}` dataset only. "
@@ -447,8 +469,10 @@ class BQRetriever(BaseRetriever):
             "(e.g. use country_name, not country). "
             "3) When Query constraints are present, REQUIRED country and time filters MUST appear. "
             "4) For FAOSTAT production rankings: filter element and year, then "
-            "SUM(value) GROUP BY country_name ORDER BY total DESC — not MAX per product row. "
+            "SUM(value) GROUP BY country_name ORDER BY total DESC — not MAX per product row; "
+            "for Africa/continental questions stay on the fact table (no geo-dim subquery). "
             "5) Prefer GROUP BY / ORDER BY over bare SELECT * LIMIT. "
+            "6) country_name values are countries only — never filter country_name = 'Africa'. "
             f"{output_rule}"
         )
         constraints_section = f"\n\n{constraints_block}\n" if constraints_block else ""
@@ -495,6 +519,7 @@ class BQRetriever(BaseRetriever):
         )
         raw = _call_llama_for_sql(messages)
         sql = _extract_single_select(raw)
+        self._record_nl2sql_raw(raw, parsed_ok=bool(sql))
         if not sql and raw:
             logger.warning("NL-to-SQL: LLM returned non-SELECT text (first 200 chars): %s", raw[:200])
         return sql
@@ -526,18 +551,27 @@ class BQRetriever(BaseRetriever):
         if validated is None:
             return None, "validation_failed"
 
-        allow_err = validate_sql_table_allowlist(validated, selected_tables)
-        if allow_err:
-            return None, allow_err
+        def _post_checks(sql: str) -> str | None:
+            allow_err = validate_sql_table_allowlist(sql, selected_tables)
+            if allow_err:
+                return allow_err
+            dry_err = dry_run_sql(client, sql)
+            if dry_err:
+                return f"dry_run_failed: {dry_err[:300]}"
+            return None
 
-        dry_err = dry_run_sql(client, validated)
-        if dry_err and sql_retry_enabled():
+        check_err = _post_checks(validated)
+        if check_err and sql_retry_enabled():
+            allowed_list = ", ".join(sorted(selected_tables)) or "(none)"
             retry_question = (
                 f"{question}\n\n"
-                f"Previous SQL failed BigQuery dry-run:\n{dry_err}\n\n"
+                f"Previous SQL failed validation:\n{check_err}\n\n"
                 "Fix the SQL. Use ONLY columns from the Columns blocks in the table hints. "
+                f"Use ONLY these tables: {allowed_list}. "
+                "Never invent dim_geography, dim_*, or any table outside that list. "
                 "JOIN only tables in the selected set using documented on= keys. "
-                "Do not reference stg_* tables outside the selected set."
+                "For Africa/continental rankings stay on the fact table "
+                "(no country-list subquery; never filter country_name = 'Africa')."
             )
             retry_sql = self._nl_to_sql_one(
                 retry_question,
@@ -552,15 +586,13 @@ class BQRetriever(BaseRetriever):
                 query=query,
             )
             if retry_sql:
-                validated = _validate_sql(retry_sql, allowed_datasets, limit)
-                if validated is None:
-                    return None, f"retry_validation_failed: {dry_err[:200]}"
-                allow_err = validate_sql_table_allowlist(validated, selected_tables)
-                if allow_err:
-                    return None, allow_err
-                dry_err = dry_run_sql(client, validated)
-        if dry_err:
-            return None, f"dry_run_failed: {dry_err[:300]}"
+                retry_validated = _validate_sql(retry_sql, allowed_datasets, limit)
+                if retry_validated is None:
+                    return None, f"retry_validation_failed: {check_err[:200]}"
+                validated = retry_validated
+                check_err = _post_checks(validated)
+        if check_err:
+            return None, check_err
         return validated, None
 
     def _nl_to_sql_queries(
@@ -589,6 +621,7 @@ class BQRetriever(BaseRetriever):
         default_mode = "batch" if len(cleaned_hints) > 1 else "per_hint"
         mode = os.environ.get("RAG_BQ_NL2SQL_MODE", default_mode).strip().lower()
         nl2sql_t0 = time.perf_counter()
+        self._last_nl2sql_raws = []
 
         with observed_span(
             "retrieval.bq.nl2sql",
@@ -616,7 +649,9 @@ class BQRetriever(BaseRetriever):
                     selected_tables=selected_tables,
                     query=query,
                 )
-                parsed = _parse_sql_queries(_call_llama_for_sql(messages), max_queries)
+                raw_batch = _call_llama_for_sql(messages)
+                parsed = _parse_sql_queries(raw_batch, max_queries)
+                self._record_nl2sql_raw(raw_batch, parsed_ok=bool(parsed))
                 if parsed:
                     queries = parsed
 
@@ -767,10 +802,13 @@ class BQRetriever(BaseRetriever):
 
         sql_input = kwargs.get("sql")
         sql_queries: list[str] = []
+        explicit_sql = False
         if isinstance(sql_input, str) and sql_input.strip():
             sql_queries = [sql_input.strip()]
+            explicit_sql = True
         elif isinstance(sql_input, list):
             sql_queries = [str(s).strip() for s in sql_input if str(s).strip()]
+            explicit_sql = bool(sql_queries)
 
         if not sql_queries and self.nl2sql_enabled:
             sql_queries = self._nl_to_sql_queries(
@@ -786,11 +824,42 @@ class BQRetriever(BaseRetriever):
                 query=query,
             )
 
+        if explicit_sql:
+            sql_source = "explicit"
+        elif sql_queries:
+            sql_source = "nl2sql"
+        else:
+            sql_source = "none"
+        template_meta: dict[str, Any] | None = None
+        ds_name = self.datasets_config.get("staging", "staging_dev")
+        rows_per_query = max(1, int(os.environ.get("RAG_BQ_ROWS_PER_QUERY", "10") or 10))
+
+        def _maybe_template() -> list[str]:
+            nonlocal template_meta, sql_source
+            hit = try_sql_template(
+                query=query,
+                project_id=self.project_id,
+                dataset=ds_name,
+                selected_tables=selected_tables,
+                entities=entities,
+                time_start=time_start,
+                time_end=time_end,
+                limit=rows_per_query,
+            )
+            if not hit:
+                return []
+            template_meta = hit
+            sql_source = "template"
+            return [str(hit["sql"])]
+
+        if not sql_queries:
+            sql_queries = _maybe_template()
+
         if not sql_queries:
             reason = (
                 "NL2SQL disabled and no explicit SQL provided"
                 if not self.nl2sql_enabled
-                else "NL2SQL produced 0 SELECT queries"
+                else "NL2SQL produced 0 SELECT queries (no template match)"
             )
             update_current_span_metadata(
                 {
@@ -799,103 +868,148 @@ class BQRetriever(BaseRetriever):
                     "row_count": 0,
                     "latency_ms": trace_elapsed_ms(t0),
                     "status": "no_valid_sql",
+                    "nl2sql_model": llm_model_id(),
+                    "sql_source": sql_source,
                 }
             )
             return [
                 _bq_diagnostic_item(
                     status="no_valid_sql",
                     message=reason,
-                    prep_error=reason,
+                    prep_error=f"{reason}; model={llm_model_id()}",
+                    nl2sql_raw="; ".join(self._last_nl2sql_raws) if self._last_nl2sql_raws else None,
                 )
             ]
 
         max_queries = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
-        rows_per_query = max(1, int(os.environ.get("RAG_BQ_ROWS_PER_QUERY", "10") or 10))
         allowed = set(self.datasets_config.values())
         budget = top_k or self.max_rows
         items: list[dict[str, Any]] = []
+        any_usable_rows = False
+        prepared_ok = False
 
-        for idx, raw_sql in enumerate(sql_queries[:max_queries]):
-            if budget <= 0:
-                break
-            limit = min(rows_per_query, budget)
-            validated, prep_err = self._prepare_sql(
-                raw_sql,
-                question=query,
-                table_hints=hint_list,
-                selected_tables=selected_tables,
-                allowed_datasets=allowed,
-                limit=limit,
-                client=client,
-                geo_country=geo_country,
-                geo_countries=geo_countries,
-                time_start=time_start,
-                time_end=time_end,
-                entities=entities,
-                domains=domains,
-                query=query,
-            )
-            if validated is None:
-                logger.warning(
-                    "BQ NL2SQL: validation rejected SQL #%d (%s): %s",
-                    idx + 1,
-                    prep_err or "unknown",
-                    (raw_sql or "")[:300],
-                )
-                meta: dict[str, Any] = {
-                    "sql": raw_sql,
-                    "sql_index": idx + 1,
-                    "sql_count": len(sql_queries),
-                    "status": "validation_failed",
-                    "validation_failed": True,
-                }
-                if prep_err:
-                    meta["prep_error"] = prep_err[:500]
-                items.append({
-                    "content": f"[BQ validation failed: {(prep_err or 'invalid SQL')[:200]}]",
-                    "source": "bigquery",
-                    "metadata": meta,
-                })
-                continue
-            try:
-                job = client.query(validated)
-                rows = list(job.result())
-            except Exception as exc:
-                logger.warning(
-                    "BQ execution failed for validated SQL #%d: %s (sql: %s)",
-                    idx + 1, str(exc)[:200], validated[:200]
-                )
-                items.append({
-                    "content": f"[BQ execution error: {str(exc)[:200]}]",
-                    "source": "bigquery",
-                    "metadata": {
-                        "sql": validated,
-                        "sql_index": idx + 1,
-                        "sql_count": len(sql_queries),
-                        "status": "execution_error",
-                        "execution_error": str(exc)[:500],
-                    },
-                })
-                continue
-
-            for row in rows[:limit]:
-                d = dict(row)
-                meta = project_bq_row_acf(
-                    {
-                        **d,
-                        "sql": validated,
-                        "sql_index": idx + 1,
-                        "sql_count": len(sql_queries),
-                    }
-                )
-                items.append({
-                    "content": str(d),
-                    "source": "bigquery",
-                    "metadata": meta,
-                })
-                budget -= 1
+        def _run_sql_batch(batch: list[str], *, source: str) -> None:
+            nonlocal budget, any_usable_rows, prepared_ok
+            for idx, raw_sql in enumerate(batch[:max_queries]):
                 if budget <= 0:
                     break
+                limit = min(rows_per_query, budget)
+                validated, prep_err = self._prepare_sql(
+                    raw_sql,
+                    question=query,
+                    table_hints=hint_list,
+                    selected_tables=selected_tables,
+                    allowed_datasets=allowed,
+                    limit=limit,
+                    client=client,
+                    geo_country=geo_country,
+                    geo_countries=geo_countries,
+                    time_start=time_start,
+                    time_end=time_end,
+                    entities=entities,
+                    domains=domains,
+                    query=query,
+                )
+                if validated is None:
+                    logger.warning(
+                        "BQ NL2SQL: validation rejected SQL #%d (%s): %s",
+                        idx + 1,
+                        prep_err or "unknown",
+                        (raw_sql or "")[:300],
+                    )
+                    meta: dict[str, Any] = {
+                        "sql": raw_sql,
+                        "sql_index": idx + 1,
+                        "sql_count": len(batch),
+                        "status": "validation_failed",
+                        "validation_failed": True,
+                        "sql_source": source,
+                        "nl2sql_model": llm_model_id(),
+                    }
+                    if prep_err:
+                        meta["prep_error"] = prep_err[:500]
+                    if template_meta and source == "template":
+                        meta["template"] = template_meta.get("template")
+                    items.append({
+                        "content": f"[BQ validation failed: {(prep_err or 'invalid SQL')[:200]}]",
+                        "source": "bigquery",
+                        "metadata": meta,
+                    })
+                    continue
+                prepared_ok = True
+                try:
+                    job = client.query(validated)
+                    rows = list(job.result())
+                except Exception as exc:
+                    logger.warning(
+                        "BQ execution failed for validated SQL #%d: %s (sql: %s)",
+                        idx + 1, str(exc)[:200], validated[:200]
+                    )
+                    exec_meta: dict[str, Any] = {
+                        "sql": validated,
+                        "sql_index": idx + 1,
+                        "sql_count": len(batch),
+                        "status": "execution_error",
+                        "execution_error": str(exc)[:500],
+                        "sql_source": source,
+                        "nl2sql_model": llm_model_id(),
+                    }
+                    if template_meta and source == "template":
+                        exec_meta["template"] = template_meta.get("template")
+                    items.append({
+                        "content": f"[BQ execution error: {str(exc)[:200]}]",
+                        "source": "bigquery",
+                        "metadata": exec_meta,
+                    })
+                    continue
+
+                for row in rows[:limit]:
+                    d = dict(row)
+                    meta = project_bq_row_acf(
+                        {
+                            **d,
+                            "sql": validated,
+                            "sql_index": idx + 1,
+                            "sql_count": len(batch),
+                            "sql_source": source,
+                            "nl2sql_model": llm_model_id(),
+                        }
+                    )
+                    if template_meta and source == "template":
+                        meta["template"] = template_meta.get("template")
+                    items.append({
+                        "content": str(d),
+                        "source": "bigquery",
+                        "metadata": meta,
+                    })
+                    any_usable_rows = True
+                    budget -= 1
+                    if budget <= 0:
+                        break
+
+        _run_sql_batch(sql_queries, source=sql_source)
+
+        # After NL2SQL prepare/execute failures, try ranking template once.
+        if (
+            sql_source == "nl2sql"
+            and not any_usable_rows
+            and not prepared_ok
+            and selected_tables
+        ):
+            tmpl_batch = _maybe_template()
+            if tmpl_batch:
+                _run_sql_batch(tmpl_batch, source="template")
+
+        if not items:
+            reason = "All SQL attempts failed validation or execution"
+            items.append(
+                _bq_diagnostic_item(
+                    status="no_valid_sql",
+                    message=reason,
+                    prep_error=f"{reason}; model={llm_model_id()}",
+                    nl2sql_raw="; ".join(self._last_nl2sql_raws) if self._last_nl2sql_raws else None,
+                )
+            )
 
         sql_hashes = list(
             dict.fromkeys(
@@ -911,6 +1025,8 @@ class BQRetriever(BaseRetriever):
                 "row_count": len(items),
                 "sql_hashes": sql_hashes[:10],
                 "latency_ms": trace_elapsed_ms(t0),
+                "sql_source": sql_source,
+                "nl2sql_model": llm_model_id(),
             }
         )
         return items

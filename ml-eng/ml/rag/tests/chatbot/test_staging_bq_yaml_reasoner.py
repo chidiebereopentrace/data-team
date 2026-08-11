@@ -61,8 +61,124 @@ def test_format_table_schema_filters_joins_to_selected_set() -> None:
         max_bytes=8000,
         selected_tables={"stg_yield_raw_data"},
     )
-    assert "stg_faostat_production" in full
-    assert "stg_faostat_production" not in filtered
+    assert "stg_faostat_production on=" in full
+    # Relationship joins are filtered; table may still be named in SQL hints.
+    assert "stg_faostat_production on=" not in filtered
+
+
+def test_production_schema_pack_surfaces_product_samples_and_guidance() -> None:
+    text = format_table_schema("stg_faostat_production", max_bytes=16000)
+    assert "Product value samples:" in text
+    assert "Wheat" in text
+    assert "Millet" in text
+    assert "Milk, Total" in text
+    assert "Crops" in text
+    assert "aggregate" in text.lower() or "totals" in text.lower()
+    assert "product_name" in text
+    assert "Prefer primary product_name" in text or "primary commodities" in text.lower()
+
+
+def test_emissions_schema_pack_surfaces_samples_and_guidance() -> None:
+    text = format_table_schema("stg_faostat_emissions", max_bytes=24000)
+    assert "Element value samples:" in text
+    assert "Item value samples:" in text
+    assert "Unit value samples:" in text
+    assert "Emissions (CO2eq) (AR5)" in text
+    assert "Enteric Fermentation" in text
+    assert "t CO2eq/ha" in text
+    assert "one metric" in text.lower() or "exactly one" in text.lower() or "never SUM" in text
+    assert "sector aggregates" in text.lower() or "primary" in text.lower()
+
+
+def test_food_balances_schema_pack_surfaces_samples_and_guidance() -> None:
+    text = format_table_schema("stg_faostat_food_balances", max_bytes=48000)
+    assert "Product value samples:" in text
+    assert "Element value samples:" in text
+    assert "Unit value samples:" in text
+    assert "Domestic supply quantity" in text
+    assert "Potatoes" in text
+    assert "kcal/cap/d" in text
+    assert (
+        "exactly one" in text.lower()
+        or "one metric" in text.lower()
+        or "never SUM" in text
+    )
+    assert "aggregate" in text.lower() or "Grand Total" in text
+    assert "primary" in text.lower()
+
+
+def test_investment_asti_schema_pack_surfaces_samples_and_guidance() -> None:
+    text = format_table_schema("stg_faostat_investment_asti", max_bytes=48000)
+    assert "Donor value samples:" in text
+    assert "Purpose value samples:" in text
+    assert "Item value samples:" in text
+    assert "Element value samples:" in text
+    assert "Indicator value samples:" in text
+    assert "Unit value samples:" in text
+    assert "Bill & Melinda Gates Foundation" in text
+    assert "Agricultural research" in text
+    assert "Value US$, 2015 prices" in text
+    assert "million USD" in text
+    assert (
+        "exactly one" in text.lower()
+        or "one metric" in text.lower()
+        or "never SUM" in text
+    )
+    assert "All Donors" in text or "rollup" in text.lower()
+    assert "ASTI" in text or "ODA" in text
+
+
+def test_land_inputs_schema_pack_surfaces_samples_and_guidance() -> None:
+    text = format_table_schema("stg_faostat_land_inputs", max_bytes=48000)
+    assert "Item value samples:" in text
+    assert "Element value samples:" in text
+    assert "Unit value samples:" in text
+    assert "Agricultural Use" in text
+    assert "Nutrient nitrogen N (total)" in text
+    assert "1000 ha" in text
+    assert (
+        "exactly one" in text.lower()
+        or "one metric" in text.lower()
+        or "never SUM" in text
+    )
+    assert "fertilizer" in text.lower() or "land" in text.lower()
+    assert "primary" in text.lower() or "rollup" in text.lower()
+
+
+def test_population_employment_schema_pack_surfaces_samples_and_guidance() -> None:
+    text = format_table_schema("stg_faostat_population_employment", max_bytes=32000)
+    assert "Element value samples:" in text
+    assert "Indicator value samples:" in text
+    assert "Source value samples:" in text
+    assert "Total Population - Both sexes" in text
+    assert "Share of employment in agriculture in total employment" in text
+    assert "Labour force survey" in text
+    assert (
+        "exactly one" in text.lower()
+        or "one metric" in text.lower()
+        or "never SUM" in text
+    )
+    assert "population" in text.lower() and "employment" in text.lower()
+    assert "15+" in text or "age" in text.lower()
+
+
+def test_prices_schema_pack_surfaces_samples_and_guidance() -> None:
+    text = format_table_schema("stg_faostat_prices", max_bytes=48000)
+    assert "Product value samples:" in text
+    assert "Element value samples:" in text
+    assert "Currency value samples:" in text
+    assert "Unit value samples:" in text
+    assert "Producer Price (LCU/tonne)" in text
+    assert "Wheat" in text
+    assert "Naira" in text
+    assert "LCU" in text
+    assert (
+        "exactly one" in text.lower()
+        or "one metric" in text.lower()
+        or "never SUM" in text
+    )
+    assert "primary" in text.lower() or "rollup" in text.lower()
+    assert "index" in text.lower() or "PPI" in text or "producer" in text.lower()
 
 
 def test_multi_table_pack_includes_both_schemas() -> None:

@@ -1,5 +1,9 @@
 table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_prices
-description: FAOSTAT producer prices, CPI, deflators, exchange rates.
+description: >
+  FAOSTAT producer prices, PPI, CPI/food inflation, deflators, and exchange
+  rates. Rows are country-level facts (not continent aggregates). Filter by
+  exact product_name + element (+ currency/unit); never invent labels. Do not
+  mix LCU producer prices with index/deflator/FX rows in one SUM.
 grain: country × product × element × year × month
 entity_type: faostat
 source:
@@ -16,22 +20,39 @@ semantic_role:
   - faostat
 business_questions_supported:
 - What are producer prices for a crop?
+- What is the producer price index or food CPI?
+- What is the exchange rate (local currency per USD)?
+- How do producer prices compare across countries for a commodity?
 filtering_guidance:
 - Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa' or a region
+- For continental price comparisons stay on this table; do not invent dim_* geo tables
+- This table mixes producer prices, PPI, CPI/food inflation, deflators, and FX — filter product_name+element to one series family
+- Never SUM across unlike elements, units, or currencies
+- Filter element to exactly one metric; always pair with matching unit/currency when present
+- Prefer Producer Price (LCU/tonne) or Producer Price (USD/tonne) / Producer Price (SLC/tonne) with a primary commodity for producer-price questions
+- Prefer PPI/CPI elements (and CPI product labels) for index questions; prefer Local currency units per USD / Standard local currency units per USD for FX
+- Prefer primary commodities over rollups (Agriculture, Livestock, Meat/Milk Total, Cereals primary, … Total, CPI index products) unless totals/indices are asked
+- Prefer non-(biological) meat/milk labels unless the biological series is asked
+- Never convert currencies in SQL without an explicit FX element/series
+- Filter months when a monthly series is asked; filter year for time-bounded questions
 sql_generation_hints:
 - Filter country_name and year
-- Filter element for the metric needed
-- GROUP BY country_name, product_name, year when comparing
+- Always filter element = '<exact label>' for the metric needed
+- Filter product_name = '<exact FAOSTAT label>' when a commodity or index product is named
+- GROUP BY country_name, product_name, year when comparing (include months when comparing months)
+- Continental price ranking: AVG(value) or latest year GROUP BY country_name; single-table; no dim_geography
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: area_code
   type: STRING
-  description: area code
+  description: FAO area code
 - name: area_code_m49
   type: STRING
-  description: area code m49
+  description: UN M49 area code for the country row (not a continent filter key)
 - name: country_name
   type: STRING
-  description: country name
+  description: Country name only (e.g. Nigeria, Kenya). Never 'Africa' or a region label.
 - name: item_code
   type: STRING
   description: item code
@@ -40,40 +61,405 @@ columns:
   description: item code cpc
 - name: product_name
   type: STRING
-  description: product name
+  description: >
+    FAOSTAT price-series product / commodity / index label. Filter with an
+    exact product_name. Prefer primary commodities over rollups and CPI/
+    deflator products unless totals or indices are asked. Prefer
+    non-(biological) meat/milk labels unless biological is asked. Never invent
+    labels.
+
+    Family rules:
+    Meats, milk, eggs — cattle/sheep/goat/pig/poultry meats, raw milk, eggs;
+    biological variants exist for many meats.
+    Crops — cereals, roots/tubers, pulses, oilcrops, vegetables, fruits, nuts,
+    spices, fibres, stimulants (coffee, tea, cocoa, tobacco).
+    Aggregates — Agriculture, Livestock, Meat/Milk Total, Cereals primary,
+    Roots and Tubers Total, Pulses Total, Fruit/Vegetable totals, etc.
+    CPI / inflation / deflators — Consumer Prices General/Food Indices,
+    Food price inflation, GDP Deflator, GFCF Deflator, Value Added Deflators.
 - name: element_code
   type: STRING
   description: element code
 - name: element
   type: STRING
-  description: element
+  description: >
+    Metric type for the row's value. Filter with an exact element (one metric
+    per query). Do not mix elements in the same SUM/AVG. Always read value
+    with unit and currency when present.
+
+    Family rules:
+    Producer prices — Producer Price (LCU/tonne), Producer Price (USD/tonne),
+    Producer Price (SLC/tonne).
+    Indices — Producer Price Index (2014-2016 = 100); CPI often carried via
+    product labels with Value / related elements.
+    Exchange rates — Local currency units per USD; Standard local currency
+    units per USD.
+    Value measures — Value; Value US$, 2015 prices; Value Standard Local
+    Currency, 2015 prices.
+    Rare label — Element (use only when present in data).
+
+    Defaults: producer prices → Producer Price (LCU/tonne) or USD/tonne when
+    cross-country comparable money is asked; FX → Local currency units per USD.
 - name: months_code
   type: STRING
-  description: months code
+  description: months code (when populated)
 - name: months
   type: STRING
-  description: months
+  description: Month label for monthly series (when populated). Filter when a specific month is asked.
 - name: iso_currency_code
   type: STRING
-  description: iso currency code
+  description: ISO currency code when present; pair with currency / LCU elements.
 - name: currency
   type: STRING
-  description: currency
+  description: >
+    Currency name for LCU/SLC price or FX rows. Filter with an exact currency
+    label when comparing local-currency series. Prefer exact labels (incl.
+    historical names); do not invent. Sentinel label Currency may appear.
+
+    Family rules:
+    Current African currencies — Naira, Kenyan Shilling, CFA Franc BCEAO/BEAC,
+    Rand, Egyptian Pound, Ethiopian Birr, etc.
+    Historical / revalued — New Kwanza, Ghana Revalued Cedi, New Zaire,
+    Zimbabwe Dollar (old), Second Zimbabwe Dollar, etc.
+    International — US Dollar, Euro, Pound Sterling, French Franc.
 - name: year
   type: INT64
-  description: year
+  description: Observation year
 - name: unit
   type: STRING
-  description: unit
+  description: >
+    Unit of value for this element. Always interpret value with element + unit
+    (+ currency when present); never compare or SUM unlike units.
+
+    USD / SLC / LCU — money units for prices or FX-related series.
+    % — index/inflation shares when applicable.
+    Unit — generic unit label when present.
 - name: value
   type: FLOAT64
-  description: value
+  description: >
+    Numeric price/index/FX measure for the element. SUM/AVG across products or
+    years only when element, unit, and currency are homogeneous. Never SUM
+    across different elements or unlike units/currencies.
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+product_value_samples:
+- "Meat of sheep, fresh or chilled (biological)"
+- "Meat of goat, fresh or chilled"
+- Raw milk of goats
+- "Meat of goat, fresh or chilled (biological)"
+- "Meat of pig with the bone, fresh or chilled"
+- "Meat of pig with the bone, fresh or chilled (biological)"
+- "Meat of chickens, fresh or chilled"
+- "Hen eggs in shell, fresh"
+- "Meat of turkeys, fresh or chilled"
+- "Meat of turkeys, fresh or chilled (biological)"
+- "Meat of chickens, fresh or chilled (biological)"
+- "Horse meat, fresh or chilled"
+- "Horse meat, fresh or chilled (biological)"
+- "Meat of camels, fresh or chilled"
+- Raw milk of camel
+- "Meat of camels, fresh or chilled (biological)"
+- "Meat of rabbits and hares, fresh or chilled"
+- "Meat of rabbits and hares, fresh or chilled (biological)"
+- Potatoes
+- Natural honey
+- Wheat
+- "Cereals, primary"
+- "Roots and Tubers, Total"
+- "Pulses, Total"
+- "Treenuts, Total"
+- "Oilcrops, Oil Equivalent"
+- Vegetables Primary
+- Fruit Primary
+- Fibre Crops Primary
+- "Beans, dry"
+- "Meat, Total"
+- "Milk, Total"
+- Eggs Primary
+- "Vegetables and Melons, Total"
+- "Fruit excl Melons, Total"
+- "Citrus Fruit, Total"
+- "Broad beans and horse beans, dry"
+- "Coarse Grain, Total"
+- "Peas, dry"
+- "Chick peas, dry"
+- "Lentils, dry"
+- Livestock
+- Vetches
+- Agriculture
+- Other pulses n.e.c.
+- GDP Deflator
+- Gross Fixed Capital Formation Deflator
+- "Value Added Deflator (Agriculture, forestry and fishery)"
+- "Value Added Deflator (Manufacturing)"
+- "Almonds, in shell"
+- "Consumer Prices, General Indices (2015 = 100)"
+- "Consumer Prices, Food Indices (2015 = 100)"
+- Food price inflation
+- "Groundnuts, excluding shelled"
+- Olives
+- Sunflower seed
+- Rice
+- Rape or colza seed
+- "Seed cotton, unginned"
+- Cotton seed
+- Cabbages
+- Artichokes
+- Lettuce and chicory
+- Tomatoes
+- Cauliflowers and broccoli
+- "Pumpkins, squash and gourds"
+- Cucumbers and gherkins
+- "Eggplants (aubergines)"
+- "Chillies and peppers, green (Capsicum spp. and Pimenta spp.)"
+- "Onions and shallots, green"
+- "Onions and shallots, dry (excluding dehydrated)"
+- Green garlic
+- Leeks and other alliaceous vegetables
+- "Other beans, green"
+- "Peas, green"
+- "Broad beans and horse beans, green"
+- String beans
+- Carrots and turnips
+- Barley
+- Mushrooms and truffles
+- "Locust beans (carobs)"
+- "Other vegetables, fresh n.e.c."
+- Oranges
+- "Tangerines, mandarins, clementines"
+- Lemons and limes
+- Pomelos and grapefruits
+- "Other citrus fruit, n.e.c."
+- Apples
+- Pears
+- Quinces
+- Apricots
+- Cherries
+- Peaches and nectarines
+- Plums and sloes
+- Other stone fruits
+- "Maize (corn)"
+- Grapes
+- Watermelons
+- Cantaloupes and other melons
+- Figs
+- Dates
+- "Other fruits, n.e.c."
+- "Chillies and peppers, dry (Capsicum spp., Pimenta spp.), raw"
+- Oats
+- "Cotton lint, ginned"
+- Unmanufactured tobacco
+- Sorghum
+- "Meat of cattle with the bone, fresh or chilled"
+- Raw milk of cattle
+- "Meat of cattle with the bone, fresh or chilled (biological)"
+- Triticale
+- "Meat of sheep, fresh or chilled"
+- Raw milk of sheep
+- "Shorn wool, greasy, including fleece-washed shorn wool"
+- Sweet potatoes
+- "Cassava, fresh"
+- Soya beans
+- Bananas
+- "Mangoes, guavas and mangosteens"
+- Avocados
+- Pineapples
+- "Coffee, green"
+- Millet
+- Taro
+- Yams
+- "Coconuts, in shell"
+- Okra
+- Plantains
+- Canary seed
+- "Meat of asses, fresh or chilled"
+- "Meat of asses, fresh or chilled (biological)"
+- "Game meat, fresh, chilled or frozen"
+- Beeswax
+- Sugar cane
+- "Cow peas, dry"
+- "Bambara beans, dry"
+- "Cashew nuts, in shell"
+- "Chestnuts, in shell"
+- "Walnuts, in shell"
+- "Pistachios, in shell"
+- "Hazelnuts, in shell"
+- "Karite nuts (sheanuts)"
+- Safflower seed
+- Sesame seed
+- Spinach
+- Sour cherries
+- Strawberries
+- Kiwi fruit
+- "Other tropical fruits, n.e.c."
+- Tea leaves
+- Rye
+- "Anise, badian, coriander, cumin, caraway, fennel and juniper berries, raw"
+- "Other stimulant, spice and aromatic crops, n.e.c."
+- Fonio
+- Raw milk of buffalo
+- Cereals n.e.c.
+- "Pigeon peas, dry"
+- Oil palm fruit
+- Palm kernels
+- Palm oil
+- "Edible roots and tubers with high starch or inulin content, n.e.c., fresh"
+- Castor oil seeds
+- "Green corn (maize)"
+- Plantains and cooking bananas
+- Papayas
+- "Other nuts (excluding wild edible nuts and groundnuts), in shell, n.e.c."
+- Melonseed
+- Cocoa beans
+- "Pepper (Piper spp.), raw"
+- "Ginger, raw"
+- Natural rubber in primary forms
+- Kola nuts
+- "Other meat of mammals, fresh or chilled"
+- "Brazil nuts, in shell"
+- "Other oil seeds, n.e.c."
+- "Meat of ducks, fresh or chilled"
+- "Meat of ducks, fresh or chilled (biological)"
+- "Meat of geese, fresh or chilled"
+- "Meat of geese, fresh or chilled (biological)"
+- "Meat of pigeons and other birds n.e.c., fresh, chilled or frozen (biological)"
+- "Meat of pigeons and other birds n.e.c., fresh, chilled or frozen"
+- Silk-worm cocoons suitable for reeling
+- Sugar beet
+- "Jute & Jute-like Fibres"
+- Lupins
+- Linseed
+- Raspberries
+- "Flax, processed but not spun"
+- "Jute, raw or retted"
+- "Meat of buffalo, fresh or chilled"
+- "Meat of buffalo, fresh or chilled (biological)"
+- "Meat of mules, fresh or chilled"
+- "Meat of mules, fresh or chilled (biological)"
+- Mustard seed
+- Hop cones
+- "Nutmeg, mace, cardamoms, raw"
+- "Sisal, raw"
+- "Other fibre crops, raw, n.e.c."
+- Bananas cavendish
+- Areca nuts
+- Asparagus
+- Cooking bananas
+- "Vanilla, raw"
+- "Cloves (whole stems), raw"
+- "Pyrethrum, dried flowers"
+- "Eggs from other birds in shell, fresh, n.e.c."
+- Tung nuts
+- Cashewapple
+- "Cinnamon and cinnamon-tree flowers, raw"
+- "Kenaf, and other textile bast fibres, raw or retted"
+- "Other bananas (excluding cavendish and cooking bananas)"
+- Blueberries
+- Cranberries
+- Other berries and fruits of the genus vaccinium n.e.c.
+- "Meat of other domestic camelids, fresh or chilled (biological)"
+- Yautia
+- Chicory roots
+- Gooseberries
+- Persimmons
+- Buckwheat
+- "Tea nes (herbal tea)"
+- "Balata, gutta-percha, guayule, chicle and similar natural gums in primary forms or in plates, sheets or strip"
+element_value_samples:
+- Local currency units per USD
+- Standard local currency units per USD
+- "Producer Price Index (2014-2016 = 100)"
+- "Producer Price (USD/tonne)"
+- "Producer Price (SLC/tonne)"
+- "Producer Price (LCU/tonne)"
+- "Value Standard Local Currency, 2015 prices"
+- "Value US$, 2015 prices"
+- Value
+- Element
+currency_value_samples:
+- Algerian Dinar
+- Kwanza
+- New Kwanza
+- Angolan Escudo
+- Kwanza readjusted
+- Currency
+- CFA Franc BCEAO
+- Pula
+- Rand
+- Burundi Franc
+- Cabo Verde Escudo
+- CFA Franc BEAC
+- Comoro Franc
+- Madagascar and Comores CFA Franc
+- Zaire
+- Congolese Franc
+- New Zaire
+- Djibouti Franc
+- Affars and Issas Franc
+- Egyptian Pound
+- Nakfa
+- Ethiopian Birr
+- Ethiopian Dollar
+- Lilangeni
+- Euro
+- Dalasi
+- Cedi
+- Ghana Cedi
+- Ghana Revalued Cedi
+- Guinea Franc
+- Syli
+- Guinea-Bissau Peso
+- Portuguese Escudo
+- Kenyan Shilling
+- Loti
+- Liberian dollar
+- US Dollar
+- Libyan Dinar
+- Libyan Pound
+- Malagasy Ariary
+- Malagasy Franc
+- Malawi Kwacha
+- Malawi Pound
+- Mali Franc
+- Ouguiya
+- Mauritius Rupee
+- Moroccan Dirham
+- Mozambique Metical
+- Mozambique Escudo
+- Namibia Dollar
+- Naira
+- Pound Sterling
+- Rwanda Franc
+- French Franc
+- Dobra
+- STE
+- Seychelles Rupee
+- Leone
+- New Leone
+- Somali Shilling
+- Financial Rand
+- South Sudanese Pound
+- Sudanese Pound
+- Sudanese Dinar
+- Tunisian Dinar
+- Uganda Shilling
+- Tanzanian Shilling
+- Zambian Kwacha
+- Rhodesian Dollar
+- Zimbabwe Dollar
+- "Zimbabwe Dollar (old)"
+- Zimbabwe Gold
+- Second Zimbabwe Dollar
+unit_value_samples:
+- USD
+- SLC
+- LCU
+- "%"
+- Unit
 _index_domain: faostat
 _index_tags: *id001
 semantic_relationships:
@@ -106,3 +492,5 @@ semantic_relationships:
   do_not_join:
   - table: stg_isda_soil_enriched
     reason: soil long-format; no price grain
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims for Africa country lists

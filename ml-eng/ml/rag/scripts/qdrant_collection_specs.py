@@ -3,7 +3,7 @@ Qdrant collection vector layouts (dense HNSW + INT8 quant + optional sparse).
 
 Used by create_qdrant_collections and loaders on --reset.
 
-Per-corpus dense dimensions come from ``chunking_config.PROFILES`` (384 news/research/BQ,
+Per-corpus dense dimensions come from ``chunking_config.PROFILES`` (384 news/research,
 768 OTA by default).
 """
 from __future__ import annotations
@@ -21,7 +21,6 @@ CORPUS_VECTOR_LAYOUT: dict[CorpusKey, dict[str, int]] = {
     "news": {"dense_vectors": 1, "sparse_vectors": 1},
     "research": {"dense_vectors": 1, "sparse_vectors": 1},
     "ota": {"dense_vectors": 3, "sparse_vectors": 2},
-    "data_description": {"dense_vectors": 3, "sparse_vectors": 0},
 }
 
 # Sparse vector name → text source for BM25 ("doc" = chunk text; else metadata key).
@@ -32,7 +31,6 @@ CORPUS_SPARSE_FIELDS: dict[CorpusKey, list[tuple[str, str]]] = {
         ("sparse_insight", "insight_text"),
         ("sparse_recommendation", "recommendation_text"),
     ],
-    "data_description": [],
 }
 
 
@@ -51,7 +49,6 @@ SPARSE_VECTOR_BYTES = 200
 # Illustrative chunks/doc when profile has no max_chunks_per_doc cap.
 _ILLUSTRATIVE_CHUNKS_PER_DOC: dict[CorpusKey, int] = {
     "news": 8,
-    "data_description": 3,
 }
 
 
@@ -117,22 +114,10 @@ def ota_collection_kwargs() -> dict[str, Any]:
     }
 
 
-def bq_collection_kwargs() -> dict[str, Any]:
-    vp = dense_vector_params(dim=_dim("data_description"), ef_construct=80)
-    return {
-        "vectors_config": {
-            "table_vector": vp,
-            "schema_vector": vp,
-            "business_vector": vp,
-        },
-    }
-
-
 COLLECTION_BUILDERS: dict[str, Any] = {
     "news": news_collection_kwargs,
     "research": research_collection_kwargs,
     "ota": ota_collection_kwargs,
-    "data_description": bq_collection_kwargs,
 }
 
 # Payload fields indexed for server-side Filter / Range (must match loader payloads).
@@ -176,11 +161,6 @@ PAYLOAD_INDEXES: dict[str, list[tuple[str, models.PayloadSchemaType]]] = {
         ("geo_country_primary", models.PayloadSchemaType.KEYWORD),
         ("geo_scope", models.PayloadSchemaType.KEYWORD),
         ("geo_countries", models.PayloadSchemaType.TEXT),
-        *_ACF_PAYLOAD_INDEXES,
-    ],
-    "data_description": [
-        ("doc_kind", models.PayloadSchemaType.KEYWORD),
-        ("table_name", models.PayloadSchemaType.KEYWORD),
         *_ACF_PAYLOAD_INDEXES,
     ],
 }
@@ -267,7 +247,7 @@ def print_capacity_estimates() -> None:
     print(f"  HNSW m={HNSW_M}, INT8 dense quant, ~65% RAM usable")
     print("  Payload estimate scales with per-corpus chunk token targets.")
     print()
-    for corpus in ("news", "research", "ota", "data_description"):
+    for corpus in ("news", "research", "ota"):
         profile = PROFILES[corpus]
         layout = CORPUS_VECTOR_LAYOUT[corpus]
         points = estimate_points_per_gib(profile=profile, layout=layout)

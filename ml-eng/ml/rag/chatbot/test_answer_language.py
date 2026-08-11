@@ -60,7 +60,20 @@ def test_unknown_lists_supported_languages() -> None:
     help_text = language_unclear_answer()
     assert "Igbo" in help_text
     assert "Swahili" in help_text
+    assert "Zulu" in help_text
+    assert "Kinyarwanda" in help_text
     assert "(ig)" in help_text
+    assert "(zu)" in help_text
+
+
+def test_zulu_somali_wolof_kinyarwanda_named() -> None:
+    assert detect_answer_language("Sawubona, unjani? Ngiyabonga ngokulima.") == "zu"
+    assert detect_answer_language("Molo, enkosi. Kunjani?") == "xh"
+    assert detect_answer_language("Salaan, sidee tahay? Beeraha.") == "so"
+    assert detect_answer_language("Salaamalekum, jerejef. Nanga def?") == "wo"
+    assert detect_answer_language("Muraho, murakoze. Amakuru y'ubuhinzi?") == "rw"
+    assert "Zulu" in language_instruction("zu")
+    assert "Somali" in language_instruction("so")
 
 
 def test_build_prompt_mirrors_swahili() -> None:

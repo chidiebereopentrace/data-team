@@ -1,5 +1,5 @@
 """
-RAG graph: query → decompose → parallel retrieval (news + academic + OTA)
+RAG graph: query → decompose → parallel retrieval (six Qdrant corpora)
 → BQ SQL reasoner (staging_dev YAML) → BigQuery → merge → rerank → generate.
 """
 from __future__ import annotations
@@ -286,8 +286,12 @@ class RAGGraphState(TypedDict, total=False):
     bq_table_candidates: list[dict[str, Any]]
     bq_sql_plan: dict[str, Any]
     vector_news_results: list[dict[str, Any]]
-    vector_academic_results: list[dict[str, Any]]
+    vector_academic_papers_results: list[dict[str, Any]]
+    vector_policies_results: list[dict[str, Any]]
+    vector_public_reports_results: list[dict[str, Any]]
+    vector_formation_results: list[dict[str, Any]]
     vector_ota_results: list[dict[str, Any]]
+    vector_academic_results: list[dict[str, Any]]  # deprecated alias; prefer per-corpus keys
     vector_results: list[dict[str, Any]]
     bq_results: list[dict[str, Any]]
     bq_sql_queries: list[str]
@@ -308,6 +312,7 @@ class RAGGraphState(TypedDict, total=False):
     time_end_override: str | None
     news_top_k: int | None
     academic_top_k: int | None
+    ota_top_k: int | None
     bq_top_k: int | None
     rerank_top_k: int | None
     # Generator memory: rolling summary + last N verbatim pairs (see ml.rag.chat_memory)
@@ -406,9 +411,6 @@ def _tag_vector(item: dict[str, Any], kind: str) -> dict[str, Any]:
     }
 
 
-_RESEARCH_DOC_KINDS = ("academic_article", "policy_document", "public_report", "agricultural_practise")
-
-
 def _news_kwargs(state: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
     top_k = int(state.get("news_top_k") or 20)
     kwargs: dict[str, Any] = {
@@ -423,12 +425,86 @@ def _news_kwargs(state: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
     return kwargs
 
 
-def _academic_kwargs(state: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
+def _dense_corpus_kwargs(state: RAGGraphState, _dec: dict[str, Any], *, doc_kind: str) -> dict[str, Any]:
+    """Kwargs for academic / policy / public_reports / formation dense named search."""
     return {
         "top_k": int(state.get("academic_top_k") or 20),
-        "doc_kinds": list(_RESEARCH_DOC_KINDS),
+        "doc_kind": doc_kind,
         "vector_search_mode": "dense_named",
     }
+
+
+def _use_legacy_research_collection() -> bool:
+    return os.environ.get("RAG_USE_LEGACY_RESEARCH_COLLECTION", "").strip().lower() in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    )
+
+
+def _retrieve_legacy_research(state: RAGGraphState) -> list[dict[str, Any]]:
+    """Optional single pre-split research collection (off by default)."""
+    if not _use_legacy_research_collection():
+        return []
+
+    def _legacy_kwargs(st: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "top_k": int(st.get("academic_top_k") or 20),
+            "doc_kinds": [
+                "academic_article",
+                "policy_document",
+                "public_report",
+                "agricultural_practise",
+            ],
+            "vector_search_mode": "dense_named",
+        }
+
+    try:
+        raw = _vector_retrieve_for_corpus(
+            state,
+            collection_env="QDRANT_COLLECTION_RESEARCH_PAPERS",
+            default_collection="research_other_papers",
+            build_kwargs=_legacy_kwargs,
+            geo_fallback_env="RAG_RESEARCH_GEO_FALLBACK",
+            time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
+        )
+    except Exception:
+        logger.exception("Legacy research retrieval failed")
+        raw = []
+    return [_tag_vector(x, "research") for x in raw]
+
+
+def _retrieve_dense_corpus(
+    state: RAGGraphState,
+    *,
+    collection_env: str,
+    default_collection: str,
+    doc_kind: str,
+    context_kind: str,
+) -> list[dict[str, Any]]:
+    """One Qdrant collection, soft-fail to [] on empty/missing/error."""
+
+    def _build(st: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
+        return _dense_corpus_kwargs(st, dec, doc_kind=doc_kind)
+
+    try:
+        raw = _vector_retrieve_for_corpus(
+            state,
+            collection_env=collection_env,
+            default_collection=default_collection,
+            build_kwargs=_build,
+            geo_fallback_env="RAG_RESEARCH_GEO_FALLBACK",
+            time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
+        )
+    except Exception:
+        logger.exception(
+            "Retrieval failed for collection %s (%s)",
+            default_collection,
+            collection_env,
+        )
+        raw = []
+    return [_tag_vector(x, context_kind) for x in raw]
 
 
 def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
@@ -524,59 +600,44 @@ def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
     return [_tag_vector(x, "news") for x in raw]
 
 
-# Sprint 1 (ML-024): the mixed ``research_other_papers`` collection was split by
-# doc_kind into three dedicated collections. Retrieval now queries all three and
-# merges. Set RAG_USE_LEGACY_RESEARCH_COLLECTION=on to fall back to the single
-# pre-split collection (kept in Qdrant as a backup) if needed before test 2.
-_RESEARCH_SPLIT_COLLECTIONS: tuple[tuple[str, str], ...] = (
-    ("QDRANT_COLLECTION_ACADEMIC_PAPERS", "academic_papers"),
-    ("QDRANT_COLLECTION_POLICIES", "policies"),
-    ("QDRANT_COLLECTION_PUBLIC_REPORTS", "public_reports"),
-    ("QDRANT_COLLECTION_FORMATION", "formation"),
-)
-
-
-def _use_legacy_research_collection() -> bool:
-    return os.environ.get("RAG_USE_LEGACY_RESEARCH_COLLECTION", "").strip().lower() in (
-        "1",
-        "true",
-        "on",
-        "yes",
+def _retrieve_academic_papers(state: RAGGraphState) -> list[dict[str, Any]]:
+    return _retrieve_dense_corpus(
+        state,
+        collection_env="QDRANT_COLLECTION_ACADEMIC_PAPERS",
+        default_collection="academic_papers",
+        doc_kind="academic_article",
+        context_kind="academic",
     )
 
 
-def _retrieve_academic(state: RAGGraphState) -> list[dict[str, Any]]:
-    """Research retrieval (academic / policy / public report) with geo + year filters."""
-    if _use_legacy_research_collection():
-        raw = _vector_retrieve_for_corpus(
-            state,
-            collection_env="QDRANT_COLLECTION_RESEARCH_PAPERS",
-            default_collection="research_other_papers",
-            build_kwargs=_academic_kwargs,
-            geo_fallback_env="RAG_RESEARCH_GEO_FALLBACK",
-            time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
-        )
-        return [_tag_vector(x, "research") for x in raw]
+def _retrieve_policies(state: RAGGraphState) -> list[dict[str, Any]]:
+    return _retrieve_dense_corpus(
+        state,
+        collection_env="QDRANT_COLLECTION_POLICIES",
+        default_collection="policies",
+        doc_kind="policy_document",
+        context_kind="policy",
+    )
 
-    # Query the three split collections in parallel-safe sequence and merge by score.
-    top_k = int(state.get("academic_top_k") or 20)
-    batches: list[list[dict[str, Any]]] = []
-    for collection_env, default_collection in _RESEARCH_SPLIT_COLLECTIONS:
-        try:
-            batch = _vector_retrieve_for_corpus(
-                state,
-                collection_env=collection_env,
-                default_collection=default_collection,
-                build_kwargs=_academic_kwargs,
-                geo_fallback_env="RAG_RESEARCH_GEO_FALLBACK",
-                time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
-            )
-            batches.append(batch)
-        except Exception:
-            logger.exception("Research retrieval failed for collection %s", default_collection)
 
-    merged = _merge_dedupe_vector_hits(batches, top_k)
-    return [_tag_vector(x, "research") for x in merged]
+def _retrieve_public_reports(state: RAGGraphState) -> list[dict[str, Any]]:
+    return _retrieve_dense_corpus(
+        state,
+        collection_env="QDRANT_COLLECTION_PUBLIC_REPORTS",
+        default_collection="public_reports",
+        doc_kind="public_report",
+        context_kind="public_report",
+    )
+
+
+def _retrieve_formation(state: RAGGraphState) -> list[dict[str, Any]]:
+    return _retrieve_dense_corpus(
+        state,
+        collection_env="QDRANT_COLLECTION_FORMATION",
+        default_collection="formation",
+        doc_kind="agricultural_practise",
+        context_kind="formation",
+    )
 
 
 def _retrieve_ota(state: RAGGraphState) -> list[dict[str, Any]]:
@@ -612,62 +673,106 @@ def _retrieve_ota(state: RAGGraphState) -> list[dict[str, Any]]:
     return [_tag_vector(x, "ota_insight") for x in (raw or [])]
 
 
-def _research_context_label(meta: dict[str, Any]) -> tuple[str, str]:
-    """Return (source tag, content prefix) for a research-corpus chunk."""
-    dk = str(meta.get("doc_kind") or "").strip().lower()
-    if dk == "policy_document":
-        title = str(meta.get("section_title") or meta.get("label") or meta.get("source_file") or "").strip()
-        prefix = f"[Policy | {title}]" if title else "[Policy]"
-        return "policy", prefix
-    if dk == "public_report":
-        title = str(meta.get("section_title") or meta.get("label") or meta.get("source_file") or "").strip()
-        prefix = f"[Public report | {title}]" if title else "[Public report]"
-        return "public_report", prefix
-    if dk == "agricultural_practise":
-        title = str(meta.get("section_title") or meta.get("label") or meta.get("source_file") or "").strip()
-        prefix = f"[Formation | {title}]" if title else "[Formation]"
-        return "formation", prefix
+def _append_corpus_merge(
+    merged: list[dict[str, Any]],
+    items: list[dict[str, Any]] | None,
+    *,
+    source: str,
+    context_kind: str,
+    label_fn: Any,
+) -> None:
+    for item in items or []:
+        text = item.get("content") or ""
+        meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        label = label_fn(meta if isinstance(meta, dict) else {})
+        merged.append(
+            {
+                "content": f"{label} {text}",
+                "source": source,
+                "_context_kind": context_kind,
+                "metadata": meta,
+                "score": item.get("score"),
+            }
+        )
+
+
+def _academic_merge_label(meta: dict[str, Any]) -> str:
     cite = format_academic_citation(meta)
-    prefix = f"[Academic | {cite}]" if cite else "[Academic]"
-    return "academic", prefix
+    return f"[Academic | {cite}]" if cite else "[Academic]"
+
+
+def _title_merge_label(prefix: str, meta: dict[str, Any]) -> str:
+    title = str(meta.get("section_title") or meta.get("label") or meta.get("source_file") or "").strip()
+    return f"[{prefix} | {title}]" if title else f"[{prefix}]"
 
 
 def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
-    """Run news, academic, and OTA retrieval in parallel (BQ uses YAML reasoner separately)."""
-    news_out: list[dict[str, Any]] = []
-    academic_out: list[dict[str, Any]] = []
-    ota_out: list[dict[str, Any]] = []
+    """Run all six corpus retrieves (+ optional legacy research) in parallel."""
+    buckets: dict[str, list[dict[str, Any]]] = {
+        "news": [],
+        "academic_papers": [],
+        "policies": [],
+        "public_reports": [],
+        "formation": [],
+        "ota": [],
+        "legacy_research": [],
+    }
     corpus_errors: list[str] = []
 
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        futs = {
-            ex.submit(run_with_tracing_context(_retrieve_news, state)): "news",
-            ex.submit(run_with_tracing_context(_retrieve_academic, state)): "academic",
-            ex.submit(run_with_tracing_context(_retrieve_ota, state)): "ota",
-        }
-        for fut in as_completed(futs):
-            kind = futs[fut]
+    jobs: dict[Any, str] = {}
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        jobs[ex.submit(run_with_tracing_context(_retrieve_news, state))] = "news"
+        jobs[ex.submit(run_with_tracing_context(_retrieve_academic_papers, state))] = "academic_papers"
+        jobs[ex.submit(run_with_tracing_context(_retrieve_policies, state))] = "policies"
+        jobs[ex.submit(run_with_tracing_context(_retrieve_public_reports, state))] = "public_reports"
+        jobs[ex.submit(run_with_tracing_context(_retrieve_formation, state))] = "formation"
+        jobs[ex.submit(run_with_tracing_context(_retrieve_ota, state))] = "ota"
+        if _use_legacy_research_collection():
+            jobs[ex.submit(run_with_tracing_context(_retrieve_legacy_research, state))] = "legacy_research"
+
+        for fut in as_completed(jobs):
+            kind = jobs[fut]
             try:
                 res = fut.result()
             except Exception as exc:
                 logger.exception("Parallel retrieval failed for %s; returning empty list", kind)
                 corpus_errors.append(f"{kind}:{type(exc).__name__}")
                 res = []
-            if kind == "news":
-                news_out = res
-            elif kind == "academic":
-                academic_out = res
-            else:
-                ota_out = res
+            buckets[kind] = res if isinstance(res, list) else []
 
     if corpus_errors:
         update_current_span_metadata({"corpus_error": ",".join(corpus_errors)})
 
-    combined = list(news_out) + list(academic_out) + list(ota_out)
+    news_out = buckets["news"]
+    academic_papers_out = buckets["academic_papers"]
+    policies_out = buckets["policies"]
+    public_reports_out = buckets["public_reports"]
+    formation_out = buckets["formation"]
+    ota_out = buckets["ota"]
+    legacy_out = buckets["legacy_research"]
+
+    combined = (
+        list(news_out)
+        + list(academic_papers_out)
+        + list(policies_out)
+        + list(public_reports_out)
+        + list(formation_out)
+        + list(ota_out)
+        + list(legacy_out)
+    )
     return {
         "vector_news_results": news_out,
-        "vector_academic_results": academic_out,
+        "vector_academic_papers_results": academic_papers_out,
+        "vector_policies_results": policies_out,
+        "vector_public_reports_results": public_reports_out,
+        "vector_formation_results": formation_out,
         "vector_ota_results": ota_out,
+        # Deprecated combined bucket for callers that still read it
+        "vector_academic_results": list(academic_papers_out)
+        + list(policies_out)
+        + list(public_reports_out)
+        + list(formation_out)
+        + list(legacy_out),
         "vector_results": combined,
     }
 
@@ -744,14 +849,21 @@ def aggregate_bq_sql_debug(results: list[dict[str, Any]]) -> tuple[list[str], li
         debug_seen.add(debug_key)
         prep = meta.get("prep_error")
         exec_err = meta.get("execution_error")
-        bq_sql_debug.append(
-            {
-                "sql": sql,
-                "status": status,
-                "prep_error": str(prep)[:500] if prep else None,
-                "execution_error": str(exec_err)[:500] if exec_err else None,
-            }
-        )
+        row_debug: dict[str, Any] = {
+            "sql": sql,
+            "status": status,
+            "prep_error": str(prep)[:500] if prep else None,
+            "execution_error": str(exec_err)[:500] if exec_err else None,
+        }
+        if meta.get("sql_source"):
+            row_debug["sql_source"] = meta.get("sql_source")
+        if meta.get("template"):
+            row_debug["template"] = meta.get("template")
+        if meta.get("nl2sql_model"):
+            row_debug["nl2sql_model"] = meta.get("nl2sql_model")
+        if meta.get("nl2sql_raw"):
+            row_debug["nl2sql_raw"] = str(meta.get("nl2sql_raw"))[:500]
+        bq_sql_debug.append(row_debug)
     return bq_sql_queries, bq_sql_debug
 
 
@@ -851,26 +963,38 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
                     "score": item.get("score"),
                 }
             )
-        for item in state.get("vector_academic_results") or []:
-            text = item.get("content") or ""
-            meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-            source_tag, label = _research_context_label(meta if isinstance(meta, dict) else {})
-            merged.append(
-                {
-                    "content": f"{label} {text}",
-                    "source": source_tag,
-                    "_context_kind": source_tag,
-                    "metadata": meta,
-                    "score": item.get("score"),
-                }
-            )
+        _append_corpus_merge(
+            merged,
+            state.get("vector_academic_papers_results"),
+            source="academic",
+            context_kind="academic",
+            label_fn=_academic_merge_label,
+        )
+        _append_corpus_merge(
+            merged,
+            state.get("vector_policies_results"),
+            source="policy",
+            context_kind="policy",
+            label_fn=lambda m: _title_merge_label("Policy", m),
+        )
+        _append_corpus_merge(
+            merged,
+            state.get("vector_public_reports_results"),
+            source="public_report",
+            context_kind="public_report",
+            label_fn=lambda m: _title_merge_label("Public report", m),
+        )
+        _append_corpus_merge(
+            merged,
+            state.get("vector_formation_results"),
+            source="formation",
+            context_kind="formation",
+            label_fn=lambda m: _title_merge_label("Formation", m),
+        )
 
-        # OTA insights (from OTA_insights collection, ota_triple vectors)
-        # Merged into main context (per spec) with clear OTA citations retained.
         for item in state.get("vector_ota_results") or []:
             text = item.get("content") or ""
             meta = _chunk_metadata(item)
-            # Choose nice prefix based on common OTA payload fields
             if meta.get("recommendation_text") or "recommendation" in str(meta.get("doc_kind") or "").lower():
                 label = "[OTA Recommendation]"
             elif meta.get("metric_text") or "metric" in str(meta.get("doc_kind") or "").lower():
@@ -891,6 +1015,10 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
             {
                 "bq_count": len(state.get("bq_results") or []),
                 "news_count": len(state.get("vector_news_results") or []),
+                "academic_papers_count": len(state.get("vector_academic_papers_results") or []),
+                "policies_count": len(state.get("vector_policies_results") or []),
+                "public_reports_count": len(state.get("vector_public_reports_results") or []),
+                "formation_count": len(state.get("vector_formation_results") or []),
                 "academic_count": len(state.get("vector_academic_results") or []),
                 "ota_count": len(state.get("vector_ota_results") or []),
                 "merged_count": len(merged),

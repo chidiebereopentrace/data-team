@@ -19,7 +19,8 @@ COPY ml ./ml
 ENV PYTHONPATH=/app
 # Vector search uses Qdrant (not a local on-disk index). Set at runtime, e.g.:
 #   QDRANT_URL, QDRANT_API_KEY, QDRANT_COLLECTION_NEWS, QDRANT_COLLECTION_RESEARCH_PAPERS,
-#   QDRANT_COLLECTION_DATA_DESCRIPTIONS (see README / vector_retriever.py).
+#   QDRANT_COLLECTION_* for news / academic / policies / public_reports / formation / OTA
+#   (see README / vector_retriever.py).
 
 # Optional: pass HF_API_TOKEN at build time (or set at runtime)
 ARG HF_API_TOKEN
