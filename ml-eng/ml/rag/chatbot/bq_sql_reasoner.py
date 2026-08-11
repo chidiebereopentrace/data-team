@@ -11,6 +11,7 @@ import os
 import re
 from typing import Any
 
+from ml.rag.chatbot.bq_sql_patterns import normalize_pattern_name
 from ml.rag.chatbot.bq_table_schema_yaml import (
     format_reasoner_index,
     list_staging_table_index,
@@ -23,13 +24,14 @@ from ml.rag.observability import observed_span, update_current_span_metadata
 logger = logging.getLogger(__name__)
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+_TERM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{1,}")
 
 
 def _max_tables() -> int:
     try:
-        return max(1, int(os.environ.get("RAG_BQ_MAX_TABLES", "4") or 4))
+        return max(1, int(os.environ.get("RAG_BQ_MAX_TABLES", "6") or 6))
     except ValueError:
-        return 4
+        return 6
 
 
 def _reasoner_model(plan_type: str | None) -> str:
@@ -79,6 +81,52 @@ def _empty_plan(*, rationale: str) -> dict[str, Any]:
     }
 
 
+def _query_terms_for_packing(query: str, decomposition: dict[str, Any]) -> list[str]:
+    """Entity + question tokens used to prefer matching FAOSTAT enum samples."""
+    terms: list[str] = []
+    entities = decomposition.get("entities")
+    if isinstance(entities, list):
+        for ent in entities:
+            t = str(ent).strip()
+            if t:
+                terms.append(t)
+    for token in _TERM_TOKEN_RE.findall(query or ""):
+        if len(token) >= 3:
+            terms.append(token)
+    return terms
+
+
+def _normalize_intent_grain(raw: Any) -> list[str]:
+    if isinstance(raw, list):
+        return [str(g).strip() for g in raw if str(g).strip()]
+    if isinstance(raw, str) and raw.strip():
+        return [g.strip() for g in raw.split(",") if g.strip()]
+    return []
+
+
+def _normalize_intent(
+    intent: dict[str, Any],
+    *,
+    known: set[str],
+    selected: list[str],
+) -> dict[str, Any]:
+    intent_tables: list[str] = []
+    for t in intent.get("tables") or []:
+        tid = str(t).strip().split(".")[-1]
+        if tid in known and tid not in intent_tables:
+            intent_tables.append(tid)
+    return {
+        "goal": str(intent.get("goal") or "").strip() or "answer",
+        "tables": intent_tables or selected[:1],
+        "filters": str(intent.get("filters") or "").strip(),
+        "notes": str(intent.get("notes") or "").strip(),
+        "pattern": normalize_pattern_name(intent.get("pattern")),
+        "metric": str(intent.get("metric") or "value").strip() or "value",
+        "grain": _normalize_intent_grain(intent.get("grain")),
+        "order_by": str(intent.get("order_by") or "").strip(),
+    }
+
+
 def reason_bq_sql_plan(
     query: str,
     *,
@@ -105,6 +153,9 @@ def reason_bq_sql_plan(
         "When selecting 2+ tables, use ONLY pairs listed in semantic_relationships "
         "(rels=) joins_with with explicit on= keys; never invent joins. "
         "Each query_intent should state goal, tables, filters, and join keys when multi-table. "
+        "Set pattern to rank_by_sum, yoy_delta, share_of_total, or time_series when the "
+        "question clearly matches; otherwise use custom. Include metric, grain, and "
+        "order_by when using a non-custom pattern. "
         "Do not add macro tables (GDP, HDI) unless the question asks for macro context "
         "or a documented join requires them. "
         "Respect geography and time constraints from the decomposition. "
@@ -120,7 +171,9 @@ def reason_bq_sql_plan(
         f"Staging table index:\n{index_text}\n\n"
         "Return JSON with keys:\n"
         '  "selected_tables": ["stg_..."],\n'
-        '  "query_intents": [{"goal":"...","tables":["stg_..."],"filters":"...","notes":"..."}],\n'
+        '  "query_intents": [{"goal":"...","tables":["stg_..."],"filters":"...",'
+        '"pattern":"rank_by_sum|yoy_delta|share_of_total|time_series|custom",'
+        '"metric":"value","grain":["country_name"],"order_by":"total DESC","notes":"..."}],\n'
         '  "skip_bq": false,\n'
         '  "rationale": "short reason"\n'
     )
@@ -173,19 +226,7 @@ def reason_bq_sql_plan(
             for intent in intents_raw[:max_tables]:
                 if not isinstance(intent, dict):
                     continue
-                intent_tables = []
-                for t in intent.get("tables") or []:
-                    tid = str(t).strip().split(".")[-1]
-                    if tid in known and tid not in intent_tables:
-                        intent_tables.append(tid)
-                intents.append(
-                    {
-                        "goal": str(intent.get("goal") or "").strip() or "answer",
-                        "tables": intent_tables or selected[:1],
-                        "filters": str(intent.get("filters") or "").strip(),
-                        "notes": str(intent.get("notes") or "").strip(),
-                    }
-                )
+                intents.append(_normalize_intent(intent, known=known, selected=selected))
         skip = bool(parsed.get("skip_bq"))
         if not selected:
             plan = _empty_plan(
@@ -213,6 +254,10 @@ def reason_bq_sql_plan(
                     "tables": selected[:2],
                     "filters": "",
                     "notes": "",
+                    "pattern": "custom",
+                    "metric": "value",
+                    "grain": [],
+                    "order_by": "",
                 }
             ]
         plan = {
@@ -222,7 +267,10 @@ def reason_bq_sql_plan(
             "rationale": str(parsed.get("rationale") or "").strip() or "llm",
         }
 
-        hints, hints_truncated = pack_selected_table_hints(list(plan.get("selected_tables") or []))
+        hints, hints_truncated = pack_selected_table_hints(
+            list(plan.get("selected_tables") or []),
+            query_terms=_query_terms_for_packing(query, dec),
+        )
         plan["table_hints"] = hints
         plan["index_truncated"] = index_truncated
         plan["hints_truncated"] = hints_truncated

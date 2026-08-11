@@ -425,3 +425,72 @@ def compact_rels_summary(table_id: str) -> str:
     if comps:
         bits.append("companions=" + ",".join(comps[:3]))
     return "; ".join(bits) if bits else "rels=none"
+
+
+def _bare_table(table_id: str) -> str:
+    return (table_id or "").strip().split(".")[-1].lower()
+
+
+def documented_join_pairs(
+    selected_tables: list[str] | set[str] | None,
+) -> list[dict[str, Any]]:
+    """Pairwise joins where both ends are selected and YAML lists an explicit ``on=``."""
+    selected = {_bare_table(t) for t in (selected_tables or []) if _bare_table(t).startswith("stg_")}
+    if len(selected) < 2:
+        return []
+    pairs: list[dict[str, Any]] = []
+    seen: set[frozenset[str]] = set()
+    for left in sorted(selected):
+        rel = SEMANTIC_RELATIONSHIPS.get(left) or {}
+        for join in rel.get("joins_with") or []:
+            if not isinstance(join, dict):
+                continue
+            right = _bare_table(str(join.get("table") or ""))
+            if right not in selected or right == left:
+                continue
+            on_keys = [
+                str(k).strip()
+                for k in (join.get("on") or [])
+                if isinstance(k, (str, int, float)) and str(k).strip()
+            ]
+            if not on_keys:
+                continue
+            key = frozenset({left, right})
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append(
+                {
+                    "left": left,
+                    "right": right,
+                    "on": on_keys,
+                    "how": str(join.get("how") or "").strip(),
+                    "note": str(join.get("note") or "").strip(),
+                }
+            )
+    return pairs
+
+
+def format_join_fragments_for_nl2sql(
+    selected_tables: list[str] | set[str] | None,
+) -> str:
+    """Mandatory JOIN glue for NL2SQL (never invent keys outside YAML ``on=`` lists)."""
+    selected = sorted(
+        {_bare_table(t) for t in (selected_tables or []) if _bare_table(t).startswith("stg_")}
+    )
+    if len(selected) < 2:
+        return ""
+    pairs = documented_join_pairs(selected)
+    if not pairs:
+        return (
+            "JOIN fragments: none documented between the selected tables. "
+            "Run SEPARATE SELECTs per table — do NOT invent JOINs or CROSS JOIN."
+        )
+    lines = ["JOIN fragments (required if multi-table):"]
+    for pair in pairs:
+        on_sql = " AND ".join(pair["on"])
+        bit = f"  {pair['left']} JOIN {pair['right']} ON {on_sql}"
+        if pair.get("note"):
+            bit += f"  -- {pair['note']}"
+        lines.append(bit)
+    return "\n".join(lines)

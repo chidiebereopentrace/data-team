@@ -1,5 +1,11 @@
 table_name: opentrace-prod-5ga4.staging_dev.stg_fews_food_security
-description: FEWS NET food security / IPC phases and insecure population estimates.
+description: >
+  FEWS NET IPC area classifications and food-insecure population estimates at
+  subnational FNID/admin grain (monthly). Two measure_type families:
+  classification (IPC phase maps) and population (people in Phase 3+). Filter
+  by exact measure_type + scenario_name (+ phase_code / classification_scale as
+  relevant); never invent labels. Do not mix population counts with
+  classification rows in one SUM.
 grain: fnid/admin × year × month × measure_type × scenario
 entity_type: fews
 source:
@@ -16,22 +22,36 @@ semantic_role:
   - ipc
   - fews
 business_questions_supported:
-- Which districts are in IPC phase 3+?
-- How has food insecurity changed recently?
+- Which areas have population in IPC Phase 3 and above?
+- What is the current, near-term, or medium-term IPC classification for an area?
+- How has food-insecure population changed over recent months?
+- What share of population is in phase 3, 4, or 5?
 filtering_guidance:
 - Filter by geography and time when present
 - country holds country labels only — never filter country = 'Africa' or a region
-- Prefer phase_code / pct_phase3+ for severity; filter year and month for recent status
-- Subnational grain (fnid/admin); do not invent dim_* for Africa country lists
+- Subnational grain via fnid / admin_* / geographic_unit_name; do not invent dim_* for Africa country lists
+- Always filter measure_type: prefer population for people-in-need / Phase 3+ counts; prefer classification for IPC phase maps
+- For population severity prefer phase_code = '3+' / phase_name = 'Phase 3 and above'; use pct_phase3 / pct_phase4 / pct_phase5 for shares
+- Always filter scenario_name with an exact label; prefer Current Situation for present status; use Near Term Projection / Medium Term Projection / Most Likely / Peak Needs when outlook is asked
+- For classification rows filter classification_scale; prefer IPC 3.1 over older IPC 3.0 / IPC 2.0 unless a scale is named; use IPC Highest Household only when household-scale is asked
+- Population rows leave classification_scale empty; classification rows leave phase_code / phase_name empty — do not invent
+- Filter year and month for recent or time-bounded status
+- Never SUM population measure rows with classification measure rows
 sql_generation_hints:
-- Filter by country/fnid and year/month
-- Use phase_code or pct_phase3-5 for severity
-- GROUP BY geography for which-region questions
+- Filter country and/or fnid (or geographic_unit_name / admin_*) plus year and month
+- Always filter measure_type = 'population' or measure_type = 'classification'
+- Always filter scenario_name = '<exact label>'
+- For Phase 3+ population questions: measure_type = 'population' and phase_code = '3+'
+- For IPC maps: measure_type = 'classification' and classification_scale as needed
+- Use pct_phase3 / pct_phase4 / pct_phase5 for phase shares when present
+- GROUP BY fnid or admin / geographic_unit_name for which-region questions
 - Never invent warehouse dimension tables (dim_*)
 columns:
 - name: fnid
   type: STRING
-  description: fnid
+  description: >
+    FEWS NET geographic unit ID (FNID). Prefer for exact subnational filters
+    when the area is known by FNID.
 - name: country
   type: STRING
   description: Country name only. Never 'Africa' or a region label.
@@ -40,73 +60,131 @@ columns:
   description: country code
 - name: admin_0
   type: STRING
-  description: admin 0
+  description: Admin level 0 label (country) when populated
 - name: admin_1
   type: STRING
-  description: admin 1
+  description: Admin level 1 label when populated
 - name: admin_2
   type: STRING
-  description: admin 2
+  description: Admin level 2 label when populated
 - name: admin_3
   type: STRING
-  description: admin 3
+  description: Admin level 3 label when populated
 - name: admin_4
   type: STRING
-  description: admin 4
+  description: Admin level 4 label when populated
 - name: geographic_unit_name
   type: STRING
-  description: geographic unit name
+  description: >
+    Display name of the geographic unit. Filter with an exact label when the
+    question names a district/area by name.
 - name: fewsnet_region
   type: STRING
-  description: fewsnet region
+  description: FEWS NET regional grouping when populated
 - name: phase_code
   type: STRING
-  description: phase code
+  description: >
+    Phase severity code for population rows. Sample value is 3+ (Phase 3 and
+    above). Typically empty on classification rows — do not invent.
+
+    Family rules:
+    Population severity — 3+ for people in Phase 3 and above.
 - name: phase_name
   type: STRING
-  description: phase name
+  description: >
+    Phase severity label for population rows. Sample value is Phase 3 and
+    above. Typically empty on classification rows — do not invent.
+
+    Family rules:
+    Population severity — Phase 3 and above (pair with phase_code = 3+).
 - name: classification_scale
   type: STRING
-  description: classification scale
+  description: >
+    IPC classification scale for classification rows. Typically empty on
+    population rows — do not invent. Prefer IPC 3.1 unless an older scale or
+    household scale is asked.
+
+    Family rules:
+    Area IPC — IPC 3.1, IPC 3.0, IPC 2.0.
+    Household — IPC Highest Household (only when household-scale is asked).
 - name: scenario_name
   type: STRING
-  description: scenario name
+  description: >
+    Outlook / timing scenario for the row. Filter with an exact scenario_name.
+    Prefer Current Situation for present status.
+
+    Family rules:
+    Present — Current Situation.
+    Outlook — Near Term Projection; Medium Term Projection; Most Likely;
+    Peak Needs.
 - name: value
   type: FLOAT64
-  description: value
+  description: >
+    Primary numeric measure. For measure_type = population this is the
+    population estimate (e.g. people in Phase 3+). For measure_type =
+    classification interpret with the classification payload / phase context.
+    Never SUM population rows with classification rows.
 - name: low_value
   type: STRING
-  description: low value
+  description: Lower bound of the estimate when populated (often population rows)
 - name: high_value
   type: STRING
-  description: high value
+  description: Upper bound of the estimate when populated (often population rows)
 - name: pct_phase3
   type: FLOAT64
-  description: pct phase3
+  description: Share of population in IPC Phase 3 when populated
 - name: pct_phase4
   type: FLOAT64
-  description: pct phase4
+  description: Share of population in IPC Phase 4 when populated
 - name: pct_phase5
   type: FLOAT64
-  description: pct phase5
+  description: Share of population in IPC Phase 5 when populated
 - name: is_allowing_for_assistance
   type: STRING
-  description: is allowing for assistance
+  description: >
+    Flag for whether the estimate allows for humanitarian assistance when
+    populated. Filter with the exact label present in the data; do not invent.
 - name: year
   type: INT64
-  description: year
+  description: Observation year
 - name: month
   type: INT64
-  description: month
+  description: Observation month (1-12)
 - name: measure_type
   type: STRING
-  description: measure type
+  description: >
+    Row family. Filter with an exact measure_type. Do not mix families in one
+    SUM/AVG.
+
+    Family rules:
+    population — people-in-need / Phase 3+ population estimates (use with
+    phase_code / phase_name and value / pct_phase*).
+    classification — IPC area classification rows (use with
+    classification_scale and scenario_name).
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+phase_code_value_samples:
+- 3+
+phase_name_value_samples:
+- Phase 3 and above
+classification_scale_value_samples:
+- IPC 3.0
+- IPC 3.1
+- IPC 2.0
+- IPC Highest Household
+scenario_name_value_samples:
+- Most Likely
+- Current Situation
+- Peak Needs
+- Medium Term Projection
+- Near Term Projection
+measure_type_value_samples:
+- population
+- classification
 _index_domain: fews
 _index_tags: *id001
 semantic_relationships:

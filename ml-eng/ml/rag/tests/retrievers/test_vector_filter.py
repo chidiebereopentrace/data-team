@@ -5,7 +5,12 @@ import pytest
 
 pytest.importorskip("qdrant_client")
 
-from ml.rag.retrievers.vector_retriever import _publication_years_in_range, build_qdrant_filter
+from ml.rag.retrievers.vector_retriever import (
+    VectorRetriever,
+    _publication_years_in_range,
+    build_qdrant_filter,
+    score_metadata_constraints,
+)
 
 
 def test_publication_years_match_any_not_range() -> None:
@@ -36,6 +41,51 @@ def test_multi_country_geo_filter() -> None:
         doc_kind="news_article",
     )
     assert f is not None
+
+
+def test_soft_metadata_score_signs() -> None:
+    meta_ok = {
+        "geo_country_primary": "Kenya",
+        "published_at": "2020-06-01",
+        "domains": "food_security;trade",
+    }
+    s = score_metadata_constraints(
+        meta_ok,
+        geo_list=["Kenya"],
+        time_from="2020-01-01",
+        time_to="2020-12-31",
+        domains_substring="food_security",
+    )
+    assert s > 0
+
+    meta_bad = {"geo_country_primary": "Nigeria", "published_at": "2015-01-01"}
+    s_bad = score_metadata_constraints(
+        meta_bad,
+        geo_list=["Kenya"],
+        time_from="2020-01-01",
+        time_to="2020-12-31",
+    )
+    assert s_bad < 0
+
+
+def test_metadata_passes_filters_niger_not_nigeria() -> None:
+    vr = VectorRetriever.__new__(VectorRetriever)
+    assert not vr._metadata_passes_filters(
+        {"geo_country_primary": "Nigeria"},
+        doc_kind=None,
+        geo_country="Niger",
+        published_at_from=None,
+        published_at_to=None,
+        domains_substring=None,
+    )
+    assert vr._metadata_passes_filters(
+        {"geo_country_primary": "Niger"},
+        doc_kind=None,
+        geo_country="Niger",
+        published_at_from=None,
+        published_at_to=None,
+        domains_substring=None,
+    )
 
 
 if __name__ == "__main__":

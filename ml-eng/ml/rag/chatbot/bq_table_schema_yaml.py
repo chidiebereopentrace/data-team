@@ -120,6 +120,8 @@ _MAX_LINE = 140
 _MAX_COL_DESC = 600
 _MAX_COLUMNS = 30
 _MAX_VALUE_SAMPLES = 400
+_VALUE_SAMPLE_MATCH_CAP = 80
+_VALUE_SAMPLE_HEAD_KEEP = 12
 _VALUE_SAMPLE_KEYS = frozenset(
     {
         "element_value_samples",
@@ -153,7 +155,67 @@ def _truncate(text: str, limit: int) -> str:
     return text[: max(0, limit - 1)].rstrip() + "…"
 
 
-def _format_value_samples(label: str, value: Any, *, max_items: int = _MAX_VALUE_SAMPLES) -> str | None:
+def _normalize_query_terms(query_terms: list[str] | None) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in query_terms or []:
+        t = str(raw).strip().lower()
+        if len(t) < 2 or t in seen:
+            continue
+        seen.add(t)
+        terms.append(t)
+    return terms
+
+
+def _prefer_matching_samples(
+    items: list[str],
+    query_terms: list[str] | None,
+    *,
+    max_items: int,
+    head_keep: int = _VALUE_SAMPLE_HEAD_KEEP,
+) -> list[str]:
+    """Prefer enum values that match query terms; keep a short discovery head."""
+    if not items:
+        return []
+    cap = max(1, min(max_items, _VALUE_SAMPLE_MATCH_CAP if query_terms else max_items))
+    terms = _normalize_query_terms(query_terms)
+    if not terms:
+        return items[:cap]
+    matched: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        low = item.lower()
+        if any(term in low for term in terms):
+            if item not in seen:
+                matched.append(item)
+                seen.add(item)
+            if len(matched) >= cap:
+                return matched
+    head = max(0, min(head_keep, cap - len(matched)))
+    for item in items[:head]:
+        if item not in seen:
+            matched.append(item)
+            seen.add(item)
+        if len(matched) >= cap:
+            break
+    if len(matched) < cap:
+        for item in items:
+            if item in seen:
+                continue
+            matched.append(item)
+            seen.add(item)
+            if len(matched) >= cap:
+                break
+    return matched
+
+
+def _format_value_samples(
+    label: str,
+    value: Any,
+    *,
+    max_items: int = _MAX_VALUE_SAMPLES,
+    query_terms: list[str] | None = None,
+) -> str | None:
     """Render element/product sample lists as multi-line bullets for NL2SQL packs."""
     if not isinstance(value, list) or not value:
         return None
@@ -164,7 +226,7 @@ def _format_value_samples(label: str, value: Any, *, max_items: int = _MAX_VALUE
     ]
     if not items:
         return None
-    shown = items[:max_items]
+    shown = _prefer_matching_samples(items, query_terms, max_items=max_items)
     lines = [f"{label}:"]
     for item in shown:
         lines.append(f"  - {item}")
@@ -372,11 +434,13 @@ def format_table_schema(
     max_bytes: int | None = None,
     include_columns: bool = True,
     selected_tables: set[str] | None = None,
+    query_terms: list[str] | None = None,
 ) -> str:
     """Compact, SQL-prompt-friendly rendering of a per-table YAML schema.
 
     Returns "" when no YAML is known for the table. Output is bounded by
-    ``max_bytes`` (preferred) or ``max_chars``.
+    ``max_bytes`` (preferred) or ``max_chars``. Value-sample lists prefer
+    entries matching ``query_terms`` so large FAOSTAT enums fit the hint budget.
     """
     schema = load_table_schema(table_name)
     if not schema:
@@ -385,6 +449,7 @@ def format_table_schema(
     fqn = str(schema.get("table_name") or table_name).strip().strip("`")
     header = f"Table: {fqn or table_name}"
     parts: list[str] = [header]
+    deferred_samples: list[str] = []
 
     for key, label in _SECTION_ORDER:
         if key not in schema:
@@ -398,9 +463,13 @@ def format_table_schema(
                 parts.append(block)
             continue
         if key in _VALUE_SAMPLE_KEYS:
-            block = _format_value_samples(label, schema[key])
+            block = _format_value_samples(
+                label,
+                schema[key],
+                query_terms=query_terms,
+            )
             if block:
-                parts.append(block)
+                deferred_samples.append(block)
             continue
         if key in _GUIDANCE_LIST_KEYS:
             block = _format_guidance_list(label, schema[key])
@@ -411,11 +480,14 @@ def format_table_schema(
         if line:
             parts.append(line)
 
+    # Columns before enum samples so byte truncation keeps schema usable.
     if include_columns and isinstance(schema.get("columns"), list):
         col_block = _format_columns(schema["columns"])
         if col_block:
             parts.append("Columns:")
             parts.append(col_block)
+
+    parts.extend(deferred_samples)
 
     text = "\n".join(parts)
     budget = max_bytes if max_bytes is not None else max_chars
@@ -493,6 +565,7 @@ def pack_selected_table_hints(
     table_ids: list[str],
     *,
     max_bytes: int | None = None,
+    query_terms: list[str] | None = None,
 ) -> tuple[list[str], bool]:
     """Full YAML packs for selected tables, truncated to the NL2SQL hint byte budget."""
     budget = hint_max_bytes() if max_bytes is None else max(0, max_bytes)
@@ -520,6 +593,7 @@ def pack_selected_table_hints(
             max_bytes=min(per, remain_total),
             include_columns=True,
             selected_tables=selected,
+            query_terms=query_terms,
         )
         if not block:
             continue

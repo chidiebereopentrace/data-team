@@ -1,5 +1,11 @@
 table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_sdg_hdi
-description: FAOSTAT SDG indicators, healthy diet cost, food value chain, census.
+description: >
+  FAOSTAT SDG indicators, cost of a healthy diet (CoHD) / diet affordability,
+  food value-chain factor shares, and agricultural census holdings. Rows are
+  country-level facts (not continent aggregates). Filter by exact item +
+  element (+ food_value / industry / factor / release when populated); never
+  invent labels. Do not SUM across unrelated families (SDG vs CoHD vs census
+  vs food value-chain) in one query.
 grain: country × indicator × year
 entity_type: faostat
 source:
@@ -16,81 +22,554 @@ semantic_role:
   - nutrition
   - faostat
 business_questions_supported:
-- What is the cost of a healthy diet?
+- What is the cost of a healthy diet, or how many people cannot afford one?
+- What is the prevalence of undernourishment or food insecurity?
+- What is the Agriculture Orientation Index or agriculture share of government expenditure?
+- What is forest area or mountain green cover?
+- What is the level of water stress or water use efficiency?
+- What are agricultural census holdings or women's land ownership rights?
 filtering_guidance:
 - Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa' or a region
+- For continental/Africa rankings stay on this table; do not join a geo dimension
+- This table mixes SDG indicators, CoHD/diet affordability, food value-chain factors, and agricultural census holdings — filter item+element to one family
+- Never SUM across unrelated item families in one query
+- Filter element to exactly one metric; never SUM across different elements
+- Always interpret value with the matching unit; never SUM across unlike units
+- Prefer headline items for generic questions: 2.1.1 Prevalence of undernourishment; 2.1.2 moderate/severe food insecurity both-sexes; Cost of a healthy diet (CoHD), PPP dollar per person per day; Prevalence of unaffordability (PUA), percent; 2.a.1 Agriculture orientation index for government expenditures; 15.1.1 Forest area as a proportion of total land area; 6.4.2 Level of water stress (No breakdown)
+- Prefer both-sexes / no breakdown by sex / Total / Montane-Total slices over sex, age, land-cover, or Alpine/Nival slices unless asked
+- Prefer PPP CoHD / food-group costs over LCU for cross-country comparisons; prefer Value over Confidence interval bounds unless uncertainty is asked
+- Food value-chain dims (food_value, industry, factor) are often null on pure SDG rows — filter them only for value-chain questions
+- Source labels may contain typos (e.g. Remaining moutain area) — use the exact sample string
+- Filter year for time-bounded questions; filter release when a SOFI vintage is asked
 sql_generation_hints:
-- Filter item/indicator carefully
+- Filter country_name and year
+- Always filter element = '<exact label>' for the metric needed (usually Value)
+- Filter item = '<exact FAOSTAT label>' for the SDG / CoHD / census indicator named
+- Filter food_value / industry / factor only when those dims are populated and relevant
+- GROUP BY country_name, item, year when comparing
+- Never invent warehouse dimension tables (dim_*)
 columns:
 - name: area_code
   type: STRING
-  description: area code
+  description: FAO area code
 - name: area_code_m49
   type: STRING
-  description: area code m49
+  description: UN M49 area code for the country row (not a continent filter key)
 - name: country_name
   type: STRING
-  description: country name
+  description: Country name only (e.g. Nigeria, Kenya). Never 'Africa' or a region label.
 - name: item_code
   type: STRING
   description: item code
 - name: item_code_sdg
   type: STRING
-  description: item code sdg
+  description: SDG item code when populated
 - name: item
   type: STRING
-  description: item
+  description: >
+    SDG indicator, CoHD/diet-cost metric, or agricultural census holding
+    label. Filter with an exact item. Prefer headline both-sexes / no-breakdown
+    / Total slices over sex, age, or land-cover slices unless asked. Prefer
+    PPP over LCU for cross-country CoHD. Never invent labels. Do not SUM
+    primary rows with unlike item families together.
+
+    Family rules:
+    2.1 undernourishment / food insecurity — Prevalence of undernourishment;
+    Number of undernourished people; 2.1.2 moderate/severe and severe food
+    insecurity prevalence and numbers (female / male / both sexes).
+    2.2 / 2.3 / 2.4 — minimum dietary diversity (women); small/large-scale
+    food producer productivity and income; productive and sustainable
+    agriculture proxies, trend/status scores, and land-area criteria.
+    2.5 genetic resources — local/transboundary breeds stored, kept, at risk,
+    unknown risk, plant genetic resources accessions ex situ.
+    2.a / 2.c — Agriculture share of Government Expenditure; Agriculture
+    value added share of GDP; Agriculture orientation index; IFPA by Food CPI
+    or by product (Wheat, Maize, Rice, Sorghum, Millet).
+    CoHD / diet affordability — Cost of a healthy diet (PPP or LCU); PUA;
+    NUA; food-group costs (starchy staples, animal source foods, legumes,
+    vegetables, fruits, oils and fats) in PPP or LCU.
+    5.a land rights — legal guarantees; ownership/secure rights by sex;
+    share of women among owners/rights-bearers.
+    6.4 water — Level of water stress and Water Use Efficiency by sector
+    (Agriculture, Industries, Services, No breakdown).
+    14.* fisheries — fish stocks within biologically sustainable levels;
+    IUU instruments; sustainable fisheries share of GDP; small-scale access.
+    15.* land / forest / mountain — Forest area and shares; forest management
+    / biomass / change rate; Mountain Green Cover Index and green cover area
+    by zone (Montane, Remaining moutain area, Total, Alpine, Nival) × land
+    cover; degraded mountain land area/proportion; mountain area; PGRFA /
+    SMTA frameworks.
+    Census holdings — Holdings by land size class; parcels; tenure forms;
+    civil holders by sex/age; household members (incl. engaged in agriculture);
+    employees on the holding; Holdings without land.
 - name: food_value_code
   type: STRING
   description: food value code
 - name: food_value
   type: STRING
-  description: food value
+  description: >
+    Food value-chain segment when populated (often null on pure SDG/CoHD
+    rows). Filter with an exact food_value only for value-chain questions.
+    Never invent labels.
+
+    Family rules:
+    FAH — Food At Home (FAH).
+    FAAFH — Food and Accommodation Away From Home (FAAFH).
 - name: industry_code
   type: STRING
   description: industry code
 - name: industry
   type: STRING
-  description: industry
+  description: >
+    Industry sector for food value-chain factor rows when populated (often
+    null on pure SDG rows). Filter with an exact industry. Prefer Total
+    Industries only when totals are asked. Never invent labels.
+
+    Family rules:
+    Primary / manufacturing — Agriculture, Forestry and Fishing; Manufacture
+    of food, beverages and tobacco products.
+    Trade / services — Wholesale and retail trade; Transportation and storage;
+    Accommodation and food service activities.
+    Totals — Total Industries.
 - name: factor_code
   type: STRING
   description: factor code
 - name: factor
   type: STRING
-  description: factor
+  description: >
+    Primary factor / cost component for food value-chain rows when populated
+    (often null on pure SDG rows). Filter with an exact factor. Prefer Primary
+    Factors Total only when totals are asked. Never invent labels.
+
+    Family rules:
+    Factors — Labour, Operating surplus, Taxes, Import, Primary Factors Total.
 - name: release_code
   type: STRING
   description: release code
 - name: release
   type: STRING
-  description: release
+  description: >
+    Data release / SOFI vintage when populated. Filter with an exact release
+    when a specific report update is asked. Prefer the latest SOFI release
+    unless an older vintage is named.
+
+    Family rules:
+    SOFI / updates — July 2025 (SOFI report); December 2024 (Update).
 - name: census_year_code
   type: STRING
   description: census year code
 - name: census_year
   type: STRING
-  description: census year
+  description: Agricultural census year label when populated (census holding rows)
 - name: element_code
   type: STRING
   description: element code
 - name: element
   type: STRING
-  description: element
+  description: >
+    Metric type for the row's value. Filter with an exact element (one metric
+    per query). Do not mix elements in the same SUM/AVG. Always read value
+    together with unit. Prefer Value over Confidence interval bounds unless
+    uncertainty is asked.
+
+    Family rules:
+    Core measure — Value; Confidence interval: Upper bound; Confidence
+    interval: Lower bound.
+    Counts / area — Number; Area; Average area; Average number of parcels per
+    holding; Average persons per holding (household members / employees).
+    Shares / percents — Percent of total persons (holders / household
+    members); Percentage of total area; Percent of total number; Factor share;
+    Industry share.
+    Money / values — Value (2017 constant prices); Value US$; Value Local
+    Currency; Value SLC, 2015 prices; Value US$, 2015 prices.
+
+    Default for most SDG/CoHD questions → Value.
 - name: year
   type: INT64
-  description: year
+  description: Observation year
 - name: unit
   type: STRING
-  description: unit
+  description: >
+    Unit of value for this element. Always interpret value with element + unit;
+    never compare or SUM unlike units.
+
+    % — shares, prevalences, proportions, scores expressed as percent.
+    million No / 1000 No / No — counts of people, holdings, breeds, agreements.
+    km2 / 1000 ha / ha — area measures.
+    Score — index/score metrics (e.g. 2.4.1 proxy scores).
+    USD/m3 — water use efficiency money per cubic metre.
+    t/ha — productivity (tonnes per hectare).
+    Int$ (PPP) per person per day / LCU/cap/d / USD_PPP/cap / USD_PPP —
+    CoHD and related diet-cost measures.
+    million USD / million LCU / million SLC — monetary aggregates.
 - name: value
   type: FLOAT64
-  description: value
+  description: >
+    Numeric measure for the element. SUM across items/years only when element
+    and unit are homogeneous. Never SUM across different elements, unlike
+    units, or unrelated item families (SDG vs CoHD vs census vs value-chain).
 - name: source_natural_key
   type: STRING
   description: source natural key
 - name: loaded_at
   type: STRING
   description: loaded at
+item_value_samples:
+- 2.1.1 Prevalence of undernourishment
+- 2.1.1 Number of undernourished people
+- 2.1.2 Prevalence of moderate or severe food insecurity (female) (15 years old and over) (no breakdown by urbanisation)
+- 2.1.2 Prevalence of moderate or severe food insecurity (male) (15 years old and over) (no breakdown by urbanisation)
+- 2.1.2 Prevalence of moderate or severe food insecurity (both sexes or no breakdown by sex) (all age ranges or no breakdown by age) (no breakdown by urbanisation)
+- 2.1.2 Prevalence of severe food insecurity (female) (15 years old and over) (no breakdown by urbanisation)
+- 2.1.2 Prevalence of severe food insecurity (male) (15 years old and over) (no breakdown by urbanisation)
+- 2.1.2 Prevalence of severe food insecurity (both sexes or no breakdown by sex) (all age ranges or no breakdown by age) (no breakdown by urbanisation)
+- 2.1.2 Number of severely food insecure people (female) (15 years old and over)
+- 2.1.2 Number of severely food insecure people (male) (15 years old and over)
+- 2.1.2 Number of severely food insecure people (both sexes or no breakdown by sex) (all age ranges or no breakdown by age)
+- 2.1.2 Number of moderately or severely food insecure people (female) (15 years old and over)
+- 2.1.2 Number of moderately or severely food insecure people (male) (15 years old and over)
+- 2.1.2 Number of moderately or severely food insecure people (both sexes or no breakdown by sex) (all age ranges or no breakdown by age)
+- 2.5.1b Number of local breeds for which sufficient genetic resources are stored for reconstitution
+- 2.5.1b Number of transboundary breeds for which sufficient genetic resources are stored for reconstitution
+- "15.4.2b Area of degraded mountain land: Montane"
+- "15.4.2b Area of degraded mountain land: Remaining moutain area"
+- "15.4.2b Area of degraded mountain land: Total"
+- "15.4.2b Proportion of degraded mountain land: Montane"
+- "15.4.2b Proportion of degraded mountain land: Remaining moutain area"
+- "15.4.2b Proportion of degraded mountain land: Total"
+- 2.5.1b Number of local breeds kept in the country
+- 2.5.1b Number of transboundary breeds (including extinct ones)
+- "2.4.1 [PROXY] Progress toward productive and sustainable agriculture, current status score"
+- "2.4.1 [PROXY] Progress toward productive and sustainable agriculture, trend score"
+- 2.5.2 Proportion of local breeds classified as being at risk of extinction
+- 2.5.2 Number of local breeds (not extinct)
+- 2.5.2 Number of local breeds with unknown risk status
+- 2.5.2 Number of transboundary breeds (not extinct)
+- 2.5.2 Proportion of transboundary breeds classified as being at risk of extinction
+- 2.5.2 Number of transboundary breeds with unknown risk status
+- 2.a.1 Agriculture share of Government Expenditure
+- 2.a.1 Agriculture value added share of GDP
+- 2.a.1 Agriculture orientation index for government expenditures
+- "2.c.1 Indicator of Food Price Anomalies (IFPA), by Food CPI"
+- 6.4.2 Level of water stress (Agriculture (ISIC4 A01 A0210 A0322))
+- 6.4.2 Level of water stress (Industries)
+- 6.4.2 Level of water stress (Services (G to T))
+- 6.4.2 Level of water stress (No breakdown)
+- 6.4.1 Water Use Efficiency (Agriculture (ISIC4 A01 A0210 A0322))
+- 6.4.1 Water Use Efficiency (Industries)
+- 6.4.1 Water Use Efficiency (Services (G to T))
+- 6.4.1 Water Use Efficiency (No breakdown)
+- 14.4.1 Proportion of fish stocks within biologically sustainable levels
+- 14.6.1 International instruments to combat IUU fishing
+- 14.7.1 Sustainable fisheries as a proportion of GDP
+- 14.b.1 Protection of access rights for small-scale fisheries
+- 15.1.1 Forest area
+- 15.1.1 Forest area as a proportion of total land area
+- 15.1.1 Land area
+- 15.2.1 Above-ground biomass in forest
+- 15.2.1 Annual forest area change rate
+- 15.2.1 Forest area under an independently verified forest management certification scheme
+- 15.2.1 Proportion of forest area with a long-term management plan
+- 15.2.1 Proportion of forest area within legally established protected areas
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Croplands"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Grassland"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Inland water bodies"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: MGCI"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain Green Cover Index: Montane; Land Cover: Tree-covered areas"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Croplands"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Grassland"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Inland water bodies"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: MGCI"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain Green Cover Index: Remaining moutain area; Land Cover: Tree-covered areas"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Croplands"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Grassland"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Inland water bodies"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: MGCI"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain Green Cover Index: Total; Land Cover: Tree-covered areas"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Croplands"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Grassland"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Inland water bodies"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: MGCI"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain green cover area: Montane; Land Cover: Tree-covered areas"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Croplands"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Grassland"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Inland water bodies"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: MGCI"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain green cover area: Remaining moutain area; Land Cover: Tree-covered areas"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Croplands"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Grassland"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Inland water bodies"
+- "15.4.2a Mountain green cover area: Total; Land Cover: MGCI"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain green cover area: Total; Land Cover: Tree-covered areas"
+- "15.4.2 Mountain area: Montane"
+- "15.4.2 Mountain area: Remaining moutain area"
+- "15.4.2 Mountain area: Total"
+- 15.6.1 Total reported number of Standard Material Transfer Agreements (SMTAs)
+- "15.6.1 Countries with legislative, administrative and policy framework or measures on the International Treaty on PGRFA"
+- 15.6.1 Countries that are contracting Parties to the International Treaty on PGRFA
+- Holdings
+- Holdings with land size 0-<1
+- Holdings with land size 100-<200
+- Holdings with land size 200-<500
+- Holdings with land size 1-<2
+- Holdings with land size 2-<5
+- Holdings with land size 5-<10
+- Holdings with land size 10-<20
+- Holdings with land size 20-<50
+- Holdings with land size 50-<100
+- "Civil holders, total"
+- "Civil holders, total <25 years"
+- "Civil holders, total 25-<35 years"
+- "Civil holders, total 35-<45 years"
+- "Civil holders, total 45-<55 years"
+- "Civil holders, total 55-<65 years"
+- "Civil holders, total >=65 years"
+- "Civil holders, female"
+- "Civil holders, male"
+- Holdings without land
+- "Household members, total"
+- "Household members, female"
+- "Household members, male"
+- "Household members, engaged in agriculture, total"
+- "Household members, engaged in agriculture, female"
+- "Household members, engaged in agriculture, male"
+- Employees on the holding
+- "Cost of a healthy diet (CoHD), PPP dollar per person per day"
+- "Cost of a healthy diet (CoHD), LCU per person per day"
+- "Prevalence of unaffordability (PUA), percent"
+- "Number of people unable to afford a healthy diet (NUA), million"
+- "Cost of starchy staples, PPP dollar per person per day"
+- "Cost of starchy staples, LCU per person per day"
+- "Cost of animal source foods, PPP dollar per person per day"
+- "Cost of animal source foods, LCU per person per day"
+- "Cost of legumes, nuts and seeds, PPP dollar per person per day"
+- "Cost of legumes, nuts and seeds, LCU per person per day"
+- "Cost of vegetables, PPP dollar per person per day"
+- "Cost of vegetables, LCU per person per day"
+- "Cost of fruits, PPP dollar per person per day"
+- "Cost of fruits, LCU per person per day"
+- "Cost of oils and fats, PPP dollar per person per day"
+- "Cost of oils and fats, LCU per person per day"
+- 5.a.2 Legal guarantees to women’s equal rights to land ownership and/or control
+- Parcels
+- Holdings operated by civil persons
+- Holdings operated by juridical persons
+- Holdings reporting number of parcels
+- Holdings with 1 parcel
+- Holdings with 2-3 parcels
+- Holdings with 4-5 parcels
+- Holdings with 6-9 parcels
+- Holdings with 10 or more parcels
+- 2.5.1a Plant genetic resources accessions stored ex situ (number)
+- "2.c.1 Indicator of Food Price Anomalies (IFPA), by type of product: Wheat"
+- "2.c.1 Indicator of Food Price Anomalies (IFPA), by type of product: Maize"
+- "2.c.1 Indicator of Food Price Anomalies (IFPA), by type of product: Rice"
+- "2.c.1 Indicator of Food Price Anomalies (IFPA), by type of product: Sorghum"
+- "Civil holders, total <35 years"
+- "Civil holders, female <25 years"
+- "Civil holders, female 25-<35 years"
+- "Civil holders, female 35-<45 years"
+- "Civil holders, female 45-<55 years"
+- "Civil holders, female 55-<65 years"
+- "Civil holders, female >=65 years"
+- "Civil holders, male <25 years"
+- "Civil holders, male 25-<35 years"
+- "Civil holders, male 35-<45 years"
+- "Civil holders, male 45-<55 years"
+- "Civil holders, male 55-<65 years"
+- "Civil holders, male >=65 years"
+- "5.a.1 Proportion of people with ownership or secure rights over agricultural land, by sex (female)"
+- "5.a.1 Proportion of people with ownership or secure rights over agricultural land, by sex (male)"
+- "5.a.1 Proportion of people with ownership or secure rights over agricultural land, by sex (both sexes or no breakdown by sex)"
+- 5.a.1 Share of women among owners or rights-bearers of agricultural land
+- 2.2.4 Prevalence of minimum dietary diversity among non-pregnant women aged 15-49 years
+- 2.3.2 Average income of large-scale food producers (female) (2017 base period)
+- 2.3.2 Average income of large-scale food producers (male) (2017 base period)
+- 2.3.2 Average income of large-scale food producers (both sexes or no breakdown by sex) (2017 base period)
+- 2.3.2 Average income of small-scale food producers (female) (2017 base period)
+- 2.3.2 Average income of small-scale food producers (male) (2017 base period)
+- 2.3.2 Average income of small-scale food producers (both sexes or no breakdown by sex) (2017 base period)
+- "15.4.2b Area of degraded mountain land: Alpine"
+- "15.4.2b Proportion of degraded mountain land: Alpine"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Croplands"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Grassland"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Inland water bodies"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: MGCI"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain Green Cover Index: Alpine; Land Cover: Tree-covered areas"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Croplands"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Grassland"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Inland water bodies"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: MGCI"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain green cover area: Alpine; Land Cover: Tree-covered areas"
+- "15.4.2 Mountain area: Alpine"
+- Holdings with land size 2-<3
+- Holdings with land size 3-<4
+- Holdings with land size 4-<5
+- Holdings owned by the holder or in owner-like possession
+- Holdings rented from others
+- Holdings operated under other forms of tenure
+- "2.c.1 Indicator of Food Price Anomalies (IFPA), by type of product: Millet"
+- Holdings reporting household size
+- Holdings with household size of 1 person
+- Holdings with household size of 2-3 persons
+- Holdings with household size of 4-5 persons
+- Holdings with household size of 6-9 persons
+- Holdings with household size of 10 or more persons
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of wage rate in agriculture
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of management of fertilizers
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of management of pesticides
+- Holdings with land size 500-<1000
+- Holdings with land size >=1000
+- Holdings under more than one form of tenure
+- Holdings operated by other legal status(es)
+- 2.3.1 Productivity of large-scale food producers (female) (2017 base period)
+- 2.3.1 Productivity of large-scale food producers (male) (2017 base period)
+- 2.3.1 Productivity of large-scale food producers (both sexes or no breakdown by sex) (2017 base period)
+- 2.3.1 Productivity of small-scale food producers (female) (2017 base period)
+- 2.3.1 Productivity of small-scale food producers (male) (2017 base period)
+- 2.3.1 Productivity of small-scale food producers (both sexes or no breakdown by sex) (2017 base period)
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of farm output value per hectare
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of variation in water availability
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of secure tenure rights to agricultural land
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of food security
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of use of agro-biodiversity supportive practices
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of risk mitigation mechanisms
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of net farm income
+- Holdings with land size 1000-<2500
+- 2.4.1 Proportion of agricultural area under productive and sustainable agriculture
+- 2.4.1 Proportion of agricultural land area that has achieved an acceptable or desirable level of soil degradation
+- "15.4.2b Area of degraded mountain land: Nival"
+- "15.4.2b Proportion of degraded mountain land: Nival"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Croplands"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Grassland"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Inland water bodies"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: MGCI"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain Green Cover Index: Nival; Land Cover: Tree-covered areas"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Artificial surfaces"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Croplands"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Grassland"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Inland water bodies"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: MGCI"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Permanent snow and glaciers"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Shrub-covered areas"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Sparsely natural vegetated areas"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Terrestrial barren land"
+- "15.4.2a Mountain green cover area: Nival; Land Cover: Tree-covered areas"
+- "15.4.2 Mountain area: Nival"
+food_value_value_samples:
+- Food and Accommodation Away From Home (FAAFH)
+- Food At Home (FAH)
+industry_value_samples:
+- Transportation and storage
+- Wholesale and retail trade
+- "Agriculture, Forestry and Fishing"
+- Total Industries
+- Accommodation and food service activities
+- Manufacture of food, beverages and tobacco products
+factor_value_samples:
+- Operating surplus
+- Taxes
+- Primary Factors Total
+- Labour
+- Import
+release_value_samples:
+- July 2025 (SOFI report)
+- December 2024 (Update)
+element_value_samples:
+- Value
+- "Confidence interval: Upper bound"
+- "Confidence interval: Lower bound"
+- Average area
+- Area
+- Number
+- Percent of total persons (holders)
+- Percent of total persons (household members)
+- Average persons per holding (employees on the holding)
+- Average number of parcels per holding
+- Percentage of total area
+- Percent of total number
+- Average persons per holding (household members)
+- Value (2017 constant prices)
+- Value US$
+- Factor share
+- Value Local Currency
+- Industry share
+- "Value SLC, 2015 prices"
+- "Value US$, 2015 prices"
+unit_value_samples:
+- "%"
+- million No
+- 1000 No
+- "No"
+- km2
+- Score
+- USD/m3
+- 1000 ha
+- t/ha
+- ha
+- Int$ (PPP) per person per day
+- LCU/cap/d
+- USD_PPP/cap
+- USD_PPP
+- million USD
+- million LCU
+- million SLC
 _index_domain: faostat
 _index_tags: *id001
 semantic_relationships:
