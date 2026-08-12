@@ -5,6 +5,7 @@ import ast
 import re
 from typing import Any
 
+from ml.rag.chatbot.acf_metadata import project_bq_row_acf
 from ml.rag.chatbot.bq_table_schema_yaml import (
     column_description,
     discriminator_columns,
@@ -12,7 +13,11 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     measure_columns,
     table_source_meta,
 )
+from ml.rag.chatbot.bq_trend_companion import maybe_attach_ranking_trend
 from ml.rag.chatbot.generator import is_ranking_numeric_query, is_usable_context_item
+
+_YEAR_SQL_RE = re.compile(r"\byear\s*=\s*(\d{4})\b", re.IGNORECASE)
+_ELEMENT_SQL_RE = re.compile(r"\belement\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
 
 _STG_TABLE_RE = re.compile(r"\bstg_[a-z0-9_]+\b", re.IGNORECASE)
 _SELECT_ALIAS_RE = re.compile(
@@ -48,6 +53,11 @@ _BQ_PROVENANCE_KEYS = frozenset(
         "raw_row",
         "ranked_rows",
         "bq_enrichment",
+        "year",
+        "trend_companion",
+        "trend_mixed",
+        "trend_companion_sql",
+        "coverage_strength",
         "bq_context_truncated",
         "table_id",
         "table_description",
@@ -453,11 +463,145 @@ def _rank_value(row: dict[str, Any], *, table_id: str, sql: str) -> tuple[str, A
     return col, val
 
 
+def _year_from_sql(sql: str) -> int | None:
+    m = _YEAR_SQL_RE.search(sql or "")
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _year_from_decomposition(decomposition: dict[str, Any] | None) -> int | None:
+    if not isinstance(decomposition, dict):
+        return None
+    for key in ("time_end", "time_start"):
+        raw = _s(decomposition.get(key))
+        if not raw:
+            continue
+        m = re.match(r"(\d{4})", raw)
+        if m:
+            try:
+                return int(m.group(1))
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _resolve_observation_date(
+    row: dict[str, Any],
+    *,
+    sql: str,
+    decomposition: dict[str, Any] | None,
+) -> tuple[int | None, str | None]:
+    """Return (year, as_of_date ISO) from row keys, SQL year filter, or decomposition."""
+    for key in _TIME_KEYS:
+        raw = row.get(key)
+        if raw is None:
+            continue
+        text = _s(raw)
+        if not text:
+            continue
+        ym = re.match(r"(\d{4})", text)
+        if ym:
+            year = int(ym.group(1))
+            return year, f"{year}-01-01"
+
+    year = _year_from_sql(sql)
+    if year is not None:
+        return year, f"{year}-01-01"
+
+    dec_year = _year_from_decomposition(decomposition)
+    if dec_year is not None:
+        as_of = f"{dec_year}-01-01"
+        if isinstance(decomposition, dict):
+            te = _s(decomposition.get("time_end"))
+            if te and len(te) >= 10:
+                as_of = te[:10]
+        return dec_year, as_of
+
+    return None, None
+
+
+def _element_from_sql(sql: str) -> str:
+    m = _ELEMENT_SQL_RE.search(sql or "")
+    return m.group(1).strip() if m else ""
+
+
+def _stamp_acf_metadata(
+    meta: dict[str, Any],
+    semantics: dict[str, Any] | None,
+    *,
+    sql: str,
+    decomposition: dict[str, Any] | None,
+    row: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Stamp year, as_of_date, metric, unit, and value fields for ACF scoring."""
+    out = dict(meta)
+    raw = row if isinstance(row, dict) else out.get("raw_row") if isinstance(out.get("raw_row"), dict) else {}
+    year, as_of = _resolve_observation_date(raw, sql=sql, decomposition=decomposition)
+    if year is not None:
+        out["year"] = year
+    if as_of:
+        out["as_of_date"] = as_of
+
+    sem = semantics if isinstance(semantics, dict) else out.get("value_semantics")
+    if isinstance(sem, dict):
+        measure_label = _s(sem.get("measure_label"))
+        if measure_label:
+            out["metric"] = measure_label
+        unit = _s(sem.get("unit"))
+        if unit:
+            out["unit"] = unit
+        if out.get("value") is None and sem.get("measure_value") is not None:
+            out["value"] = sem.get("measure_value")
+
+    element = _element_from_sql(sql) or _s(raw.get("element"))
+    if element and not _s(out.get("metric")):
+        out["metric"] = element
+
+    ranked_rows = out.get("ranked_rows")
+    if isinstance(ranked_rows, list) and ranked_rows:
+        top = ranked_rows[0]
+        if isinstance(top, dict):
+            label = _s(top.get("label"))
+            if label:
+                out.setdefault("geo_country_primary", label)
+                out.setdefault("geo_countries", label)
+            if out.get("value") is None and top.get("value") is not None:
+                out["value"] = top["value"]
+            if not _s(out.get("unit")):
+                out["unit"] = _s(top.get("unit"))
+        out["coverage_strength"] = min(1.0, len(ranked_rows) / 10.0)
+
+    projected = project_bq_row_acf({**raw, **out}, table_hint=_s(out.get("table_id")))
+    for key in (
+        "tier",
+        "data_level",
+        "as_of_date",
+        "region",
+        "source_id",
+        "metric",
+        "unit",
+        "geo_scope",
+        "geo_country_primary",
+        "geo_countries",
+        "value",
+        "prior_value",
+        "direction",
+    ):
+        if projected.get(key) is not None:
+            out[key] = projected[key]
+    return out
+
+
 def _consolidate_ranking_batch(
     items: list[dict[str, Any]],
     *,
     query: str,
     table_id: str,
+    decomposition: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not is_ranking_numeric_query(query) or len(items) < 2:
         return None
@@ -541,6 +685,20 @@ def _consolidate_ranking_batch(
     out_meta["value_semantics"] = head_sem
     out_meta["ranked_rows"] = ranked_rows
     out_meta["bq_enrichment"] = "ranked_table"
+    if table_id:
+        out_meta["table_id"] = table_id
+    out_meta = _stamp_acf_metadata(
+        out_meta,
+        head_sem,
+        sql=sql,
+        decomposition=decomposition,
+        row=ranked[0]["raw_row"],
+    )
+    out_meta = maybe_attach_ranking_trend(
+        out_meta,
+        sql=sql,
+        template=template,
+    )
 
     return {
         "content": content,
@@ -549,7 +707,12 @@ def _consolidate_ranking_batch(
     }
 
 
-def _enrich_single_item(item: dict[str, Any], *, table_id: str) -> dict[str, Any]:
+def _enrich_single_item(
+    item: dict[str, Any],
+    *,
+    table_id: str,
+    decomposition: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     meta = dict(item.get("metadata") or {})
     raw = _raw_row_from_item(item)
     sql = _s(meta.get("sql"))
@@ -567,6 +730,7 @@ def _enrich_single_item(item: dict[str, Any], *, table_id: str) -> dict[str, Any
         meta["table_description"] = src.get("description")
         meta["source_domain"] = src.get("source_domain")
         meta["source_layer"] = src.get("source_layer")
+    meta = _stamp_acf_metadata(meta, semantics, sql=sql, decomposition=decomposition, row=raw)
 
     content = format_row_prose(
         semantics,
@@ -584,8 +748,8 @@ def enrich_bq_results(
     decomposition: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Enrich usable BQ context items with value semantics prose before merge/rerank."""
-    del decomposition  # reserved for future query-aware phrasing
     plan = plan if isinstance(plan, dict) else {}
+    dec = decomposition if isinstance(decomposition, dict) else None
     selected = [str(t).strip().split(".")[-1].lower() for t in (plan.get("selected_tables") or []) if str(t).strip()]
 
     usable: list[dict[str, Any]] = []
@@ -607,12 +771,17 @@ def enrich_bq_results(
         table_id = _table_from_sql(sql if sql != "__no_sql__" else "")
         if not table_id and selected:
             table_id = selected[0]
-        consolidated = _consolidate_ranking_batch(group, query=query, table_id=table_id)
+        consolidated = _consolidate_ranking_batch(
+            group,
+            query=query,
+            table_id=table_id,
+            decomposition=dec,
+        )
         if consolidated:
             enriched.append(consolidated)
             continue
         for item in group:
-            enriched.append(_enrich_single_item(item, table_id=table_id))
+            enriched.append(_enrich_single_item(item, table_id=table_id, decomposition=dec))
 
     return diagnostics + enriched
 

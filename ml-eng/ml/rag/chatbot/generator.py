@@ -515,6 +515,28 @@ def _normalize_inline_citations(text: str) -> str:
     return text
 
 
+def _strip_invalid_citation_markers(answer: str, source_registry: list[SourceRef]) -> str:
+    """Remove [N] / [Source N] footnotes that reference missing registry IDs."""
+    if not answer or not source_registry:
+        return answer
+    valid = {ref.source_id for ref in source_registry}
+
+    def _keep_bracket(m: re.Match[str]) -> str:
+        try:
+            n = int(m.group(1))
+        except (TypeError, ValueError):
+            return ""
+        return m.group(0) if n in valid else ""
+
+    text = re.sub(r"\[(?!\s*Source\s)(\d+)\]", _keep_bracket, answer)
+    text = re.sub(r"\[Source\s+(\d+)\]", _keep_bracket, text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<!\[)\bSource\s+(\d+)\b(?!\])", _keep_bracket, text, flags=re.IGNORECASE)
+    # Collapse orphaned punctuation/spacing left by removed markers.
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"\s+([,.;])", r"\1", text)
+    return text.strip()
+
+
 def extract_referenced_source_ids(answer: str) -> set[int]:
     """Return source IDs cited inline in answer prose ([N], [Source N], or Source N)."""
     normalized = _answer_for_citation_extraction(answer)
@@ -1025,6 +1047,7 @@ def _finalize_generation_result(
     t0 = time.perf_counter()
     with observed_span("citations", input_data={"registry_size": len(source_registry)}):
         prose = _strip_model_sources_appendix(answer)
+        prose = _strip_invalid_citation_markers(prose, source_registry)
         citations = referenced_citations(prose, source_registry)
         if _append_sources_to_answer() and citations:
             lines = [f"{c['id']}. {c['text']}" for c in citations]

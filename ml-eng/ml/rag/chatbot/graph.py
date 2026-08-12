@@ -37,6 +37,11 @@ from ml.rag.chatbot.query_gate import (
 )
 from ml.rag.chatbot.bq_byte_budget import trim_bq_result_contents
 from ml.rag.chatbot.bq_context_enrich import enrich_bq_results
+from ml.rag.chatbot.bq_ranking_cache import (
+    bq_results_from_cache,
+    cache_entry_from_bq_results,
+    is_ranking_follow_up,
+)
 from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
 from ml.rag.chatbot.corpus_catalog import select_corpora
 from ml.rag.chatbot.generator import (
@@ -373,6 +378,8 @@ class RAGGraphState(TypedDict, total=False):
     bq_results: list[dict[str, Any]]
     bq_sql_queries: list[str]
     bq_sql_debug: list[dict[str, Any]]
+    structured_ranking_cache: dict[str, Any] | None
+    bq_cache_hit: bool | None
     merged_context: list[dict[str, Any]]
     reranked_context: list[dict[str, Any]]
     web_results: list[dict[str, Any]]
@@ -998,6 +1005,19 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     if plan.get("skip_bq"):
         return {"bq_results": [], "bq_sql_queries": [], "bq_sql_debug": []}
 
+    cached = state.get("structured_ranking_cache")
+    if isinstance(cached, dict) and is_ranking_follow_up(q, dec, cached):
+        results = bq_results_from_cache(cached)
+        bq_sql_queries, bq_sql_debug = aggregate_bq_sql_debug(results)
+        update_current_span_metadata({"bq_cache_hit": True})
+        return {
+            "bq_results": results,
+            "bq_sql_queries": bq_sql_queries,
+            "bq_sql_debug": bq_sql_debug,
+            "bq_cache_hit": True,
+            "structured_ranking_cache": cached,
+        }
+
     hints = [str(h).strip() for h in (plan.get("table_hints") or []) if str(h).strip()]
     if not hints:
         cands = state.get("bq_table_candidates") or []
@@ -1076,11 +1096,16 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     if ctx_truncated:
         update_current_span_metadata({"bq_context_truncated": True})
     bq_sql_queries, bq_sql_debug = aggregate_bq_sql_debug(results)
-    return {
+    cache_entry = cache_entry_from_bq_results(results, query=q, decomposition=dec)
+    out: dict[str, Any] = {
         "bq_results": results,
         "bq_sql_queries": bq_sql_queries,
         "bq_sql_debug": bq_sql_debug,
+        "bq_cache_hit": False,
     }
+    if cache_entry:
+        out["structured_ranking_cache"] = cache_entry
+    return out
 
 
 def node_merge(state: RAGGraphState) -> dict[str, Any]:
@@ -1642,6 +1667,13 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
             initial[key] = kwargs[key]  # type: ignore[assignment]
     if "session_id" in kwargs and kwargs["session_id"]:
         initial["session_id"] = kwargs["session_id"]  # type: ignore[assignment]
+        sid = str(kwargs["session_id"]).strip()
+        if sid:
+            from ml.rag.session_store import get_session_blob
+
+            blob = get_session_blob(sid)
+            if isinstance(blob, dict) and blob.get("last_structured_ranking"):
+                initial["structured_ranking_cache"] = blob["last_structured_ranking"]  # type: ignore[assignment]
     if "conversation_summary" in kwargs:
         initial["conversation_summary"] = kwargs["conversation_summary"]  # type: ignore[assignment]
     if "recent_turns" in kwargs:

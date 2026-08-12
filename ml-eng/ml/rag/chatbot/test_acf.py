@@ -218,3 +218,53 @@ def test_bq_row_with_prior_value_scores() -> None:
     # With one claim we expect a real score path
     claims = adapt_cited_claims([item])
     assert len(claims) == 1
+
+
+def test_context_ranked_table_bq_with_stamped_metadata() -> None:
+    item = {
+        "content": "ranked table prose",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "bq_enrichment": "ranked_table",
+            "as_of_date": "2020-01-01",
+            "year": 2020,
+            "metric": "Physical crop/livestock production output",
+            "unit": "tonnes",
+            "direction": "increasing",
+            "value": 120.0,
+            "prior_value": 100.0,
+            "magnitude": 20.0,
+            "coverage_strength": 1.0,
+            "geo_country_primary": "Nigeria",
+            "geo_countries": "Nigeria",
+            "ranked_rows": [
+                {
+                    "rank": 1,
+                    "label": "Nigeria",
+                    "value": 120.0,
+                    "unit": "tonnes",
+                    "measure_label": "Production",
+                }
+            ],
+            "sql": (
+                "SELECT country_name, SUM(value) AS total "
+                "FROM `proj.staging_dev.stg_faostat_production` "
+                "WHERE year = 2020 AND element = 'Production'"
+            ),
+        },
+    }
+    record = context_item_to_acf_record(item)
+    assert record is not None
+    assert record["as_of_date"] == "2020-01-01"
+    assert record["geo_scope"] == ["Nigeria"]
+    assert record["direction"] == "increasing"
+    assert record["metric"] != "general"
+    claims = adapt_cited_claims([item])
+    assert len(claims) == 1
+    acf = score_cited_evidence(
+        [item],
+        query="Which country had the best agricultural activity in 2020?",
+        reference_date=date(2021, 1, 1),
+    )
+    assert acf.band != "no_evidence"

@@ -816,3 +816,32 @@ def test_finalize_generation_result_emits_citations_span_metadata() -> None:
     assert "acf_score" in meta
     assert "latency_ms" in meta
 
+
+def test_finalize_generation_strips_invalid_citation_markers() -> None:
+    registry = [
+        SourceRef(
+            source_id=1,
+            item={
+                "_context_kind": "bigquery",
+                "content": "ranked data",
+                "metadata": {
+                    "bq_enrichment": "ranked_table",
+                    "as_of_date": "2020-01-01",
+                    "geo_countries": "Nigeria",
+                },
+            },
+            citation_line="OpenTrace FAOSTAT ranking",
+        ),
+    ]
+    with mock.patch("ml.rag.chatbot.generator.observed_span") as mock_span:
+        mock_span.return_value.__enter__ = mock.Mock(return_value=None)
+        mock_span.return_value.__exit__ = mock.Mock(return_value=False)
+        result = _finalize_generation_result(
+            "Nigeria leads African production in 2020 [1][6].",
+            registry,
+            query="best agricultural activity 2020",
+        )
+    assert "[1]" in result.answer
+    assert "[6]" not in result.answer
+    assert len(result.citations) == 1
+
