@@ -19,7 +19,9 @@ from ml.rag.chatbot.bq_sql_templates import try_sql_template
 from ml.rag.chatbot.bq_sql_validate import (
     dry_run_sql,
     sql_retry_enabled,
+    validate_sql_column_allowlist,
     validate_sql_table_allowlist,
+    validate_sql_value_samples,
 )
 from ml.rag.chatbot.query_decomposer import _NON_COUNTRY_GEO
 from ml.rag.helpers.staging_semantic_relationships import format_join_fragments_for_nl2sql
@@ -77,19 +79,21 @@ def _call_llama_for_sql(messages: list[dict[str, str]], *, max_tokens: int | Non
     )
 
 
-# Filter-column mapping aligned with staging_dev stg_* models.
+# Filter guidance: YAML Columns blocks are authoritative (no bronze/raw inventing).
 _SCHEMA_FILTER_GUIDE = """
-Filter columns by question intent (use exact column names from the Schema / table hints):
-- Country/region: country, country_code, country_name, admin_0, admin_1, admin_2, geographic_unit_name, fewsnet_region, fnid
-- Season / time: season_name, planting_year, harvest_year, year, month, observation_year, observation_time
-- Product / crop: product, product_name, item, item_code
-- Markets / prices: market_name, price_type, currency, value, common_currency_price
-- Food security: phase_code, phase_name, pct_phase3, pct_phase4, pct_phase5, measure_type, scenario_name
+Filter columns by question intent — use ONLY exact names from each table's Columns block
+in the table hints (never invent bronze/raw names like area or item when Columns lists
+country_name / product_name):
+- Geography: whatever the Columns block lists (often country_name; sometimes country,
+  admin_1, geographic_unit_name, etc.)
+- Time: year, planting_year, harvest_year, month, observation_year when listed
+- Product / metric dims: product_name, element, item, unit when listed
+- Markets / prices / food security: only columns present in Columns
 
 Query patterns:
-- Time-bounded questions -> WHERE year/harvest_year/planting_year in range
-- Which regions/countries -> GROUP BY geography column; avoid bare SELECT * LIMIT
-- Trends / compare -> GROUP BY geography and year; ORDER BY year
+- Time-bounded questions -> WHERE on the time column from Columns
+- Rankings / comparisons -> GROUP BY the geography column from Columns; avoid bare SELECT * LIMIT
+- Equality filters on element / product_name / item must use exact strings from *_value_samples
 
 Staging tables (use only tables in the Schema / table hints — examples):
 - Yield/crop: stg_yield_raw_data
@@ -100,6 +104,10 @@ Staging tables (use only tables in the Schema / table hints — examples):
 - Soil: stg_isric_africa_soil, stg_isda_soil_enriched
 - HDI / GDP: stg_africa_hdi, stg_africa_gdp_ppp
 """
+
+# Bare identifier `country` → `country_name` when SQL targets FAOSTAT staging facts.
+_BARE_COUNTRY_IDENT_RE = re.compile(r"(?<![A-Za-z0-9_])country(?![A-Za-z0-9_])", re.IGNORECASE)
+_FAOSTAT_TABLE_IN_SQL_RE = re.compile(r"stg_faostat_", re.IGNORECASE)
 
 # Forbidden SQL tokens (case-insensitive) for safety
 _FORBIDDEN_SQL = re.compile(
@@ -154,18 +162,20 @@ def _format_query_constraints(
     if len(countries) >= 2:
         lines.append(
             f"- REQUIRED: include rows for ALL of these countries {countries!r} "
-            "(use IN (...) or OR on country, country_name, area, adm0_name, geographic_unit_name; "
-            "GROUP BY country when comparing)"
+            "(filter using the geography column from the Columns block — typically "
+            "country_name; use country / geographic_unit_name only if listed there; "
+            "GROUP BY that geography column when comparing)"
         )
     elif len(countries) == 1:
         lines.append(
             f"- REQUIRED country/area filter: {countries[0]!r} "
-            "(use country, country_name, area, Area, adm0_name, or geographic_unit_name per schema)"
+            "(use the geography column from the Columns block — typically country_name)"
         )
     if time_start or time_end:
         lines.append(
             f"- REQUIRED time range: start={time_start or 'any'}, end={time_end or 'any'} "
-            "(use year, planting_year, harvest_year, observation_year, TIME_PERIOD, or Y#### columns)"
+            "(use the time column from Columns: year, planting_year, harvest_year, "
+            "observation_year, etc.)"
         )
     if entities:
         ent = [str(e).strip() for e in entities if str(e).strip()]
@@ -233,12 +243,20 @@ def _parse_sql_queries(raw: str, max_queries: int) -> list[str]:
     return out
 
 
+def _rewrite_faostat_country_ident(sql: str) -> str:
+    """Map bare ``country`` → ``country_name`` when SQL references stg_faostat_*."""
+    if not sql or not _FAOSTAT_TABLE_IN_SQL_RE.search(sql):
+        return sql
+    return _BARE_COUNTRY_IDENT_RE.sub("country_name", sql)
+
+
 def _validate_sql(sql: str, allowed_dataset_ids: set[str], default_limit: int) -> str | None:
     """
     Ensure SQL is a safe SELECT-only query over allowed datasets. Returns cleaned SQL or None.
     Accepts WITH … SELECT CTEs (read-only pattern builders).
     """
-    normalized = " ".join(sql.split()).strip()
+    rewritten = _rewrite_faostat_country_ident(sql)
+    normalized = " ".join(rewritten.split()).strip()
     upper = normalized.upper()
     if not (upper.startswith("SELECT") or upper.startswith("WITH")):
         return None
@@ -450,13 +468,13 @@ class BQRetriever(BaseRetriever):
                     hints_block += "\n[bq_hint_truncated=true]"
         if multi_query:
             output_rule = (
-                f"8) Output up to {max_queries} separate BigQuery SELECT queries when needed. "
+                f"9) Output up to {max_queries} separate BigQuery SELECT queries when needed. "
                 f"Put each query on its own block separated by a line containing only ---QUERY---. "
                 "No explanation, no markdown fences."
             )
         else:
             output_rule = (
-                "8) Output exactly one SELECT. No explanation, no markdown, no code fence."
+                "9) Output exactly one SELECT. No explanation, no markdown, no code fence."
             )
         ds = self.datasets_config.get("staging", "staging_dev")
         allowed_tables = [
@@ -477,24 +495,27 @@ class BQRetriever(BaseRetriever):
         )
         join_fragments = format_join_fragments_for_nl2sql(allowed_tables)
         join_rule = (
-            "7) When JOIN fragments are listed, use those ON predicates exactly; "
+            "8) When JOIN fragments are listed, use those ON predicates exactly; "
             "if fragments say to run separate SELECTs, do not invent joins. "
             if join_fragments
-            else "7) Prefer single-table SELECTs unless documented joins are present. "
+            else "8) Prefer single-table SELECTs unless documented joins are present. "
         )
         system = (
             f"You are a BigQuery expert for OpenTrace agricultural data in the `{ds}` dataset only. "
             "Rules: "
             f"1) {tables_rule} "
             f"Use full names: `{self.project_id}.{ds}.stg_*`. "
-            "2) Use exact column names from the Columns blocks — never invent columns "
-            "(e.g. use country_name, not country). "
-            "3) When Query constraints are present, REQUIRED country and time filters MUST appear. "
-            "4) For FAOSTAT production rankings: filter element and year, then "
+            "2) Use exact column names from the Columns blocks only — never invent columns "
+            "or bronze/raw names (e.g. use country_name not country/area; product_name not item "
+            "unless Columns lists item). "
+            "3) For element / product_name / item equality filters, use exact strings from "
+            "*_value_samples in the hints (prefer = / IN over invented synonyms; LIKE only for known aliases). "
+            "4) When Query constraints are present, REQUIRED country and time filters MUST appear. "
+            "5) For FAOSTAT production rankings: filter element and year, then "
             "SUM(value) GROUP BY country_name ORDER BY total DESC — not MAX per product row; "
             "for Africa/continental questions stay on the fact table (no geo-dim subquery). "
-            "5) Prefer GROUP BY / ORDER BY over bare SELECT * LIMIT. "
-            "6) country_name values are countries only — never filter country_name = 'Africa'. "
+            "6) Prefer GROUP BY / ORDER BY over bare SELECT * LIMIT. "
+            "7) country_name values are countries only — never filter country_name = 'Africa'. "
             f"{join_rule}"
             f"{output_rule}"
         )
@@ -580,6 +601,12 @@ class BQRetriever(BaseRetriever):
             allow_err = validate_sql_table_allowlist(sql, selected_tables)
             if allow_err:
                 return allow_err
+            col_err = validate_sql_column_allowlist(sql, selected_tables or None)
+            if col_err:
+                return col_err
+            sample_err = validate_sql_value_samples(sql, selected_tables or None)
+            if sample_err:
+                return sample_err
             dry_err = dry_run_sql(client, sql)
             if dry_err:
                 return f"dry_run_failed: {dry_err[:300]}"
@@ -592,8 +619,9 @@ class BQRetriever(BaseRetriever):
                 f"{question}\n\n"
                 f"Previous SQL failed validation:\n{check_err}\n\n"
                 "Fix the SQL. Use ONLY columns from the Columns blocks in the table hints. "
+                "Use exact *_value_samples strings for element/product_name equality filters. "
                 f"Use ONLY these tables: {allowed_list}. "
-                "Never invent dim_geography, dim_*, or any table outside that list. "
+                "Never invent dim_geography, dim_*, bronze/raw column names, or any table outside that list. "
                 "JOIN only tables in the selected set using documented on= keys. "
                 "For Africa/continental rankings stay on the fact table "
                 "(no country-list subquery; never filter country_name = 'Africa')."

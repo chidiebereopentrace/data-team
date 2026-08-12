@@ -1,6 +1,8 @@
 """Tests for structured SQL pattern builders and YAML join fragments."""
 from __future__ import annotations
 
+import re
+
 from ml.rag.chatbot.bq_sql_patterns import (
     build_rank_by_sum_sql,
     build_share_of_total_sql,
@@ -93,6 +95,49 @@ def test_try_sql_pattern_rank() -> None:
     assert hit is not None
     assert hit["pattern"] == "rank_by_sum"
     assert "Maize" in hit["sql"] or "maize" in hit["sql"].lower()
+
+
+def test_try_sql_pattern_maps_bare_country_grain() -> None:
+    hit = try_sql_pattern(
+        {
+            "pattern": "rank_by_sum",
+            "tables": ["stg_faostat_production"],
+            "metric": "value",
+            "grain": ["country"],
+            "filters": "maize",
+        },
+        project_id="proj",
+        dataset="staging_dev",
+        query="highest maize production in Africa 2020",
+        time_start="2020-01-01",
+        limit=5,
+    )
+    assert hit is not None
+    sql = hit["sql"]
+    assert "country_name" in sql
+    assert "GROUP BY country_name" in sql
+    # Bare identifier country must not appear (country_name is fine).
+    assert re.search(r"(?<![A-Za-z0-9_])country(?![A-Za-z0-9_])", sql) is None
+    assert _validate_sql(sql, {"staging_dev"}, 5) is not None
+
+
+def test_try_sql_pattern_fews_keeps_country_grain() -> None:
+    hit = try_sql_pattern(
+        {
+            "pattern": "rank_by_sum",
+            "tables": ["stg_fews_market_prices"],
+            "metric": "value",
+            "grain": ["country"],
+        },
+        project_id="proj",
+        dataset="staging_dev",
+        query="highest maize prices 2020",
+        time_start="2020-01-01",
+        limit=5,
+    )
+    assert hit is not None
+    assert "GROUP BY country" in hit["sql"]
+    assert "country_name" not in hit["sql"]
 
 
 def test_try_sql_pattern_custom_skipped() -> None:
