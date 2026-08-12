@@ -1,0 +1,44 @@
+erDiagram
+  FastAPI {
+    string service
+    string endpoint
+  }
+  LangGraph {
+    string module
+    int nodes
+  }
+  Redis {
+    string key_prefix
+    int ttl_seconds
+    string also
+  }
+  Qdrant {
+    string url
+    int collections
+    string mode
+  }
+  BigQuery {
+    string project
+    string dataset
+  }
+  LLMProvider {
+    string base_url
+    string model
+    string uses
+  }
+  Langfuse {
+    bool traces
+    bool feedback
+  }
+  BQRetriever {
+    string module
+    string modes
+  }
+
+  FastAPI ||--|| LangGraph : invokes
+  LangGraph ||--o{ Redis : session_blob
+  LangGraph ||--o{ Qdrant : vector_search
+  LangGraph ||--o{ BigQuery : sql_execute
+  LangGraph ||--o{ LLMProvider : decompose_reason_nl2sql_generate
+  LangGraph |o--o| Langfuse : traces
+  BQRetriever ||--|| BigQuery : schema_cache

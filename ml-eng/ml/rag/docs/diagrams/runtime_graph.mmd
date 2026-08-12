@@ -1,0 +1,24 @@
+flowchart TB
+  START([START]) --> decompose
+
+  decompose -->|is_meta_query| generate_meta
+  decompose -->|is_product_query| generate_product
+  decompose -->|greeting or out_of_scope| generate_social
+  decompose -->|is_language_unknown| generate_language_help
+  decompose -->|full_rag| parallel_retrieve
+
+  generate_meta --> ENDNODE([END])
+  generate_product --> ENDNODE
+  generate_social --> ENDNODE
+  generate_language_help --> ENDNODE
+
+  parallel_retrieve --> bq_reason --> bq_retrieve --> merge --> rerank
+
+  rerank -->|weak context and web fallback on| web_fallback
+  rerank -->|enough context or web off| generate
+
+  web_fallback -->|insufficient_context| insufficient_context
+  web_fallback -->|ok| generate
+
+  insufficient_context --> ENDNODE
+  generate --> export --> ENDNODE

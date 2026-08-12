@@ -22,12 +22,15 @@ from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.ofia import infer_source_tier
 from ml.rag.chatbot.export_intent import EXPORT_UPGRADE_MESSAGE, detect_export_intent
+from ml.rag.chatbot.geo_regions import detect_regions_in_text, expand_regions_in_decomposition
 from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.geo_policy import effective_geo_override
 from ml.rag.chatbot.plan_policy import (
+    allows_cross_country,
     apply_category_domain_hints,
     apply_plan_decomposition_gates,
 )
+from ml.rag.chatbot.task_mode import clarify_answer, resolve_task_mode
 from ml.rag.chatbot.product_knowledge import is_product_query
 from ml.rag.chatbot.query_gate import (
     classify_social_query,
@@ -431,6 +434,10 @@ class RAGGraphState(TypedDict, total=False):
     export_enabled: bool | None
     export_intent: str | None
     artifacts: list[dict[str, Any]]
+    # Task specialization for full_rag (clarify / analytical / fact / briefing / export-only / chat)
+    task_mode: str | None
+    # analytical_mode is True when task_mode == "analytical"
+    analytical_mode: bool | None
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
@@ -439,9 +446,20 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         dec = decompose_query(q)
         profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
         country = str((profile or {}).get("country") or "").strip() or None
+        task_mode = resolve_task_mode(q, dec, profile_country=country)
+        analytical = task_mode == "analytical"
+        if analytical:
+            dec = expand_regions_in_decomposition(dec, q)
+        elif task_mode == "fact_lookup" and detect_regions_in_text(q) and allows_cross_country(
+            state.get("plan_type")
+        ):
+            dec = expand_regions_in_decomposition(dec, q)
         dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
         category = str(state.get("category") or (profile or {}).get("category") or "").strip() or None
         dec = apply_category_domain_hints(dec, category)
+        # Re-resolve after gates may trim geography (clarify may become appropriate).
+        task_mode = resolve_task_mode(q, dec, profile_country=country)
+        analytical = task_mode == "analytical"
         meta = is_meta_query(q)
         product = (not meta) and is_product_query(q, dec)
         greeting = (not meta) and (not product) and is_greeting_query(q)
@@ -466,6 +484,8 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             route_candidate = "out_of_scope"
         elif lang_unknown:
             route_candidate = "language_unknown"
+        elif task_mode == "clarify":
+            route_candidate = "clarify"
         else:
             route_candidate = "full_rag"
         export_intent = detect_export_intent(q)
@@ -474,6 +494,8 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
                 "route_candidate": route_candidate,
                 "answer_lang": answer_lang,
                 "export_intent": export_intent,
+                "task_mode": task_mode,
+                "analytical_mode": analytical,
             }
         )
         return {
@@ -485,6 +507,8 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             "is_language_unknown": lang_unknown,
             "answer_lang": answer_lang,
             "export_intent": export_intent,
+            "task_mode": task_mode,
+            "analytical_mode": analytical,
         }
 
 
@@ -805,13 +829,38 @@ def _title_merge_label(prefix: str, meta: dict[str, Any]) -> str:
 def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     """Run selected corpus retrieves (+ optional legacy research) in parallel."""
     dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
+    task_mode = str(state.get("task_mode") or "chat")
     selection = select_corpora(
         dec,
         plan_type=str(state.get("plan_type") or "") or None,
         query=str(state.get("query") or ""),
+        task_mode=task_mode,
     )
     active = set(selection.active)
     boosts = selection.boosts
+
+    # Soft top_k nudges for mode specialization.
+    news_k = state.get("news_top_k")
+    ota_k = state.get("ota_top_k")
+    academic_k = state.get("academic_top_k")
+    if task_mode == "briefing":
+        if news_k is None:
+            news_k = 28
+        if ota_k is None:
+            ota_k = 16
+    elif task_mode in ("fact_lookup", "data_export_only"):
+        if news_k is None:
+            news_k = 10
+        if academic_k is None:
+            academic_k = 8
+
+    state_for_retrieve: RAGGraphState = dict(state)
+    if news_k is not None:
+        state_for_retrieve["news_top_k"] = int(news_k)
+    if ota_k is not None:
+        state_for_retrieve["ota_top_k"] = int(ota_k)
+    if academic_k is not None:
+        state_for_retrieve["academic_top_k"] = int(academic_k)
 
     buckets: dict[str, list[dict[str, Any]]] = {
         "news": [],
@@ -838,9 +887,11 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     with ThreadPoolExecutor(max_workers=workers) as ex:
         for key, fn in retrievers.items():
             if key in active:
-                jobs[ex.submit(run_with_tracing_context(fn, state))] = key
+                jobs[ex.submit(run_with_tracing_context(fn, state_for_retrieve))] = key
         if _use_legacy_research_collection():
-            jobs[ex.submit(run_with_tracing_context(_retrieve_legacy_research, state))] = "legacy_research"
+            jobs[ex.submit(run_with_tracing_context(_retrieve_legacy_research, state_for_retrieve))] = (
+                "legacy_research"
+            )
 
         for fut in as_completed(jobs):
             kind = jobs[fut]
@@ -907,11 +958,15 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
 def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
     """YAML-index SQL reasoner: select staging_dev tables and query intents."""
     q = (state.get("query") or "").strip()
+    analytical = bool(state.get("analytical_mode"))
+    task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
     plan = reason_bq_sql_plan(
         q,
         decomposition=state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None,
         plan_type=str(state.get("plan_type") or "") or None,
         category=str(state.get("category") or "") or None,
+        analytical_mode=analytical,
+        task_mode=task_mode,
     )
     hints = list(plan.get("table_hints") or [])
     cands = [
@@ -1027,7 +1082,8 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     raw_intents = plan.get("query_intents")
     intents: list[Any] = raw_intents if isinstance(raw_intents, list) else []
     intent_lines = []
-    for intent in intents[:5]:
+    intent_cap = 10 if bool(state.get("analytical_mode")) else 5
+    for intent in intents[:intent_cap]:
         if not isinstance(intent, dict):
             continue
         goal = str(intent.get("goal") or "").strip()
@@ -1074,18 +1130,35 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         bq_geo["geo_countries"] = countries
     elif len(countries) == 1:
         bq_geo["geo_country"] = countries[0]
-    results = retriever.retrieve(
-        question,
-        top_k=top_k,
-        table_hints=hints,
-        selected_tables=list(plan.get("selected_tables") or []),
-        query_intents=intents,
-        time_start=ts or None,
-        time_end=te or None,
-        entities=entities,
-        domains=domains,
-        **bq_geo,
-    )
+
+    prev_max_sql: str | None = None
+    env_bumped = False
+    if bool(state.get("analytical_mode")) or plan.get("analytical_mode"):
+        from ml.rag.chatbot.analytical_bq_plan import analytical_sql_query_floor
+
+        floor = int(plan.get("max_sql_queries") or analytical_sql_query_floor())
+        prev_max_sql = os.environ.get("RAG_BQ_MAX_SQL_QUERIES")
+        os.environ["RAG_BQ_MAX_SQL_QUERIES"] = str(floor)
+        env_bumped = True
+    try:
+        results = retriever.retrieve(
+            question,
+            top_k=top_k,
+            table_hints=hints,
+            selected_tables=list(plan.get("selected_tables") or []),
+            query_intents=intents,
+            time_start=ts or None,
+            time_end=te or None,
+            entities=entities,
+            domains=domains,
+            **bq_geo,
+        )
+    finally:
+        if env_bumped:
+            if prev_max_sql is None:
+                os.environ.pop("RAG_BQ_MAX_SQL_QUERIES", None)
+            else:
+                os.environ["RAG_BQ_MAX_SQL_QUERIES"] = prev_max_sql
     results = enrich_bq_results(
         results,
         query=q,
@@ -1396,9 +1469,17 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
     context = filter_context_items(state.get("reranked_context") or [])
     bq_results = state.get("bq_results") or []
     usable_bq = [r for r in bq_results if is_usable_context_item(r)]
-    if should_elevate_bq_context(str(query), dec_dict, usable_bq=bool(usable_bq)):
+    analytical = bool(state.get("analytical_mode"))
+    task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
+    if (
+        analytical
+        or task_mode in ("fact_lookup", "data_export_only")
+        or should_elevate_bq_context(str(query), dec_dict, usable_bq=bool(usable_bq))
+    ):
         context = pin_bq_context_first(context)
-    gkw: dict[str, Any] = {"decomposition": dec_dict}
+    gkw: dict[str, Any] = {"decomposition": dec_dict, "task_mode": task_mode}
+    if analytical:
+        gkw["analytical_mode"] = True
     cs = state.get("conversation_summary")
     rt = state.get("recent_turns")
     has_mem = (isinstance(cs, str) and cs.strip()) or (
@@ -1487,6 +1568,24 @@ def node_export(state: RAGGraphState) -> dict[str, Any]:
         ).strip()
 
     return out
+
+
+def node_generate_clarify(state: RAGGraphState) -> dict[str, Any]:
+    """Ask for missing country / crop / period before retrieval."""
+    query = state.get("query") or ""
+    answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
+    with observed_span("generate_clarify", input_data={"query": str(query)[:200]}):
+        update_current_span_metadata(
+            {"answer_lang": answer_lang, "route": "clarify", "task_mode": "clarify"}
+        )
+        answer = clarify_answer(str(query))
+    return {
+        "answer": answer,
+        "citations": [],
+        "answer_lang": answer_lang,
+        "task_mode": "clarify",
+        **acf_result_to_state(curated_product_acf()),
+    }
 
 
 def node_generate_meta(state: RAGGraphState) -> dict[str, Any]:
@@ -1596,6 +1695,7 @@ def build_graph():
     graph.add_node("generate_product", node_generate_product)
     graph.add_node("generate_social", node_generate_social)
     graph.add_node("generate_language_help", node_generate_language_help)
+    graph.add_node("generate_clarify", node_generate_clarify)
 
     graph.add_edge(START, "decompose")
 
@@ -1608,6 +1708,8 @@ def build_graph():
             return "generate_social"
         if state.get("is_language_unknown"):
             return "generate_language_help"
+        if state.get("task_mode") == "clarify":
+            return "generate_clarify"
         return "parallel_retrieve"
 
     graph.add_conditional_edges("decompose", _route_after_decompose)
@@ -1624,6 +1726,7 @@ def build_graph():
     graph.add_edge("generate_product", END)
     graph.add_edge("generate_social", END)
     graph.add_edge("generate_language_help", END)
+    graph.add_edge("generate_clarify", END)
 
     return graph.compile()
 

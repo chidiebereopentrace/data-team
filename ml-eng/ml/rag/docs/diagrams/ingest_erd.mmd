@@ -1,0 +1,37 @@
+erDiagram
+  SourceDocument {
+    string document_id PK
+    string doc_kind
+    string content_hash
+    string source_uri
+  }
+  Chunk {
+    uuid id PK
+    string document_id FK
+    string text
+    int chunk_index
+    dict metadata
+  }
+  QdrantPoint {
+    uuid id PK
+    float_array dense_vector
+    dict sparse_vector
+    dict payload
+  }
+  QdrantCollection {
+    string name PK
+    string corpus_key
+    int vector_dims
+    list payload_indexes
+  }
+  IngestManifest {
+    string document_id PK
+    string content_hash
+    datetime ingested_at
+    string ingest_version
+  }
+
+  SourceDocument ||--o{ Chunk : chunked_into
+  Chunk ||--|| QdrantPoint : upserted_as
+  QdrantCollection ||--o{ QdrantPoint : stores
+  IngestManifest ||--|| SourceDocument : tracks

@@ -36,6 +36,7 @@ from ml.rag.acf_signal import acf_signal_from_result
 from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats, UserProfile
 from ml.rag.chat_history import normalize_messages
 from ml.rag.chat_memory import flat_messages_to_memory
+from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS
 from ml.rag.chat_turn import persist_session_turn
 from ml.rag.observability import flush_langfuse, get_current_trace_id, rag_trace_context, record_trace_score
 from ml.rag.request_context import resolve_request_context
@@ -217,9 +218,12 @@ def _persist_session_turn(
     )
 
 
-@app.post("/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
-    """Run the RAG pipeline and return the answer for the frontend chatbot."""
+async def _run_query(
+    request: QueryRequest,
+    *,
+    injected_plan_type: str | None = None,
+) -> QueryResponse:
+    """Shared query logic. When injected_plan_type is set, path owns the plan tier."""
     try:
         try:
             ctx = resolve_request_context(
@@ -227,6 +231,7 @@ async def query(request: QueryRequest):
                 chat_history=request.chat_history,
                 conversation_history=request.conversation_history,
                 session_id=request.session_id,
+                injected_plan_type=injected_plan_type,
             )
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
@@ -332,6 +337,8 @@ async def query(request: QueryRequest):
             trace=trace,
             langfuse_trace_id=langfuse_trace_id,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         detail = str(e)
@@ -339,7 +346,49 @@ async def query(request: QueryRequest):
             detail += "\n\n" + traceback.format_exc()
         elif "nn" in detail.lower() or "not defined" in detail.lower():
             detail += ". If using the vector retriever, install PyTorch: pip install torch"
-        raise HTTPException(status_code=500, detail=detail)
+        raise HTTPException(status_code=500, detail=detail) from e
+
+
+@app.post("/query", response_model=QueryResponse)
+async def query(request: QueryRequest):
+    """Run the RAG pipeline. Prefer plan-scoped routes (/query/{plan}) for new integrations."""
+    return await _run_query(request)
+
+
+@app.post("/query/free", response_model=QueryResponse, summary="Query (Free plan)")
+async def query_free(request: QueryRequest):
+    """Free tier — single country, top-line answers. Path locks plan_type; body cannot escalate."""
+    return await _run_query(request, injected_plan_type="Free")
+
+
+@app.post("/query/farmers", response_model=QueryResponse, summary="Query (Farmers plan)")
+async def query_farmers(request: QueryRequest):
+    """Farmers tier — localized crop/rainfall/market. Path locks plan_type."""
+    return await _run_query(request, injected_plan_type="Farmers")
+
+
+@app.post("/query/government", response_model=QueryResponse, summary="Query (Government plan)")
+async def query_government(request: QueryRequest):
+    """Government tier — national/sub-national food security. Path locks plan_type."""
+    return await _run_query(request, injected_plan_type="Government")
+
+
+@app.post("/query/ngos", response_model=QueryResponse, summary="Query (NGOs plan)")
+async def query_ngos(request: QueryRequest):
+    """NGOs tier — multi-region risk and program angles. Path locks plan_type."""
+    return await _run_query(request, injected_plan_type="NGOs")
+
+
+@app.post("/query/agribusinesses", response_model=QueryResponse, summary="Query (Agribusinesses plan)")
+async def query_agribusinesses(request: QueryRequest):
+    """Agribusinesses tier — cross-country, market volatility. Path locks plan_type."""
+    return await _run_query(request, injected_plan_type="Agribusinesses")
+
+
+@app.post("/query/integrated", response_model=QueryResponse, summary="Query (Integrated plan)")
+async def query_integrated(request: QueryRequest):
+    """Integrated tier — full access; category lens per message. Path locks plan_type."""
+    return await _run_query(request, injected_plan_type="Integrated")
 
 
 @app.delete("/session/{session_id}")
@@ -378,4 +427,10 @@ async def trace_feedback(request: TraceFeedbackRequest):
 
 @app.get("/")
 async def root():
-    return {"message": "OpenTrace RAG API", "docs": "/docs", "health": "/health", "query": "POST /query"}
+    return {
+        "message": "OpenTrace RAG API",
+        "docs": "/docs",
+        "health": "/health",
+        "query": "POST /query",
+        "plan_routes": {slug: f"POST /query/{slug}" for slug in PLAN_ROUTE_SLUGS},
+    }
