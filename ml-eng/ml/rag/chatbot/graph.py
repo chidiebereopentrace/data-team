@@ -36,9 +36,18 @@ from ml.rag.chatbot.query_gate import (
     is_out_of_scope_query,
 )
 from ml.rag.chatbot.bq_byte_budget import trim_bq_result_contents
+from ml.rag.chatbot.bq_context_enrich import enrich_bq_results
 from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
 from ml.rag.chatbot.corpus_catalog import select_corpora
-from ml.rag.chatbot.generator import filter_context_items, generate, is_usable_context_item
+from ml.rag.chatbot.generator import (
+    filter_context_items,
+    generate,
+    is_comparative_bq_query,
+    is_numeric_data_query,
+    is_usable_context_item,
+    pin_bq_context_first,
+    should_elevate_bq_context,
+)
 from ml.rag.chatbot.query_decomposer import (
     decompose_query,
     normalize_geography_for_filter,
@@ -1057,6 +1066,12 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         domains=domains,
         **bq_geo,
     )
+    results = enrich_bq_results(
+        results,
+        query=q,
+        plan=plan,
+        decomposition=dec,
+    )
     results, ctx_truncated = trim_bq_result_contents(results)
     if ctx_truncated:
         update_current_span_metadata({"bq_context_truncated": True})
@@ -1070,12 +1085,14 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
 
 def node_merge(state: RAGGraphState) -> dict[str, Any]:
     with observed_span("merge"):
-        merged: list[dict[str, Any]] = []
-        for r in state.get("bq_results") or []:
+        bq_merged: list[dict[str, Any]] = []
+        other_merged: list[dict[str, Any]] = []
+
+        def _append_bq(r: dict[str, Any]) -> None:
             if not is_usable_context_item(r):
-                continue
+                return
             text = str(r.get("content") or "").strip()
-            merged.append(
+            bq_merged.append(
                 {
                     **r,
                     "content": f"[Structured data] {text}" if text else "[Structured data]",
@@ -1083,10 +1100,14 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
                     "_context_kind": "bigquery",
                 }
             )
+
+        for r in state.get("bq_results") or []:
+            _append_bq(r)
+
         for item in state.get("vector_news_results") or []:
             text = item.get("content") or ""
             meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-            merged.append(
+            other_merged.append(
                 {
                     "content": f"[News] {text}",
                     "source": "news",
@@ -1096,28 +1117,28 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
                 }
             )
         _append_corpus_merge(
-            merged,
+            other_merged,
             state.get("vector_academic_papers_results"),
             source="academic",
             context_kind="academic",
             label_fn=_academic_merge_label,
         )
         _append_corpus_merge(
-            merged,
+            other_merged,
             state.get("vector_policies_results"),
             source="policy",
             context_kind="policy",
             label_fn=lambda m: _title_merge_label("Policy", m),
         )
         _append_corpus_merge(
-            merged,
+            other_merged,
             state.get("vector_public_reports_results"),
             source="public_report",
             context_kind="public_report",
             label_fn=lambda m: _title_merge_label("Public report", m),
         )
         _append_corpus_merge(
-            merged,
+            other_merged,
             state.get("vector_formation_results"),
             source="formation",
             context_kind="formation",
@@ -1133,7 +1154,7 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
                 label = "[OTA Metric]"
             else:
                 label = "[OTA Insight]"
-            merged.append(
+            other_merged.append(
                 {
                     "content": f"{label} {text}",
                     "source": "ota_insight",
@@ -1142,6 +1163,8 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
                     "score": item.get("score"),
                 }
             )
+
+        merged = bq_merged + other_merged
 
         update_current_span_metadata(
             {
@@ -1170,7 +1193,16 @@ def node_rerank(state: RAGGraphState) -> dict[str, Any]:
     query = state.get("query") or ""
     merged = state.get("merged_context") or []
     top_k = int(state.get("rerank_top_k") or 20)
-    top = rerank(query, merged, top_k=top_k)
+    dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
+    numeric_query = is_numeric_data_query(str(query), dec)
+    comparative_query = is_comparative_bq_query(str(query), dec)
+    top = rerank(
+        query,
+        merged,
+        top_k=top_k,
+        numeric_query=numeric_query,
+        comparative_query=comparative_query,
+    )
     return {"reranked_context": top, "rerank_mode": last_rerank_mode()}
 
 
@@ -1334,15 +1366,19 @@ def node_generate_language_help(state: RAGGraphState) -> dict[str, Any]:
 
 def node_generate(state: RAGGraphState) -> dict[str, Any]:
     query = state.get("query") or ""
-    context = filter_context_items(state.get("reranked_context") or [])
     dec = state.get("decomposition")
-    gkw: dict[str, Any] = {"decomposition": dec if isinstance(dec, dict) else None}
+    dec_dict = dec if isinstance(dec, dict) else None
+    context = filter_context_items(state.get("reranked_context") or [])
+    bq_results = state.get("bq_results") or []
+    usable_bq = [r for r in bq_results if is_usable_context_item(r)]
+    if should_elevate_bq_context(str(query), dec_dict, usable_bq=bool(usable_bq)):
+        context = pin_bq_context_first(context)
+    gkw: dict[str, Any] = {"decomposition": dec_dict}
     cs = state.get("conversation_summary")
     rt = state.get("recent_turns")
     has_mem = (isinstance(cs, str) and cs.strip()) or (
         isinstance(rt, list) and len(rt) > 0
     )
-    dec_dict = dec if isinstance(dec, dict) else None
     if has_mem:
         if memory_relevant_for_query(
             query,
@@ -1365,11 +1401,12 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         gkw["category"] = state.get("category")
     if state.get("answer_lang"):
         gkw["answer_lang"] = state.get("answer_lang")
-    # No usable BQ rows — including skip_bq / empty selection — so ranking guards fire.
-    bq_results = state.get("bq_results") or []
-    usable_bq = [r for r in bq_results if is_usable_context_item(r)]
     if not usable_bq:
         gkw["structured_bq_unavailable"] = True
+    elif is_numeric_data_query(str(query), dec_dict):
+        gkw["structured_bq_numeric_available"] = True
+    elif is_comparative_bq_query(str(query), dec_dict):
+        gkw["structured_bq_comparative_available"] = True
     gen_result = generate(query, context, **gkw)
 
     # ACF Path B is computed post-cite inside generate/_finalize_generation_result.

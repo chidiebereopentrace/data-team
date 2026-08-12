@@ -116,6 +116,76 @@ def load_table_schema(table_name: str) -> dict[str, Any] | None:
     return None
 
 
+# Aligned with bq_sql_validate metric-discriminator sets.
+_CORE_METRIC_DISCRIMINATORS = frozenset(
+    {
+        "element",
+        "indicator",
+        "price_type",
+        "measure_type",
+        "treatment",
+    }
+)
+_GRAIN_METRIC_DISCRIMINATORS = frozenset(
+    {
+        "classification_scale",
+        "scenario_name",
+    }
+)
+
+_NUMERIC_COLUMN_TYPES = frozenset({"INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "INTEGER", "FLOAT"})
+_MEASURE_SKIP_COLUMNS = frozenset(
+    {
+        "year",
+        "month",
+        "planting_year",
+        "harvest_year",
+        "observation_year",
+        "planting_month",
+        "harvest_month",
+        "mp_year",
+        "mp_month",
+        "qc_flag",
+        "hh_size",
+        "individual_count",
+        "latitude",
+        "longitude",
+        "fnid",
+        "country_code",
+        "area_code",
+        "item_code",
+        "objectid",
+    }
+)
+
+
+def _schema_columns(schema: dict[str, Any]) -> list[dict[str, Any]]:
+    cols_raw = schema.get("columns")
+    if not isinstance(cols_raw, list):
+        return []
+    return [c for c in cols_raw if isinstance(c, dict)]
+
+
+def column_description(table_id: str, column: str) -> str:
+    """Return trimmed YAML ``columns[].description`` for a physical column name."""
+    schema = load_table_schema(table_id)
+    if not schema:
+        return ""
+    col_name = (column or "").strip()
+    if not col_name:
+        return ""
+    for col in _schema_columns(schema):
+        if str(col.get("name") or "").strip() == col_name:
+            desc = col.get("description")
+            if desc is None:
+                return ""
+            text = str(desc).strip()
+            if not text:
+                return ""
+            return " ".join(text.split())[:400]
+    return ""
+
+
 # Explicit overrides when sample key stem ≠ physical column name.
 _SAMPLE_KEY_OVERRIDES: dict[str, str] = {
     "product_value_samples": "product_name",
@@ -134,6 +204,67 @@ def column_for_sample_key(sample_key: str) -> str:
     if key.endswith(_SAMPLE_KEY_SUFFIX):
         return key[: -len(_SAMPLE_KEY_SUFFIX)]
     return key
+
+
+def discriminator_columns(table_id: str) -> list[str]:
+    """Physical columns with YAML ``*_value_samples`` (metric grain discriminators)."""
+    schema = load_table_schema(table_id)
+    if not schema:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for sample_key in schema:
+        if not isinstance(sample_key, str) or not sample_key.endswith(_SAMPLE_KEY_SUFFIX):
+            continue
+        col = column_for_sample_key(sample_key)
+        if col and col not in seen:
+            seen.add(col)
+            out.append(col)
+    return out
+
+
+def measure_columns(table_id: str) -> list[str]:
+    """Numeric measure columns excluding geo/time keys and metric discriminators."""
+    schema = load_table_schema(table_id)
+    if not schema:
+        return []
+    disc = {c.lower() for c in discriminator_columns(table_id)}
+    out: list[str] = []
+    for col in _schema_columns(schema):
+        name = str(col.get("name") or "").strip()
+        if not name:
+            continue
+        low = name.lower()
+        typ = str(col.get("type") or "").upper()
+        if typ not in _NUMERIC_COLUMN_TYPES:
+            continue
+        if low in _MEASURE_SKIP_COLUMNS:
+            continue
+        if low in disc or low in _CORE_METRIC_DISCRIMINATORS or low in _GRAIN_METRIC_DISCRIMINATORS:
+            continue
+        out.append(name)
+    return out
+
+
+def table_source_meta(table_id: str) -> dict[str, Any]:
+    """Compact table-level metadata for BQ context enrichment."""
+    schema = load_table_schema(table_id) or {}
+    bare = _strip_fqn(table_id).lower()
+    source_obj = schema.get("source")
+    source: dict[str, Any] = source_obj if isinstance(source_obj, dict) else {}
+    semantic_obj = schema.get("semantic_role")
+    semantic: dict[str, Any] = semantic_obj if isinstance(semantic_obj, dict) else {}
+    supports = semantic.get("supports")
+    return {
+        "table_id": bare,
+        "table_name": str(schema.get("table_name") or bare).strip(),
+        "description": " ".join(str(schema.get("description") or "").split())[:500],
+        "grain": str(schema.get("grain") or "").strip(),
+        "entity_type": str(schema.get("entity_type") or "").strip(),
+        "source_layer": str(source.get("layer") or "staging_dev").strip(),
+        "source_domain": str(source.get("domain") or semantic.get("primary_domain") or "").strip(),
+        "supports": list(supports) if isinstance(supports, list) else [],
+    }
 
 
 # Legacy alias kept for imports / tests that referenced the old fixed map.
