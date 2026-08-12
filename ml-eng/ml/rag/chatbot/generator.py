@@ -86,8 +86,9 @@ _BQ_PUBLIC_LABEL = "OpenTrace agricultural data"
 _RANKING_QUERY_RE = re.compile(
     r"\b("
     r"highest|lowest|top\s+\d+|bottom\s+\d+|"
-    r"which\s+country|which\s+countries|"
+    r"which\s+(?:\w+\s+){0,3}countr(?:y|ies)|"
     r"rank(?:ing|ed)?|most\s+(?:produced|production)|"
+    r"produces?\s+the\s+most|the\s+most\s+\w+|"
     r"least\s+(?:produced|production)|"
     r"largest|smallest|biggest"
     r")\b",
@@ -515,6 +516,28 @@ def _normalize_inline_citations(text: str) -> str:
     return text
 
 
+def _strip_invalid_citation_markers(answer: str, source_registry: list[SourceRef]) -> str:
+    """Remove [N] / [Source N] footnotes that reference missing registry IDs."""
+    if not answer or not source_registry:
+        return answer
+    valid = {ref.source_id for ref in source_registry}
+
+    def _keep_bracket(m: re.Match[str]) -> str:
+        try:
+            n = int(m.group(1))
+        except (TypeError, ValueError):
+            return ""
+        return m.group(0) if n in valid else ""
+
+    text = re.sub(r"\[(?!\s*Source\s)(\d+)\]", _keep_bracket, answer)
+    text = re.sub(r"\[Source\s+(\d+)\]", _keep_bracket, text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<!\[)\bSource\s+(\d+)\b(?!\])", _keep_bracket, text, flags=re.IGNORECASE)
+    # Collapse orphaned punctuation/spacing left by removed markers.
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"\s+([,.;])", r"\1", text)
+    return text.strip()
+
+
 def extract_referenced_source_ids(answer: str) -> set[int]:
     """Return source IDs cited inline in answer prose ([N], [Source N], or Source N)."""
     normalized = _answer_for_citation_extraction(answer)
@@ -538,8 +561,11 @@ def _build_prompt(
     structured_bq_unavailable: bool = False,
     structured_bq_numeric_available: bool = False,
     structured_bq_comparative_available: bool = False,
+    analytical_mode: bool = False,
+    task_mode: str = "chat",
 ) -> list[dict[str, str]]:
     lang = (answer_lang or "").strip() or detect_answer_language(query)
+    mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
     system = (
         "You are an agricultural business-intelligence assistant for OpenTrace stakeholders "
         "(government, NGOs, agribusiness, finance, farmers). "
@@ -624,6 +650,42 @@ def _build_prompt(
     plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
     if plan_addendum:
         system = system + "\n\n" + plan_addendum
+    if analytical_mode or mode == "analytical":
+        system = (
+            system
+            + "\n\nANALYTICAL REPORT MODE: Structure the answer with these markdown headings "
+            "in order:\n"
+            "## Executive summary\n"
+            "## Regional overview\n"
+            "## Country comparison\n"
+            "## Major products\n"
+            "## Data gaps\n"
+            "## Conclusion\n"
+            "Prefer OpenTrace structured data (Type: structured / BigQuery) for every quantitative "
+            "claim — cite those [N] footnotes first. Do not invent production totals, rankings, or "
+            "year values that are not in Context. If structured rows are thin, say so under Data gaps. "
+            "Keep country lists aligned with the geography in Context; do not substitute unrelated "
+            "countries from narrative PDFs."
+        )
+    elif mode == "fact_lookup":
+        system = (
+            system
+            + "\n\nFACT LOOKUP MODE: Give a short direct answer (1–3 sentences) using structured "
+            "data first when present. Lead with the number, country, crop, and year. "
+            "Do not write a multi-section report."
+        )
+    elif mode == "briefing":
+        system = (
+            system
+            + "\n\nBRIEFING MODE: Write a short situational briefing with 3–6 bullet points. "
+            "Prefer the most recent news and OTA insights. End with one line on confidence limits."
+        )
+    elif mode == "data_export_only":
+        system = (
+            system
+            + "\n\nDATA EXPORT MODE: Write only a 2–4 sentence caption summarizing the table/chart "
+            "the user will download. No essay, no multi-section report, no long narrative."
+        )
     # Keep category plainness/precision when answering in a named non-English language
     # (avoids English academic bleed on e.g. Igbo + Farmers).
     if category and cat_tone and not is_english_answer_lang(lang) and lang not in ("unknown", ""):
@@ -1025,6 +1087,7 @@ def _finalize_generation_result(
     t0 = time.perf_counter()
     with observed_span("citations", input_data={"registry_size": len(source_registry)}):
         prose = _strip_model_sources_appendix(answer)
+        prose = _strip_invalid_citation_markers(prose, source_registry)
         citations = referenced_citations(prose, source_registry)
         if _append_sources_to_answer() and citations:
             lines = [f"{c['id']}. {c['text']}" for c in citations]
@@ -1130,6 +1193,8 @@ def generate(
     structured_bq_unavailable = bool(kwargs.get("structured_bq_unavailable"))
     structured_bq_numeric_available = bool(kwargs.get("structured_bq_numeric_available"))
     structured_bq_comparative_available = bool(kwargs.get("structured_bq_comparative_available"))
+    analytical_mode = bool(kwargs.get("analytical_mode"))
+    task_mode = str(kwargs.get("task_mode") or ("analytical" if analytical_mode else "chat")).strip()
 
     if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
         return GenerationResult(
@@ -1165,6 +1230,8 @@ def generate(
                 structured_bq_unavailable=structured_bq_unavailable,
                 structured_bq_numeric_available=structured_bq_numeric_available,
                 structured_bq_comparative_available=structured_bq_comparative_available,
+                analytical_mode=analytical_mode,
+                task_mode=task_mode,
             )
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = (
@@ -1224,6 +1291,8 @@ def generate(
         structured_bq_unavailable=structured_bq_unavailable,
         structured_bq_numeric_available=structured_bq_numeric_available,
         structured_bq_comparative_available=structured_bq_comparative_available,
+        analytical_mode=analytical_mode,
+        task_mode=task_mode,
     )
     llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
     if llama_answer:

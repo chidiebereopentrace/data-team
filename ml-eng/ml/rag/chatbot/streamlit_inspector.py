@@ -52,6 +52,9 @@ INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "acf_explanation",
     "acf_claim_level",
     "acf_question_type",
+    "export_intent",
+    "task_mode",
+    "analytical_mode",
     "artifacts",
     "langfuse_trace_id",
     "_backend_mode",
@@ -377,6 +380,35 @@ def render_request_context(
         st.metric("profile country", str(profile.get("country") or "—"))
     with cols[3]:
         st.metric("geo override", str(result.get("geo_override") or "—"))
+
+    if result.get("task_mode"):
+        plan = _as_dict(result.get("bq_sql_plan"))
+        intents = _as_list(plan.get("query_intents"))
+        mode = str(result.get("task_mode"))
+        if mode == "analytical" or result.get("analytical_mode"):
+            st.info(
+                f"**task_mode=analytical** — BQ intents: {len(intents)} · "
+                f"skip_bq={plan.get('skip_bq')} · rationale={plan.get('rationale') or '—'}"
+            )
+            expanded = _as_list(dec.get("expanded_regions"))
+            if expanded:
+                st.caption(f"Expanded regions: {', '.join(str(x) for x in expanded)}")
+        else:
+            st.caption(
+                f"task_mode={mode}"
+                + (f" · BQ intents={len(intents)}" if intents else "")
+                + (f" · rationale={plan.get('rationale')}" if plan.get("rationale") else "")
+            )
+    elif result.get("analytical_mode"):
+        plan = _as_dict(result.get("bq_sql_plan"))
+        intents = _as_list(plan.get("query_intents"))
+        st.info(
+            f"**Analytical mode** — BQ intents: {len(intents)} · "
+            f"skip_bq={plan.get('skip_bq')} · rationale={plan.get('rationale') or '—'}"
+        )
+        expanded = _as_list(dec.get("expanded_regions"))
+        if expanded:
+            st.caption(f"Expanded regions: {', '.join(str(x) for x in expanded)}")
 
     if query:
         st.caption(f"Query: {query}")

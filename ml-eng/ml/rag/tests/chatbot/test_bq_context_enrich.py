@@ -198,6 +198,48 @@ def test_ranking_consolidation() -> None:
     assert "1. South Africa" in out[0]["content"]
 
 
+def test_ranking_consolidation_stamps_acf_metadata() -> None:
+    sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE element = 'Production' AND year = 2020 GROUP BY country_name ORDER BY total DESC LIMIT 3"
+    )
+    items = [
+        _bq_item({"country_name": "South Africa", "total": 100, "element": "Production", "unit": "tonnes"}, sql=sql),
+        _bq_item({"country_name": "Nigeria", "total": 80, "element": "Production", "unit": "tonnes"}, sql=sql),
+        _bq_item({"country_name": "Ethiopia", "total": 60, "element": "Production", "unit": "tonnes"}, sql=sql),
+    ]
+    query = "which country in africa had the highest agricultural production in 2020"
+    out = enrich_bq_results(
+        items,
+        query=query,
+        plan={"selected_tables": ["stg_faostat_production"]},
+        decomposition={"time_start": "2020-01-01", "time_end": "2020-12-31"},
+    )
+    meta = out[0]["metadata"]
+    assert meta.get("as_of_date") == "2020-01-01"
+    assert meta.get("year") == 2020
+    assert meta.get("metric")
+    assert meta.get("geo_country_primary") == "South Africa"
+    assert meta.get("coverage_strength") == 0.3
+
+
+def test_single_row_enrich_stamps_year_from_sql() -> None:
+    sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE element = 'Production' AND year = 2020"
+    )
+    item = _bq_item(
+        {"country_name": "Nigeria", "total": 45678901, "element": "Production", "unit": "tonnes"},
+        sql=sql,
+    )
+    out = enrich_bq_results([item], query="Nigeria production 2020", plan={"selected_tables": ["stg_faostat_production"]})
+    meta = out[0]["metadata"]
+    assert meta.get("year") == 2020
+    assert meta.get("as_of_date") == "2020-01-01"
+
+
 def test_rows_from_bq_results_enriched_raw_row() -> None:
     enriched = {
         "source": "bigquery",

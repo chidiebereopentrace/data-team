@@ -145,6 +145,7 @@ def select_corpora(
     *,
     plan_type: str | None = None,
     query: str = "",
+    task_mode: str | None = None,
 ) -> CorpusSelection:
     """Heuristic gate/boost over the six corpora. Never returns an empty active set."""
     boosts = default_boosts()
@@ -159,11 +160,25 @@ def select_corpora(
     q = (query or "").strip()
     intent = str(dec.get("intent") or "").strip().lower()
     plan = (plan_type or "").strip()
+    mode = (task_mode or "chat").strip().lower()
     has_time = bool(str(dec.get("time_start") or "").strip() or str(dec.get("time_end") or "").strip())
 
     preferred: set[str] = set()
     skip: set[str] = set()
     reasons: list[str] = []
+
+    if mode == "briefing":
+        preferred.update({"news", "ota"})
+        _boost(boosts, "news", 0.12)
+        _boost(boosts, "ota", 0.10)
+        reasons.append("task_briefing")
+    elif mode in ("fact_lookup", "data_export_only"):
+        # Prefer structured narrative lightly; de-emphasize long-form policy/academic.
+        _boost(boosts, "news", -0.04)
+        _boost(boosts, "academic_papers", -0.06)
+        _boost(boosts, "policies", -0.04)
+        _boost(boosts, "public_reports", -0.04)
+        reasons.append(f"task_{mode}_soft_narrative")
 
     if _FORMATION_RE.search(q):
         preferred.add("formation")

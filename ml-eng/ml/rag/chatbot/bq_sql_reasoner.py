@@ -224,18 +224,62 @@ def reason_bq_sql_plan(
     decomposition: dict[str, Any] | None = None,
     plan_type: str | None = None,
     category: str | None = None,
+    analytical_mode: bool = False,
+    task_mode: str | None = None,
 ) -> dict[str, Any]:
     """
     Decide which staging_dev tables and SQL intents to run.
 
     Fail closed on LLM failure / invalid JSON / no valid tables in index,
     except a deterministic FAOSTAT production-rank heuristic for Africa-default
-    which-country questions.
+    which-country questions, and forced plans for analytical / fact / export-only modes.
     """
     known = _known_table_ids()
     index_text, index_truncated = format_reasoner_index()
     dec = decomposition if isinstance(decomposition, dict) else {}
     max_tables = _max_tables()
+    mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
+
+    if analytical_mode or mode == "analytical":
+        from ml.rag.chatbot.analytical_bq_plan import build_analytical_bq_plan
+
+        analytical = build_analytical_bq_plan(query, decomposition=dec, known_tables=known)
+        if analytical is not None:
+            analytical["index_truncated"] = index_truncated
+            update_current_span_metadata(
+                {
+                    "selected_tables": analytical.get("selected_tables"),
+                    "skip_bq": False,
+                    "analytical_mode": True,
+                    "task_mode": "analytical",
+                    "intent_count": len(analytical.get("query_intents") or []),
+                    "rationale": analytical.get("rationale"),
+                }
+            )
+            return analytical
+
+    if mode in ("fact_lookup", "data_export_only"):
+        from ml.rag.chatbot.fact_bq_plan import build_fact_bq_plan
+
+        fact = build_fact_bq_plan(
+            query,
+            decomposition=dec,
+            known_tables=known,
+            task_mode=mode,
+        )
+        if fact is not None:
+            fact["index_truncated"] = index_truncated
+            update_current_span_metadata(
+                {
+                    "selected_tables": fact.get("selected_tables"),
+                    "skip_bq": False,
+                    "task_mode": mode,
+                    "intent_count": len(fact.get("query_intents") or []),
+                    "rationale": fact.get("rationale"),
+                }
+            )
+            return fact
+
     heuristic = _heuristic_faostat_production_rank(query, decomposition=dec, known=known)
 
     system = (

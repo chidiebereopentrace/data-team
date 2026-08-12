@@ -32,29 +32,64 @@ The RAG stack answers natural-language questions about African agriculture and f
 ```mermaid
 flowchart TB
   subgraph entry [Entry points]
-    CLI[run.py CLI]
+    CLI[run.py]
+    API[app/api.py]
     ST[streamlit_app.py]
-    API[app/api.py FastAPI]
   end
 
-  subgraph graph [LangGraph — chatbot/graph.py]
+  subgraph graph [LangGraph]
     D[decompose]
     PR[parallel_retrieve]
     BQR[bq_reason]
     BQ[bq_retrieve]
     M[merge]
     R[rerank]
+    WF[web_fallback]
     G[generate]
-    D --> PR --> BQR --> BQ --> M --> R --> G
+    X[export]
+    D --> PR --> BQR --> BQ --> M --> R
+    R -->|weak and web on| WF --> G
+    R -->|enough| G --> X
   end
 
-  subgraph par [parallel_retrieve threads]
-    VN[VectorRetriever news]
-    VA[VectorRetriever research]
+  entry --> graph
+
+  subgraph router [corpus_router]
+    SC[select_corpora]
   end
 
-  PR --> VN
-  PR --> VA
+  PR --> SC
+
+  subgraph corpora [Qdrant collections]
+    N[news_data]
+    A[academic_papers]
+    P[policies]
+    PUB[public_reports]
+    F[formation]
+    O[OTA_insights]
+  end
+
+  SC --> N
+  SC --> A
+  SC --> P
+  SC --> PUB
+  SC --> F
+  SC --> O
+
+  subgraph cascade [per corpus VectorRetriever]
+    EMB[embed query E5]
+    FIL[filters doc_kind geo time]
+    HYB[dense plus sparse RRF]
+    CAS[cascade widen time drop filters]
+  end
+
+  N --> EMB
+  A --> EMB
+  P --> EMB
+  PUB --> EMB
+  F --> EMB
+  O --> EMB
+  EMB --> FIL --> HYB --> CAS
 
   BQR --> YAML[bq_tables_yaml_files + bq_sql_reasoner]
   BQ --> BR[BQRetriever NL-to-SQL + execute]
@@ -65,16 +100,28 @@ flowchart TB
     LLM[LM Studio or HF router]
   end
 
-  VN --> QD
-  VA --> QD
+  CAS --> QD
   BR --> BQDB
   D --> LLM
   BQR --> LLM
   BR --> LLM
   G --> LLM
-
-  entry --> graph
 ```
+
+`select_corpora` (heuristic gate, max soft-skip 3) chooses which of the six collections to query in a thread pool. Each selected corpus runs the shared `VectorRetriever` path: E5 embed → payload filters → optional hybrid dense+sparse RRF → filter cascade (widen time ±1y, drop time, drop geo). Soft-fail empty corpora continue the graph.
+
+| Key | Env | Default collection | `doc_kind` | State field |
+|-----|-----|--------------------|------------|-------------|
+| news | `QDRANT_COLLECTION_NEWS` | `news_data` | `news_article` | `vector_news_results` |
+| academic_papers | `QDRANT_COLLECTION_ACADEMIC_PAPERS` | `academic_papers` | `academic_article` | `vector_academic_papers_results` |
+| policies | `QDRANT_COLLECTION_POLICIES` | `policies` | `policy_document` | `vector_policies_results` |
+| public_reports | `QDRANT_COLLECTION_PUBLIC_REPORTS` | `public_reports` | `public_report` | `vector_public_reports_results` |
+| formation | `QDRANT_COLLECTION_FORMATION` | `formation` | `agricultural_practise` | `vector_formation_results` |
+| ota | `QDRANT_COLLECTION_OTA_INSIGHTS` | `OTA_insights` | `ota_insight` | `vector_ota_results` |
+
+Optional legacy mixed research collection (`QDRANT_COLLECTION_RESEARCH_PAPERS` / `research_other_papers`) runs only when `RAG_USE_LEGACY_RESEARCH_COLLECTION=on`.
+
+**Task modes** (`chatbot/task_mode.py`): after decompose (and after short-circuit gates for meta/product/social/language), `full_rag` sets `task_mode` with precedence **clarify → analytical → data_export_only → fact_lookup → briefing → chat**. `analytical_mode` remains `task_mode == "analytical"`. Clarify is a terminal `generate_clarify` node (no retrieval). Other modes share the same retrieve → BQ → generate → export path with mode-specific BQ plans, corpus boosts, and generation/export prompts. `export_intent` stays orthogonal (delivery axis).
 
 ### 2.2 Ingest-time (offline)
 
@@ -134,7 +181,7 @@ Implemented in [`chatbot/graph.py`](chatbot/graph.py). Entry: `run_rag(query, **
 | Node | Function | Reads state | Writes state |
 |------|----------|-------------|--------------|
 | **decompose** | `decompose_query` | `query` | `decomposition` |
-| **parallel_retrieve** | thread pool (vector corpora) | `query`, `decomposition`, overrides | `vector_news_results`, `vector_academic_results`, `vector_results`, … |
+| **parallel_retrieve** | thread pool + `select_corpora` | `query`, `decomposition`, overrides | `vector_news_results`, `vector_academic_papers_results`, `vector_policies_results`, `vector_public_reports_results`, `vector_formation_results`, `vector_ota_results`, `corpus_selection` |
 | **bq_reason** | staging YAML SQL reasoner | `query`, `decomposition` | `bq_sql_plan`, `bq_table_candidates` |
 | **bq_retrieve** | `BQRetriever.retrieve` | `query`, `decomposition`, hints | `bq_results`, (SQL in row metadata) |
 | **merge** | concat + labels | BQ + vector lists | `merged_context` |
@@ -581,6 +628,11 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 
 | Document | Contents |
 |----------|----------|
+| [docs/OpenTrace-RAG-Pipeline-Architecture.pdf](docs/OpenTrace-RAG-Pipeline-Architecture.pdf) | Full LangGraph pipeline with Mermaid diagrams (regen: `python scripts/generate_rag_architecture_pdf.py`) |
+| [docs/OpenTrace-RAG-Pipeline-Architecture.docx](docs/OpenTrace-RAG-Pipeline-Architecture.docx) | Full LangGraph pipeline, ERDs, node reference (regen: `python scripts/generate_rag_architecture_docx.py`) |
+| [docs/OpenTrace-Ask-ADZA-API-Software-Team.docx](docs/OpenTrace-Ask-ADZA-API-Software-Team.docx) | Software-team handoff: production RAG + plan-scoped `/query/{plan}` (regen: `python scripts/generate_software_team_api_docx.py`) |
+| [docs/OpenTrace-RAG-API-Documentation.docx](docs/OpenTrace-RAG-API-Documentation.docx) | Internal RAG API HTTP reference (detailed) |
+| [docs/OpenTrace-Chatbot-API-v1-Documentation.docx](docs/OpenTrace-Chatbot-API-v1-Documentation.docx) | Chatbot v1 HTTP reference (local / separate app) |
 | [README.md](README.md) | Install, env tables, command cookbook |
 | [docs/SCRIPTS.md](docs/SCRIPTS.md) | Every CLI/module entry point |
 | [docs/BQ_NL2SQL_PLAN.md](docs/BQ_NL2SQL_PLAN.md) | Bronze NL-to-SQL design notes |

@@ -315,9 +315,36 @@ def context_item_to_acf_record(item: dict[str, Any]) -> dict[str, Any] | None:
         "prior_value",
         "coverage_strength",
         "finding",
+        "bq_enrichment",
+        "ranked_rows",
+        "trend_mixed",
     ):
         if item.get(key) is not None and meta.get(key) is None:
             meta[key] = item[key]
+
+    # Ranked-table BQ items: use rank-1 country and stamped trend fields.
+    if meta.get("bq_enrichment") == "ranked_table":
+        ranked_rows = meta.get("ranked_rows")
+        if isinstance(ranked_rows, list) and ranked_rows:
+            top = ranked_rows[0]
+            if isinstance(top, dict):
+                label = _s(top.get("label"))
+                if label:
+                    meta.setdefault("geo_country_primary", label)
+                    meta.setdefault("geo_countries", label)
+                if meta.get("value") is None and top.get("value") is not None:
+                    meta["value"] = top["value"]
+                if not _s(meta.get("unit")):
+                    unit_top = _s(top.get("unit"))
+                    if unit_top:
+                        meta["unit"] = unit_top
+            if meta.get("coverage_strength") is None:
+                meta["coverage_strength"] = min(1.0, len(ranked_rows) / 10.0)
+        sem = meta.get("value_semantics")
+        if isinstance(sem, dict):
+            ml = _s(sem.get("measure_label"))
+            if ml and (not _s(meta.get("metric")) or meta.get("metric") == "general"):
+                meta["metric"] = ml
 
     as_of = derive_as_of_date(meta)
     if not as_of:

@@ -1,6 +1,10 @@
 # OpenTrace RAG & Chatbot API Reference
 
-Two FastAPI services share request/response models but serve different clients.
+**Software team handoff (one document):** [OpenTrace-Ask-ADZA-API-Software-Team.docx](OpenTrace-Ask-ADZA-API-Software-Team.docx) — production base URL, six plan-scoped `POST /query/{plan}` routes, session/feedback/health. Regenerate with `python scripts/generate_software_team_api_docx.py` (from `ml-eng/`). Live Swagger: https://data-team-production-db77.up.railway.app/docs
+
+**Internal / detailed:** [OpenTrace-RAG-API-Documentation.docx](OpenTrace-RAG-API-Documentation.docx) · [OpenTrace-Chatbot-API-v1-Documentation.docx](OpenTrace-Chatbot-API-v1-Documentation.docx) · [OpenTrace-RAG-Pipeline-Architecture.docx](OpenTrace-RAG-Pipeline-Architecture.docx) · [OpenTrace-RAG-Pipeline-Architecture.pdf](OpenTrace-RAG-Pipeline-Architecture.pdf) — regenerate API detail with `python scripts/generate_api_documentation.py`; pipeline DOCX with `python scripts/generate_rag_architecture_docx.py`; pipeline PDF with `python scripts/generate_rag_architecture_pdf.py`.
+
+Two FastAPI services share request/response models but serve different clients. **Production Railway** runs the RAG API (`ml.rag.api:app`) with plan-scoped routes `POST /query/free` … `/query/integrated` (path locks `plan_type`).
 
 | Service | Entrypoint | Default port | Audience |
 |---------|------------|--------------|----------|
@@ -184,9 +188,26 @@ Readiness probe for load balancers.
 
 ---
 
+## Plan-scoped query routes (preferred)
+
+Production RAG exposes one endpoint per plan. The **path locks `plan_type`**; a mismatched `user_profile.plan_type` in the body is ignored.
+
+| Method | Path | Injected `plan_type` |
+|--------|------|----------------------|
+| POST | `/query/free` | `Free` |
+| POST | `/query/farmers` | `Farmers` |
+| POST | `/query/government` | `Government` |
+| POST | `/query/ngos` | `NGOs` |
+| POST | `/query/agribusinesses` | `Agribusinesses` |
+| POST | `/query/integrated` | `Integrated` |
+
+Request/response body matches [`POST /query`](#post-query). Send `user_profile.category` (and `country` for Farmers). Prefer these URLs for new frontend integrations.
+
+---
+
 ## `POST /query`
 
-Main RAG endpoint. Runs the full graph: decomposition → BigQuery + vector retrieval → rerank → generation.
+Main RAG endpoint (generic / backward compatible). Prefer plan-scoped `/query/{plan}` routes for new clients. Runs the full graph: decomposition → BigQuery + vector retrieval → rerank → generation.
 
 ### Request body (`QueryRequest`)
 
