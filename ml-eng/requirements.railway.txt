@@ -5,6 +5,7 @@
 # Core BigQuery + data access
 google-cloud-bigquery>=3.14.0
 google-cloud-storage>=2.14.0
+boto3>=1.34.0
 db-dtypes>=1.2.0
 pandas>=2.0.0
 pyarrow>=14.0.0

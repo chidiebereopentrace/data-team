@@ -1,4 +1,4 @@
-"""Upload export artifacts to GCS (or local fallback for dev/tests)."""
+"""Upload export artifacts to S3-compatible storage, GCS, or local fallback."""
 from __future__ import annotations
 
 import logging
@@ -29,6 +29,28 @@ def _gcs_bucket_name() -> str:
     return os.environ.get("RAG_ARTIFACT_GCS_BUCKET", "").strip()
 
 
+def _s3_bucket_name() -> str:
+    return os.environ.get("AWS_S3_BUCKET_NAME", "").strip()
+
+
+def _s3_credentials_ready() -> bool:
+    return bool(
+        _s3_bucket_name()
+        and os.environ.get("AWS_ACCESS_KEY_ID", "").strip()
+        and os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip()
+        and os.environ.get("AWS_ENDPOINT_URL", "").strip()
+    )
+
+
+def _artifact_prefix() -> str:
+    raw = (
+        os.environ.get("RAG_ARTIFACT_S3_PREFIX")
+        or os.environ.get("RAG_ARTIFACT_GCS_PREFIX")
+        or "rag-exports"
+    )
+    return raw.strip().strip("/")
+
+
 def _signed_url_ttl_seconds() -> int:
     raw = os.environ.get("RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS", "3600").strip()
     try:
@@ -49,8 +71,7 @@ def upload_artifact(data: bytes, filename: str) -> dict[str, Any]:
     """
     Store artifact bytes and return metadata including a download URL.
 
-    Production: GCS bucket + V4 signed URL (requires RAG_ARTIFACT_GCS_BUCKET).
-    Dev/test: writes under RAG_ARTIFACT_LOCAL_DIR or system temp; url is file:// path.
+    Priority: S3-compatible (Railway neat-icebox via AWS_*) → GCS → local file://.
     """
     if len(data) > _max_artifact_bytes():
         raise ValueError(
@@ -59,10 +80,13 @@ def upload_artifact(data: bytes, filename: str) -> dict[str, Any]:
 
     mime = mime_type_for_filename(filename)
     artifact_id = f"art_{uuid.uuid4().hex[:12]}"
-    bucket = _gcs_bucket_name()
 
-    if bucket:
-        return _upload_gcs(data, filename, artifact_id, mime, bucket)
+    if _s3_credentials_ready():
+        return _upload_s3(data, filename, artifact_id, mime, _s3_bucket_name())
+
+    gcs_bucket = _gcs_bucket_name()
+    if gcs_bucket:
+        return _upload_gcs(data, filename, artifact_id, mime, gcs_bucket)
 
     local_root = os.environ.get("RAG_ARTIFACT_LOCAL_DIR", "").strip()
     base = Path(local_root) if local_root else Path(tempfile.gettempdir()) / "rag_artifacts"
@@ -77,6 +101,53 @@ def upload_artifact(data: bytes, filename: str) -> dict[str, Any]:
         "url": dest.as_uri(),
         "byte_size": len(data),
         "gcs_uri": None,
+        "s3_uri": None,
+        "storage_uri": dest.as_uri(),
+    }
+
+
+def _upload_s3(
+    data: bytes,
+    filename: str,
+    artifact_id: str,
+    mime: str,
+    bucket: str,
+) -> dict[str, Any]:
+    import boto3  # pyright: ignore[reportMissingImports]
+
+    endpoint = os.environ.get("AWS_ENDPOINT_URL", "").strip()
+    region = (
+        os.environ.get("AWS_DEFAULT_REGION", "").strip()
+        or os.environ.get("AWS_REGION", "").strip()
+        or "auto"
+    )
+    prefix = _artifact_prefix()
+    key = f"{prefix}/{artifact_id}/{filename}"
+
+    client = boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "").strip(),
+        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip(),
+        region_name=region,
+    )
+    client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=mime)
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key},
+        ExpiresIn=_signed_url_ttl_seconds(),
+    )
+    s3_uri = f"s3://{bucket}/{key}"
+    logger.info("artifact uploaded s3=%s bytes=%d", s3_uri, len(data))
+    return {
+        "id": artifact_id,
+        "filename": filename,
+        "mime_type": mime,
+        "url": url,
+        "byte_size": len(data),
+        "gcs_uri": None,
+        "s3_uri": s3_uri,
+        "storage_uri": s3_uri,
     }
 
 
@@ -89,7 +160,7 @@ def _upload_gcs(
 ) -> dict[str, Any]:
     from google.cloud import storage  # lazy import
 
-    prefix = os.environ.get("RAG_ARTIFACT_GCS_PREFIX", "rag-exports").strip().strip("/")
+    prefix = _artifact_prefix()
     blob_name = f"{prefix}/{artifact_id}/{filename}"
     client = storage.Client()
     bucket_obj = client.bucket(bucket)
@@ -110,6 +181,8 @@ def _upload_gcs(
         "url": url,
         "byte_size": len(data),
         "gcs_uri": gcs_uri,
+        "s3_uri": None,
+        "storage_uri": gcs_uri,
     }
 
 

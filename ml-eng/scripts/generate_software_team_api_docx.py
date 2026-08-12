@@ -113,8 +113,8 @@ def build() -> None:
             "Omit chat_history to use server-side memory; send chat_history for client-owned history.",
             "Every successful response includes acf (confidence band, score 0–100, explanation).",
             "Agribusinesses and Integrated return artifacts[] (CSV/chart/DOCX/PDF URLs) when the "
-            "user asks for an export and structured data is available. Set RAG_ARTIFACT_GCS_BUCKET "
-            "in production for HTTPS signed URLs.",
+            "user asks for an export and structured data is available. Production: set "
+            "AWS_S3_BUCKET_NAME + AWS_ENDPOINT_URL (Railway neat-icebox) or RAG_ARTIFACT_GCS_BUCKET.",
         ],
     )
 

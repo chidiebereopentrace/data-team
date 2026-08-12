@@ -268,7 +268,7 @@ Unknown top-level keys (e.g. `stakeholder_type`, `audience_instructions`, `geo_o
 | `trace` | `object \| null` | Present only when `include_trace: true`. |
 | `langfuse_trace_id` | `string \| null` | Langfuse trace id when tracing is enabled. |
 | `acf` | `ACFSignal` | Confidence band, score, and explanation. |
-| `artifacts` | `ArtifactItem[]` | Downloadable exports. Populated on **Agribusinesses** and **Integrated** when the user asks for CSV/chart/PDF/DOCX and builders succeed; otherwise `[]`. Requires `RAG_ARTIFACT_GCS_BUCKET` (or local fallback) for HTTPS URLs. |
+| `artifacts` | `ArtifactItem[]` | Downloadable exports. Populated on **Agribusinesses** and **Integrated** when the user asks for CSV/chart/PDF/DOCX and builders succeed; otherwise `[]`. Production URLs come from S3-compatible storage (`AWS_S3_BUCKET_NAME` + `AWS_ENDPOINT_URL`, e.g. Railway neat-icebox) or GCS (`RAG_ARTIFACT_GCS_BUCKET`); local `file://` fallback for dev. |
 
 Plan-scoped routes inherit the same response. Export gate: `/query/agribusinesses` and `/query/integrated` (and generic `/query` when `user_profile.plan_type` is one of those). Other plans keep `artifacts: []` and may append an upgrade note in `answer` if an export is requested.
 
@@ -503,7 +503,7 @@ When a user on a non-export route asks for a CSV, chart, or report, the assistan
 | `kind` | `csv \| chart \| docx \| pdf` | Export format |
 | `filename` | `string` | Suggested download filename |
 | `mime_type` | `string` | MIME type |
-| `url` | `string` | Signed HTTPS URL (GCS in production) |
+| `url` | `string` | Presigned HTTPS URL (S3-compatible or GCS in production) |
 | `summary` | `string` | Short description of contents |
 | `citation_ids` | `integer[]` | Citation ids from the parent answer |
 | `byte_size` | `integer` | File size in bytes |
