@@ -33,10 +33,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
 from ml.rag.acf_signal import acf_signal_from_result
-from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats, UserProfile
+from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats, UserProfile
 from ml.rag.chat_history import normalize_messages
 from ml.rag.chat_memory import flat_messages_to_memory
-from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS
+from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS, allows_export
 from ml.rag.chat_turn import persist_session_turn
 from ml.rag.observability import flush_langfuse, get_current_trace_id, rag_trace_context, record_trace_score
 from ml.rag.request_context import resolve_request_context
@@ -125,6 +125,14 @@ class QueryResponse(BaseModel):
     langfuse_trace_id: str | None = Field(
         None,
         description="Langfuse trace id when tracing is enabled (for feedback / debugging)",
+    )
+    artifacts: list[ArtifactItem] = Field(
+        default_factory=list,
+        description=(
+            "Downloadable exports (CSV/chart/DOCX/PDF). Populated on Agribusinesses and "
+            "Integrated plans when the query requests an export and builders succeed; "
+            "otherwise empty."
+        ),
     )
 
 
@@ -261,6 +269,7 @@ async def _run_query(
             kwargs["plan_type"] = ctx.plan_type
         if ctx.category:
             kwargs["category"] = ctx.category
+        kwargs["export_enabled"] = allows_export(ctx.plan_type)
         kwargs["session_id"] = session_id
         kwargs["trace_tags"] = ["api"]
         for key in (
@@ -323,6 +332,8 @@ async def _run_query(
 
         raw_citations = result.get("citations") or []
         citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]
+        raw_artifacts = result.get("artifacts") or []
+        artifacts = [ArtifactItem.model_validate(a) for a in raw_artifacts if isinstance(a, dict)]
         usage = UsageStats.from_usage_dict(result.get("usage") if isinstance(result.get("usage"), dict) else None)
 
         acf = acf_signal_from_result(result)
@@ -336,6 +347,7 @@ async def _run_query(
             error=result.get("error"),
             trace=trace,
             langfuse_trace_id=langfuse_trace_id,
+            artifacts=artifacts,
         )
     except HTTPException:
         raise

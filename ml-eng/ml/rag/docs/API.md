@@ -266,6 +266,11 @@ Unknown top-level keys (e.g. `stakeholder_type`, `audience_instructions`, `geo_o
 | `usage` | `UsageStats` | Per-request LLM token totals. |
 | `error` | `string \| null` | Pipeline-level error message if the graph set one; may still return partial `answer`. |
 | `trace` | `object \| null` | Present only when `include_trace: true`. |
+| `langfuse_trace_id` | `string \| null` | Langfuse trace id when tracing is enabled. |
+| `acf` | `ACFSignal` | Confidence band, score, and explanation. |
+| `artifacts` | `ArtifactItem[]` | Downloadable exports. Populated on **Agribusinesses** and **Integrated** when the user asks for CSV/chart/PDF/DOCX and builders succeed; otherwise `[]`. Production URLs come from S3-compatible storage (`AWS_S3_BUCKET_NAME` + `AWS_ENDPOINT_URL`, e.g. Railway neat-icebox) or GCS (`RAG_ARTIFACT_GCS_BUCKET`); local `file://` fallback for dev. |
+
+Plan-scoped routes inherit the same response. Export gate: `/query/agribusinesses` and `/query/integrated` (and generic `/query` when `user_profile.plan_type` is one of those). Other plans keep `artifacts: []` and may append an upgrade note in `answer` if an export is requested.
 
 ### Example success response
 
@@ -473,7 +478,7 @@ Single chat turn through the same RAG pipeline as `/query`, with v1 response sha
 | `created_at` | `string` | ISO-8601 UTC timestamp. |
 | `plan_type` | `string \| null` | Plan tier applied to this request (when using plan-scoped routes). |
 | `acf` | `ACFSignal` | Confidence band, score, and explanation. |
-| `artifacts` | `ArtifactItem[]` | Downloadable exports. **Only populated on** `POST /v1/chat/agribusinesses` and `POST /v1/chat/integrated`. Always `[]` on other routes. |
+| `artifacts` | `ArtifactItem[]` | Downloadable exports. Populated on **Agribusinesses** and **Integrated** for both `POST /query/{plan}` and `POST /v1/chat/{plan}` when export intent succeeds. Always `[]` on other plans. |
 
 ### Plan-scoped chat routes
 
@@ -481,12 +486,12 @@ Prefer these routes for new integrations. The plan tier is **locked by the URL**
 
 | Route | Plan | Exports (`artifacts`) |
 |-------|------|------------------------|
-| `POST /v1/chat/free` | Free | No |
-| `POST /v1/chat/farmers` | Farmers | No |
-| `POST /v1/chat/government` | Government | No |
-| `POST /v1/chat/ngos` | NGOs | No |
-| `POST /v1/chat/agribusinesses` | Agribusinesses | **Yes** (CSV, chart, DOCX, PDF) |
-| `POST /v1/chat/integrated` | Integrated | **Yes** (CSV, chart, DOCX, PDF) |
+| `POST /query/free` / `POST /v1/chat/free` | Free | No |
+| `POST /query/farmers` / `POST /v1/chat/farmers` | Farmers | No |
+| `POST /query/government` / `POST /v1/chat/government` | Government | No |
+| `POST /query/ngos` / `POST /v1/chat/ngos` | NGOs | No |
+| `POST /query/agribusinesses` / `POST /v1/chat/agribusinesses` | Agribusinesses | **Yes** (CSV, chart, DOCX, PDF) |
+| `POST /query/integrated` / `POST /v1/chat/integrated` | Integrated | **Yes** (CSV, chart, DOCX, PDF) |
 
 When a user on a non-export route asks for a CSV, chart, or report, the assistant explains that exports require the Agribusinesses or Integrated endpoint.
 
@@ -498,7 +503,7 @@ When a user on a non-export route asks for a CSV, chart, or report, the assistan
 | `kind` | `csv \| chart \| docx \| pdf` | Export format |
 | `filename` | `string` | Suggested download filename |
 | `mime_type` | `string` | MIME type |
-| `url` | `string` | Signed HTTPS URL (GCS in production) |
+| `url` | `string` | Presigned HTTPS URL (S3-compatible or GCS in production) |
 | `summary` | `string` | Short description of contents |
 | `citation_ids` | `integer[]` | Citation ids from the parent answer |
 | `byte_size` | `integer` | File size in bytes |

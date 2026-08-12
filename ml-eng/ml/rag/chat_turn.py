@@ -13,7 +13,7 @@ from typing import Any
 
 from ml.rag.chatbot.chat_history import normalize_messages
 from ml.rag.chatbot.chat_memory import append_turn_and_compact, flat_messages_to_memory
-from ml.rag.chatbot.plan_policy import is_valid_plan_type
+from ml.rag.chatbot.plan_policy import allows_export, is_valid_plan_type
 from ml.rag.chatbot.stakeholder_prompts import is_valid_category
 from ml.rag.observability import flush_langfuse, get_current_trace_id, rag_trace_context
 from ml.rag.session_store import get_session_blob, save_session_blob
@@ -204,6 +204,7 @@ def execute_chat_turn(
         kwargs["user_profile"] = user_profile
     kwargs["session_id"] = sid
     kwargs["trace_tags"] = ["chat"]
+    kwargs.setdefault("export_enabled", allows_export(plan))
 
     from ml.rag.chatbot.graph import run_rag  # defer heavy graph / torch imports
 
