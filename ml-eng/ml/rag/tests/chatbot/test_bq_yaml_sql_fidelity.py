@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ml.rag.chatbot.bq_sql_validate import (
+    validate_required_metric_filters,
     validate_sql_column_allowlist,
     validate_sql_value_samples,
 )
@@ -24,6 +25,14 @@ def test_value_samples_for_tables_element() -> None:
     by_col = samples["stg_faostat_production"]
     assert "Production" in by_col["element"]
     assert "product_name" in by_col
+    assert "Maize" in by_col["product_name"]
+
+
+def test_value_samples_include_fews_price_type() -> None:
+    samples = value_samples_for_tables({"stg_fews_market_prices"})
+    by_col = samples["stg_fews_market_prices"]
+    assert "Retail" in by_col["price_type"]
+    assert "market_name" in by_col
 
 
 def test_column_allowlist_rejects_bronze_area() -> None:
@@ -35,6 +44,15 @@ def test_column_allowlist_rejects_bronze_area() -> None:
     err = validate_sql_column_allowlist(sql)
     assert err is not None
     assert "area" in err.lower()
+
+
+def test_column_allowlist_accepts_opentrace_prod_fqn() -> None:
+    sql = (
+        "SELECT * FROM `opentrace-prod-5ga4.staging_dev.stg_faostat_production` "
+        "WHERE country_name = 'Nigeria' AND product_name = 'Maize' "
+        "AND element = 'Production' ORDER BY year"
+    )
+    assert validate_sql_column_allowlist(sql) is None
 
 
 def test_column_allowlist_accepts_yaml_names() -> None:
@@ -54,6 +72,35 @@ def test_column_allowlist_accepts_fews_country() -> None:
         "WHERE year = 2020 GROUP BY country LIMIT 5"
     )
     assert validate_sql_column_allowlist(sql) is None
+
+
+def test_required_metric_filters_rejects_missing_element() -> None:
+    sql = (
+        "SELECT * FROM `opentrace-prod-5ga4.staging_dev.stg_faostat_production` "
+        "WHERE country_name = 'Nigeria' AND product_name = 'Maize' ORDER BY year"
+    )
+    err = validate_required_metric_filters(sql)
+    assert err is not None
+    assert "element" in err.lower()
+
+
+def test_required_metric_filters_accepts_element() -> None:
+    sql = (
+        "SELECT year, value, unit FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE country_name = 'Nigeria' AND product_name = 'Maize' "
+        "AND element = 'Production' ORDER BY year"
+    )
+    assert validate_required_metric_filters(sql) is None
+
+
+def test_required_metric_filters_rejects_missing_price_type() -> None:
+    sql = (
+        "SELECT year, value FROM `proj.staging_dev.stg_fews_market_prices` "
+        "WHERE country = 'Nigeria' AND product_name = 'Maize' ORDER BY year"
+    )
+    err = validate_required_metric_filters(sql)
+    assert err is not None
+    assert "price_type" in err.lower()
 
 
 def test_value_samples_rejects_bad_element() -> None:
@@ -94,3 +141,4 @@ def test_schema_filter_guide_no_bronze_area_item_as_primary() -> None:
     assert "never invent bronze/raw" in guide or "bronze/raw" in guide
     # Must not list bare area/item as recommended filter columns.
     assert "product / crop: product, product_name, item" not in guide
+    assert "metric discriminator" in guide

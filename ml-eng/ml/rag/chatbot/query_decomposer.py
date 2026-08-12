@@ -143,6 +143,50 @@ _NON_COUNTRY_GEO: frozenset[str] = frozenset(
     }
 )
 
+# LLM often echoes these from "which country…" — never treat as geo filters.
+_GEO_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "country",
+        "countries",
+        "nation",
+        "nations",
+        "region",
+        "regions",
+        "world",
+        "global",
+        "worldwide",
+        "international",
+        "place",
+        "places",
+        "location",
+        "locations",
+        "area",
+        "areas",
+        "state",
+        "states",
+        "continent",
+        "continents",
+    }
+)
+
+_RANKING_SCOPE_RE = re.compile(
+    r"\b("
+    r"which\s+country|which\s+countries|"
+    r"highest|lowest|top\s+\d+|bottom\s+\d+|"
+    r"rank(?:ing|ed)?|largest|smallest|biggest|best|worst|"
+    r"most\s+(?:produced|production)|least\s+(?:produced|production)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_AGRI_SCOPE_RE = re.compile(
+    r"\b("
+    r"agricultur(?:e|al)|farming|crop|production|yield|livestock|"
+    r"food\s+security|agribusiness|output"
+    r")\b",
+    re.IGNORECASE,
+)
+
 _DOMAIN_KEYWORDS = (
     "yield",
     "crop",
@@ -175,14 +219,49 @@ def _extract_countries(text: str) -> list[str]:
 
 
 def normalize_geography_for_filter(geography: list[str] | None) -> list[str]:
-    """Drop continent/region tokens that break exact country news filters."""
+    """Drop continent/region tokens and geo stopwords that break exact country filters."""
     out: list[str] = []
     for g in geography or []:
         s = str(g).strip()
-        if not s or s.lower() in _NON_COUNTRY_GEO:
+        if not s:
+            continue
+        low = s.lower()
+        if low in _NON_COUNTRY_GEO or low in _GEO_STOPWORDS:
             continue
         if s not in out:
             out.append(s)
+    return out
+
+
+def wants_africa_default_scope(query: str) -> bool:
+    """
+    True for unscoped which-country / ranking questions.
+
+    OpenTrace is Africa-first: when the user does not name a country, continental
+    rankings default to African agricultural intelligence.
+    """
+    q = (query or "").strip()
+    if not q:
+        return False
+    if _extract_countries(q):
+        return False
+    if not _RANKING_SCOPE_RE.search(q):
+        return False
+    # Prefer agri-shaped rankings; still default Africa for bare which-country ranks.
+    return True
+
+
+def apply_africa_default_scope(decomposition: dict[str, Any], query: str) -> dict[str, Any]:
+    """Annotate decomposition when product default is Africa continental ranking."""
+    out = dict(decomposition or {})
+    if not wants_africa_default_scope(query):
+        out.pop("africa_default", None)
+        return out
+    out["africa_default"] = True
+    entities = list(out.get("entities") or [])
+    if not any(str(e).strip().lower() == "africa" for e in entities):
+        entities.append("Africa")
+    out["entities"] = entities
     return out
 
 
@@ -540,4 +619,5 @@ def decompose_query(query: str) -> dict[str, Any]:
     out["entities"] = _ground_facets_in_query(out.get("entities"), q)
     out["geography"] = normalize_geography_for_filter(out.get("geography"))
     out["intent"] = _normalize_intent(out.get("intent"))
+    out = apply_africa_default_scope(out, q)
     return out

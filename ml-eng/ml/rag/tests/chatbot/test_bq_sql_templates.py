@@ -72,6 +72,7 @@ def test_build_faostat_country_rank_sql() -> None:
     )
     assert "stg_faostat_production" in sql
     assert "year = 2020" in sql
+    assert "element = 'Production'" in sql
     assert "GROUP BY country_name" in sql
     assert "ORDER BY total DESC" in sql
     assert "dim_geography" not in sql
@@ -102,7 +103,8 @@ def test_try_sql_template_crop_and_price() -> None:
     )
     assert crop is not None
     assert crop["template"] == "faostat_crop_rank"
-    assert "maize" in crop["sql"].lower()
+    assert "Maize" in crop["sql"]
+    assert "element = 'Production'" in crop["sql"]
 
     price = try_sql_template(
         query="highest producer prices in Africa 2019",
@@ -113,3 +115,20 @@ def test_try_sql_template_crop_and_price() -> None:
     )
     assert price is not None
     assert price["template"] == "faostat_price_rank"
+    assert "Producer Price (USD/tonne)" in price["sql"]
+
+
+def test_try_sql_template_country_crop_series() -> None:
+    hit = try_sql_template(
+        query="Export maize production data for Nigeria as a CSV",
+        project_id="proj",
+        dataset="staging_dev",
+        selected_tables=["stg_faostat_production"],
+        geo_country="Nigeria",
+    )
+    assert hit is not None
+    assert hit["template"] == "country_crop_series"
+    assert "element = 'Production'" in hit["sql"]
+    assert "product_name = 'Maize'" in hit["sql"]
+    assert "country_name = 'Nigeria'" in hit["sql"]
+    assert "SELECT *" not in hit["sql"]

@@ -19,6 +19,7 @@ from ml.rag.chatbot.bq_sql_templates import try_sql_template
 from ml.rag.chatbot.bq_sql_validate import (
     dry_run_sql,
     sql_retry_enabled,
+    validate_required_metric_filters,
     validate_sql_column_allowlist,
     validate_sql_table_allowlist,
     validate_sql_value_samples,
@@ -79,7 +80,7 @@ def _call_llama_for_sql(messages: list[dict[str, str]], *, max_tokens: int | Non
     )
 
 
-# Filter guidance: YAML Columns blocks are authoritative (no bronze/raw inventing).
+# Filter guidance: YAML Columns + *_value_samples are authoritative.
 _SCHEMA_FILTER_GUIDE = """
 Filter columns by question intent — use ONLY exact names from each table's Columns block
 in the table hints (never invent bronze/raw names like area or item when Columns lists
@@ -87,13 +88,18 @@ country_name / product_name):
 - Geography: whatever the Columns block lists (often country_name; sometimes country,
   admin_1, geographic_unit_name, etc.)
 - Time: year, planting_year, harvest_year, month, observation_year when listed
-- Product / metric dims: product_name, element, item, unit when listed
-- Markets / prices / food security: only columns present in Columns
+- Product / entity dims: product_name, product, item, market_name when listed
+- Metric discriminators (REQUIRED when that table has *_value_samples for them):
+  element, indicator, price_type, measure_type, treatment, and grain dims like
+  scenario_name — filter with exact sample strings; never SUM across mixed values
+- Prefer SELECT grain dims + value + unit over bare SELECT *
 
 Query patterns:
 - Time-bounded questions -> WHERE on the time column from Columns
-- Rankings / comparisons -> GROUP BY the geography column from Columns; avoid bare SELECT * LIMIT
-- Equality filters on element / product_name / item must use exact strings from *_value_samples
+- Rankings / comparisons -> GROUP BY the geography column from Columns
+- Equality filters on any column with *_value_samples must use exact sample strings
+- Default Production / Retail / population / etc. only when filtering_guidance in the
+  packed table hint says so for that table
 
 Staging tables (use only tables in the Schema / table hints — examples):
 - Yield/crop: stg_yield_raw_data
@@ -508,14 +514,17 @@ class BQRetriever(BaseRetriever):
             "2) Use exact column names from the Columns blocks only — never invent columns "
             "or bronze/raw names (e.g. use country_name not country/area; product_name not item "
             "unless Columns lists item). "
-            "3) For element / product_name / item equality filters, use exact strings from "
-            "*_value_samples in the hints (prefer = / IN over invented synonyms; LIKE only for known aliases). "
-            "4) When Query constraints are present, REQUIRED country and time filters MUST appear. "
-            "5) For FAOSTAT production rankings: filter element and year, then "
-            "SUM(value) GROUP BY country_name ORDER BY total DESC — not MAX per product row; "
+            "3) For every table hint, equality-filter every metric-discriminator column that has "
+            "*_value_samples (element, price_type, measure_type, indicator, treatment, "
+            "scenario_name when in grain, etc.) using exact sample strings. "
+            "Default Production/Retail/population only when filtering_guidance in the hint says so. "
+            "4) Prefer SELECT of grain columns + value + unit over bare SELECT *. "
+            "Never SUM/AVG across mixed discriminator values. "
+            "5) When Query constraints are present, REQUIRED country and time filters MUST appear. "
+            "6) For country rankings: filter the discriminator + year, then "
+            "SUM(value) GROUP BY geography column ORDER BY total DESC — not MAX per product row; "
             "for Africa/continental questions stay on the fact table (no geo-dim subquery). "
-            "6) Prefer GROUP BY / ORDER BY over bare SELECT * LIMIT. "
-            "7) country_name values are countries only — never filter country_name = 'Africa'. "
+            "7) country_name / country values are countries only — never filter = 'Africa'. "
             f"{join_rule}"
             f"{output_rule}"
         )
@@ -604,6 +613,9 @@ class BQRetriever(BaseRetriever):
             col_err = validate_sql_column_allowlist(sql, selected_tables or None)
             if col_err:
                 return col_err
+            metric_err = validate_required_metric_filters(sql, selected_tables or None)
+            if metric_err:
+                return metric_err
             sample_err = validate_sql_value_samples(sql, selected_tables or None)
             if sample_err:
                 return sample_err
@@ -619,7 +631,9 @@ class BQRetriever(BaseRetriever):
                 f"{question}\n\n"
                 f"Previous SQL failed validation:\n{check_err}\n\n"
                 "Fix the SQL. Use ONLY columns from the Columns blocks in the table hints. "
-                "Use exact *_value_samples strings for element/product_name equality filters. "
+                "Equality-filter every metric discriminator that has *_value_samples "
+                "(element / price_type / measure_type / scenario_name / etc.) with exact sample strings. "
+                "Prefer grain columns + value + unit over SELECT *. "
                 f"Use ONLY these tables: {allowed_list}. "
                 "Never invent dim_geography, dim_*, bronze/raw column names, or any table outside that list. "
                 "JOIN only tables in the selected set using documented on= keys. "
@@ -924,6 +938,8 @@ class BQRetriever(BaseRetriever):
                 time_start=time_start,
                 time_end=time_end,
                 limit=rows_per_query,
+                geo_country=geo_country,
+                geo_countries=geo_countries,
             )
             if not hit:
                 return []

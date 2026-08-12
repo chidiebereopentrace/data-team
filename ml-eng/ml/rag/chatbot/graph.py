@@ -1365,13 +1365,11 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         gkw["category"] = state.get("category")
     if state.get("answer_lang"):
         gkw["answer_lang"] = state.get("answer_lang")
-    raw_plan = state.get("bq_sql_plan")
-    plan: dict[str, Any] = raw_plan if isinstance(raw_plan, dict) else {}
-    if not plan.get("skip_bq"):
-        bq_results = state.get("bq_results") or []
-        usable_bq = [r for r in bq_results if is_usable_context_item(r)]
-        if not usable_bq:
-            gkw["structured_bq_unavailable"] = True
+    # No usable BQ rows — including skip_bq / empty selection — so ranking guards fire.
+    bq_results = state.get("bq_results") or []
+    usable_bq = [r for r in bq_results if is_usable_context_item(r)]
+    if not usable_bq:
+        gkw["structured_bq_unavailable"] = True
     gen_result = generate(query, context, **gkw)
 
     # ACF Path B is computed post-cite inside generate/_finalize_generation_result.

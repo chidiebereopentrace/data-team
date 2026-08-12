@@ -116,7 +116,27 @@ def load_table_schema(table_name: str) -> dict[str, Any] | None:
     return None
 
 
-# Map YAML ``*_value_samples`` keys → physical column names in staging.
+# Explicit overrides when sample key stem ≠ physical column name.
+_SAMPLE_KEY_OVERRIDES: dict[str, str] = {
+    "product_value_samples": "product_name",
+    "market_value_samples": "market_name",
+    "item_value_samples": "item",
+}
+
+_SAMPLE_KEY_SUFFIX = "_value_samples"
+
+
+def column_for_sample_key(sample_key: str) -> str:
+    """Map YAML ``*_value_samples`` key → physical column name."""
+    key = (sample_key or "").strip()
+    if key in _SAMPLE_KEY_OVERRIDES:
+        return _SAMPLE_KEY_OVERRIDES[key]
+    if key.endswith(_SAMPLE_KEY_SUFFIX):
+        return key[: -len(_SAMPLE_KEY_SUFFIX)]
+    return key
+
+
+# Legacy alias kept for imports / tests that referenced the old fixed map.
 _SAMPLE_KEY_TO_COLUMN: dict[str, str] = {
     "element_value_samples": "element",
     "product_value_samples": "product_name",
@@ -129,6 +149,18 @@ _SAMPLE_KEY_TO_COLUMN: dict[str, str] = {
     "degree_value_samples": "degree",
     "source_value_samples": "source",
     "currency_value_samples": "currency",
+    "price_type_value_samples": "price_type",
+    "market_value_samples": "market_name",
+    "phase_code_value_samples": "phase_code",
+    "phase_name_value_samples": "phase_name",
+    "classification_scale_value_samples": "classification_scale",
+    "scenario_name_value_samples": "scenario_name",
+    "measure_type_value_samples": "measure_type",
+    "treatment_value_samples": "treatment",
+    "food_value_value_samples": "food_value",
+    "industry_value_samples": "industry",
+    "factor_value_samples": "factor",
+    "release_value_samples": "release",
 }
 
 
@@ -177,20 +209,21 @@ def value_samples_for_tables(
                     if n:
                         yaml_cols.add(n)
         by_col: dict[str, set[str]] = {}
-        for sample_key, col_name in _SAMPLE_KEY_TO_COLUMN.items():
-            samples = schema.get(sample_key)
+        for sample_key, samples in schema.items():
+            if not isinstance(sample_key, str) or not sample_key.endswith(_SAMPLE_KEY_SUFFIX):
+                continue
             if not isinstance(samples, list) or not samples:
                 continue
             vals: set[str] = {str(item).strip() for item in samples if str(item).strip()}
             if not vals:
                 continue
+            col_name = column_for_sample_key(sample_key)
             target = col_name
             if col_name not in yaml_cols:
                 if sample_key in ("item_value_samples", "product_value_samples") and "product_name" in yaml_cols:
                     target = "product_name"
-                elif col_name not in yaml_cols:
-                    # Still attach under the conventional name for soft checks.
-                    target = col_name
+                elif col_name == "product" and "product_name" in yaml_cols:
+                    target = "product_name"
             by_col.setdefault(target, set()).update(vals)
         if by_col:
             out[bare] = by_col
@@ -205,21 +238,7 @@ _MAX_COLUMNS = 30
 _MAX_VALUE_SAMPLES = 400
 _VALUE_SAMPLE_MATCH_CAP = 80
 _VALUE_SAMPLE_HEAD_KEEP = 12
-_VALUE_SAMPLE_KEYS = frozenset(
-    {
-        "element_value_samples",
-        "product_value_samples",
-        "item_value_samples",
-        "unit_value_samples",
-        "donor_value_samples",
-        "purpose_value_samples",
-        "indicator_value_samples",
-        "institution_value_samples",
-        "degree_value_samples",
-        "source_value_samples",
-        "currency_value_samples",
-    }
-)
+_VALUE_SAMPLE_KEYS = frozenset(_SAMPLE_KEY_TO_COLUMN.keys())
 _GUIDANCE_LIST_KEYS = frozenset(
     {
         "filtering_guidance",
@@ -445,6 +464,18 @@ _SECTION_ORDER: list[tuple[str, str]] = [
     ("degree_value_samples", "Degree value samples"),
     ("source_value_samples", "Source value samples"),
     ("currency_value_samples", "Currency value samples"),
+    ("price_type_value_samples", "Price type value samples"),
+    ("market_value_samples", "Market value samples"),
+    ("phase_code_value_samples", "Phase code value samples"),
+    ("phase_name_value_samples", "Phase name value samples"),
+    ("classification_scale_value_samples", "Classification scale value samples"),
+    ("scenario_name_value_samples", "Scenario name value samples"),
+    ("measure_type_value_samples", "Measure type value samples"),
+    ("treatment_value_samples", "Treatment value samples"),
+    ("food_value_value_samples", "Food value value samples"),
+    ("industry_value_samples", "Industry value samples"),
+    ("factor_value_samples", "Factor value samples"),
+    ("release_value_samples", "Release value samples"),
     ("data_quality", "Data quality"),
     ("temporal_model", "Temporal model"),
 ]
@@ -545,7 +576,7 @@ def format_table_schema(
             if block:
                 parts.append(block)
             continue
-        if key in _VALUE_SAMPLE_KEYS:
+        if key.endswith(_SAMPLE_KEY_SUFFIX) or key in _VALUE_SAMPLE_KEYS:
             block = _format_value_samples(
                 label,
                 schema[key],
@@ -562,6 +593,18 @@ def format_table_schema(
         line = _format_list_field(label, schema[key])
         if line:
             parts.append(line)
+
+    # Pack any remaining *_value_samples not listed in _SECTION_ORDER.
+    seen_sample_keys = {k for k, _ in _SECTION_ORDER if k.endswith(_SAMPLE_KEY_SUFFIX)}
+    for key, value in schema.items():
+        if not isinstance(key, str) or not key.endswith(_SAMPLE_KEY_SUFFIX):
+            continue
+        if key in seen_sample_keys:
+            continue
+        label = key.replace("_", " ").strip().title()
+        block = _format_value_samples(label, value, query_terms=query_terms)
+        if block:
+            deferred_samples.append(block)
 
     # Columns before enum samples so byte truncation keeps schema usable.
     if include_columns and isinstance(schema.get("columns"), list):

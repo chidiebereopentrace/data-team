@@ -85,6 +85,31 @@ def test_shape_wiki_queries_entity_country_primary() -> None:
     assert "compare across" not in shaped[0].lower()
 
 
+def test_shape_wiki_africa_default_appends_africa() -> None:
+    shaped = _shape_wiki_queries(
+        "which country has the best agricultural activity in 2020",
+        {"entities": ["agricultural activity"], "geography": [], "africa_default": True},
+    )
+    assert any("africa" in s.lower() for s in shaped)
+
+
+def test_wiki_title_passes_drops_switzerland_on_africa_default() -> None:
+    from ml.rag.retrievers.web_retriever import _wiki_title_passes
+
+    assert not _wiki_title_passes(
+        "Agriculture in Switzerland",
+        countries=[],
+        entity_tokens=["agriculture"],
+        africa_default=True,
+    )
+    assert _wiki_title_passes(
+        "Agriculture in Africa",
+        countries=[],
+        entity_tokens=["agriculture"],
+        africa_default=True,
+    )
+
+
 def test_build_wiki_search_query_includes_geography() -> None:
     q = _build_wiki_search_query(
         "rice production policies",

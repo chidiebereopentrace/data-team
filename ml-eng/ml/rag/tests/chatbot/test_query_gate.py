@@ -55,6 +55,10 @@ def test_static_social_answers() -> None:
     g = static_social_answer("greeting")
     o = static_social_answer("out_of_scope")
     assert "Ask ADZA" in g
+    assert "natural-language interface" in g.lower()
+    assert "agricultural intelligence layer" in g.lower()
+    assert "advisory assistant" not in g.lower()
     assert "opentrace.africa" in g.lower()
-    assert "outside" in o.lower() or "focused" in o.lower()
+    assert "outside" in o.lower() or "focused" in o.lower() or "interface" in o.lower()
+    assert "advisory assistant" not in o.lower()
     assert "opentrace.africa" in o.lower()

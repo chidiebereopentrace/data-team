@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ml.rag.chatbot.plan_policy import allows_export
+
 
 def build_run_kwargs(
     *,
@@ -36,6 +38,7 @@ def build_run_kwargs(
 
     kwargs["plan_type"] = pt
     kwargs["category"] = cat
+    kwargs["export_enabled"] = allows_export(pt)
     if profile:
         kwargs["user_profile"] = {
             "country": profile.get("country") or (profile_country.strip() or None),

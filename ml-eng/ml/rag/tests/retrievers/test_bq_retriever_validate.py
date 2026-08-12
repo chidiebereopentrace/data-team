@@ -60,7 +60,8 @@ def test_prepare_sql_allowlist_triggers_retry() -> None:
     good_sql = (
         "SELECT country_name, SUM(value) AS total "
         "FROM `proj.staging_dev.stg_faostat_production` "
-        "WHERE year = 2020 GROUP BY country_name ORDER BY total DESC LIMIT 5"
+        "WHERE year = 2020 AND element = 'Production' "
+        "GROUP BY country_name ORDER BY total DESC LIMIT 5"
     )
     with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
         with patch("ml.rag.retrievers.bq_retriever.sql_retry_enabled", return_value=True):
@@ -85,7 +86,8 @@ def test_prepare_sql_dry_run_retry() -> None:
     retriever = BQRetriever(project_id="proj", nl2sql_enabled=False)
     bad_sql = "SELECT country FROM `proj.staging_dev.stg_faostat_production` LIMIT 5"
     good_sql = (
-        "SELECT country_name FROM `proj.staging_dev.stg_faostat_production` LIMIT 5"
+        "SELECT country_name FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE element = 'Production' LIMIT 5"
     )
     client = MagicMock()
 
@@ -174,7 +176,8 @@ def test_retrieve_prefers_valid_nl2sql_over_template() -> None:
     good_sql = (
         "SELECT country_name, SUM(value) AS total "
         "FROM `proj.staging_dev.stg_faostat_production` "
-        "WHERE year = 2020 GROUP BY country_name ORDER BY total DESC LIMIT 10"
+        "WHERE year = 2020 AND element = 'Production' "
+        "GROUP BY country_name ORDER BY total DESC LIMIT 10"
     )
     client = MagicMock()
     client.query.return_value.result.return_value = [

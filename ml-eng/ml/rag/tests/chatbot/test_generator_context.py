@@ -610,6 +610,16 @@ def test_build_prompt_structured_bq_unavailable_guard() -> None:
     assert "highest/lowest country" in sys_msg
 
 
+def test_build_prompt_africa_scope_line() -> None:
+    messages = _build_prompt(
+        "which country has the best agricultural activity in 2020",
+        context_block="[Web] something",
+    )
+    sys_msg = messages[0]["content"].lower()
+    assert "african agriculture" in sys_msg
+    assert "non-african country" in sys_msg
+
+
 def test_generate_structured_bq_unavailable_injects_guard() -> None:
     captured: dict = {}
 
