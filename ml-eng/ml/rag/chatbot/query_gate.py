@@ -73,19 +73,22 @@ _AG_SUBSTANCE_RE = re.compile(
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
 _GREETING_ANSWER = (
-    "Hello — I am Ask ADZA, OpenTrace Africa's agricultural advisory assistant. "
-    "Ask me about crops, markets, climate, policy, or other agricultural topics across Africa, "
-    "and I will ground answers in OpenTrace evidence where available."
+    "Hello — I am Ask ADZA, OpenTrace Africa's natural-language interface. "
+    "OpenTrace builds Africa's agricultural intelligence layer — turning fragmented "
+    "data into decision intelligence. Ask about crops, markets, climate, policy, or "
+    "related topics across Africa, and I will ground answers in OpenTrace evidence "
+    "where available."
 )
 
 _OUT_OF_SCOPE_ANSWER = (
-    "I am Ask ADZA, focused on African agricultural intelligence. "
-    "That request is outside what I can help with here. "
+    "I am Ask ADZA, OpenTrace Africa's natural-language interface for African "
+    "agricultural intelligence. That request is outside what I can help with here. "
     "Please ask about farming, food systems, markets, climate, or related policy and data in Africa."
 )
 
 _SOCIAL_SYSTEM = (
-    "You are Ask ADZA, OpenTrace Africa's agricultural advisory assistant. "
+    "You are Ask ADZA, OpenTrace Africa's natural-language interface. "
+    "OpenTrace builds Africa's agricultural intelligence layer. "
     "Reply briefly and warmly. Do not invent agronomy facts. "
     "Do not continue any prior conversation topic. "
     "Invite the user to ask about African agriculture, markets, climate, or policy."

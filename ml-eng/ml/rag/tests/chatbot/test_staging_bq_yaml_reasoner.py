@@ -297,6 +297,25 @@ def test_reasoner_empty_llm_fails_closed() -> None:
     assert plan["table_hints"] == []
 
 
+def test_reasoner_heuristic_africa_production_rank_when_llm_empty() -> None:
+    q = "which country has the best agricultural activity in 2020"
+    dec = {
+        "intent": "descriptive",
+        "entities": ["agricultural activity", "Africa"],
+        "geography": [],
+        "domains": ["agribusiness"],
+        "time_start": "2020-01-01",
+        "time_end": "2020-12-31",
+        "africa_default": True,
+    }
+    with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=""):
+        plan = reason_bq_sql_plan(q, decomposition=dec, plan_type="Farmers")
+    assert plan["skip_bq"] is False
+    assert plan["selected_tables"] == ["stg_faostat_production"]
+    assert plan["rationale"] == "heuristic_africa_production_rank"
+    assert plan["table_hints"]
+
+
 def test_reasoner_invalid_json_fails_closed() -> None:
     with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value="not json"):
         plan = reason_bq_sql_plan("What are prices?")

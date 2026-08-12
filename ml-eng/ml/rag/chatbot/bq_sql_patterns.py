@@ -105,17 +105,30 @@ def _fqn(project_id: str, dataset: str, table_id: str) -> str:
 def _product_clause(table_id: str, crop: str | None) -> str:
     if not crop:
         return ""
-    safe = crop.replace("'", "")
+    safe = crop.replace("'", "''")
     col = "product" if table_id == "stg_yield_raw_data" else "product_name"
-    return f"AND LOWER({col}) LIKE '%{safe.lower()}%' "
+    return f"AND {col} = '{safe}' "
+
+
+def _discriminator_clause(table_id: str) -> str:
+    """Exact metric-discriminator filters from YAML sample defaults."""
+    if table_id == "stg_faostat_prices":
+        return "AND element = 'Producer Price (USD/tonne)' "
+    if table_id == "stg_fews_market_prices":
+        return "AND price_type = 'Retail' "
+    if table_id == "stg_fews_food_security":
+        return (
+            "AND measure_type = 'population' "
+            "AND scenario_name = 'Current Situation' "
+        )
+    if table_id.startswith("stg_faostat"):
+        return "AND element = 'Production' "
+    return ""
 
 
 def _element_clause(table_id: str) -> str:
-    if table_id == "stg_faostat_prices":
-        return "AND LOWER(element) LIKE '%producer price%' "
-    if table_id.startswith("stg_faostat"):
-        return "AND LOWER(element) LIKE '%production%' "
-    return ""
+    """Backward-compatible alias for pattern builders."""
+    return _discriminator_clause(table_id)
 
 
 def _year_col(table_id: str) -> str:

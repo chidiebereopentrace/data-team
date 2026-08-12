@@ -5,7 +5,11 @@ import os
 import re
 from typing import Any
 
-from ml.rag.chatbot.bq_table_schema_yaml import columns_for_tables, value_samples_for_tables
+from ml.rag.chatbot.bq_table_schema_yaml import (
+    columns_for_tables,
+    load_table_schema,
+    value_samples_for_tables,
+)
 
 _STG_TABLE_RE = re.compile(r"\bstg_[a-z0-9_]+\b", re.IGNORECASE)
 _TABLE_HEADER_RE = re.compile(r"^Table:\s*[`\w.-]*\.?(\bstg_[a-z0-9_]+)", re.IGNORECASE | re.MULTILINE)
@@ -15,6 +19,7 @@ _FROM_JOIN_TABLE_RE = re.compile(
     re.IGNORECASE,
 )
 _STRING_LIT_RE = re.compile(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"")
+_BACKTICK_RE = re.compile(r"`[^`]+`")
 _AS_ALIAS_RE = re.compile(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
 _CTE_NAME_RE = re.compile(r"(?:WITH|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(", re.IGNORECASE)
 _TABLE_ALIAS_RE = re.compile(
@@ -29,6 +34,29 @@ _EQ_FILTER_RE = re.compile(
 _IN_FILTER_RE = re.compile(
     r"\b([A-Za-z_][A-Za-z0-9_]*)\s+IN\s*\(([^)]*)\)",
     re.IGNORECASE,
+)
+# Equality or IN on a column (string or non-string RHS) — used for required filters.
+_COL_FILTERED_RE = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:=\s*|IN\s*\()",
+    re.IGNORECASE,
+)
+
+# Metric discriminators: change the meaning of ``value`` / measures.
+# Optional ones are required only when mentioned in the table grain.
+_CORE_METRIC_DISCRIMINATORS = frozenset(
+    {
+        "element",
+        "indicator",
+        "price_type",
+        "measure_type",
+        "treatment",
+    }
+)
+_GRAIN_METRIC_DISCRIMINATORS = frozenset(
+    {
+        "classification_scale",
+        "scenario_name",
+    }
 )
 
 _SQL_KEYWORDS = frozenset(
@@ -236,10 +264,22 @@ def _aliases_in_sql(sql: str) -> set[str]:
     return names
 
 
+def _strip_table_refs(sql: str) -> str:
+    """Remove FROM/JOIN table targets and backtick FQNs so project ids are not scanned as columns."""
+
+    def _repl(match: re.Match[str]) -> str:
+        full = match.group(0)
+        target = match.group(1)
+        return full[: len(full) - len(target)] + " "
+
+    text = _FROM_JOIN_TABLE_RE.sub(_repl, sql or "")
+    return _BACKTICK_RE.sub(" ", text)
+
+
 def candidate_column_idents(sql: str) -> set[str]:
-    """Heuristic column identifiers referenced outside string literals."""
-    scrubbed = _strip_string_literals(sql)
-    aliases = _aliases_in_sql(scrubbed)
+    """Heuristic column identifiers referenced outside string literals and table FQNs."""
+    scrubbed = _strip_table_refs(_strip_string_literals(sql))
+    aliases = _aliases_in_sql(sql)
     tables = referenced_tables(sql)
     out: set[str] = set()
     for match in _IDENT_RE.finditer(scrubbed):
@@ -255,8 +295,80 @@ def candidate_column_idents(sql: str) -> set[str]:
             continue
         if low in {"proj", "project", "staging_dev", "raw_dev", "opentrace"}:
             continue
+        # Hyphen-split GCP project fragments (e.g. opentrace-prod-5ga4 → prod).
+        if low in {"prod", "dev", "raw"} or low[:1].isdigit():
+            continue
         out.add(ident)
     return out
+
+
+def _filtered_columns(sql: str) -> set[str]:
+    """Column names that appear in equality or IN filters."""
+    scrubbed = _strip_string_literals(sql)
+    return {m.group(1).lower() for m in _COL_FILTERED_RE.finditer(scrubbed)}
+
+
+def _required_metric_cols_for_table(bare: str, samples_by_col: dict[str, set[str]]) -> list[str]:
+    """Return metric-discriminator columns that must be filtered for this table."""
+    schema = load_table_schema(bare) or {}
+    grain = str(schema.get("grain") or "").lower().replace("×", " ")
+    grain_tokens = set(re.findall(r"[a-z][a-z0-9_]*", grain))
+    sample_cols = {str(k).lower(): k for k in samples_by_col}
+    required: list[str] = []
+    for cl, _orig in sample_cols.items():
+        stem = cl[:-5] if cl.endswith("_name") else cl
+        in_grain = cl in grain_tokens or stem in grain_tokens
+        if cl in _CORE_METRIC_DISCRIMINATORS:
+            required.append(cl)
+        elif cl in _GRAIN_METRIC_DISCRIMINATORS and in_grain:
+            required.append(cl)
+    seen: set[str] = set()
+    out: list[str] = []
+    for c in required:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
+def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None) -> str | None:
+    """
+    Require equality/IN filters on YAML metric-discriminator columns that have samples.
+
+    Applies to every referenced ``stg_*`` table (element, price_type, measure_type, …),
+    not only FAOSTAT.
+    """
+    refs = referenced_stg_tables(sql)
+    if table_ids:
+        refs = refs | {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
+    if not refs:
+        return None
+    samples_map = value_samples_for_tables(refs)
+    if not samples_map:
+        return None
+    filtered = _filtered_columns(sql)
+    missing: list[str] = []
+    previews: list[str] = []
+    for bare in sorted(refs):
+        by_col = samples_map.get(bare) or {}
+        for col in _required_metric_cols_for_table(bare, by_col):
+            if col in filtered:
+                continue
+            missing.append(f"{bare}.{col}")
+            vals: list[str] = []
+            for k, v in by_col.items():
+                if str(k).lower() == col:
+                    vals = sorted(v)
+                    break
+            preview = ", ".join(repr(v) for v in vals[:6])
+            previews.append(f"{col} (e.g. {preview})" if preview else col)
+    if not missing:
+        return None
+    return (
+        f"SQL must equality-filter metric discriminator column(s): {', '.join(missing)}. "
+        f"Use exact YAML value samples — {'; '.join(previews[:4])}. "
+        "Do not SELECT * or SUM across mixed discriminator values."
+    )
 
 
 def validate_sql_column_allowlist(sql: str, table_ids: set[str] | None = None) -> str | None:

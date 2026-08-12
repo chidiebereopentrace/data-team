@@ -33,6 +33,7 @@ def test_streamlit_defaults_always_send_farmers_profile() -> None:
     )
     assert kwargs["plan_type"] == "Farmers"
     assert kwargs["category"] == "Farmers"
+    assert kwargs["export_enabled"] is False
     assert kwargs["user_profile"] == {
         "country": None,
         "plan_type": "Farmers",
@@ -57,7 +58,27 @@ def test_streamlit_kwargs_respect_overrides() -> None:
     )
     assert kwargs["plan_type"] == "Government"
     assert kwargs["category"] == "Government"
+    assert kwargs["export_enabled"] is False
     assert kwargs["user_profile"]["country"] == "Kenya"
+
+
+def test_streamlit_agribusinesses_enables_export() -> None:
+    kwargs = build_run_kwargs(
+        news_top_k=5,
+        academic_top_k=5,
+        bq_top_k=5,
+        ota_top_k=5,
+        rerank_top_k=5,
+        plan_type="Agribusinesses",
+        category="Agribusinesses",
+        profile_country="Nigeria",
+        t_start="",
+        t_end="",
+        prior_summary="",
+        prior_recent=[],
+    )
+    assert kwargs["export_enabled"] is True
+    assert kwargs["plan_type"] == "Agribusinesses"
 
 
 def test_session_persist_and_fallback_profile() -> None:

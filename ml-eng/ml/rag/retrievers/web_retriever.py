@@ -35,7 +35,7 @@ from urllib.parse import quote
 import requests
 
 from ml.rag.chatbot.generator import filter_context_items, is_usable_context_item
-from ml.rag.chatbot.query_decomposer import resolve_retrieval_geographies
+from ml.rag.chatbot.query_decomposer import resolve_retrieval_geographies, wants_africa_default_scope
 from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
 
 logger = logging.getLogger(__name__)
@@ -325,6 +325,7 @@ def _shape_wiki_queries(
     entities = _dec_entities(dec)
     country = countries[0] if countries else ""
     entity = entities[0] if entities else ""
+    africa_default = bool(dec.get("africa_default")) or wants_africa_default_scope(query)
 
     shaped: list[str] = []
 
@@ -349,11 +350,18 @@ def _shape_wiki_queries(
         else:
             _add(stripped)
 
+    if africa_default and not country:
+        _add("agriculture Africa")
+        if stripped and "africa" not in stripped.lower():
+            _add(f"{stripped} Africa")
+
     if not shaped:
         # Last-resort short concat (legacy behavior, tighter cap).
         parts = [query.strip()]
         parts.extend(countries[:2])
         parts.extend(entities[:3])
+        if africa_default:
+            parts.append("Africa")
         _add(" ".join(p for p in parts if p)[:120])
 
     return shaped[:3]
@@ -376,16 +384,53 @@ def _whole_word(haystack: str, needle: str) -> bool:
     return re.search(r"\b" + re.escape(needle) + r"\b", haystack, flags=re.IGNORECASE) is not None
 
 
+# Well-known non-African country tokens for soft wiki title filtering.
+_NON_AFRICAN_TITLE_COUNTRIES: tuple[str, ...] = (
+    "switzerland",
+    "france",
+    "germany",
+    "china",
+    "india",
+    "brazil",
+    "canada",
+    "japan",
+    "australia",
+    "russia",
+    "italy",
+    "spain",
+    "united kingdom",
+    "united states",
+    "usa",
+    "uk",
+    "netherlands",
+    "belgium",
+    "sweden",
+    "norway",
+    "poland",
+    "mexico",
+    "argentina",
+    "chile",
+    "south korea",
+    "north korea",
+)
+
+
 def _wiki_title_passes(
     title: str,
     *,
     countries: list[str],
     entity_tokens: list[str],
+    africa_default: bool = False,
 ) -> bool:
     """Soft geo/topic filter: drop titles that only name a different country."""
     t = (title or "").strip()
     if len(t) < 2:
         return False
+    if africa_default and not countries:
+        for foreign in _NON_AFRICAN_TITLE_COUNTRIES:
+            if _whole_word(t, foreign):
+                return False
+        return True
     if not countries:
         return True
     allowed = {c.strip().lower() for c in countries if c.strip()}
@@ -572,6 +617,7 @@ def _retrieve_wikipedia(
     timeout_s: float,
     countries: list[str] | None = None,
     entity_tokens: list[str] | None = None,
+    africa_default: bool = False,
     stats: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     titles, api_used = _wiki_resolve_titles(search_query, limit=max(top_k * 2, top_k), timeout_s=timeout_s)
@@ -584,7 +630,12 @@ def _retrieve_wikipedia(
     entities = [e for e in (entity_tokens or []) if str(e).strip()]
     items: list[dict[str, Any]] = []
     for title in titles:
-        if not _wiki_title_passes(title, countries=country_list, entity_tokens=entities):
+        if not _wiki_title_passes(
+            title,
+            countries=country_list,
+            entity_tokens=entities,
+            africa_default=africa_default,
+        ):
             if stats is not None:
                 stats["wiki_filtered_out"] = int(stats.get("wiki_filtered_out") or 0) + 1
             continue
@@ -832,6 +883,7 @@ def retrieve_web_fallback_detailed(
         geography=dec.get("geography") if isinstance(dec.get("geography"), list) else None,
     )
     entity_tokens = _wiki_entity_tokens(dec)
+    africa_default = bool(dec.get("africa_default")) or wants_africa_default_scope(query)
 
     timeout_s = _web_timeout_s()
     wiki_top_k = _env_int("RAG_WEB_WIKI_TOP_K", 2)
@@ -860,6 +912,7 @@ def retrieve_web_fallback_detailed(
             timeout_s=timeout_s,
             countries=countries,
             entity_tokens=entity_tokens,
+            africa_default=africa_default,
             stats=q_stats,
         )
         if q_stats.get("wiki_api") and q_stats["wiki_api"] != "none":
