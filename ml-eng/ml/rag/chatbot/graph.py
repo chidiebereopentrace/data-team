@@ -9,7 +9,7 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from ml.rag.chatbot.acf_scoring import acf_result_to_state, curated_product_acf, no_evidence_acf
 from ml.rag.chatbot.answer_language import (
@@ -828,10 +828,15 @@ def _title_merge_label(prefix: str, meta: dict[str, Any]) -> str:
 
 def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     """Run selected corpus retrieves (+ optional legacy research) in parallel."""
-    dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
+    decomposition_raw = state.get("decomposition")
+    decomposition: dict[str, Any] = (
+        cast(dict[str, Any], decomposition_raw)
+        if isinstance(decomposition_raw, dict)
+        else {}
+    )
     task_mode = str(state.get("task_mode") or "chat")
     selection = select_corpora(
-        dec,
+        decomposition,
         plan_type=str(state.get("plan_type") or "") or None,
         query=str(state.get("query") or ""),
         task_mode=task_mode,
@@ -854,7 +859,17 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
         if academic_k is None:
             academic_k = 8
 
-    state_for_retrieve: RAGGraphState = dict(state)
+    intent = str(decomposition.get("intent") or "").strip().lower()
+    rationale = selection.rationale or ""
+    if ota_k is None and (
+        intent == "decision_support"
+        or "investment_decision_cues" in rationale
+        or "intent_decision_support" in rationale
+        or "plan_ota_boost" in rationale
+    ):
+        ota_k = 16
+
+    state_for_retrieve = cast(RAGGraphState, dict(state))
     if news_k is not None:
         state_for_retrieve["news_top_k"] = int(news_k)
     if ota_k is not None:

@@ -49,3 +49,21 @@ def test_never_empty(monkeypatch) -> None:
     sel = select_corpora({}, query="")
     assert sel.active
     assert set(sel.active) == set(ALL_CORPUS_KEYS)
+
+
+def test_investment_cues_boost_ota(monkeypatch) -> None:
+    monkeypatch.delenv("RAG_CORPUS_ROUTER", raising=False)
+    sel = select_corpora(
+        {"intent": "descriptive"},
+        query="which country is best for agricultural investments in africa",
+    )
+    assert "ota" in sel.active
+    assert "investment_decision_cues" in sel.rationale
+    assert sel.boosts["ota"] >= 0.15
+
+
+def test_integrated_plan_boosts_ota(monkeypatch) -> None:
+    monkeypatch.delenv("RAG_CORPUS_ROUTER", raising=False)
+    sel = select_corpora({}, plan_type="Integrated", query="maize outlook")
+    assert "ota" in sel.active
+    assert "plan_ota_boost" in sel.rationale

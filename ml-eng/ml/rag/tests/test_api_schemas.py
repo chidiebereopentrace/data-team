@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from ml.rag.acf_signal import acf_signal_from_result
-from ml.rag.api_schemas import ACFSignal, CitationItem, UsageStats
+from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats
 from ml.rag.app.api import QueryResponse
+from ml.rag.chatbot.plan_policy import allows_export
 
 
 def test_usage_stats_from_dict_aliases() -> None:
@@ -80,6 +81,41 @@ def test_query_response_includes_acf() -> None:
     assert data["acf"]["band"] == "no_evidence"
     assert data["acf"]["score"] == 0
     assert "no opentrace" in data["acf"]["explanation"].lower()
+
+
+def test_query_response_includes_artifacts() -> None:
+    resp = QueryResponse(
+        answer="See attached CSV.",
+        session_id="sid1",
+        acf=ACFSignal(
+            band="moderate",
+            band_label="Moderate confidence",
+            score=55,
+            explanation="Partial structured support.",
+            note="Partial structured support.",
+        ),
+        artifacts=[
+            ArtifactItem(
+                id="a1",
+                kind="csv",
+                filename="maize.csv",
+                mime_type="text/csv",
+                url="https://example.com/maize.csv",
+                summary="CSV export (10 rows)",
+                citation_ids=[1],
+                byte_size=120,
+            )
+        ],
+    )
+    data = resp.model_dump()
+    assert data["artifacts"][0]["kind"] == "csv"
+    assert data["artifacts"][0]["url"].endswith("maize.csv")
+
+
+def test_allows_export_gates_query_plans() -> None:
+    assert allows_export("Integrated") is True
+    assert allows_export("Agribusinesses") is True
+    assert allows_export("Farmers") is False
 
 
 def test_acf_signal_from_result_path_b() -> None:

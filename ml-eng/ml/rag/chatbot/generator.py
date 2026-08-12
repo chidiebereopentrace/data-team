@@ -1197,16 +1197,19 @@ def generate(
     task_mode = str(kwargs.get("task_mode") or ("analytical" if analytical_mode else "chat")).strip()
 
     if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
-        return GenerationResult(
-            answer=_no_data_fallback_message(query, decomposition),
-            citations=[],
-            acf=no_evidence_acf(
-                explanation=(
-                    "Structured BigQuery data was required for this numeric question "
-                    "but returned no usable rows."
-                )
-            ),
-        )
+        usable_preview = filter_context_items(context_items or [])
+        has_narrative = any(is_usable_context_item(item) for item in usable_preview)
+        if not has_narrative:
+            return GenerationResult(
+                answer=_no_data_fallback_message(query, decomposition),
+                citations=[],
+                acf=no_evidence_acf(
+                    explanation=(
+                        "Structured BigQuery data was required for this numeric question "
+                        "but returned no usable rows."
+                    )
+                ),
+            )
 
     if not context_items:
         allow_ungrounded = os.environ.get("RAG_ALLOW_UNGROUNDED", "").strip().lower() in (

@@ -112,6 +112,9 @@ def build() -> None:
             "Reuse session_id from the previous response for multi-turn chat.",
             "Omit chat_history to use server-side memory; send chat_history for client-owned history.",
             "Every successful response includes acf (confidence band, score 0–100, explanation).",
+            "Agribusinesses and Integrated return artifacts[] (CSV/chart/DOCX/PDF URLs) when the "
+            "user asks for an export and structured data is available. Set RAG_ARTIFACT_GCS_BUCKET "
+            "in production for HTTPS signed URLs.",
         ],
     )
 
@@ -144,6 +147,27 @@ def build() -> None:
             ("error", "string | null", "Pipeline-level error if any"),
             ("langfuse_trace_id", "string | null", "For POST /feedback"),
             ("trace", "object | null", "Only when include_trace=true"),
+            (
+                "artifacts",
+                "ArtifactItem[]",
+                "Exports on Agribusinesses/Integrated when requested; else []",
+            ),
+        ],
+    )
+
+    add_heading(doc, "ArtifactItem", level=2)
+    add_field_table(
+        doc,
+        ("Field", "Type", "Description"),
+        [
+            ("id", "string", "Stable artifact id"),
+            ("kind", "string", "csv | chart | docx | pdf"),
+            ("filename", "string", "Suggested download name"),
+            ("mime_type", "string", "MIME type"),
+            ("url", "string", "Signed HTTPS URL (GCS) or local file URI in dev"),
+            ("summary", "string", "Short description"),
+            ("citation_ids", "integer[]", "Citation ids underpinning the export"),
+            ("byte_size", "integer", "Size in bytes"),
         ],
     )
 

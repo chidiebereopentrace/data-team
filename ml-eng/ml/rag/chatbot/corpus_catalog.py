@@ -106,6 +106,15 @@ _OTA_RE = re.compile(
     r"opentrace\s+insight)\b",
     re.IGNORECASE,
 )
+_INVEST_RE = re.compile(
+    r"\b("
+    r"invest(?:ment|ments|ing)?|opportunity|opportunities|"
+    r"where\s+to|"
+    r"best\s+(?:country|place|market)\s+for|"
+    r"sourcing|agribusiness"
+    r")\b",
+    re.IGNORECASE,
+)
 _NEWSY_RE = re.compile(
     r"\b(news|headline|latest|breaking|this\s+week|recently|"
     r"what\s+happened|market\s+update)\b",
@@ -200,6 +209,12 @@ def select_corpora(
         preferred.add("ota")
         _boost(boosts, "ota", 0.08)
         reasons.append("ota_cues")
+    if _INVEST_RE.search(q):
+        preferred.update({"ota", "policies", "public_reports"})
+        _boost(boosts, "ota", 0.12)
+        _boost(boosts, "policies", 0.04)
+        _boost(boosts, "public_reports", 0.04)
+        reasons.append("investment_decision_cues")
     if _NEWSY_RE.search(q) or (has_time and intent in ("monitoring", "descriptive")):
         preferred.add("news")
         _boost(boosts, "news", 0.06)
@@ -213,6 +228,11 @@ def select_corpora(
             skip.add("academic_papers")
             reasons.append("farmers_soft_skip_academic")
         reasons.append("plan_farmers")
+
+    if plan in ("Agribusinesses", "Integrated"):
+        preferred.add("ota")
+        _boost(boosts, "ota", 0.06)
+        reasons.append("plan_ota_boost")
 
     if intent == "decision_support":
         preferred.update({"ota", "policies", "public_reports"})

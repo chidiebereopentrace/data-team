@@ -642,10 +642,15 @@ def test_generate_structured_bq_unavailable_injects_guard() -> None:
     assert "no usable rows" not in sys_msg.lower()
 
 
-def test_generate_ranking_hard_blocks_when_bq_unavailable() -> None:
+def test_generate_ranking_uses_narrative_when_bq_unavailable() -> None:
+    captured: dict = {}
+
+    def fake_call(messages, **_kwargs):
+        captured["messages"] = messages
+        return "From policy evidence, Kenya leads on several indicators.[1]"
+
     items = [_news_item()]
-    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
-        mock_llm.return_value = "should not be called"
+    with mock.patch("ml.rag.chatbot.generator._call_llama", side_effect=fake_call):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
             os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
@@ -654,9 +659,10 @@ def test_generate_ranking_hard_blocks_when_bq_unavailable() -> None:
                 items,
                 structured_bq_unavailable=True,
             )
-    assert "I don't have OpenTrace data" in result.answer
-    assert "ACF: no evidence" in result.answer
-    mock_llm.assert_not_called()
+    assert "I don't have OpenTrace data" not in result.answer
+    assert captured.get("messages")
+    sys_msg = captured["messages"][0]["content"].lower()
+    assert "no usable rows" in sys_msg or "critical" in sys_msg
 
 
 def test_is_ranking_numeric_query() -> None:
@@ -678,10 +684,30 @@ def test_is_numeric_data_query() -> None:
     assert not is_numeric_data_query("What does the policy brief say about millet?")
 
 
-def test_generate_numeric_hard_blocks_when_bq_unavailable() -> None:
-    items = [_news_item()]
+def test_generate_numeric_hard_blocks_when_bq_and_context_empty() -> None:
     with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
         mock_llm.return_value = "should not be called"
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+            os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
+            result = generate(
+                "how much maize did Nigeria produce in 2020?",
+                [],
+                structured_bq_unavailable=True,
+            )
+    assert "I don't have OpenTrace data" in result.answer
+    mock_llm.assert_not_called()
+
+
+def test_generate_numeric_uses_narrative_when_bq_unavailable() -> None:
+    captured: dict = {}
+
+    def fake_call(messages, **_kwargs):
+        captured["messages"] = messages
+        return "Narrative context does not include a precise production total.[1]"
+
+    items = [_news_item()]
+    with mock.patch("ml.rag.chatbot.generator._call_llama", side_effect=fake_call):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
             os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
@@ -690,8 +716,8 @@ def test_generate_numeric_hard_blocks_when_bq_unavailable() -> None:
                 items,
                 structured_bq_unavailable=True,
             )
-    assert "I don't have OpenTrace data" in result.answer
-    mock_llm.assert_not_called()
+    assert "I don't have OpenTrace data" not in result.answer
+    assert captured.get("messages")
 
 
 def test_pin_bq_context_first() -> None:
