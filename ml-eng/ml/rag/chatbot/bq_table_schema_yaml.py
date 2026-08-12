@@ -10,6 +10,8 @@ Public API:
 - ``known_table_names()``           -> set[str] of all indexed names (bare + FQN).
 - ``list_staging_table_index()``    -> compact index rows for the SQL reasoner.
 - ``pack_selected_table_hints(...)`` -> byte-capped full YAML packs for NL2SQL.
+- ``columns_for_tables(...)``       -> YAML column names per table (SQL allowlist).
+- ``value_samples_for_tables(...)`` -> enum/sample labels per column for soft checks.
 """
 from __future__ import annotations
 
@@ -112,6 +114,87 @@ def load_table_schema(table_name: str) -> dict[str, Any] | None:
     if bare and bare in index:
         return index[bare]
     return None
+
+
+# Map YAML ``*_value_samples`` keys → physical column names in staging.
+_SAMPLE_KEY_TO_COLUMN: dict[str, str] = {
+    "element_value_samples": "element",
+    "product_value_samples": "product_name",
+    "item_value_samples": "item",
+    "unit_value_samples": "unit",
+    "donor_value_samples": "donor",
+    "purpose_value_samples": "purpose",
+    "indicator_value_samples": "indicator",
+    "institution_value_samples": "institution",
+    "degree_value_samples": "degree",
+    "source_value_samples": "source",
+    "currency_value_samples": "currency",
+}
+
+
+def columns_for_tables(table_ids: set[str] | list[str]) -> dict[str, set[str]]:
+    """Return ``{bare_table_id: {column_name, ...}}`` from YAML for each known table."""
+    out: dict[str, set[str]] = {}
+    for raw in table_ids or []:
+        bare = _strip_fqn(str(raw)).lower()
+        if not bare:
+            continue
+        schema = load_table_schema(bare)
+        if not schema:
+            continue
+        cols_raw = schema.get("columns")
+        names: set[str] = set()
+        if isinstance(cols_raw, list):
+            for col in cols_raw:
+                if not isinstance(col, dict):
+                    continue
+                name = str(col.get("name") or "").strip()
+                if name:
+                    names.add(name)
+        if names:
+            out[bare] = names
+    return out
+
+
+def value_samples_for_tables(
+    table_ids: set[str] | list[str],
+) -> dict[str, dict[str, set[str]]]:
+    """Return ``{bare_table: {column: {sample_values}}}`` from YAML ``*_value_samples``."""
+    out: dict[str, dict[str, set[str]]] = {}
+    for raw in table_ids or []:
+        bare = _strip_fqn(str(raw)).lower()
+        if not bare:
+            continue
+        schema = load_table_schema(bare)
+        if not schema:
+            continue
+        yaml_cols: set[str] = set()
+        cols_raw = schema.get("columns")
+        if isinstance(cols_raw, list):
+            for col in cols_raw:
+                if isinstance(col, dict):
+                    n = str(col.get("name") or "").strip()
+                    if n:
+                        yaml_cols.add(n)
+        by_col: dict[str, set[str]] = {}
+        for sample_key, col_name in _SAMPLE_KEY_TO_COLUMN.items():
+            samples = schema.get(sample_key)
+            if not isinstance(samples, list) or not samples:
+                continue
+            vals: set[str] = {str(item).strip() for item in samples if str(item).strip()}
+            if not vals:
+                continue
+            target = col_name
+            if col_name not in yaml_cols:
+                if sample_key in ("item_value_samples", "product_value_samples") and "product_name" in yaml_cols:
+                    target = "product_name"
+                elif col_name not in yaml_cols:
+                    # Still attach under the conventional name for soft checks.
+                    target = col_name
+            by_col.setdefault(target, set()).update(vals)
+        if by_col:
+            out[bare] = by_col
+    return out
 
 
 # --- formatting -------------------------------------------------------------

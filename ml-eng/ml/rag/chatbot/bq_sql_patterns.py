@@ -76,6 +76,28 @@ def _default_grain(table_id: str) -> list[str]:
     return ["country_name"]
 
 
+def _normalize_grain(table_id: str, grain: list[str] | None) -> list[str] | None:
+    """Map conceptual ``country`` → real column for tables that use country_name."""
+    if not grain:
+        return grain
+    # FEWS / WFP / yield keep bare country when that is the real column.
+    if table_id.startswith("stg_fews") or table_id in {
+        "stg_wfp_vampire_prices",
+        "stg_yield_raw_data",
+    }:
+        return grain
+    out: list[str] = []
+    for raw in grain:
+        g = str(raw).strip()
+        if not g:
+            continue
+        if g.lower() == "country":
+            g = "country_name"
+        if g not in out:
+            out.append(g)
+    return out or None
+
+
 def _fqn(project_id: str, dataset: str, table_id: str) -> str:
     return f"`{project_id}.{dataset}.{table_id}`"
 
@@ -266,6 +288,7 @@ def try_sql_pattern(
         grain = [g.strip() for g in raw_grain.split(",") if g.strip()]
     else:
         grain = None
+    grain = _normalize_grain(table_id, grain)
     order_by = str(intent.get("order_by") or "total DESC").strip() or "total DESC"
 
     if pattern in {"rank_by_sum", "yoy_delta", "share_of_total"} and year is None:

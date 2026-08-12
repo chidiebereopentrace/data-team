@@ -1,9 +1,11 @@
-"""BigQuery NL2SQL validation: table allowlist and dry-run checks."""
+"""BigQuery NL2SQL validation: table allowlist, YAML columns, value samples, dry-run."""
 from __future__ import annotations
 
 import os
 import re
 from typing import Any
+
+from ml.rag.chatbot.bq_table_schema_yaml import columns_for_tables, value_samples_for_tables
 
 _STG_TABLE_RE = re.compile(r"\bstg_[a-z0-9_]+\b", re.IGNORECASE)
 _TABLE_HEADER_RE = re.compile(r"^Table:\s*[`\w.-]*\.?(\bstg_[a-z0-9_]+)", re.IGNORECASE | re.MULTILINE)
@@ -11,6 +13,122 @@ _TABLE_HEADER_RE = re.compile(r"^Table:\s*[`\w.-]*\.?(\bstg_[a-z0-9_]+)", re.IGN
 _FROM_JOIN_TABLE_RE = re.compile(
     r"\b(?:FROM|JOIN)\s+(?![\(\s])(`[^`]+`|(?:[A-Za-z_][\w-]*)(?:\.[A-Za-z_][\w-]*)*)",
     re.IGNORECASE,
+)
+_STRING_LIT_RE = re.compile(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"")
+_AS_ALIAS_RE = re.compile(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
+_CTE_NAME_RE = re.compile(r"(?:WITH|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(", re.IGNORECASE)
+_TABLE_ALIAS_RE = re.compile(
+    r"\b(?:FROM|JOIN)\s+(?:`[^`]+`|[A-Za-z_][\w.]*)\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*)\b",
+    re.IGNORECASE,
+)
+_IDENT_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
+_EQ_FILTER_RE = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*'((?:''|[^'])*)'",
+    re.IGNORECASE,
+)
+_IN_FILTER_RE = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)\s+IN\s*\(([^)]*)\)",
+    re.IGNORECASE,
+)
+
+_SQL_KEYWORDS = frozenset(
+    {
+        "select",
+        "from",
+        "where",
+        "and",
+        "or",
+        "not",
+        "in",
+        "on",
+        "as",
+        "join",
+        "left",
+        "right",
+        "inner",
+        "outer",
+        "full",
+        "cross",
+        "group",
+        "by",
+        "order",
+        "asc",
+        "desc",
+        "limit",
+        "offset",
+        "having",
+        "with",
+        "union",
+        "all",
+        "distinct",
+        "case",
+        "when",
+        "then",
+        "else",
+        "end",
+        "null",
+        "true",
+        "false",
+        "is",
+        "between",
+        "like",
+        "ilike",
+        "cast",
+        "safe_cast",
+        "safe_divide",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "count",
+        "coalesce",
+        "ifnull",
+        "if",
+        "over",
+        "partition",
+        "row_number",
+        "rank",
+        "dense_rank",
+        "date",
+        "datetime",
+        "timestamp",
+        "extract",
+        "interval",
+        "unnest",
+        "array",
+        "struct",
+        "exists",
+        "except",
+        "intersect",
+        "qualify",
+        "window",
+        "using",
+        "natural",
+        "lateral",
+        "values",
+        "current_timestamp",
+        "current_date",
+        "lower",
+        "upper",
+        "trim",
+        "substr",
+        "substring",
+        "length",
+        "round",
+        "abs",
+        "floor",
+        "ceil",
+        "greatest",
+        "least",
+        "concat",
+        "format",
+        "string",
+        "float64",
+        "int64",
+        "bool",
+        "numeric",
+        "bignumeric",
+    }
 )
 
 
@@ -100,6 +218,141 @@ def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
             "Do not invent dim_* or other warehouse tables; use only the allowed stg_* tables."
         )
     return None
+
+
+def _strip_string_literals(sql: str) -> str:
+    return _STRING_LIT_RE.sub("''", sql or "")
+
+
+def _aliases_in_sql(sql: str) -> set[str]:
+    names = {m.group(1).lower() for m in _AS_ALIAS_RE.finditer(sql or "")}
+    names |= {m.group(1).lower() for m in _CTE_NAME_RE.finditer(sql or "")}
+    for match in _TABLE_ALIAS_RE.finditer(sql or ""):
+        alias = match.group(1).lower()
+        # Avoid treating ON/WHERE keywords after FROM as aliases when regex over-matches.
+        if alias in _SQL_KEYWORDS:
+            continue
+        names.add(alias)
+    return names
+
+
+def candidate_column_idents(sql: str) -> set[str]:
+    """Heuristic column identifiers referenced outside string literals."""
+    scrubbed = _strip_string_literals(sql)
+    aliases = _aliases_in_sql(scrubbed)
+    tables = referenced_tables(sql)
+    out: set[str] = set()
+    for match in _IDENT_RE.finditer(scrubbed):
+        ident = match.group(1)
+        low = ident.lower()
+        if low in _SQL_KEYWORDS:
+            continue
+        if low in aliases:
+            continue
+        if low in tables:
+            continue
+        if low.startswith("stg_"):
+            continue
+        if low in {"proj", "project", "staging_dev", "raw_dev", "opentrace"}:
+            continue
+        out.add(ident)
+    return out
+
+
+def validate_sql_column_allowlist(sql: str, table_ids: set[str] | None = None) -> str | None:
+    """
+    Reject identifiers that are not YAML columns for referenced (or provided) tables.
+
+    When YAML columns cannot be loaded for any referenced table, skip the check.
+    """
+    refs = referenced_stg_tables(sql)
+    if table_ids:
+        refs = refs | {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
+    if not refs:
+        return None
+    col_map = columns_for_tables(refs)
+    if not col_map:
+        return None
+    allowed: set[str] = set()
+    for names in col_map.values():
+        allowed |= {n.lower() for n in names}
+    if not allowed:
+        return None
+    aliases = _aliases_in_sql(sql)
+    bad: list[str] = []
+    for ident in candidate_column_idents(sql):
+        low = ident.lower()
+        if low in aliases:
+            continue
+        if low in allowed:
+            continue
+        bad.append(ident)
+    if not bad:
+        return None
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for b in sorted(bad, key=str.lower):
+        if b.lower() in seen:
+            continue
+        seen.add(b.lower())
+        uniq.append(b)
+    allowed_preview = ", ".join(sorted(allowed)[:40])
+    return (
+        f"SQL uses columns not in the YAML Columns blocks: {', '.join(uniq)}. "
+        f"Allowed columns include: {allowed_preview}. "
+        "Use only exact column names from the table hints; do not invent bronze/raw names."
+    )
+
+
+def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> str | None:
+    """
+    Soft-check equality / IN string literals against YAML ``*_value_samples``.
+
+    Skips columns with no samples and leaves LIKE filters alone.
+    """
+    refs = referenced_stg_tables(sql)
+    if table_ids:
+        refs = refs | {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
+    if not refs:
+        return None
+    samples_map = value_samples_for_tables(refs)
+    if not samples_map:
+        return None
+    by_col: dict[str, set[str]] = {}
+    for per_table in samples_map.values():
+        for col, vals in per_table.items():
+            by_col.setdefault(col.lower(), set()).update(vals)
+
+    def _ok(col: str, literal: str) -> bool:
+        allowed = by_col.get(col.lower())
+        if not allowed:
+            return True
+        lit = literal.replace("''", "'").strip()
+        allowed_l = {a.lower() for a in allowed}
+        return lit.lower() in allowed_l
+
+    bad: list[str] = []
+    for match in _EQ_FILTER_RE.finditer(sql or ""):
+        col, lit = match.group(1), match.group(2)
+        if not _ok(col, lit):
+            bad.append(f"{col}='{lit}'")
+    for match in _IN_FILTER_RE.finditer(sql or ""):
+        col = match.group(1)
+        if col.lower() not in by_col:
+            continue
+        body = match.group(2)
+        if "select" in body.lower():
+            continue
+        for lit_m in re.finditer(r"'((?:''|[^'])*)'", body):
+            lit = lit_m.group(1)
+            if not _ok(col, lit):
+                bad.append(f"{col} IN … '{lit}'")
+    if not bad:
+        return None
+    return (
+        f"SQL equality filters use labels not in YAML value samples: {', '.join(bad[:8])}. "
+        "Use exact strings from element/product/item *_value_samples in the table hints."
+    )
 
 
 def dry_run_sql(client: Any, sql: str) -> str | None:
