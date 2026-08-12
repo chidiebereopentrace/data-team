@@ -607,7 +607,7 @@ def test_build_prompt_structured_bq_unavailable_guard() -> None:
     sys_msg = messages[0]["content"]
     assert "CRITICAL" in sys_msg
     assert "no usable rows" in sys_msg.lower()
-    assert "highest/lowest country" in sys_msg
+    assert "numeric facts" in sys_msg.lower()
 
 
 def test_build_prompt_africa_scope_line() -> None:
@@ -638,8 +638,8 @@ def test_generate_structured_bq_unavailable_injects_guard() -> None:
                 structured_bq_unavailable=True,
             )
     sys_msg = captured["messages"][0]["content"]
-    assert "CRITICAL" in sys_msg
-    assert "no usable rows" in sys_msg.lower()
+    assert "CRITICAL" not in sys_msg
+    assert "no usable rows" not in sys_msg.lower()
 
 
 def test_generate_ranking_hard_blocks_when_bq_unavailable() -> None:
@@ -666,6 +666,101 @@ def test_is_ranking_numeric_query() -> None:
         "which country in africa had the highest agricultural production in 2020"
     )
     assert not is_ranking_numeric_query("What does the policy brief say about millet?")
+
+
+def test_is_numeric_data_query() -> None:
+    from ml.rag.chatbot.generator import is_numeric_data_query
+
+    assert is_numeric_data_query("how much maize did Nigeria produce in 2020")
+    assert is_numeric_data_query(
+        "which country in africa had the highest agricultural production in 2020"
+    )
+    assert not is_numeric_data_query("What does the policy brief say about millet?")
+
+
+def test_generate_numeric_hard_blocks_when_bq_unavailable() -> None:
+    items = [_news_item()]
+    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
+        mock_llm.return_value = "should not be called"
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+            os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
+            result = generate(
+                "how much maize did Nigeria produce in 2020?",
+                items,
+                structured_bq_unavailable=True,
+            )
+    assert "I don't have OpenTrace data" in result.answer
+    mock_llm.assert_not_called()
+
+
+def test_pin_bq_context_first() -> None:
+    from ml.rag.chatbot.generator import pin_bq_context_first
+
+    items = [
+        {"_context_kind": "news", "content": "news"},
+        {"_context_kind": "bigquery", "content": "bq"},
+        {"_context_kind": "policy", "content": "policy"},
+    ]
+    out = pin_bq_context_first(items)
+    assert [x["_context_kind"] for x in out] == ["bigquery", "news", "policy"]
+
+
+def test_is_comparative_bq_query() -> None:
+    from ml.rag.chatbot.generator import is_comparative_bq_query
+
+    assert is_comparative_bq_query(
+        "what drove millet policy in Senegal?",
+        {"intent": "diagnostic"},
+    )
+    assert not is_comparative_bq_query("What does the policy brief say about millet?")
+
+
+def test_should_elevate_bq_context_for_comparative() -> None:
+    from ml.rag.chatbot.generator import pin_bq_context_first, should_elevate_bq_context
+
+    query = "what drove millet policy in Senegal?"
+    dec = {"intent": "diagnostic"}
+    assert should_elevate_bq_context(query, dec, usable_bq=True)
+    items = [
+        {"_context_kind": "policy", "content": "policy"},
+        {"_context_kind": "bigquery", "content": "bq"},
+    ]
+    out = pin_bq_context_first(items)
+    assert out[0]["_context_kind"] == "bigquery"
+
+
+def test_generate_diagnostic_no_hard_block_when_bq_unavailable() -> None:
+    captured: dict = {}
+
+    def fake_call(messages, **_kwargs):
+        captured["messages"] = messages
+        return "Policy drivers include subsidies.[1]"
+
+    items = [_news_item()]
+    with mock.patch("ml.rag.chatbot.generator._call_llama", side_effect=fake_call):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RAG_DROP_GEO_CONFLICTING_CONTEXT", None)
+            os.environ.pop("RAG_MIN_USABLE_CONTEXT", None)
+            result = generate(
+                "what drove millet policy in Senegal?",
+                items,
+                decomposition={"intent": "diagnostic"},
+                structured_bq_unavailable=True,
+            )
+    assert "Policy drivers include subsidies." in result.answer
+    assert "CRITICAL" not in captured["messages"][0]["content"]
+
+
+def test_build_prompt_structured_bq_unavailable_skips_guard_for_qualitative() -> None:
+    messages = _build_prompt(
+        "What does the policy brief say about millet?",
+        context_block="[News] policy chunk",
+        structured_bq_unavailable=True,
+    )
+    sys_msg = messages[0]["content"]
+    assert "CRITICAL" not in sys_msg
+    assert "no usable rows" not in sys_msg.lower()
 
 
 def test_finalize_generation_result_emits_citations_span_metadata() -> None:

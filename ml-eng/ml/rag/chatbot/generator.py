@@ -94,6 +94,68 @@ _RANKING_QUERY_RE = re.compile(
     re.IGNORECASE,
 )
 
+_NUMERIC_QUANTITY_RE = re.compile(
+    r"\b("
+    r"how\s+much|how\s+many|what\s+is\s+the|what\s+was\s+the|"
+    r"total|amount|volume|tonnes?|tons?|"
+    r"yield|production|output|price|prices|gdp|hdi|"
+    r"percent|percentage|\%|rate|rates|average|avg|mean|"
+    r"trend|changed\s+by|increase|decrease|growth|decline|"
+    r"population\s+count|people\s+in|phase\s+3"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_QUALITATIVE_ONLY_RE = re.compile(
+    r"\b("
+    r"why|explain|what\s+does\s+the\s+policy|impact\s+of|"
+    r"what\s+drove|overview|background|describe\s+the\s+policy"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_NUMERIC_ENTITY_TERMS = frozenset(
+    {
+        "production",
+        "yield",
+        "price",
+        "prices",
+        "gdp",
+        "hdi",
+        "tonnes",
+        "volume",
+        "food security",
+        "market price",
+        "population",
+        "ipc",
+        "fews",
+        "maize",
+        "rice",
+        "wheat",
+        "millet",
+        "sorghum",
+        "cassava",
+    }
+)
+
+_COMPARATIVE_BQ_RE = re.compile(
+    r"\b("
+    r"what\s+drove|drivers?|factors?\s+behind|compared\s+to|relative\s+to|"
+    r"benchmark|backdrop|context\s+for|versus|\bvs\.?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_PURE_NARRATIVE_RE = re.compile(
+    r"\b("
+    r"what\s+does\s+the\s+policy\s+say|summarize\s+the\s+brief|"
+    r"summarise\s+the\s+brief|policy\s+brief\s+say"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPARATIVE_BQ_INTENTS = frozenset({"compare", "diagnostic", "decision_support"})
+
 _BQ_MIN_CHARS = 800
 
 
@@ -194,6 +256,80 @@ def is_usable_context_item(item: dict[str, Any]) -> bool:
 def is_ranking_numeric_query(query: str) -> bool:
     """True for highest/lowest/which-country style ranking questions."""
     return bool(_RANKING_QUERY_RE.search(query or ""))
+
+
+def is_numeric_data_query(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+) -> bool:
+    """True when the question asks for quantitative/numeric facts (superset of ranking)."""
+    if is_ranking_numeric_query(query):
+        return True
+    q = query or ""
+    if _QUALITATIVE_ONLY_RE.search(q) and not _NUMERIC_QUANTITY_RE.search(q):
+        return False
+    if _NUMERIC_QUANTITY_RE.search(q):
+        return True
+    if isinstance(decomposition, dict):
+        entities = decomposition.get("entities")
+        if isinstance(entities, list):
+            for entity in entities:
+                text = str(entity or "").strip().lower()
+                if not text:
+                    continue
+                if any(term in text for term in _NUMERIC_ENTITY_TERMS):
+                    return True
+    return False
+
+
+def is_comparative_bq_query(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+) -> bool:
+    """True when BQ should support comparative/diagnostic synthesis (not authoritative numeric)."""
+    if is_numeric_data_query(query, decomposition):
+        return False
+    q = query or ""
+    if _PURE_NARRATIVE_RE.search(q):
+        return False
+    if _COMPARATIVE_BQ_RE.search(q):
+        return True
+    if not isinstance(decomposition, dict):
+        return False
+    intent = str(decomposition.get("intent") or "").strip().lower()
+    if intent in _COMPARATIVE_BQ_INTENTS:
+        return True
+    if intent in ("diagnostic", "decision_support"):
+        entities = decomposition.get("entities")
+        geography = decomposition.get("geography")
+        entity_text = " ".join(str(e) for e in entities).lower() if isinstance(entities, list) else ""
+        geo_text = " ".join(str(g) for g in geography).lower() if isinstance(geography, list) else ""
+        has_topic = bool(entity_text.strip())
+        has_geo = bool(geo_text.strip())
+        if has_topic and has_geo:
+            return True
+    return False
+
+
+def should_elevate_bq_context(
+    query: str,
+    decomposition: dict[str, Any] | None,
+    *,
+    usable_bq: bool,
+) -> bool:
+    """Pin/boost BQ when numeric or comparative analysis can use structured rows."""
+    if not usable_bq:
+        return False
+    return is_numeric_data_query(query, decomposition) or is_comparative_bq_query(
+        query, decomposition
+    )
+
+
+def pin_bq_context_first(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Place BigQuery structured items before narrative sources (order preserved within groups)."""
+    bq_items = [item for item in items if _source_kind(item) == "bigquery"]
+    other_items = [item for item in items if _source_kind(item) != "bigquery"]
+    return bq_items + other_items
 
 
 def filter_context_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -400,6 +536,8 @@ def _build_prompt(
     plan_type: str = "",
     answer_lang: str | None = None,
     structured_bq_unavailable: bool = False,
+    structured_bq_numeric_available: bool = False,
+    structured_bq_comparative_available: bool = False,
 ) -> list[dict[str, str]]:
     lang = (answer_lang or "").strip() or detect_answer_language(query)
     system = (
@@ -494,15 +632,31 @@ def _build_prompt(
             + "\n\nAnswer in the user's language while keeping the category audience rules "
             "(plainness, framing, and jargon limits) — do not switch to English academic prose."
         )
-    if structured_bq_unavailable:
+    if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
         system = (
             "CRITICAL: BigQuery structured data was attempted but returned no usable rows. "
-            "Do NOT invent specific numeric rankings (highest/lowest country, exact production "
-            "totals, precise yield figures) from news or policy text alone. "
-            "If the question asks for a ranked numeric answer from structured data, state clearly "
-            "that OpenTrace structured data is unavailable for this query and avoid naming a "
-            "specific country or number as the answer unless a structured-data source in Context "
-            "explicitly provides it.\n\n"
+            "Do NOT invent specific numeric facts (production totals, precise yield figures, "
+            "prices, GDP, population counts, or ranked country answers) from news or policy "
+            "text alone. If the question asks for a numeric answer from structured data, "
+            "state clearly that OpenTrace structured data is unavailable for this query and "
+            "avoid naming a specific number or country unless a structured-data source in "
+            "Context explicitly provides it.\n\n"
+        ) + system
+    if structured_bq_numeric_available:
+        system = (
+            "CRITICAL: Context includes OpenTrace structured BigQuery data with explicit "
+            "measure labels and units. For numeric answers (totals, yields, prices, GDP, "
+            "population counts, rankings), use those structured rows as the authoritative "
+            "source. Do not override them with policy, news, or web narrative that cites "
+            "a different number, unit, or country.\n\n"
+        ) + system
+    elif structured_bq_comparative_available:
+        system = (
+            "Context includes OpenTrace structured data with measure labels and units. "
+            "Use it for comparative statistics (production levels, yields, prices, trends, "
+            "regional benchmarks). Use policy, research, and news sources for causal "
+            "explanations and policy drivers. Do not invent numbers; cite structured data "
+            "when stating quantitative comparisons.\n\n"
         ) + system
 
     mb = (memory_block.strip() + "\n\n") if memory_block.strip() else ""
@@ -974,14 +1128,16 @@ def generate(
     plan_type = str(kwargs.get("plan_type") or "").strip()
     answer_lang = str(kwargs.get("answer_lang") or "").strip() or None
     structured_bq_unavailable = bool(kwargs.get("structured_bq_unavailable"))
+    structured_bq_numeric_available = bool(kwargs.get("structured_bq_numeric_available"))
+    structured_bq_comparative_available = bool(kwargs.get("structured_bq_comparative_available"))
 
-    if structured_bq_unavailable and is_ranking_numeric_query(query):
+    if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
         return GenerationResult(
             answer=_no_data_fallback_message(query, decomposition),
             citations=[],
             acf=no_evidence_acf(
                 explanation=(
-                    "Structured BigQuery data was required for this ranking question "
+                    "Structured BigQuery data was required for this numeric question "
                     "but returned no usable rows."
                 )
             ),
@@ -1007,6 +1163,8 @@ def generate(
                 plan_type=plan_type,
                 answer_lang=answer_lang,
                 structured_bq_unavailable=structured_bq_unavailable,
+                structured_bq_numeric_available=structured_bq_numeric_available,
+                structured_bq_comparative_available=structured_bq_comparative_available,
             )
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = (
@@ -1064,6 +1222,8 @@ def generate(
         plan_type=plan_type,
         answer_lang=answer_lang,
         structured_bq_unavailable=structured_bq_unavailable,
+        structured_bq_numeric_available=structured_bq_numeric_available,
+        structured_bq_comparative_available=structured_bq_comparative_available,
     )
     llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
     if llama_answer:

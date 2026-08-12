@@ -1,0 +1,624 @@
+"""Deterministic BigQuery row enrichment: value semantics + readable context prose."""
+from __future__ import annotations
+
+import ast
+import re
+from typing import Any
+
+from ml.rag.chatbot.bq_table_schema_yaml import (
+    column_description,
+    discriminator_columns,
+    load_table_schema,
+    measure_columns,
+    table_source_meta,
+)
+from ml.rag.chatbot.generator import is_ranking_numeric_query, is_usable_context_item
+
+_STG_TABLE_RE = re.compile(r"\bstg_[a-z0-9_]+\b", re.IGNORECASE)
+_SELECT_ALIAS_RE = re.compile(
+    r"\b(?:SUM|AVG|MIN|MAX|COUNT)\s*\([^)]+\)\s+AS\s+([A-Za-z_][A-Za-z0-9_]*)",
+    re.IGNORECASE,
+)
+_BQ_PROVENANCE_KEYS = frozenset(
+    {
+        "sql",
+        "sql_index",
+        "sql_count",
+        "sql_source",
+        "nl2sql_model",
+        "template",
+        "pattern",
+        "status",
+        "validation_failed",
+        "execution_error",
+        "prep_error",
+        "nl2sql_raw",
+        "tier",
+        "data_level",
+        "source_id",
+        "geo_scope",
+        "geo_country_primary",
+        "geo_countries",
+        "as_of_date",
+        "metric",
+        "unit",
+        "direction",
+        "prior_value",
+        "value_semantics",
+        "raw_row",
+        "ranked_rows",
+        "bq_enrichment",
+        "bq_context_truncated",
+        "table_id",
+        "table_description",
+        "source_domain",
+        "source_layer",
+    }
+)
+
+_GEO_KEYS = (
+    "country_name",
+    "country",
+    "geographic_unit_name",
+    "market_name",
+    "admin_1",
+    "admin_2",
+    "fnid",
+    "region",
+)
+_TIME_KEYS = (
+    "year",
+    "month",
+    "harvest_year",
+    "planting_year",
+    "observation_year",
+    "mp_year",
+    "mp_month",
+)
+_LABEL_KEYS = ("country_name", "country", "geographic_unit_name", "market_name", "product_name", "product")
+_RANK_VALUE_KEYS = ("total", "sum_value", "value", "gdp_per_capita_ppp", "hdi_value", "production", "yield")
+
+
+def _s(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _table_from_sql(sql: str) -> str:
+    m = _STG_TABLE_RE.search(sql or "")
+    return m.group(0).lower() if m else ""
+
+
+def _parse_row_content(content: str) -> dict[str, Any] | None:
+    text = (content or "").strip()
+    if not text or text.startswith("[BQ"):
+        return None
+    try:
+        val = ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        return None
+    return val if isinstance(val, dict) else None
+
+
+def _raw_row_from_item(item: dict[str, Any]) -> dict[str, Any]:
+    meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    existing = meta.get("raw_row")
+    if isinstance(existing, dict):
+        return dict(existing)
+    parsed = _parse_row_content(str(item.get("content") or ""))
+    if parsed:
+        return dict(parsed)
+    return {k: v for k, v in meta.items() if k not in _BQ_PROVENANCE_KEYS and v is not None}
+
+
+def _sql_aliases(sql: str) -> list[str]:
+    return [m.group(1).lower() for m in _SELECT_ALIAS_RE.finditer(sql or "")]
+
+
+def _first_present(row: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        val = _s(row.get(key))
+        if val:
+            return val
+    return ""
+
+
+def _format_number(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return _s(value)
+    if abs(num - round(num)) < 1e-6:
+        return f"{int(round(num)):,}"
+    return f"{num:,.2f}"
+
+
+def _measure_kind(table_id: str, row: dict[str, Any]) -> str:
+    bare = table_id.lower()
+    if "gdp" in bare:
+        return "macro_gdp"
+    if bare.endswith("_hdi") or "hdi" in bare:
+        return "macro_hdi"
+    if "fews_food_security" in bare:
+        return "fews_food_security"
+    if "fews_market_prices" in bare or "vampire_prices" in bare:
+        return "fews_market_price"
+    if "yield_raw_data" in bare:
+        return "subnational_yield"
+    if bare.startswith("stg_faostat_"):
+        return f"faostat_{bare.replace('stg_faostat_', '')}"
+    return bare.replace("stg_", "")
+
+
+def _element_measure_label(element: str) -> str:
+    el = element.strip()
+    low = el.lower()
+    if low == "production":
+        return "Physical crop/livestock production output"
+    if low == "yield":
+        return "Crop/livestock yield (productivity per land area)"
+    if "area harvested" in low:
+        return "Harvested land area"
+    if "index" in low:
+        return f"FAOSTAT index measure ({el})"
+    if low in {"stocks", "milk animals", "laying", "producing animals/slaughtered"}:
+        return f"Livestock inventory or animal count ({el})"
+    if "carcass" in low or "weight" in low:
+        return f"Livestock productivity measure ({el})"
+    return f"FAOSTAT measure ({el})"
+
+
+def _fews_measure_label(row: dict[str, Any]) -> str:
+    mt = _s(row.get("measure_type")).lower()
+    if mt == "population":
+        phase = _s(row.get("phase_name")) or _s(row.get("phase_code"))
+        if phase:
+            return f"Food-insecure population estimate ({phase})"
+        return "Food-insecure population estimate"
+    if mt == "classification":
+        scale = _s(row.get("classification_scale"))
+        if scale:
+            return f"IPC area food-security classification ({scale})"
+        return "IPC area food-security classification"
+    return "FEWS NET food-security measure"
+
+
+def _price_measure_label(row: dict[str, Any]) -> str:
+    pt = _s(row.get("price_type")) or "market price"
+    product = _s(row.get("product_name")) or _s(row.get("product"))
+    market = _s(row.get("market_name"))
+    bits = [f"{pt} market price"]
+    if product:
+        bits.append(f"for {product}")
+    if market:
+        bits.append(f"at {market}")
+    return " ".join(bits)
+
+
+def _resolve_unit(table_id: str, row: dict[str, Any], measure_col: str) -> str:
+    bare = table_id.lower()
+    if "gdp" in bare and measure_col == "gdp_per_capita_ppp":
+        return "international dollars (PPP per capita)"
+    if "hdi" in bare and measure_col == "hdi_value":
+        return "index score (0–1)"
+    mt = _s(row.get("measure_type")).lower()
+    if mt == "population":
+        return "people"
+    if mt == "classification":
+        return "IPC classification"
+    unit = _s(row.get("unit"))
+    currency = _s(row.get("currency"))
+    if currency and unit:
+        return f"{currency}/{unit}"
+    if unit:
+        return unit
+    if measure_col == "yield":
+        return "yield units (see source table)"
+    if measure_col == "area":
+        return "area units (see source table)"
+    if measure_col == "production":
+        return "production units (see source table)"
+    if measure_col.startswith("pct_"):
+        return "share (%)"
+    return unit or "units"
+
+
+def _resolve_measure_label(
+    table_id: str,
+    row: dict[str, Any],
+    measure_col: str,
+) -> str:
+    bare = table_id.lower()
+    element = _s(row.get("element"))
+    if element:
+        return _element_measure_label(element)
+    if "fews_food_security" in bare:
+        return _fews_measure_label(row)
+    if "market_prices" in bare or "vampire_prices" in bare:
+        return _price_measure_label(row)
+    if measure_col == "gdp_per_capita_ppp":
+        return "GDP per capita at purchasing power parity"
+    if measure_col == "hdi_value":
+        return "Human Development Index score"
+    if measure_col == "yield":
+        return "Crop yield (productivity per land area)"
+    if measure_col == "production":
+        return "Crop production volume"
+    if measure_col == "area":
+        return "Harvested or cultivated area"
+    desc = column_description(table_id, measure_col)
+    if desc:
+        return desc[:160]
+    return measure_col.replace("_", " ")
+
+
+def _not_this_list(table_id: str, row: dict[str, Any], measure_col: str) -> list[str]:
+    bare = table_id.lower()
+    element = _s(row.get("element")).lower()
+    mt = _s(row.get("measure_type")).lower()
+    out: list[str] = []
+
+    if "gdp" in bare or measure_col == "gdp_per_capita_ppp":
+        out.extend(["agricultural production volume", "crop yield", "food security IPC phase", "market retail price"])
+    elif "hdi" in bare or measure_col == "hdi_value":
+        out.extend(["agricultural production", "crop yield", "GDP", "market price"])
+    elif "fews_food_security" in bare:
+        if mt == "population":
+            out.extend(["crop production tonnes", "GDP", "retail market price", "IPC area classification map"])
+        elif mt == "classification":
+            out.extend(["population headcount", "crop production tonnes", "GDP", "market price"])
+        else:
+            out.extend(["crop production tonnes", "GDP"])
+    elif "market_prices" in bare or "vampire_prices" in bare:
+        out.extend(["production volume", "crop yield", "GDP", "food security phase population"])
+    elif "yield_raw_data" in bare:
+        if measure_col == "yield":
+            out.extend(["total production volume", "GDP", "food security phase"])
+        elif measure_col == "production":
+            out.extend(["yield per hectare", "GDP", "food security phase"])
+        else:
+            out.extend(["GDP", "food security phase"])
+    elif element == "production":
+        out.extend(["crop yield per hectare", "GDP", "food security IPC phase"])
+    elif element == "yield":
+        out.extend(["total production volume", "GDP", "food security IPC phase"])
+    elif "price" in bare or _s(row.get("price_type")):
+        out.extend(["production volume", "GDP", "food security phase"])
+    else:
+        out.extend(["GDP", "food security IPC phase"])
+
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in out:
+        key = item.lower()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(item)
+    return deduped[:4]
+
+
+def _pick_measure_column(
+    row: dict[str, Any],
+    *,
+    table_id: str,
+    sql: str,
+) -> tuple[str, Any]:
+    aliases = _sql_aliases(sql)
+    for alias in aliases:
+        if alias in row and row[alias] is not None:
+            return alias, row[alias]
+    for key in _RANK_VALUE_KEYS:
+        if key in row and row[key] is not None:
+            return key, row[key]
+    for col in measure_columns(table_id):
+        if col in row and row[col] is not None:
+            return col, row[col]
+    if row.get("value") is not None:
+        return "value", row["value"]
+    for key, val in row.items():
+        if key in _BQ_PROVENANCE_KEYS or key in _GEO_KEYS or key in _TIME_KEYS:
+            continue
+        if isinstance(val, (int, float)):
+            return key, val
+    return "", None
+
+
+def resolve_row_semantics(
+    row: dict[str, Any],
+    *,
+    table_id: str,
+    schema: dict[str, Any] | None = None,
+    sql: str = "",
+) -> dict[str, Any]:
+    """Return structured value semantics for prose and metadata stamping."""
+    bare = table_id.lower()
+    if not schema:
+        schema = load_table_schema(bare) or {}
+    src = table_source_meta(bare)
+    measure_col, measure_val = _pick_measure_column(row, table_id=bare, sql=sql)
+    measure_label = _resolve_measure_label(bare, row, measure_col)
+    unit = _resolve_unit(bare, row, measure_col)
+    geo = _first_present(row, _GEO_KEYS)
+    time_bits = [_first_present(row, (k,)) for k in _TIME_KEYS]
+    time_s = " ".join(t for t in time_bits if t)
+
+    discriminators: dict[str, str] = {}
+    for col in discriminator_columns(bare):
+        val = _s(row.get(col))
+        if val:
+            discriminators[col] = val
+
+    return {
+        "measure_kind": _measure_kind(bare, row),
+        "measure_column": measure_col,
+        "measure_label": measure_label,
+        "measure_value": measure_val,
+        "discriminators": discriminators,
+        "unit": unit,
+        "geo": geo,
+        "time": time_s,
+        "table_id": bare,
+        "table_description": src.get("description") or "",
+        "source_domain": src.get("source_domain") or "",
+        "source_layer": src.get("source_layer") or "staging_dev",
+        "grain": src.get("grain") or "",
+        "not_this": _not_this_list(bare, row, measure_col),
+    }
+
+
+def _format_discriminator_lines(semantics: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    table_id = str(semantics.get("table_id") or "")
+    for col, val in (semantics.get("discriminators") or {}).items():
+        desc = column_description(table_id, str(col))
+        snippet = desc[:120] if desc else ""
+        if snippet:
+            lines.append(f"{col}={val} — {snippet}")
+        else:
+            lines.append(f"{col}={val}")
+    return lines
+
+
+def format_row_prose(
+    semantics: dict[str, Any],
+    *,
+    sql_source: str = "",
+    template: str = "",
+) -> str:
+    """Build human-readable context prose from resolved semantics."""
+    table_id = str(semantics.get("table_id") or "bigquery")
+    domain = _s(semantics.get("source_domain"))
+    layer = _s(semantics.get("source_layer")) or "staging_dev"
+    title = f"OpenTrace structured data — {table_id} ({layer})"
+    if domain:
+        title += f" [{domain}]"
+
+    lines = [title]
+    desc = _s(semantics.get("table_description"))
+    grain = _s(semantics.get("grain"))
+    if desc:
+        lines.append(f"Source: {desc}")
+    if grain:
+        lines.append(f"Grain: {grain}")
+
+    measure_label = _s(semantics.get("measure_label"))
+    disc_lines = _format_discriminator_lines(semantics)
+    if disc_lines:
+        lines.append("Filters: " + "; ".join(disc_lines[:5]))
+    lines.append(f"What this value is: {measure_label}.")
+
+    unit = _s(semantics.get("unit"))
+    time_s = _s(semantics.get("time"))
+    geo = _s(semantics.get("geo"))
+    meta_bits = []
+    if unit:
+        meta_bits.append(f"Unit: {unit}")
+    if time_s:
+        meta_bits.append(f"Time: {time_s}")
+    if geo:
+        meta_bits.append(f"Place: {geo}")
+    if meta_bits:
+        lines.append(" | ".join(meta_bits))
+
+    val = semantics.get("measure_value")
+    if val is not None:
+        formatted = _format_number(val)
+        suffix = f" {unit}" if unit and unit not in formatted else ""
+        lines.append(f"Value: {formatted}{suffix}")
+
+    not_this = semantics.get("not_this") or []
+    if not_this:
+        lines.append(f"What this is NOT: {', '.join(str(x) for x in not_this)}.")
+
+    prov_bits = []
+    if template:
+        prov_bits.append(f"template={template}")
+    if sql_source:
+        prov_bits.append(f"sql_source={sql_source}")
+    if prov_bits:
+        lines.append("Provenance: " + "; ".join(prov_bits))
+
+    return "\n".join(lines)
+
+
+def _rank_label(row: dict[str, Any]) -> str:
+    return _first_present(row, _LABEL_KEYS) or "Unknown"
+
+
+def _rank_value(row: dict[str, Any], *, table_id: str, sql: str) -> tuple[str, Any]:
+    col, val = _pick_measure_column(row, table_id=table_id, sql=sql)
+    return col, val
+
+
+def _consolidate_ranking_batch(
+    items: list[dict[str, Any]],
+    *,
+    query: str,
+    table_id: str,
+) -> dict[str, Any] | None:
+    if not is_ranking_numeric_query(query) or len(items) < 2:
+        return None
+    sql = _s((items[0].get("metadata") or {}).get("sql"))
+    if not sql:
+        return None
+    for item in items[1:]:
+        if _s((item.get("metadata") or {}).get("sql")) != sql:
+            return None
+
+    ranked: list[dict[str, Any]] = []
+    for item in items:
+        raw = _raw_row_from_item(item)
+        semantics = resolve_row_semantics(raw, table_id=table_id, sql=sql)
+        label = _rank_label(raw)
+        val = semantics.get("measure_value")
+        if val is None:
+            continue
+        try:
+            sort_val = float(val)
+        except (TypeError, ValueError):
+            continue
+        ranked.append(
+            {
+                "label": label,
+                "value": val,
+                "sort_value": sort_val,
+                "unit": semantics.get("unit") or "",
+                "measure_label": semantics.get("measure_label") or "",
+                "time": semantics.get("time") or "",
+                "raw_row": raw,
+                "semantics": semantics,
+            }
+        )
+    if len(ranked) < 2:
+        return None
+
+    ranked.sort(key=lambda r: r["sort_value"], reverse=True)
+    head_sem = ranked[0]["semantics"]
+    meta0 = dict(items[0].get("metadata") or {})
+    template = _s(meta0.get("template"))
+    sql_source = _s(meta0.get("sql_source"))
+
+    rank_lines = []
+    ranked_rows = []
+    for idx, entry in enumerate(ranked, start=1):
+        unit = _s(entry.get("unit"))
+        val_s = _format_number(entry.get("value"))
+        suffix = f" {unit}" if unit else ""
+        ml = _s(entry.get("measure_label"))
+        time_s = _s(entry.get("time"))
+        detail = f" ({ml}, {time_s})" if ml and time_s else (f" ({ml})" if ml else "")
+        rank_lines.append(f"{idx}. {entry['label']} — {val_s}{suffix}{detail}")
+        ranked_rows.append(
+            {
+                "rank": idx,
+                "label": entry["label"],
+                "value": entry["value"],
+                "unit": unit,
+                "measure_label": ml,
+                "time": time_s,
+                "raw_row": entry["raw_row"],
+            }
+        )
+
+    not_this = head_sem.get("not_this") or []
+    header = format_row_prose(head_sem, sql_source=sql_source, template=template)
+    body = "\n".join(
+        [
+            "",
+            "Ranked OpenTrace structured results (highest first):",
+            *rank_lines,
+            "",
+            "Authoritative for which-country / highest-lowest questions matching this SQL.",
+        ]
+    )
+    content = header + body
+
+    out_meta = dict(meta0)
+    out_meta["raw_row"] = ranked[0]["raw_row"]
+    out_meta["value_semantics"] = head_sem
+    out_meta["ranked_rows"] = ranked_rows
+    out_meta["bq_enrichment"] = "ranked_table"
+
+    return {
+        "content": content,
+        "source": "bigquery",
+        "metadata": out_meta,
+    }
+
+
+def _enrich_single_item(item: dict[str, Any], *, table_id: str) -> dict[str, Any]:
+    meta = dict(item.get("metadata") or {})
+    raw = _raw_row_from_item(item)
+    sql = _s(meta.get("sql"))
+    if not table_id:
+        table_id = _table_from_sql(sql)
+    if not table_id:
+        table_id = _s(meta.get("table_id"))
+
+    semantics = resolve_row_semantics(raw, table_id=table_id or "unknown", sql=sql)
+    meta["raw_row"] = raw
+    meta["value_semantics"] = semantics
+    if table_id:
+        meta["table_id"] = table_id
+        src = table_source_meta(table_id)
+        meta["table_description"] = src.get("description")
+        meta["source_domain"] = src.get("source_domain")
+        meta["source_layer"] = src.get("source_layer")
+
+    content = format_row_prose(
+        semantics,
+        sql_source=_s(meta.get("sql_source")),
+        template=_s(meta.get("template")),
+    )
+    return {**item, "content": content, "metadata": meta}
+
+
+def enrich_bq_results(
+    items: list[dict[str, Any]],
+    *,
+    query: str,
+    plan: dict[str, Any] | None = None,
+    decomposition: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Enrich usable BQ context items with value semantics prose before merge/rerank."""
+    del decomposition  # reserved for future query-aware phrasing
+    plan = plan if isinstance(plan, dict) else {}
+    selected = [str(t).strip().split(".")[-1].lower() for t in (plan.get("selected_tables") or []) if str(t).strip()]
+
+    usable: list[dict[str, Any]] = []
+    diagnostics: list[dict[str, Any]] = []
+    for item in items or []:
+        if is_usable_context_item(item):
+            usable.append(item)
+        else:
+            diagnostics.append(item)
+
+    # Group usable rows by SQL for optional ranking consolidation.
+    by_sql: dict[str, list[dict[str, Any]]] = {}
+    for item in usable:
+        sql = _s((item.get("metadata") or {}).get("sql")) or "__no_sql__"
+        by_sql.setdefault(sql, []).append(item)
+
+    enriched: list[dict[str, Any]] = []
+    for sql, group in by_sql.items():
+        table_id = _table_from_sql(sql if sql != "__no_sql__" else "")
+        if not table_id and selected:
+            table_id = selected[0]
+        consolidated = _consolidate_ranking_batch(group, query=query, table_id=table_id)
+        if consolidated:
+            enriched.append(consolidated)
+            continue
+        for item in group:
+            enriched.append(_enrich_single_item(item, table_id=table_id))
+
+    return diagnostics + enriched
+
+
+__all__ = [
+    "enrich_bq_results",
+    "format_row_prose",
+    "resolve_row_semantics",
+]

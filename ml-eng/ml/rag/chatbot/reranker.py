@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 _observe_span = get_observe_decorator()
 
 _LAST_RERANK_MODE = "off"
+_ACTIVE_NUMERIC_QUERY = False
+_ACTIVE_COMPARATIVE_QUERY = False
 
 # Static source priority — applied additively on top of any model score so a
 # BigQuery row that scores near a news chunk still wins the tie-break (BQ
@@ -61,7 +63,12 @@ _SOURCE_BOOST: dict[str, float] = {
 }
 
 
-def _item_source_boost(item: dict[str, Any]) -> float:
+def _item_source_boost(
+    item: dict[str, Any],
+    *,
+    numeric_query: bool | None = None,
+    comparative_query: bool | None = None,
+) -> float:
     kind = str(item.get("_context_kind") or item.get("source") or "").lower()
     boost = float(_SOURCE_BOOST.get(kind, 0.0))
     raw_meta = item.get("metadata")
@@ -81,6 +88,26 @@ def _item_source_boost(item: dict[str, Any]) -> float:
                 boost = max(boost, extra_f)
         except (TypeError, ValueError):
             pass
+    nq = _ACTIVE_NUMERIC_QUERY if numeric_query is None else numeric_query
+    cq = _ACTIVE_COMPARATIVE_QUERY if comparative_query is None else comparative_query
+    if nq and kind == "bigquery":
+        boost += 0.10
+    elif cq and kind == "bigquery":
+        boost += 0.06
+    if meta.get("value_semantics") or meta.get("bq_enrichment"):
+        if nq:
+            boost += 0.05
+        elif cq:
+            boost += 0.04
+        else:
+            boost += 0.05
+    if str(meta.get("bq_enrichment") or "").strip() == "ranked_table":
+        if nq:
+            boost += 0.15
+        elif cq:
+            boost += 0.10
+        else:
+            boost += 0.15
     if str(meta.get("constraint_relaxed") or "").strip() in ("", "none"):
         boost += 0.05
     return boost
@@ -640,6 +667,30 @@ def rerank(
     if not context_items:
         return _finalize_rerank_trace([], mode="off", input_count=0, top_k=top_k, start=t0)
 
+    global _ACTIVE_NUMERIC_QUERY, _ACTIVE_COMPARATIVE_QUERY
+    prev_numeric = _ACTIVE_NUMERIC_QUERY
+    prev_comparative = _ACTIVE_COMPARATIVE_QUERY
+    _ACTIVE_NUMERIC_QUERY = bool(kwargs.get("numeric_query"))
+    _ACTIVE_COMPARATIVE_QUERY = bool(kwargs.get("comparative_query"))
+    try:
+        return _rerank_with_active_numeric(
+            query,
+            context_items,
+            top_k=top_k,
+            start=t0,
+        )
+    finally:
+        _ACTIVE_NUMERIC_QUERY = prev_numeric
+        _ACTIVE_COMPARATIVE_QUERY = prev_comparative
+
+
+def _rerank_with_active_numeric(
+    query: str,
+    context_items: list[dict[str, Any]],
+    *,
+    top_k: int,
+    start: float,
+) -> list[dict[str, Any]]:
     env_top_k = _env_int("RAG_RERANKER_TOP_K", 0)
     if env_top_k > 0:
         top_k = min(top_k, env_top_k)
@@ -657,7 +708,7 @@ def rerank(
                 mode="openrouter",
                 input_count=input_count,
                 top_k=top_k,
-                start=t0,
+                start=start,
                 model=_openrouter_rerank_model(),
             )
         logger.warning(
@@ -673,7 +724,7 @@ def rerank(
                 mode="cohere",
                 input_count=input_count,
                 top_k=top_k,
-                start=t0,
+                start=start,
                 model=_cohere_model(),
             )
         logger.warning(
@@ -689,7 +740,7 @@ def rerank(
                 mode="cross_encoder",
                 input_count=input_count,
                 top_k=top_k,
-                start=t0,
+                start=start,
                 model=_env("RAG_RERANKER_MODEL", "BAAI/bge-reranker-base"),
             )
         logger.warning(
@@ -709,14 +760,14 @@ def rerank(
                 mode="off",
                 input_count=input_count,
                 top_k=top_k,
-                start=t0,
+                start=start,
             )
         return _finalize_rerank_trace(
             _rerank_llm(query, context_items, top_k, content_key),
             mode="llm",
             input_count=input_count,
             top_k=top_k,
-            start=t0,
+            start=start,
             model=llm_model_id(),
         )
 
@@ -725,5 +776,5 @@ def rerank(
         mode="off",
         input_count=input_count,
         top_k=top_k,
-        start=t0,
+        start=start,
     )
