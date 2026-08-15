@@ -798,11 +798,43 @@ def list_staging_table_index() -> list[dict[str, Any]]:
     return rows
 
 
-def format_reasoner_index(*, max_bytes: int | None = None) -> tuple[str, bool]:
-    """Byte-capped one-line-per-table index for the SQL reasoner prompt."""
+def format_reasoner_index(
+    *,
+    max_bytes: int | None = None,
+    table_ids: list[str] | None = None,
+    domains: list[str] | None = None,
+) -> tuple[str, bool]:
+    """Byte-capped one-line-per-table index for the SQL reasoner prompt.
+
+    When ``table_ids`` or ``domains`` are provided, prefer matching rows first
+    (ontology scope). If the filter yields nothing, fall back to the full index.
+    """
     budget = reasoner_index_max_bytes() if max_bytes is None else max(0, max_bytes)
+    prefer = {str(t).strip().split(".")[-1].lower() for t in (table_ids or []) if str(t).strip()}
+    prefer_domains = {str(d).strip().lower() for d in (domains or []) if str(d).strip()}
+    rows = list_staging_table_index()
+    if prefer or prefer_domains:
+        scoped = [
+            r
+            for r in rows
+            if (prefer and str(r.get("table_id") or "").lower() in prefer)
+            or (
+                prefer_domains
+                and str(r.get("domain") or "").lower() in prefer_domains
+            )
+        ]
+        # Always include explicit candidate table ids even if domain mismatch.
+        if prefer:
+            have = {str(r.get("table_id") or "").lower() for r in scoped}
+            for r in rows:
+                tid = str(r.get("table_id") or "").lower()
+                if tid in prefer and tid not in have:
+                    scoped.append(r)
+                    have.add(tid)
+        if scoped:
+            rows = scoped
     lines: list[str] = []
-    for row in list_staging_table_index():
+    for row in rows:
         tags = ", ".join(row.get("tags") or [])
         desc = str(row.get("description") or "")
         if len(desc) > 120:

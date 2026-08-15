@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
+from ml.rag.chatbot.agri_measure_ontology import fallback_plan, resolve_measure
 from ml.rag.chatbot.bq_table_schema_yaml import pack_selected_table_hints
 
 _STAPLES = ("Maize", "Rice", "Cassava", "Sorghum", "Millet")
@@ -30,8 +32,49 @@ def build_analytical_bq_plan(
     """
     Deterministic multi-intent plan for agricultural comparative / report queries.
 
-    Never sets skip_bq. Returns None only when no staging production table exists.
+    Prefer ontology composite (e.g. investor_best_country); else production-centered
+    multi-intent with trade/yield companions. Never sets skip_bq.
     """
+    hit = resolve_measure(query, decomposition)
+    if hit is not None and (
+        hit.measure.id == "investor_best_country"
+        or hit.measure.default_task_mode == "analytical"
+        and hit.measure.companions
+    ):
+        plan = fallback_plan(
+            hit,
+            query=query,
+            decomposition=decomposition,
+            known_tables=known_tables,
+            task_mode="analytical",
+        )
+        if plan is not None and not plan.get("skip_bq"):
+            floor = analytical_sql_query_floor()
+            intents = list(plan.get("query_intents") or [])
+            # Pad with companion table intents toward floor.
+            for tid in list(plan.get("selected_tables") or []):
+                if len(intents) >= floor:
+                    break
+                if any(tid in (i.get("tables") or []) for i in intents):
+                    continue
+                intents.append(
+                    {
+                        "goal": f"Companion analytical signal from {tid}",
+                        "tables": [tid],
+                        "filters": str((intents[0].get("filters") if intents else "") or ""),
+                        "notes": f"analytical_companion_{tid}",
+                        "pattern": "custom",
+                        "metric": "value",
+                        "grain": ["country_name"],
+                        "order_by": "value DESC",
+                    }
+                )
+            plan["query_intents"] = intents[:floor]
+            plan["analytical_mode"] = True
+            plan["max_sql_queries"] = floor
+            plan["rationale"] = f"analytical_forced_{hit.measure.id}"
+            return plan
+
     if "stg_faostat_production" not in known_tables:
         return None
 
@@ -46,21 +89,22 @@ def build_analytical_bq_plan(
     te = str(decomposition.get("time_end") or "")[:10] or "latest"
     y0 = ts[:4] if ts[:4].isdigit() else "start"
     y1 = te[:4] if te[:4].isdigit() else "end"
+    want_yield = bool(re.search(r"\byields?\b", query or "", re.IGNORECASE))
+    primary_element = "Yield" if want_yield else "Production"
 
     selected = ["stg_faostat_production"]
-    for tid in ("stg_faostat_trade", "stg_faostat_prices", "stg_faostat_yield"):
-        # Prefer real staging ids when present in catalog.
+    for tid in ("stg_faostat_trade", "stg_faostat_prices", "stg_africa_gdp_ppp", "stg_faostat_investment_asti"):
         if tid in known_tables and tid not in selected:
             selected.append(tid)
-        if len(selected) >= 4:
+        if len(selected) >= 5:
             break
 
     intents: list[dict[str, Any]] = [
         {
-            "goal": "Country agricultural production ranking for the region/time window",
+            "goal": f"Country agricultural {primary_element} ranking for the region/time window",
             "tables": ["stg_faostat_production"],
-            "filters": f"element='Production'; {geo_filter}; year between {y0} and {y1}",
-            "notes": "analytical_rank_production",
+            "filters": f"element='{primary_element}'; {geo_filter}; year between {y0} and {y1}",
+            "notes": f"analytical_rank_{primary_element.lower()}",
             "pattern": "rank_by_sum",
             "metric": "value",
             "grain": ["country_name"],
@@ -76,13 +120,13 @@ def build_analytical_bq_plan(
             "notes": "analytical_staples_by_country",
             "pattern": "custom",
             "metric": "value",
-            "grain": ["country_name", "item"],
+            "grain": ["country_name", "product_name"],
             "order_by": "value DESC",
         },
         {
-            "goal": f"Production time series endpoints ({y0} vs {y1}) by country",
+            "goal": f"{primary_element} time series endpoints ({y0} vs {y1}) by country",
             "tables": ["stg_faostat_production"],
-            "filters": f"element='Production'; {geo_filter}; years {y0} and {y1}",
+            "filters": f"element='{primary_element}'; {geo_filter}; years {y0} and {y1}",
             "notes": "analytical_series_endpoints",
             "pattern": "custom",
             "metric": "value",
@@ -96,7 +140,7 @@ def build_analytical_bq_plan(
             "notes": "analytical_top_commodities",
             "pattern": "rank_by_sum",
             "metric": "value",
-            "grain": ["item"],
+            "grain": ["product_name"],
             "order_by": "total DESC",
         },
     ]
@@ -115,26 +159,34 @@ def build_analytical_bq_plan(
             }
         )
 
-    # Pad toward floor with yield if available.
-    if "stg_faostat_yield" in known_tables or any("yield" in t for t in known_tables):
-        yield_tid = "stg_faostat_yield" if "stg_faostat_yield" in known_tables else None
-        if yield_tid is None:
-            for t in known_tables:
-                if "yield" in t and t.startswith("stg_"):
-                    yield_tid = t
-                    break
-        if yield_tid:
-            if yield_tid not in selected:
-                selected.append(yield_tid)
+    if want_yield:
+        intents.append(
+            {
+                "goal": "Crop yield comparison across countries (element=Yield)",
+                "tables": ["stg_faostat_production"],
+                "filters": f"element='Yield'; {geo_filter}; year≈{y1}",
+                "notes": "analytical_yield",
+                "pattern": "custom",
+                "metric": "value",
+                "grain": ["country_name", "product_name"],
+                "order_by": "value DESC",
+            }
+        )
+
+    for tid, goal in (
+        ("stg_africa_gdp_ppp", "GDP PPP companion by country"),
+        ("stg_faostat_investment_asti", "ASTI investment companion by country"),
+    ):
+        if tid in selected:
             intents.append(
                 {
-                    "goal": "Crop yield comparison across countries",
-                    "tables": [yield_tid],
-                    "filters": f"{geo_filter}; year≈{y1}",
-                    "notes": "analytical_yield",
+                    "goal": goal,
+                    "tables": [tid],
+                    "filters": f"{geo_filter}; year between {y0} and {y1}",
+                    "notes": f"analytical_{tid}",
                     "pattern": "custom",
                     "metric": "value",
-                    "grain": ["country_name", "item"],
+                    "grain": ["country_name"],
                     "order_by": "value DESC",
                 }
             )
@@ -149,6 +201,7 @@ def build_analytical_bq_plan(
         "rationale": "analytical_forced_multi_intent",
         "analytical_mode": True,
         "max_sql_queries": floor,
+        "measure_id": hit.measure.id if hit else None,
     }
     hints, hints_truncated = pack_selected_table_hints(
         selected,

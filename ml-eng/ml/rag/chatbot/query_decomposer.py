@@ -171,10 +171,23 @@ _GEO_STOPWORDS: frozenset[str] = frozenset(
 
 _RANKING_SCOPE_RE = re.compile(
     r"\b("
-    r"which\s+country|which\s+countries|"
+    r"which\s+country|which\s+countries|which\s+african\s+countr(?:y|ies)|"
     r"highest|lowest|top\s+\d+|bottom\s+\d+|"
     r"rank(?:ing|ed)?|largest|smallest|biggest|best|worst|"
     r"most\s+(?:produced|production)|least\s+(?:produced|production)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_AFRICA_PANEL_RE = re.compile(
+    r"\b("
+    r"all\s+african\s+countr(?:y|ies)|"
+    r"every\s+african\s+countr(?:y|ies)|"
+    r"by\s+african\s+countr(?:y|ies)|"
+    r"across\s+(?:all\s+)?african\s+countr(?:y|ies)|"
+    r"for\s+all\s+african\s+countr(?:y|ies)|"
+    r"african\s+countr(?:y|ies)\s+panel|"
+    r"each\s+african\s+countr(?:y|ies)"
     r")\b",
     re.IGNORECASE,
 )
@@ -243,6 +256,9 @@ def wants_africa_default_scope(query: str) -> bool:
     q = (query or "").strip()
     if not q:
         return False
+    # Full panels are not which-country rankings.
+    if wants_africa_panel_scope(q):
+        return False
     if _extract_countries(q):
         return False
     if not _RANKING_SCOPE_RE.search(q):
@@ -251,17 +267,30 @@ def wants_africa_default_scope(query: str) -> bool:
     return True
 
 
+def wants_africa_panel_scope(query: str) -> bool:
+    """True when the user wants values for every African country (~54-country panel)."""
+    return bool(_AFRICA_PANEL_RE.search(query or ""))
+
+
 def apply_africa_default_scope(decomposition: dict[str, Any], query: str) -> dict[str, Any]:
-    """Annotate decomposition when product default is Africa continental ranking."""
+    """Annotate decomposition for Africa ranking and/or full continental panels."""
     out = dict(decomposition or {})
-    if not wants_africa_default_scope(query):
+    panel = wants_africa_panel_scope(query)
+    ranking = wants_africa_default_scope(query)
+    if not panel and not ranking:
         out.pop("africa_default", None)
+        out.pop("africa_panel", None)
         return out
-    out["africa_default"] = True
     entities = list(out.get("entities") or [])
     if not any(str(e).strip().lower() == "africa" for e in entities):
         entities.append("Africa")
     out["entities"] = entities
+    if panel:
+        out["africa_panel"] = True
+        # Panel is not a missing-country clarify case; keep geography empty for GROUP BY.
+        out.pop("africa_default", None)
+    if ranking:
+        out["africa_default"] = True
     return out
 
 

@@ -142,19 +142,26 @@ def apply_plan_decomposition_gates(
     Clamp decomposition for plan-tier retrieval limits.
 
     When cross-country is disallowed: geography → one country; compare → descriptive.
+    Preserve africa_default / africa_panel / expanded regional panels (do not amputate
+    West Africa → Benin).
     """
     if not plan_type or not isinstance(decomposition, dict):
         return decomposition
 
     out = copy.deepcopy(decomposition)
-    if not allows_cross_country(plan_type):
+    preserve_multi = bool(
+        out.get("africa_default")
+        or out.get("africa_panel")
+        or out.get("expanded_regions")
+    )
+    if not allows_cross_country(plan_type) and not preserve_multi:
         geo = out.get("geography")
         geo_list = geo if isinstance(geo, list) else []
         out["geography"] = _pick_single_country(geo_list, profile_country)
         if str(out.get("intent") or "").strip().lower() == "compare":
             out["intent"] = "descriptive"
 
-    if plan_type.strip() == "Free":
+    if plan_type.strip() == "Free" and not preserve_multi:
         if str(out.get("intent") or "").strip().lower() == "compare":
             out["intent"] = "descriptive"
 

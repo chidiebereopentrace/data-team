@@ -27,8 +27,18 @@ _COMPARE_RE = re.compile(
 _AGRI_RE = re.compile(
     r"\b("
     r"agricultur(?:e|al)|farming|crops?|commodit(?:y|ies)|production|"
-    r"yield|livestock|cereal|maize|rice|cassava|sorghum|millet|wheat|"
-    r"faostat|food\s+security"
+    r"yields?|livestock|cereal|maize|rice|cassava|sorghum|millet|wheat|"
+    r"faostat|food\s+security|investment|gdp|trade|prices?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_INVESTOR_BEST_RE = re.compile(
+    r"\b("
+    r"best\s+(?:african\s+)?countr(?:y|ies)\s+for\s+(?:agri(?:cultural)?\s+)?investment|"
+    r"where\s+to\s+invest\s+in\s+agri|"
+    r"agri(?:cultural)?\s+investment\s+attractiveness|"
+    r"best\s+for\s+(?:agri(?:cultural)?\s+)?investment"
     r")\b",
     re.IGNORECASE,
 )
@@ -43,6 +53,18 @@ def is_analytical_query(query: str, decomposition: dict[str, Any] | None = None)
     q = (query or "").strip()
     if not q:
         return False
+
+    if _INVESTOR_BEST_RE.search(q):
+        return True
+    # which + african + investment shaped asks
+    ql = q.lower()
+    if (
+        "investment" in ql
+        and re.search(r"\b(best|which)\b", ql)
+        and re.search(r"\b(country|countries|african)\b", ql)
+        and re.search(r"\b(agri|agricultur)", ql)
+    ):
+        return True
 
     dec = decomposition if isinstance(decomposition, dict) else {}
     intent = str(dec.get("intent") or "").strip().lower()

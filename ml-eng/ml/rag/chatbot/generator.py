@@ -563,6 +563,8 @@ def _build_prompt(
     structured_bq_comparative_available: bool = False,
     analytical_mode: bool = False,
     task_mode: str = "chat",
+    measure_id: str | None = None,
+    recency_tier: str | None = None,
 ) -> list[dict[str, str]]:
     lang = (answer_lang or "").strip() or detect_answer_language(query)
     mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
@@ -644,7 +646,11 @@ def _build_prompt(
     if intent_tone:
         system = system + intent_tone
 
-    cat_tone = instruction_for_category(category) if category else ""
+    cat_tone = instruction_for_category(
+        category or None,
+        measure_id=measure_id,
+        recency_tier=recency_tier,
+    ) if (category or measure_id or recency_tier) else ""
     if cat_tone:
         system = system + "\n\n" + cat_tone
     plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
@@ -679,6 +685,13 @@ def _build_prompt(
             system
             + "\n\nBRIEFING MODE: Write a short situational briefing with 3–6 bullet points. "
             "Prefer the most recent news and OTA insights. End with one line on confidence limits."
+        )
+    elif mode == "research":
+        system = (
+            system
+            + "\n\nRESEARCH SYNTHESIS MODE: Synthesize academic/policy evidence in plain "
+            "stakeholder language. Prefer peer-reviewed and policy corpora; use BQ only for "
+            "bibliographic/project facts. Do not invent citations."
         )
     elif mode == "data_export_only":
         system = (
@@ -1195,6 +1208,8 @@ def generate(
     structured_bq_comparative_available = bool(kwargs.get("structured_bq_comparative_available"))
     analytical_mode = bool(kwargs.get("analytical_mode"))
     task_mode = str(kwargs.get("task_mode") or ("analytical" if analytical_mode else "chat")).strip()
+    measure_id = str(kwargs.get("measure_id") or "").strip() or None
+    recency_tier = str(kwargs.get("recency_tier") or "").strip() or None
 
     if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
         usable_preview = filter_context_items(context_items or [])
@@ -1235,6 +1250,8 @@ def generate(
                 structured_bq_comparative_available=structured_bq_comparative_available,
                 analytical_mode=analytical_mode,
                 task_mode=task_mode,
+                measure_id=measure_id,
+                recency_tier=recency_tier,
             )
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = (
@@ -1296,6 +1313,8 @@ def generate(
         structured_bq_comparative_available=structured_bq_comparative_available,
         analytical_mode=analytical_mode,
         task_mode=task_mode,
+        measure_id=measure_id,
+        recency_tier=recency_tier,
     )
     llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
     if llama_answer:

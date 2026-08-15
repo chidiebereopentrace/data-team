@@ -1,0 +1,25 @@
+﻿flowchart TB
+  User([User]) --> CLI[CLI]
+  User --> FastAPI[FastAPI]
+  User --> Streamlit[Streamlit]
+
+  CLI --> runRag[run_rag]
+  FastAPI --> runRag
+  Streamlit --> runRag
+  runRag --> LangGraph[LangGraph]
+
+  subgraph peers [Retrieval peers]
+    direction TB
+    vectorPath[vector path<br/>six Qdrant corpora]
+    bqPath[BQ path<br/>reason then retrieve]
+  end
+
+  LangGraph --> vectorPath
+  LangGraph --> bqPath
+
+  vectorPath --> QdrantCloud[(QdrantCloud)]
+  bqPath --> BigQuery[(BigQuery)]
+
+  LangGraph --> LLMProvider[LLMProvider]
+  LangGraph --> Redis[(Redis)]
+  LangGraph --> Langfuse[Langfuse]

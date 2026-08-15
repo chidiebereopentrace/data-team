@@ -110,7 +110,7 @@ def _product_clause(table_id: str, crop: str | None) -> str:
     return f"AND {col} = '{safe}' "
 
 
-def _discriminator_clause(table_id: str) -> str:
+def _discriminator_clause(table_id: str, *, element: str | None = None) -> str:
     """Exact metric-discriminator filters from YAML sample defaults."""
     if table_id == "stg_faostat_prices":
         return "AND element = 'Producer Price (USD/tonne)' "
@@ -122,13 +122,32 @@ def _discriminator_clause(table_id: str) -> str:
             "AND scenario_name = 'Current Situation' "
         )
     if table_id.startswith("stg_faostat"):
-        return "AND element = 'Production' "
+        el = (element or "Production").strip() or "Production"
+        if el not in ("Production", "Yield", "Area harvested", "Import Quantity", "Export Quantity"):
+            # Allow common FAOSTAT elements; fall back safely.
+            if el.lower() == "yield":
+                el = "Yield"
+            else:
+                el = "Production"
+        return f"AND element = '{el}' "
     return ""
 
 
-def _element_clause(table_id: str) -> str:
+def _element_clause(table_id: str, *, element: str | None = None) -> str:
     """Backward-compatible alias for pattern builders."""
-    return _discriminator_clause(table_id)
+    return _discriminator_clause(table_id, element=element)
+
+
+def _infer_element_from_blob(blob: str) -> str | None:
+    b = (blob or "").lower()
+    if re.search(r"\byields?\b", b) or "element='yield'" in b or 'element="yield"' in b:
+        return "Yield"
+    if "element='production'" in b or "element=\"production\"" in b:
+        return "Production"
+    m = re.search(r"element\s*=\s*'([^']+)'", blob or "", re.IGNORECASE)
+    if m:
+        return m.group(1)
+    return None
 
 
 def _year_col(table_id: str) -> str:
@@ -148,6 +167,7 @@ def build_rank_by_sum_sql(
     order_by: str = "total DESC",
     product_name: str | None = None,
     limit: int = 20,
+    element: str | None = None,
 ) -> str:
     lim = max(1, min(int(limit or 20), 100))
     metric_col = _safe_ident(metric, default="value")
@@ -161,7 +181,7 @@ def build_rank_by_sum_sql(
         f"SELECT {select_cols}, SUM({metric_col}) AS total "
         f"FROM {_fqn(project_id, dataset, table_id)} "
         f"WHERE {ycol} = {int(year)} "
-        f"{_element_clause(table_id)}"
+        f"{_element_clause(table_id, element=element)}"
         f"{_product_clause(table_id, product_name)}"
         f"GROUP BY {select_cols} "
         f"ORDER BY {order} "
@@ -178,6 +198,7 @@ def build_time_series_sql(
     product_name: str | None = None,
     year: int | None = None,
     limit: int = 50,
+    element: str | None = None,
 ) -> str:
     lim = max(1, min(int(limit or 50), 100))
     metric_col = _safe_ident(metric, default="value")
@@ -188,7 +209,7 @@ def build_time_series_sql(
         f"FROM {_fqn(project_id, dataset, table_id)} "
         f"WHERE 1=1 "
         f"{year_filter}"
-        f"{_element_clause(table_id)}"
+        f"{_element_clause(table_id, element=element)}"
         f"{_product_clause(table_id, product_name)}"
         f"GROUP BY {ycol} "
         f"ORDER BY {ycol} "
@@ -206,6 +227,7 @@ def build_yoy_delta_sql(
     grain: list[str] | None = None,
     product_name: str | None = None,
     limit: int = 20,
+    element: str | None = None,
 ) -> str:
     lim = max(1, min(int(limit or 20), 100))
     metric_col = _safe_ident(metric, default="value")
@@ -218,7 +240,7 @@ def build_yoy_delta_sql(
         f"SELECT {select_cols}, {ycol} AS year, SUM({metric_col}) AS total "
         f"FROM {_fqn(project_id, dataset, table_id)} "
         f"WHERE {ycol} IN ({int(year)}, {int(year) - 1}) "
-        f"{_element_clause(table_id)}"
+        f"{_element_clause(table_id, element=element)}"
         f"{_product_clause(table_id, product_name)}"
         f"GROUP BY {select_cols}, {ycol}"
         f") "
@@ -243,6 +265,7 @@ def build_share_of_total_sql(
     grain: list[str] | None = None,
     product_name: str | None = None,
     limit: int = 20,
+    element: str | None = None,
 ) -> str:
     lim = max(1, min(int(limit or 20), 100))
     metric_col = _safe_ident(metric, default="value")
@@ -254,7 +277,7 @@ def build_share_of_total_sql(
         f"SELECT {select_cols}, SUM({metric_col}) AS total "
         f"FROM {_fqn(project_id, dataset, table_id)} "
         f"WHERE {ycol} = {int(year)} "
-        f"{_element_clause(table_id)}"
+        f"{_element_clause(table_id, element=element)}"
         f"{_product_clause(table_id, product_name)}"
         f"GROUP BY {select_cols}"
         f"), tot AS (SELECT SUM(total) AS continent_total FROM base) "
@@ -291,7 +314,9 @@ def try_sql_pattern(
     blob_parts = [query or "", str(intent.get("filters") or ""), str(intent.get("goal") or "")]
     if entities:
         blob_parts.extend(str(e) for e in entities)
-    crop = _extract_crop(" ".join(blob_parts))
+    blob = " ".join(blob_parts)
+    crop = _extract_crop(blob)
+    element = _infer_element_from_blob(blob)
     metric = str(intent.get("metric") or "value").strip() or "value"
     raw_grain = intent.get("grain")
     grain: list[str] | None
@@ -319,6 +344,7 @@ def try_sql_pattern(
             order_by=order_by,
             product_name=crop,
             limit=limit,
+            element=element,
         )
     elif pattern == "time_series":
         sql = build_time_series_sql(
@@ -329,6 +355,7 @@ def try_sql_pattern(
             product_name=crop,
             year=year,
             limit=max(limit, 50),
+            element=element,
         )
     elif pattern == "yoy_delta":
         assert year is not None
@@ -341,6 +368,7 @@ def try_sql_pattern(
             grain=grain,
             product_name=crop,
             limit=limit,
+            element=element,
         )
     elif pattern == "share_of_total":
         assert year is not None
@@ -353,6 +381,7 @@ def try_sql_pattern(
             grain=grain,
             product_name=crop,
             limit=limit,
+            element=element,
         )
     else:
         return None
@@ -365,6 +394,7 @@ def try_sql_pattern(
         "table_id": table_id,
         "year": year,
         "product_name": crop,
+        "element": element,
     }
 
 

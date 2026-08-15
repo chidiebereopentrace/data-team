@@ -24,7 +24,10 @@ from rag_architecture_content import (
     BQ_ENRICH_BULLETS,
     BQ_RETRIEVAL_BULLETS,
     BQ_SUBFLOW_CHART,
+    CONTROL_PLANE_BULLETS,
+    CORPUS_ROUTER_BULLETS,
     CORPUS_TABLE,
+    DOC_VERSION,
     DOCS_DIR,
     ENTRY_POINTS_FLOWCHART,
     ENV_VARS,
@@ -72,8 +75,8 @@ def build_architecture_document() -> None:
     add_title_page(
         doc,
         title="OpenTrace RAG Pipeline Architecture",
-        subtitle="Full LangGraph pipeline, data flows, and node reference",
-        version="1.0",
+        subtitle="Full LangGraph pipeline — vector + BQ co-equal retrieval, control plane, node reference",
+        version=DOC_VERSION,
         generated=date.today(),
     )
     add_toc_placeholder(doc)
@@ -84,14 +87,17 @@ def build_architecture_document() -> None:
     add_heading(doc, "Entry points", level=1)
     add_flowchart_diagram(doc, "Entry points flowchart", ENTRY_POINTS_FLOWCHART)
 
-    add_heading(doc, "Full LangGraph (16 nodes)", level=1)
-    add_paragraph(doc, "Authoritative routing from chatbot/graph.py build_graph().")
+    add_heading(doc, "Full LangGraph (E2E — vector + BQ legs)", level=1)
+    add_paragraph(doc, "Authoritative routing from chatbot/graph.py build_graph(). Vector and BigQuery are peer retrieval legs into merge.")
     add_flowchart_diagram(doc, "Runtime graph", FULL_GRAPH_FLOWCHART)
     add_heading(doc, "Node inventory", level=2)
     add_node_inventory_table(doc, NODE_INVENTORY)
 
     add_heading(doc, "Conditional routing table", level=2)
     add_field_table(doc, ("Stage", "Condition", "Target node", "Notes"), ROUTING_TABLE)
+
+    add_heading(doc, "Control plane", level=1)
+    add_bullets(doc, CONTROL_PLANE_BULLETS)
 
     add_heading(doc, "Entity-relationship diagrams", level=1)
 
@@ -114,10 +120,19 @@ def build_architecture_document() -> None:
         relationships=INFRA_ERD_RELATIONSHIPS,
     )
 
-    add_heading(doc, "BQ retrieve sub-pipeline", level=2)
-    add_flowchart_diagram(doc, "BQ retrieve flow", BQ_SUBFLOW_CHART)
+    add_heading(doc, "Vector retrieval (first-class)", level=1)
+    add_heading(doc, "Corpus router", level=2)
+    add_bullets(doc, CORPUS_ROUTER_BULLETS)
+    add_heading(doc, "Six corpora", level=2)
+    add_field_table(doc, ("Key", "Qdrant collection", "Role", "Key payload indexes"), CORPUS_TABLE)
+    add_heading(doc, "Per-corpus cascade", level=2)
+    add_bullets(doc, VECTOR_RETRIEVAL_BULLETS)
 
-    add_heading(doc, "Generation and ACF sub-pipeline", level=2)
+    add_heading(doc, "BigQuery retrieve sub-pipeline", level=1)
+    add_flowchart_diagram(doc, "BQ retrieve flow", BQ_SUBFLOW_CHART)
+    add_bullets(doc, BQ_RETRIEVAL_BULLETS)
+
+    add_heading(doc, "Generation and ACF sub-pipeline", level=1)
     add_flowchart_diagram(doc, "Generate + ACF flow", ACF_SUBFLOW_CHART)
 
     add_heading(doc, "BQ enrich and ACF metadata", level=2)
@@ -132,12 +147,10 @@ def build_architecture_document() -> None:
     add_field_table(doc, ("Field", "Type", "Description"), RAG_STATE_FIELDS)
 
     add_heading(doc, "Retrieval subsystems", level=1)
-    add_heading(doc, "Vector retrieval", level=2)
-    add_bullets(doc, VECTOR_RETRIEVAL_BULLETS)
-    add_heading(doc, "Corpus router (six collections)", level=2)
-    add_field_table(doc, ("Key", "Qdrant collection", "Role", "Key payload indexes"), CORPUS_TABLE)
-    add_heading(doc, "BigQuery retrieval", level=2)
-    add_bullets(doc, BQ_RETRIEVAL_BULLETS)
+    add_paragraph(
+        doc,
+        "See Vector retrieval (first-class) and BigQuery sections above — vector appears before BQ by design.",
+    )
 
     add_heading(doc, "Ingest architecture (offline)", level=1)
     add_bullets(doc, INGEST_ARCHITECTURE_BULLETS)

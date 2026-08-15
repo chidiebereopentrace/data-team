@@ -1,0 +1,17 @@
+flowchart TB
+  plan[plan_type Free Farmers Government NGOs Agribusinesses Integrated]
+  cat[category Government NGOs Agribusinesses Farmers]
+  measure[measure_id from ontology]
+  recency[recency_tier live near_term historical_ok]
+
+  plan --> gates[plan_policy gates]
+  gates --> geoGate[allows_cross_country]
+  gates --> africaPreserve[preserve africa_panel expanded_regions]
+
+  cat --> persona[stakeholder_prompts]
+  measure --> overlay[investor overlay when investor_best_country]
+  recency --> persona
+  persona --> gen[generator system prompt]
+  overlay --> gen
+  geoGate --> decomp[decomposition geography clamp]
+  africaPreserve --> decomp
