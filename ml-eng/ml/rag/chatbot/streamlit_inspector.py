@@ -12,6 +12,8 @@ from typing import Any, Literal
 import requests
 import streamlit as st
 
+from ml.rag.chatbot.generator import usable_context_after_geo_purity
+
 BackendMode = Literal["in_process", "http_api"]
 
 INSPECTOR_JSON_KEYS: tuple[str, ...] = (
@@ -577,6 +579,11 @@ def render_sql_panel(result: dict[str, Any]) -> None:
                 )
 
 def render_retrieval_tabs(result: dict[str, Any]) -> None:
+    reranked = list(result.get("reranked_context") or [])
+    usable_for_gen = usable_context_after_geo_purity(
+        reranked,
+        result.get("decomposition") if isinstance(result.get("decomposition"), dict) else None,
+    )
     tabs = st.tabs([
         f"News ({len(result.get('vector_news_results') or [])})",
         f"Academic ({len(result.get('vector_academic_papers_results') or [])})",
@@ -587,7 +594,7 @@ def render_retrieval_tabs(result: dict[str, Any]) -> None:
         f"BQ tables ({len(result.get('bq_table_candidates') or [])})",
         f"BQ rows ({len(result.get('bq_results') or [])})",
         f"Merged ({len(result.get('merged_context') or [])})",
-        f"Generator input ({len(result.get('reranked_context') or [])})",
+        f"Generator input ({len(reranked)})",
         f"Web ({len(result.get('web_results') or [])})",
     ])
     with tabs[0]:
@@ -609,8 +616,17 @@ def render_retrieval_tabs(result: dict[str, Any]) -> None:
     with tabs[8]:
         render_chunk_rows(list(result.get("merged_context") or []))
     with tabs[9]:
-        st.caption("Exact context block passed to the generator, in order.")
-        render_chunk_rows(list(result.get("reranked_context") or []))
+        st.caption(
+            f"Reranked context passed toward the generator ({len(reranked)}). "
+            f"After usable + geo-purity filters: {len(usable_for_gen)} "
+            f"(dropped {len(reranked) - len(usable_for_gen)})."
+        )
+        if len(usable_for_gen) < len(reranked):
+            st.warning(
+                "Geo purity or unusable-item filters removed chunks before the LLM. "
+                "Gap answers with ACF no-evidence often mean this count hit zero."
+            )
+        render_chunk_rows(reranked)
     with tabs[10]:
         status = result.get("web_fallback_status")
         if status:

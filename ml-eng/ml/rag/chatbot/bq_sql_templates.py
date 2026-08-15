@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.bq_table_schema_yaml import columns_for_tables
+from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.query_decomposer import _extract_countries
 
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
@@ -24,12 +25,12 @@ _PRICE_RE = re.compile(
     re.IGNORECASE,
 )
 _FOOD_SEC_RE = re.compile(
-    r"\b(food security|ipc|phase\s*[3-5]|insecure|crisis|emergency)\b",
+    r"\b(food security|ipc|phase\s*[3-5]|insecure|crisis|emergency|hunger)\b",
     re.IGNORECASE,
 )
 _CONTINENT_RE = re.compile(
     r"\b(africa|african|sub[- ]?saharan|west africa|east africa|southern africa|"
-    r"north africa|central africa)\b",
+    r"north africa|central africa|sahel|horn of africa|maghreb|ecowas|sadc|eac|igad)\b",
     re.IGNORECASE,
 )
 _SERIES_RE = re.compile(
@@ -226,7 +227,66 @@ def match_fews_food_security(
     blob = _blob(query, entities)
     if not _FOOD_SEC_RE.search(blob):
         return False
-    return _year_from_context(time_start=time_start, time_end=time_end, query=query or "") is not None
+    # Year optional: latest-snapshot SQL when omitted (live IPC / assessments).
+    return True
+
+
+def _fews_countries(
+    *,
+    geo_country: str | None,
+    geo_countries: list[str] | None,
+) -> list[str]:
+    raw: list[str] = []
+    if geo_countries:
+        raw.extend(str(c).strip() for c in geo_countries if str(c).strip())
+    if geo_country and str(geo_country).strip():
+        raw.append(str(geo_country).strip())
+    out: list[str] = []
+    seen: set[str] = set()
+    for c in raw:
+        if is_zone_label(c):
+            continue
+        cl = c.lower()
+        if cl not in seen:
+            seen.add(cl)
+            out.append(c)
+    return out
+
+
+def build_fews_food_security_sql(
+    *,
+    project_id: str,
+    dataset: str,
+    year: int | None = None,
+    limit: int = 20,
+    countries: list[str] | None = None,
+) -> str:
+    lim = max(1, min(int(limit or 20), 100))
+    fqn = f"`{project_id}.{dataset}.stg_fews_food_security`"
+    country_clause = ""
+    real_countries = _fews_countries(geo_country=None, geo_countries=countries)
+    if real_countries:
+        lits = ", ".join(_sql_literal(c) for c in real_countries)
+        country_clause = f"AND country IN ({lits}) "
+    if year is not None:
+        year_clause = f"AND year = {int(year)} "
+    else:
+        year_clause = (
+            f"AND year = (SELECT MAX(year) FROM {fqn} "
+            f"WHERE measure_type = {_sql_literal('population')}) "
+        )
+    return (
+        f"SELECT country, admin_1, AVG(SAFE_CAST(phase_code AS FLOAT64)) AS avg_phase "
+        f"FROM {fqn} "
+        f"WHERE measure_type = {_sql_literal('population')} "
+        f"AND scenario_name = {_sql_literal('Current Situation')} "
+        f"AND phase_code IS NOT NULL "
+        f"{year_clause}"
+        f"{country_clause}"
+        f"GROUP BY country, admin_1 "
+        f"ORDER BY avg_phase DESC "
+        f"LIMIT {lim}"
+    )
 
 
 def match_country_crop_series(
@@ -322,28 +382,6 @@ def build_faostat_price_rank_sql(
         f"{product_clause}"
         f"GROUP BY country_name "
         f"ORDER BY avg_price DESC "
-        f"LIMIT {lim}"
-    )
-
-
-def build_fews_food_security_sql(
-    *,
-    project_id: str,
-    dataset: str,
-    year: int,
-    limit: int = 20,
-) -> str:
-    lim = max(1, min(int(limit or 20), 100))
-    fqn = f"`{project_id}.{dataset}.stg_fews_food_security`"
-    return (
-        f"SELECT country, admin_1, AVG(SAFE_CAST(phase_code AS FLOAT64)) AS avg_phase "
-        f"FROM {fqn} "
-        f"WHERE year = {int(year)} "
-        f"AND measure_type = {_sql_literal('population')} "
-        f"AND scenario_name = {_sql_literal('Current Situation')} "
-        f"AND phase_code IS NOT NULL "
-        f"GROUP BY country, admin_1 "
-        f"ORDER BY avg_phase DESC "
         f"LIMIT {lim}"
     )
 
@@ -551,16 +589,21 @@ def try_sql_template(
         time_start=time_start,
         time_end=time_end,
     ):
-        assert year is not None
+        fews_countries = _fews_countries(
+            geo_country=geo_country,
+            geo_countries=geo_countries,
+        )
         return {
             "sql": build_fews_food_security_sql(
                 project_id=project_id,
                 dataset=dataset,
                 year=year,
                 limit=limit,
+                countries=fews_countries or None,
             ),
             "template": "fews_food_security",
             "year": year,
+            "countries": fews_countries,
         }
 
     return None

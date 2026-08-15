@@ -260,6 +260,14 @@ def is_fact_lookup_query(query: str, decomposition: dict[str, Any] | None = None
         return False
     if wants_africa_panel(q):
         return False
+    # Regional multi-pillar assessments are briefing/analytical, not single-fact BQ.
+    if detect_regions_in_text(q) and re.search(
+        r"\b(assessment|assess\b|hunger|production.+prices|prices.+production|"
+        r"food\s+security\s+risk|insecurit)\b",
+        q,
+        re.IGNORECASE,
+    ):
+        return False
     if not (is_numeric_data_query(q, decomposition) or is_ranking_numeric_query(q)):
         hit = _measure_hit(q, decomposition)
         if not (hit and hit.measure.default_task_mode == "fact_lookup"):

@@ -14,7 +14,9 @@ _REPORT_RE = re.compile(
     r"analytics?|benchmark(?:ing)?|"
     r"past\s+\d+\s+years?|last\s+\d+\s+years?|over\s+the\s+(past|last)\s+\d+|"
     r"multi[- ]country|all\s+the\s+countr(?:y|ies)|across\s+countries|"
-    r"time\s+series|historical\s+trends?"
+    r"time\s+series|historical\s+trends?|"
+    r"assessment|assess(?:ing|ed)?\b|food\s+security\s+risk|hunger\s+pressure|"
+    r"situation\s+(?:overview|assessment|analysis)"
     r")\b",
     re.IGNORECASE,
 )
@@ -77,6 +79,13 @@ def is_analytical_query(query: str, decomposition: dict[str, Any] | None = None)
     agri = bool(_AGRI_RE.search(q))
 
     if reportish and (agri or has_region or compareish or export):
+        return True
+    # Regional multi-pillar assessment (production / prices / hunger / IPC).
+    if has_region and agri and re.search(
+        r"\b(assessment|assess\b|diagnostic|risk\s+across|hunger|ipc|insecurit)\b",
+        q,
+        re.IGNORECASE,
+    ):
         return True
     # Document packages with agri/region/compare — not plain CSV/chart data pulls.
     if export in ("pdf", "docx", "multi") and (compareish or has_region or agri):

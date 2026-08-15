@@ -64,7 +64,10 @@ _AG_SUBSTANCE_RE = re.compile(
     r"agricultur(?:e|al)|agronom(?:y|ic)|food\s*security|climate|soil|seed|"
     r"subsidy|export|import|commodity|market\s*price|smallholder|"
     r"kenya|ghana|nigeria|ethiopia|tanzania|uganda|senegal|malawi|zambia|"
-    r"rwanda|cameroon|ivory\s*coast|côte\s*d['']ivoire|sahel|"
+    r"rwanda|cameroon|ivory\s*coast|côte\s*d['']ivoire|"
+    r"sahel|maghreb|horn\s+of\s+africa|ecowas|sadc|eac|igad|comesa|cemac|"
+    r"west\s+africa|east\s+africa|southern\s+africa|central\s+africa|"
+    r"lake\s+chad|liptako|miombo|sudan(?:ian)?\s+zone|guinean\s+zone|"
     r"fao|cgiar|opentrace|ask\s*adza|ofia|bigquery|qdrant)\b"
     r")",
     re.IGNORECASE,

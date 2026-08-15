@@ -22,11 +22,10 @@ from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.ofia import infer_source_tier
 from ml.rag.chatbot.export_intent import EXPORT_UPGRADE_MESSAGE, detect_export_intent
-from ml.rag.chatbot.geo_regions import detect_regions_in_text, expand_regions_in_decomposition
+from ml.rag.chatbot.geo_regions import expand_regions_in_decomposition
 from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.geo_policy import effective_geo_override
 from ml.rag.chatbot.plan_policy import (
-    allows_cross_country,
     apply_category_domain_hints,
     apply_plan_decomposition_gates,
 )
@@ -465,11 +464,11 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         measure_hit = resolve_measure(q, dec)
         task_mode = resolve_task_mode(q, dec, profile_country=country)
         analytical = task_mode == "analytical"
+        # Always expand known Africa zones for retrieval / geo purity (all plan tiers).
+        # Plan-tier "no multi-country comparison" is answer-tone only.
+        dec = expand_regions_in_decomposition(dec, q)
         if analytical or task_mode == "data_export_only" or dec.get("africa_panel"):
-            dec = expand_regions_in_decomposition(dec, q)
-        elif task_mode == "fact_lookup" and detect_regions_in_text(q) and allows_cross_country(
-            state.get("plan_type")
-        ):
+            # Re-run after analytical/panel flags may add africa cues in entities.
             dec = expand_regions_in_decomposition(dec, q)
         dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
         category = str(state.get("category") or (profile or {}).get("category") or "").strip() or None

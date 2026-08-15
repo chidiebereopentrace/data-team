@@ -14,6 +14,7 @@ from datetime import date
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_model_id
+from ml.rag.chatbot.geo_regions import all_non_country_geo_labels
 
 # Stakeholder-oriented insight intents (not DB/channel labels). Used in heuristics, LLM prompt, and normalization.
 INTENT_ALLOWED: tuple[str, ...] = (
@@ -125,23 +126,8 @@ _COUNTRY_ALIASES = {
     "zimbabwe": "Zimbabwe",
 }
 
-# Continent / region tokens — not valid news geo_country filters (too broad or non-exact).
-_NON_COUNTRY_GEO: frozenset[str] = frozenset(
-    {
-        "africa",
-        "sub-saharan africa",
-        "sub saharan africa",
-        "east africa",
-        "west africa",
-        "southern africa",
-        "north africa",
-        "central africa",
-        "african continent",
-        "global",
-        "worldwide",
-        "international",
-    }
-)
+# Continent / region / agroeco zone tokens — derived from geo_regions catalog.
+_NON_COUNTRY_GEO: frozenset[str] = all_non_country_geo_labels()
 
 # LLM often echoes these from "which country…" — never treat as geo filters.
 _GEO_STOPWORDS: frozenset[str] = frozenset(

@@ -26,6 +26,7 @@ from ml.rag.chatbot.answer_language import (
     is_english_answer_lang,
     language_instruction,
 )
+from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
@@ -1008,7 +1009,7 @@ def _no_data_fallback_message(
 
 
 def _query_target_countries(decomposition: dict[str, Any] | None) -> list[str]:
-    """Normalized list of countries/regions the query is scoped to, if any."""
+    """Normalized list of countries the query is scoped to (zone labels excluded)."""
     if not isinstance(decomposition, dict):
         return []
     out: list[str] = []
@@ -1021,11 +1022,22 @@ def _query_target_countries(decomposition: dict[str, Any] | None) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
     for c in out:
+        if is_zone_label(c):
+            continue
         cl = c.lower()
         if cl not in seen:
             seen.add(cl)
             result.append(c)
     return result
+
+
+def usable_context_after_geo_purity(
+    items: list[dict[str, Any]] | None,
+    decomposition: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Filter unusable items then drop geo-conflicting chunks (inspector / generate)."""
+    usable = filter_context_items(list(items or []))
+    return _drop_geo_conflicting(usable, decomposition)
 
 
 def _geo_conflicts(item: dict[str, Any], allowed_lower: set[str]) -> bool:
@@ -1278,12 +1290,7 @@ def generate(
             acf=no_evidence_acf(),
         )
 
-    usable_context = filter_context_items(context_items)
-
-    # Sprint 1 (Jul 2026): source purity — drop chunks whose geo metadata names
-    # other countries than the query asked for (e.g. Africa-general / Kenya chunks
-    # on a Senegal query). Conservative: chunks without geo metadata are kept.
-    usable_context = _drop_geo_conflicting(usable_context, decomposition)
+    usable_context = usable_context_after_geo_purity(context_items, decomposition)
 
     # Sprint 1 (Jul 2026): if geo/error filtering leaves too little usable context,
     # return the structured gap message instead of letting the model pad thin or
