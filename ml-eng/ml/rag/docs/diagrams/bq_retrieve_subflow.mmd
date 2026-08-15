@@ -1,10 +1,11 @@
-flowchart TB
+﻿flowchart TB
   START([node_bq_retrieve]) --> DEC{ranking follow-up?}
 
-  DEC -->|yes| CACHE[reuse ranked_rows\nbq_cache_hit=true]
+  DEC -->|yes| CACHE["reuse ranked_rows<br/>bq_cache_hit=true"]
   CACHE --> MERGE([merge])
 
-  DEC -->|no| RET[BQRetriever.retrieve]
+  DEC -->|no| REASON["ontology-scoped reasoner<br/>e.g. Yield element not Production"]
+  REASON --> RET[BQRetriever.retrieve]
   RET --> TPL[SQL templates]
   RET --> NL2[NL2SQL LLM]
   RET --> VAL[bq_sql_validate]

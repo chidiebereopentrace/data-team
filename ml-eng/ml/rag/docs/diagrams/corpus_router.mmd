@@ -1,0 +1,6 @@
+flowchart TB
+  inputs["inputs:<br/>query / decomp / plan_type / category"] --> selectCorpora[select_corpora<br/>corpus_catalog]
+  selectCorpora --> heuristics[heuristics<br/>cues + task_mode + plan]
+  heuristics --> softSkip["max soft-skip 3<br/>never empty"]
+  softSkip --> corpusBoost[corpus_boost]
+  corpusBoost --> outputs["active of 6:<br/>news, academic_papers, policies<br/>public_reports, formation, ota"]

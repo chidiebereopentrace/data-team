@@ -1,0 +1,19 @@
+flowchart TB
+  start([Per corpus VectorRetriever]) --> e5Embed["E5 embed<br/>query: prefix"]
+  e5Embed --> payloadFilters["payload filters<br/>doc_kind, geo, time"]
+  payloadFilters --> searchMode{vector_search_mode}
+  searchMode -->|dense_named| denseNamed[dense named]
+  searchMode -->|hybrid| hybrid["optional BM25 sparse + RRF"]
+  denseNamed --> cascade
+  hybrid --> cascade
+
+  subgraph cascade [cascade]
+    direction TB
+    fullFilters[full filters] --> timeWiden["time +/-1y"]
+    timeWiden --> dropTime[drop time]
+    dropTime --> dropGeo[drop geo]
+    dropGeo --> stamp["stamp constraint_relaxed"]
+  end
+
+  stamp --> results[vector_*_results]
+  cascade -->|soft-fail empty| continueSoft[continue other corpora]

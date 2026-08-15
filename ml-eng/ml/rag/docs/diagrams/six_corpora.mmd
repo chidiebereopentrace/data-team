@@ -1,0 +1,15 @@
+﻿flowchart LR
+  news["news_data<br/>doc_kind: news_article<br/>state: vector_news_results"]
+  academic["academic_papers<br/>doc_kind: academic_article<br/>state: vector_academic_papers_results"]
+  policies["policies<br/>doc_kind: policy_document<br/>state: vector_policies_results"]
+  publicReports["public_reports<br/>doc_kind: public_report<br/>state: vector_public_reports_results"]
+  formation["formation<br/>doc_kind: agricultural_practise<br/>state: vector_formation_results"]
+  ota["OTA_insights<br/>doc_kind: ota_insight<br/>state: vector_ota_results"]
+
+  news --- academic
+  academic --- policies
+  policies --- publicReports
+  publicReports --- formation
+  formation --- ota
+
+  legacy["legacy research<br/>vector_academic_results"] -.-> academic

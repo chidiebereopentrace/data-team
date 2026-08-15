@@ -6,22 +6,23 @@ This document explains **how the RAG package is structured**, how data flows at 
 
 ## 1. Purpose and design principles
 
-The RAG stack answers natural-language questions about African agriculture and food security by combining:
+The RAG stack answers natural-language questions about African agriculture and food security by combining **two co-equal retrieval legs**:
 
 | Source | Technology | Role |
 |--------|------------|------|
-| **Structured tables** | BigQuery (`BQ_DATASET_SILVER` / `staging_dev`) | Staging YAML reasoner + NL-to-SQL → row-level facts |
-| **Unstructured text** | Qdrant Cloud (six corpora) | News, academic papers, policies, public reports, formation, OTA insights |
-| **Orchestration** | LangGraph in [`chatbot/graph.py`](chatbot/graph.py) | Linear pipeline with one parallel retrieval stage |
-| **Generation** | [`llm_chat.py`](llm_chat.py) | LM Studio (`RAG_LLM_BASE_URL`) or Hugging Face router (`HF_API_TOKEN`) |
+| **Unstructured text (VECTOR LEG)** | Qdrant Cloud (six corpora) | News, academic papers, policies, public reports, formation, OTA insights — via corpus router + E5/hybrid cascade |
+| **Structured tables (BQ LEG)** | BigQuery (`BQ_DATASET_SILVER` / `staging_dev`) | Measure ontology + staging YAML reasoner + NL-to-SQL → row-level facts |
+| **Orchestration** | LangGraph in [`chatbot/graph.py`](chatbot/graph.py) | Control plane → parallel vector retrieve → BQ reason/retrieve → merge both legs |
+| **Generation** | [`llm_chat.py`](llm_chat.py) | OpenAI-compatible backend (`RAG_LLM_BASE_URL`) or Hugging Face router |
 
 **Design choices:**
 
-- **Bronze-only SQL** — live queries never target silver/gold; vector chunks may still *describe* other layers.
-- **Retrieval uses only the latest user message** — prior turns affect generation via chat memory, not Qdrant/BQ filters.
-- **Decomposition drives news geo/time** — academic/BQ table matching use the raw question (plus matcher-specific logic).
-- **Table-aware BQ** — vector search over `bq_table_description` chunks → fused hints (YAML + catalog) → NL-to-SQL.
-- **Fail-soft LLM** — empty LLM responses trigger fallbacks or “context only” answers; errors are logged, not raised through the graph.
+- **Vector and BQ are peers** — unstructured corpora are not an afterthought; `parallel_retrieve` runs before BQ and both fuse at `merge`.
+- **Control plane** — enricher → decompose → Africa panel/ranking → [`agri_measure_ontology`](chatbot/agri_measure_ontology.py) → `task_mode` (including clarify / research / briefing).
+- **Ontology aids the BQ reasoner** (scoped tables/filters); does not replace the LLM; fallback only after retries.
+- **Staging-only SQL** — live queries never target silver/gold; vector chunks may still *describe* other layers.
+- **Retrieval uses the working query** (optionally enriched from memory); prior turns affect enricher + generation.
+- **Fail-soft LLM** — empty LLM responses trigger ontology/heuristic fallbacks or “context only” answers.
 
 ---
 
@@ -37,9 +38,18 @@ flowchart TB
     ST[streamlit_app.py]
   end
 
+  subgraph control [Control plane inside decompose]
+    EN[query_enricher]
+    DEC[decompose_query]
+    AF[africa_default or africa_panel]
+    ONT[resolve_measure]
+    TM[resolve_task_mode]
+    EN --> DEC --> AF --> ONT --> TM
+  end
+
   subgraph graph [LangGraph]
     D[decompose]
-    PR[parallel_retrieve]
+    PR[parallel_retrieve VECTOR]
     BQR[bq_reason]
     BQ[bq_retrieve]
     M[merge]
@@ -53,6 +63,7 @@ flowchart TB
   end
 
   entry --> graph
+  D -.-> control
 
   subgraph router [corpus_router]
     SC[select_corpora]
@@ -60,7 +71,7 @@ flowchart TB
 
   PR --> SC
 
-  subgraph corpora [Qdrant collections]
+  subgraph corpora [Qdrant six corpora]
     N[news_data]
     A[academic_papers]
     P[policies]
@@ -91,13 +102,13 @@ flowchart TB
   O --> EMB
   EMB --> FIL --> HYB --> CAS
 
-  BQR --> YAML[bq_tables_yaml_files + bq_sql_reasoner]
-  BQ --> BR[BQRetriever NL-to-SQL + execute]
+  BQR --> YAML[ontology scope plus bq_sql_reasoner]
+  BQ --> BR[BQRetriever templates NL2SQL execute]
 
   subgraph external [External services]
     QD[(Qdrant Cloud)]
     BQDB[(BigQuery)]
-    LLM[LM Studio or HF router]
+    LLM[OpenAI-compatible LLM]
   end
 
   CAS --> QD
@@ -121,7 +132,9 @@ flowchart TB
 
 Optional legacy mixed research collection (`QDRANT_COLLECTION_RESEARCH_PAPERS` / `research_other_papers`) runs only when `RAG_USE_LEGACY_RESEARCH_COLLECTION=on`.
 
-**Task modes** (`chatbot/task_mode.py`): after decompose (and after short-circuit gates for meta/product/social/language), `full_rag` sets `task_mode` with precedence **clarify → analytical → data_export_only → fact_lookup → briefing → chat**. `analytical_mode` remains `task_mode == "analytical"`. Clarify is a terminal `generate_clarify` node (no retrieval). Other modes share the same retrieve → BQ → generate → export path with mode-specific BQ plans, corpus boosts, and generation/export prompts. `export_intent` stays orthogonal (delivery axis).
+**Task modes** (`chatbot/task_mode.py`): after enricher/decompose/ontology, `full_rag` sets `task_mode` with precedence **clarify → analytical → data_export_only → fact_lookup → research → briefing → chat**. Clarify is terminal `generate_clarify` (measure-aware slots). Other modes share vector → BQ → generate → export with mode-specific BQ plans and generation prompts.
+
+Regenerate visual PDF/DOCX: `python scripts/generate_rag_architecture_pdf.py` and `python scripts/generate_rag_architecture_docx.py` from `ml-eng/` (diagrams under `docs/diagrams/`).
 
 ### 2.2 Ingest-time (offline)
 
@@ -246,7 +259,7 @@ Passed from Streamlit, API, or CLI wrappers: `geo_override`, `time_start_overrid
 
 ### 5.2 Staging YAML reasoner — [`chatbot/bq_sql_reasoner.py`](chatbot/bq_sql_reasoner.py)
 
-`node_bq_reason` selects staging tables from the YAML index under [`bq_tables_yaml_files/`](bq_tables_yaml_files/) (loaded via [`chatbot/bq_table_schema_yaml.py`](chatbot/bq_table_schema_yaml.py)). It writes `bq_sql_plan` and `bq_table_candidates` (packed table hints) for `bq_retrieve`. Fail closed if the LLM is unavailable or returns an invalid plan — no Qdrant / no heuristic table inventing.
+`node_bq_reason` selects staging tables using [`agri_measure_ontology`](chatbot/agri_measure_ontology.py) scope + the YAML index under [`bq_tables_yaml_files/`](bq_tables_yaml_files/) (via [`chatbot/bq_table_schema_yaml.py`](chatbot/bq_table_schema_yaml.py)). Forced plans for analytical / fact / export modes; otherwise LLM with retries; ontology `fallback_plan` last resort when a measure is known. Writes `bq_sql_plan` and `bq_table_candidates` for `bq_retrieve`.
 
 ---
 
@@ -254,9 +267,11 @@ Passed from Streamlit, API, or CLI wrappers: `geo_override`, `time_start_overrid
 
 ### 6.1 Vector retrieval — [`retrievers/vector_retriever.py`](retrievers/vector_retriever.py)
 
-**Embeddings:** `sentence_transformers` locally (`RAG_EMBEDDINGS_MODE=local`) or HF feature API.
+**This is a first-class peer of BigQuery**, not a side path. `parallel_retrieve` runs **before** `bq_reason` / `bq_retrieve`; both legs fuse at `merge`.
 
-**E5 prefixing:** news/research use `query:` at search time and `passage:` at index time (see `chunking_config`).
+**Embeddings:** `sentence_transformers` locally (`RAG_EMBEDDINGS_MODE=local`) or fastembed / HF feature API.
+
+**E5 prefixing:** corpora use `query:` at search time and `passage:` at index time (see `chunking_config`).
 
 **Hybrid search** (when `RAG_QDRANT_HYBRID_SEARCH=on` and `fastembed` installed):
 
@@ -274,7 +289,7 @@ Passed from Streamlit, API, or CLI wrappers: `geo_override`, `time_start_overrid
 
 **Cascade** (`graph._retrieve_vector_cascade`): full filters → time ±1 year → drop time → drop geo → drop both (when `RAG_*_GEO_FALLBACK` / `RAG_*_TIME_FALLBACK` allow). Surviving hits stamp `constraint_relaxed`. Geo post-filter runs on **all** corpora after cascade.
 
-**Corpus router** ([`chatbot/corpus_catalog.py`](chatbot/corpus_catalog.py)): `select_corpora` gates which of the six collections to query (heuristic intent/keyword/`plan_type` cues) and stamps `corpus_boost`. `RAG_CORPUS_ROUTER=off` restores fan-out to all six. Never skips more than three corpora; never returns an empty set.
+**Corpus router** ([`chatbot/corpus_catalog.py`](chatbot/corpus_catalog.py)): `select_corpora` gates which of the six collections to query (heuristic intent/keyword/`plan_type`/`task_mode` cues) and stamps `corpus_boost`. `RAG_CORPUS_ROUTER=off` restores fan-out to all six. Never skips more than three corpora; never returns an empty set.
 
 | Key | Default collection | Role |
 |-----|-------------------|------|

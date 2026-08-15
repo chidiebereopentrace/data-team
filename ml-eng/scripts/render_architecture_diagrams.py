@@ -20,6 +20,14 @@ MMDC_INSTALL = (
 # Width/height overrides for large diagrams (pixels).
 DIAGRAM_RENDER_OPTS: dict[str, list[str]] = {
     "runtime_graph.mmd": ["-w", "2800", "-H", "2000"],
+    "system_context.mmd": ["-w", "2400", "-H", "1600"],
+    "control_plane.mmd": ["-w", "2000", "-H", "1400"],
+    "measure_ontology.mmd": ["-w", "2000", "-H", "1400"],
+    "corpus_router.mmd": ["-w", "2000", "-H", "1400"],
+    "vector_retrieve.mmd": ["-w", "2400", "-H", "1800"],
+    "six_corpora.mmd": ["-w", "2400", "-H", "1400"],
+    "merge_rerank.mmd": ["-w", "2200", "-H", "1400"],
+    "plan_persona.mmd": ["-w", "1800", "-H", "1200"],
     "runtime_erd.mmd": ["-w", "2400", "-H", "1800"],
     "infra_erd.mmd": ["-w", "2000", "-H", "1200"],
     "bq_retrieve_subflow.mmd": ["-w", "1800", "-H", "1400"],

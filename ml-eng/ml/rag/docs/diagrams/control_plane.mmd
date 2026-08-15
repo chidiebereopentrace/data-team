@@ -1,0 +1,9 @@
+﻿flowchart TB
+  query([query]) --> queryEnricher[query_enricher<br/>memory]
+  queryEnricher --> decomposeQuery[decompose_query]
+  decomposeQuery --> africaGate{africa_default<br/>or africa_panel}
+  africaGate --> resolveMeasure[resolve_measure<br/>ontology]
+  resolveMeasure --> resolveTaskMode[resolve_task_mode]
+  resolveTaskMode --> route{route}
+  route -->|clarify| clarify[clarify]
+  route -->|full_rag| fullRag[full_rag]

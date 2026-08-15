@@ -1,8 +1,14 @@
 """Thin 1–2 intent BQ plans for fact_lookup and data_export_only modes."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
+from ml.rag.chatbot.agri_measure_ontology import (
+    fallback_plan,
+    resolve_measure,
+    wants_africa_panel,
+)
 from ml.rag.chatbot.bq_table_schema_yaml import pack_selected_table_hints
 
 
@@ -13,16 +19,35 @@ def build_fact_bq_plan(
     known_tables: set[str],
     task_mode: str = "fact_lookup",
 ) -> dict[str, Any] | None:
-    """Forced skip_bq=false plan with one or two focused intents."""
+    """Ontology-aware forced plan (skip_bq=false) with one or two focused intents."""
+    hit = resolve_measure(query, decomposition)
+    if hit is not None:
+        plan = fallback_plan(
+            hit,
+            query=query,
+            decomposition=decomposition,
+            known_tables=known_tables,
+            task_mode=task_mode,
+        )
+        if plan is not None:
+            plan["rationale"] = f"fact_forced_{task_mode}_{hit.measure.id}"
+            return plan
+
+    # Legacy production fallback when ontology misses but production table exists.
     if "stg_faostat_production" not in known_tables:
         return None
 
     geo = decomposition.get("geography") if isinstance(decomposition.get("geography"), list) else []
     countries = [str(g).strip() for g in geo if str(g).strip()]
+    africa_panel = bool(decomposition.get("africa_panel")) or wants_africa_panel(query)
     geo_filter = (
-        f"country_name in ({', '.join(countries[:8])})"
-        if countries
-        else "Africa continental ranking when unscoped"
+        "Africa continental panel GROUP BY country_name"
+        if africa_panel or (not countries and decomposition.get("africa_default"))
+        else (
+            f"country_name in ({', '.join(countries[:8])})"
+            if countries
+            else "Africa continental ranking when unscoped"
+        )
     )
     ts = str(decomposition.get("time_start") or "")[:10]
     te = str(decomposition.get("time_end") or "")[:10]
@@ -30,16 +55,20 @@ def build_fact_bq_plan(
 
     entities = decomposition.get("entities") if isinstance(decomposition.get("entities"), list) else []
     item_hint = ", ".join(str(e).strip() for e in entities[:4] if str(e).strip()) or "crop from question"
+    want_yield = bool(re.search(r"\byields?\b", query or "", re.IGNORECASE))
+    element = "Yield" if want_yield else "Production"
 
     intents: list[dict[str, Any]] = [
         {
-            "goal": "Primary production (or ranking) fact for the asked geography/commodity",
+            "goal": f"Primary {element} fact/rank for the asked geography/commodity",
             "tables": ["stg_faostat_production"],
-            "filters": f"element='Production'; {geo_filter}; year≈{year_hint}; item≈{item_hint}",
+            "filters": f"element='{element}'; {geo_filter}; year≈{year_hint}; product_name≈{item_hint}",
             "notes": f"fact_{task_mode}",
-            "pattern": "rank_by_sum" if not countries or len(countries) > 1 else "custom",
+            "pattern": "rank_by_sum" if not countries or len(countries) > 1 or africa_panel else "custom",
             "metric": "value",
-            "grain": ["country_name"] if not countries or len(countries) != 1 else ["country_name", "item"],
+            "grain": ["country_name"]
+            if not countries or len(countries) != 1 or africa_panel
+            else ["country_name", "product_name"],
             "order_by": "value DESC",
         }
     ]
@@ -48,11 +77,11 @@ def build_fact_bq_plan(
             {
                 "goal": "Tabular series or multi-row export for the same filters",
                 "tables": ["stg_faostat_production"],
-                "filters": f"element='Production'; {geo_filter}; year around {year_hint}",
+                "filters": f"element='{element}'; {geo_filter}; year around {year_hint}",
                 "notes": "fact_export_table",
                 "pattern": "custom",
                 "metric": "value",
-                "grain": ["country_name", "item", "year"],
+                "grain": ["country_name", "product_name", "year"],
                 "order_by": "year ASC",
             }
         )

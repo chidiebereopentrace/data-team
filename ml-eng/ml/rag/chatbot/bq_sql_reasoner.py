@@ -1,7 +1,7 @@
 """YAML-index SQL reasoner: pick staging_dev tables and query intents (no Qdrant).
 
-Fail closed: if the LLM is unavailable or returns an invalid plan, skip BQ
-(no heuristic table inventing) — except Africa-default production rankings.
+Reasoner-first with ontology-scoped prompts. Fail closed after retries, then
+ontology fallback_plan last resort (never invent tables outside the catalog).
 """
 from __future__ import annotations
 
@@ -9,8 +9,14 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any
 
+from ml.rag.chatbot.agri_measure_ontology import (
+    fallback_plan,
+    reasoner_scope,
+    resolve_measure,
+)
 from ml.rag.chatbot.bq_sql_patterns import normalize_pattern_name
 from ml.rag.chatbot.bq_table_schema_yaml import (
     format_reasoner_index,
@@ -40,8 +46,15 @@ def _max_tables() -> int:
         return 6
 
 
+def _reasoner_retries() -> int:
+    try:
+        return max(1, min(int(os.environ.get("RAG_BQ_REASONER_RETRIES", "3") or 3), 5))
+    except ValueError:
+        return 3
+
+
 def _reasoner_model(plan_type: str | None) -> str:
-    """Same chat model as the rest of the pipeline (8B by default)."""
+    """Prefer dedicated reasoner model when set."""
     dedicated = os.environ.get("RAG_BQ_REASONER_MODEL_ID", "").strip()
     if dedicated:
         return dedicated
@@ -88,7 +101,6 @@ def _empty_plan(*, rationale: str) -> dict[str, Any]:
 
 
 def _query_terms_for_packing(query: str, decomposition: dict[str, Any]) -> list[str]:
-    """Entity + question tokens used to prefer matching FAOSTAT enum samples."""
     terms: list[str] = []
     entities = decomposition.get("entities")
     if isinstance(entities, list):
@@ -140,46 +152,6 @@ def _has_year_signal(query: str, decomposition: dict[str, Any]) -> bool:
     return bool(ts or te)
 
 
-def _heuristic_faostat_production_rank(
-    query: str,
-    *,
-    decomposition: dict[str, Any],
-    known: set[str],
-) -> dict[str, Any] | None:
-    """Deterministic Africa production ranking when LLM would skip."""
-    if "stg_faostat_production" not in known:
-        return None
-    q = query or ""
-    if not _RANKING_SCOPE_RE.search(q):
-        return None
-    africa_default = bool(decomposition.get("africa_default")) or wants_africa_default_scope(q)
-    if not (_AGRI_SCOPE_RE.search(q) or africa_default):
-        return None
-    if not _has_year_signal(q, decomposition):
-        return None
-    year_hint = str(decomposition.get("time_start") or "")[:4] or "year from question"
-    return {
-        "selected_tables": ["stg_faostat_production"],
-        "query_intents": [
-            {
-                "goal": "Africa country production ranking",
-                "tables": ["stg_faostat_production"],
-                "filters": (
-                    f"element='Production'; year≈{year_hint}; "
-                    "Africa continental (no geo dim)"
-                ),
-                "notes": "heuristic_africa_production_rank",
-                "pattern": "rank_by_sum",
-                "metric": "value",
-                "grain": ["country_name"],
-                "order_by": "total DESC",
-            }
-        ],
-        "skip_bq": False,
-        "rationale": "heuristic_africa_production_rank",
-    }
-
-
 def _finalize_selected_plan(
     *,
     selected: list[str],
@@ -188,6 +160,7 @@ def _finalize_selected_plan(
     query: str,
     decomposition: dict[str, Any],
     index_truncated: bool,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not intents:
         intents = [
@@ -208,6 +181,8 @@ def _finalize_selected_plan(
         "skip_bq": False,
         "rationale": rationale,
     }
+    if extra:
+        plan.update(extra)
     hints, hints_truncated = pack_selected_table_hints(
         list(plan.get("selected_tables") or []),
         query_terms=_query_terms_for_packing(query, decomposition),
@@ -216,6 +191,35 @@ def _finalize_selected_plan(
     plan["index_truncated"] = index_truncated
     plan["hints_truncated"] = hints_truncated
     return plan
+
+
+def _call_reasoner_llm(
+    *,
+    system: str,
+    user: str,
+    model: str,
+    timeout: float,
+) -> tuple[str, str]:
+    """
+    Return (raw_text, failure_cause).
+
+    failure_cause is empty on success; otherwise timeout / empty_response / etc.
+    Retries with short backoff are handled by the caller.
+    """
+    raw = llm_chat_complete(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        model=model,
+        max_tokens=int(os.environ.get("RAG_BQ_REASONER_MAX_TOKENS", "800") or 800),
+        temperature=0.0,
+        timeout_s=timeout,
+        purpose="bq.sql_reasoner",
+    )
+    if not raw:
+        return "", "empty_or_soft_fail"
+    return raw, ""
 
 
 def reason_bq_sql_plan(
@@ -230,15 +234,20 @@ def reason_bq_sql_plan(
     """
     Decide which staging_dev tables and SQL intents to run.
 
-    Fail closed on LLM failure / invalid JSON / no valid tables in index,
-    except a deterministic FAOSTAT production-rank heuristic for Africa-default
-    which-country questions, and forced plans for analytical / fact / export-only modes.
+    Forced modes (analytical / fact / export) use ontology-aware builders.
+    Otherwise: ontology-scoped LLM reasoner with retries; ontology fallback last.
     """
     known = _known_table_ids()
-    index_text, index_truncated = format_reasoner_index()
     dec = decomposition if isinstance(decomposition, dict) else {}
     max_tables = _max_tables()
     mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
+    hit = resolve_measure(query, dec)
+    scope = reasoner_scope(hit) if hit else None
+
+    preferred_tables = set(scope["candidate_tables"]) if scope else set()
+    index_text, index_truncated = format_reasoner_index(
+        table_ids=list(preferred_tables) if preferred_tables else None,
+    )
 
     if analytical_mode or mode == "analytical":
         from ml.rag.chatbot.analytical_bq_plan import build_analytical_bq_plan
@@ -246,6 +255,8 @@ def reason_bq_sql_plan(
         analytical = build_analytical_bq_plan(query, decomposition=dec, known_tables=known)
         if analytical is not None:
             analytical["index_truncated"] = index_truncated
+            if hit:
+                analytical.setdefault("measure_id", hit.measure.id)
             update_current_span_metadata(
                 {
                     "selected_tables": analytical.get("selected_tables"),
@@ -254,6 +265,7 @@ def reason_bq_sql_plan(
                     "task_mode": "analytical",
                     "intent_count": len(analytical.get("query_intents") or []),
                     "rationale": analytical.get("rationale"),
+                    "measure_id": analytical.get("measure_id"),
                 }
             )
             return analytical
@@ -269,6 +281,8 @@ def reason_bq_sql_plan(
         )
         if fact is not None:
             fact["index_truncated"] = index_truncated
+            if hit:
+                fact.setdefault("measure_id", hit.measure.id)
             update_current_span_metadata(
                 {
                     "selected_tables": fact.get("selected_tables"),
@@ -276,20 +290,59 @@ def reason_bq_sql_plan(
                     "task_mode": mode,
                     "intent_count": len(fact.get("query_intents") or []),
                     "rationale": fact.get("rationale"),
+                    "measure_id": fact.get("measure_id"),
                 }
             )
             return fact
 
-    heuristic = _heuristic_faostat_production_rank(query, decomposition=dec, known=known)
+    def _ontology_fallback(cause: str) -> dict[str, Any]:
+        if hit is not None:
+            fb = fallback_plan(
+                hit,
+                query=query,
+                decomposition=dec,
+                known_tables=known,
+                task_mode=mode if mode != "chat" else hit.measure.default_task_mode,
+            )
+            if fb is not None:
+                fb["index_truncated"] = index_truncated
+                fb["rationale"] = f"ontology_fallback_after_{cause}"
+                return fb
+        heur = _heuristic_faostat_production_rank(query, decomposition=dec, known=known)
+        if heur is not None:
+            plan = _finalize_selected_plan(
+                selected=list(heur["selected_tables"]),
+                intents=list(heur["query_intents"]),
+                rationale=str(heur.get("rationale") or "heuristic_africa_production_rank"),
+                query=query,
+                decomposition=dec,
+                index_truncated=index_truncated,
+            )
+            return plan
+        plan = _empty_plan(rationale=cause)
+        plan["index_truncated"] = index_truncated
+        return plan
+
+    filter_hints = (scope or {}).get("filter_hints") or ""
+    measure_line = ""
+    if scope:
+        measure_line = (
+            f"Resolved measure: {scope.get('measure_id')} "
+            f"(child={scope.get('child_measure_id')}). "
+            f"Prefer ONLY these tables when possible: {scope.get('candidate_tables')}. "
+            f"Filter hints: {filter_hints}. "
+            f"crop_required={scope.get('crop_required')}; "
+            f"country_is_answer={scope.get('country_is_answer')}; "
+            f"recency_tier={scope.get('recency_tier')}.\n"
+        )
 
     system = (
         "You are the OpenTrace BigQuery SQL planner for the staging_dev dataset only. "
-        "OpenTrace is Africa-first: unscoped which-country / ranking questions about "
-        "agriculture, production, or agricultural activity default to African "
-        "stg_faostat_production rankings (element='Production'), not global web trivia. "
-        "Select the minimum set of stg_* tables that fully answers the question — "
-        "one table when sufficient, more when the question requires enrichment or "
-        "comparison across datasets. "
+        "OpenTrace is Africa-first. Use the measure ontology hints when provided — "
+        "do NOT default every question to stg_faostat_production element='Production'. "
+        "Yield → element='Yield'; exports → trade tables; retail prices → FEWS/WFP; "
+        "IPC → food security; soil → ISRIC/iSDA; climate → NASA/ERA5; GDP → socio_economic. "
+        "Select the minimum set of stg_* tables that fully answers the question. "
         "Never invent table names outside the provided index. "
         "When selecting 2+ tables, use ONLY pairs listed in semantic_relationships "
         "(rels=) joins_with with explicit on= keys; never invent joins. "
@@ -297,21 +350,21 @@ def reason_bq_sql_plan(
         "Set pattern to rank_by_sum, yoy_delta, share_of_total, or time_series when the "
         "question clearly matches; otherwise use custom. Include metric, grain, and "
         "order_by when using a non-custom pattern. "
-        "Do not add macro tables (GDP, HDI) unless the question asks for macro context "
-        "or a documented join requires them. "
-        "Respect geography and time constraints from the decomposition. "
-        "If decomposition.africa_default is true, prefer stg_faostat_production and "
-        "set skip_bq=false for production/agricultural ranking questions. "
+        "If decomposition.africa_panel is true, plan a full African country panel "
+        "(GROUP BY country_name), not a which-country clarify. "
+        "If decomposition.africa_default is true, plan continental country rankings. "
         "If structured tables cannot help, set skip_bq=true. "
         "Respond with JSON only, no markdown."
     )
     user = (
+        f"{measure_line}"
         f"Max tables: {max_tables}\n"
         f"Plan type: {plan_type or '-'}\n"
         f"Category: {category or '-'}\n"
+        f"Task mode: {mode}\n"
         f"Decomposition: {json.dumps(dec, ensure_ascii=False)[:2000]}\n"
         f"Question: {query}\n\n"
-        f"Staging table index:\n{index_text}\n\n"
+        f"Staging table index (scoped when measure known):\n{index_text}\n\n"
         "Return JSON with keys:\n"
         '  "selected_tables": ["stg_..."],\n'
         '  "query_intents": [{"goal":"...","tables":["stg_..."],"filters":"...",'
@@ -323,58 +376,44 @@ def reason_bq_sql_plan(
 
     with observed_span(
         "retrieval.bq.reason",
-        input_data={"query": query[:200], "index_truncated": index_truncated},
+        input_data={
+            "query": query[:200],
+            "index_truncated": index_truncated,
+            "measure_id": hit.measure.id if hit else None,
+        },
     ):
         model = _reasoner_model(plan_type)
         timeout = float(os.environ.get("RAG_BQ_REASONER_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
-        raw = llm_chat_complete(
-            [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            model=model,
-            max_tokens=int(os.environ.get("RAG_BQ_REASONER_MAX_TOKENS", "800") or 800),
-            temperature=0.0,
-            timeout_s=timeout,
-            purpose="bq.sql_reasoner",
-        )
-        parsed = _extract_json_obj(raw) if raw else None
+        retries = _reasoner_retries()
+        raw = ""
+        last_cause = "reasoner_unavailable"
+        parsed: dict[str, Any] | None = None
 
-        def _use_heuristic() -> dict[str, Any]:
-            assert heuristic is not None
-            plan = _finalize_selected_plan(
-                selected=list(heuristic["selected_tables"]),
-                intents=list(heuristic["query_intents"]),
-                rationale=str(heuristic["rationale"]),
-                query=query,
-                decomposition=dec,
-                index_truncated=index_truncated,
+        for attempt in range(retries):
+            raw, cause = _call_reasoner_llm(
+                system=system, user=user, model=model, timeout=timeout
             )
-            update_current_span_metadata(
-                {
-                    "selected_tables": plan["selected_tables"],
-                    "skip_bq": False,
-                    "index_truncated": index_truncated,
-                    "hints_truncated": plan.get("hints_truncated"),
-                    "reasoner_model": model,
-                    "rationale": plan["rationale"],
-                }
-            )
-            return plan
+            if cause:
+                last_cause = cause if attempt == 0 else f"{cause}_retry{attempt}"
+                time.sleep(min(0.4 * (2**attempt), 2.0))
+                continue
+            parsed = _extract_json_obj(raw)
+            if parsed:
+                break
+            last_cause = "invalid_plan"
+            time.sleep(min(0.4 * (2**attempt), 2.0))
 
         if not parsed:
-            if heuristic:
-                return _use_heuristic()
-            plan = _empty_plan(rationale="reasoner_unavailable" if not raw else "invalid_plan")
-            plan["index_truncated"] = index_truncated
+            plan = _ontology_fallback(last_cause)
             update_current_span_metadata(
                 {
-                    "selected_tables": [],
-                    "skip_bq": True,
+                    "selected_tables": plan.get("selected_tables"),
+                    "skip_bq": bool(plan.get("skip_bq")),
                     "index_truncated": index_truncated,
-                    "hints_truncated": False,
                     "reasoner_model": model,
-                    "rationale": plan["rationale"],
+                    "rationale": plan.get("rationale"),
+                    "measure_id": hit.measure.id if hit else None,
+                    "reasoner_failure": last_cause,
                 }
             )
             return plan
@@ -388,6 +427,7 @@ def reason_bq_sql_plan(
                     selected.append(tid)
                 if len(selected) >= max_tables:
                     break
+
         intents_raw = parsed.get("query_intents")
         intents: list[dict[str, Any]] = []
         if isinstance(intents_raw, list):
@@ -397,22 +437,15 @@ def reason_bq_sql_plan(
                 intents.append(_normalize_intent(intent, known=known, selected=selected))
         skip = bool(parsed.get("skip_bq"))
         if not selected:
-            if heuristic:
-                return _use_heuristic()
-            plan = _empty_plan(
-                rationale="skip_bq" if skip else "invalid_plan",
-            )
-            plan["index_truncated"] = index_truncated
-            if skip and str(parsed.get("rationale") or "").strip():
-                plan["rationale"] = str(parsed.get("rationale")).strip()
+            plan = _ontology_fallback("skip_bq" if skip else "invalid_plan")
             update_current_span_metadata(
                 {
-                    "selected_tables": [],
-                    "skip_bq": True,
+                    "selected_tables": plan.get("selected_tables"),
+                    "skip_bq": bool(plan.get("skip_bq")),
                     "index_truncated": index_truncated,
-                    "hints_truncated": False,
                     "reasoner_model": model,
-                    "rationale": plan["rationale"],
+                    "rationale": plan.get("rationale"),
+                    "measure_id": hit.measure.id if hit else None,
                 }
             )
             return plan
@@ -424,6 +457,7 @@ def reason_bq_sql_plan(
             query=query,
             decomposition=dec,
             index_truncated=index_truncated,
+            extra={"measure_id": hit.measure.id if hit else None},
         )
         update_current_span_metadata(
             {
@@ -433,6 +467,55 @@ def reason_bq_sql_plan(
                 "hints_truncated": bool(plan.get("hints_truncated")),
                 "reasoner_model": model,
                 "rationale": plan.get("rationale"),
+                "measure_id": plan.get("measure_id"),
             }
         )
         return plan
+
+
+# Kept for tests that monkeypatch / import the old heuristic name.
+def _heuristic_faostat_production_rank(
+    query: str,
+    *,
+    decomposition: dict[str, Any],
+    known: set[str],
+) -> dict[str, Any] | None:
+    """Deprecated production-rank heuristic — prefer ontology fallback."""
+    if "stg_faostat_production" not in known:
+        return None
+    q = query or ""
+    if not _RANKING_SCOPE_RE.search(q):
+        return None
+    africa_default = bool(decomposition.get("africa_default")) or wants_africa_default_scope(q)
+    if not (_AGRI_SCOPE_RE.search(q) or africa_default):
+        return None
+    if not _has_year_signal(q, decomposition):
+        return None
+    hit = resolve_measure(q, decomposition)
+    if hit is not None:
+        return fallback_plan(
+            hit, query=q, decomposition=decomposition, known_tables=known, task_mode="fact_lookup"
+        )
+    year_hint = str(decomposition.get("time_start") or "")[:4] or "year from question"
+    want_yield = bool(re.search(r"\byields?\b", q, re.IGNORECASE))
+    element = "Yield" if want_yield else "Production"
+    return {
+        "selected_tables": ["stg_faostat_production"],
+        "query_intents": [
+            {
+                "goal": f"Africa country {element} ranking",
+                "tables": ["stg_faostat_production"],
+                "filters": (
+                    f"element='{element}'; year≈{year_hint}; "
+                    "Africa continental (no geo dim)"
+                ),
+                "notes": "heuristic_africa_rank",
+                "pattern": "rank_by_sum",
+                "metric": "value",
+                "grain": ["country_name"],
+                "order_by": "total DESC",
+            }
+        ],
+        "skip_bq": False,
+        "rationale": "heuristic_africa_rank",
+    }

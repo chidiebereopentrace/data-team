@@ -31,6 +31,8 @@ from ml.rag.chatbot.plan_policy import (
     apply_plan_decomposition_gates,
 )
 from ml.rag.chatbot.task_mode import clarify_answer, resolve_task_mode
+from ml.rag.chatbot.query_enricher import enrich_query_with_memory
+from ml.rag.chatbot.agri_measure_ontology import resolve_measure, resolve_recency_tier
 from ml.rag.chatbot.product_knowledge import is_product_query
 from ml.rag.chatbot.query_gate import (
     classify_social_query,
@@ -438,17 +440,32 @@ class RAGGraphState(TypedDict, total=False):
     task_mode: str | None
     # analytical_mode is True when task_mode == "analytical"
     analytical_mode: bool | None
+    # Enriched query when memory merges elliptical follow-ups
+    enriched_query: str | None
+    measure_id: str | None
+    recency_tier: str | None
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
-    q = (state.get("query") or "").strip()
-    with observed_span("decompose", input_data={"query": q[:200]}):
+    raw_q = (state.get("query") or "").strip()
+    enrich = enrich_query_with_memory(
+        raw_q,
+        conversation_summary=state.get("conversation_summary")
+        if isinstance(state.get("conversation_summary"), str)
+        else None,
+        recent_turns=state.get("recent_turns")
+        if isinstance(state.get("recent_turns"), list)
+        else None,
+    )
+    q = str(enrich.get("enriched_query") or raw_q).strip()
+    with observed_span("decompose", input_data={"query": q[:200], "enriched": bool(enrich.get("enriched"))}):
         dec = decompose_query(q)
         profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
         country = str((profile or {}).get("country") or "").strip() or None
+        measure_hit = resolve_measure(q, dec)
         task_mode = resolve_task_mode(q, dec, profile_country=country)
         analytical = task_mode == "analytical"
-        if analytical:
+        if analytical or task_mode == "data_export_only" or dec.get("africa_panel"):
             dec = expand_regions_in_decomposition(dec, q)
         elif task_mode == "fact_lookup" and detect_regions_in_text(q) and allows_cross_country(
             state.get("plan_type")
@@ -458,8 +475,10 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         category = str(state.get("category") or (profile or {}).get("category") or "").strip() or None
         dec = apply_category_domain_hints(dec, category)
         # Re-resolve after gates may trim geography (clarify may become appropriate).
+        measure_hit = resolve_measure(q, dec)
         task_mode = resolve_task_mode(q, dec, profile_country=country)
         analytical = task_mode == "analytical"
+        recency = resolve_recency_tier(q, measure_hit)
         meta = is_meta_query(q)
         product = (not meta) and is_product_query(q, dec)
         greeting = (not meta) and (not product) and is_greeting_query(q)
@@ -496,9 +515,12 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
                 "export_intent": export_intent,
                 "task_mode": task_mode,
                 "analytical_mode": analytical,
+                "measure_id": measure_hit.measure.id if measure_hit else None,
+                "recency_tier": recency,
+                "query_enriched": bool(enrich.get("enriched")),
             }
         )
-        return {
+        out: dict[str, Any] = {
             "decomposition": dec,
             "is_meta_query": meta,
             "is_product_query": product,
@@ -509,7 +531,14 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             "export_intent": export_intent,
             "task_mode": task_mode,
             "analytical_mode": analytical,
+            "enriched_query": q if enrich.get("enriched") else None,
+            "measure_id": measure_hit.measure.id if measure_hit else None,
+            "recency_tier": recency,
         }
+        # Downstream nodes read state["query"]; keep enriched text as the working query.
+        if enrich.get("enriched"):
+            out["query"] = q
+        return out
 
 
 def _tag_vector(
@@ -1520,6 +1549,10 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         gkw["plan_type"] = state.get("plan_type")
     if state.get("category"):
         gkw["category"] = state.get("category")
+    if state.get("measure_id"):
+        gkw["measure_id"] = state.get("measure_id")
+    if state.get("recency_tier"):
+        gkw["recency_tier"] = state.get("recency_tier")
     if state.get("answer_lang"):
         gkw["answer_lang"] = state.get("answer_lang")
     if not usable_bq:
@@ -1586,14 +1619,20 @@ def node_export(state: RAGGraphState) -> dict[str, Any]:
 
 
 def node_generate_clarify(state: RAGGraphState) -> dict[str, Any]:
-    """Ask for missing country / crop / period before retrieval."""
+    """Ask for missing slots (measure-aware) before retrieval."""
     query = state.get("query") or ""
     answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
+    dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
     with observed_span("generate_clarify", input_data={"query": str(query)[:200]}):
         update_current_span_metadata(
-            {"answer_lang": answer_lang, "route": "clarify", "task_mode": "clarify"}
+            {
+                "answer_lang": answer_lang,
+                "route": "clarify",
+                "task_mode": "clarify",
+                "measure_id": state.get("measure_id"),
+            }
         )
-        answer = clarify_answer(str(query))
+        answer = clarify_answer(str(query), decomposition=dec)
     return {
         "answer": answer,
         "citations": [],

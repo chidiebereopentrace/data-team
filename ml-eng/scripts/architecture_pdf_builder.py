@@ -24,9 +24,12 @@ from reportlab.platypus import (
 from rag_architecture_content import (
     BQ_ENRICH_BULLETS,
     BQ_RETRIEVAL_BULLETS,
+    CONTROL_PLANE_BULLETS,
+    CORPUS_ROUTER_BULLETS,
     CORPUS_TABLE,
     DIAGRAM_SECTIONS,
     DIAGRAMS_PNG_DIR,
+    DOC_VERSION,
     ENV_VARS,
     INGEST_ARCHITECTURE_BULLETS,
     INGEST_ERD_ENTITIES,
@@ -154,13 +157,20 @@ def build_architecture_pdf(output_path: Path, *, png_dir: Path = DIAGRAMS_PNG_DI
     story.append(Spacer(1, 2 * inch))
     story.append(Paragraph("OpenTrace RAG Pipeline Architecture", st["title"]))
     story.append(Paragraph("Full LangGraph pipeline, data flows, and node reference", st["subtitle"]))
-    story.append(Paragraph(f"Version 1.0  |  Generated {when}", st["subtitle"]))
+    story.append(Paragraph(f"Version {DOC_VERSION}  |  Generated {when}", st["subtitle"]))
     story.append(PageBreak())
 
     story.append(Paragraph("Purpose and design principles", st["h1"]))
     story.extend(_bullets(st, PURPOSE_BULLETS))
     story.append(Spacer(1, 0.2 * inch))
 
+    landscape_stems = {
+        "runtime_graph",
+        "system_context",
+        "vector_retrieve",
+        "six_corpora",
+        "merge_rerank",
+    }
     for stem, title, caption in DIAGRAM_SECTIONS:
         png = png_dir / f"{stem}.png"
         if not png.exists():
@@ -170,7 +180,7 @@ def build_architecture_pdf(output_path: Path, *, png_dir: Path = DIAGRAMS_PNG_DI
         story.append(Paragraph(_escape(caption), st["body"]))
         story.append(Spacer(1, 0.1 * inch))
 
-        use_landscape = stem == "runtime_graph"
+        use_landscape = stem in landscape_stems
         page_w = landscape(A4)[0] if use_landscape else A4[0]
         page_h = landscape(A4)[1] if use_landscape else A4[1]
         max_w = page_w - 1.5 * inch
@@ -185,6 +195,10 @@ def build_architecture_pdf(output_path: Path, *, png_dir: Path = DIAGRAMS_PNG_DI
     story.append(Paragraph("Conditional routing table", st["h1"]))
     story.append(_table(("Stage", "Condition", "Target node", "Notes"), ROUTING_TABLE))
     story.append(PageBreak())
+
+    story.append(Paragraph("Control plane notes", st["h1"]))
+    story.extend(_bullets(st, CONTROL_PLANE_BULLETS))
+    story.append(Spacer(1, 0.15 * inch))
 
     story.append(Paragraph("Runtime domain — entity tables", st["h1"]))
     _add_erd_tables(st, story, RUNTIME_ERD_ENTITIES, RUNTIME_ERD_RELATIONSHIPS)
@@ -213,10 +227,12 @@ def build_architecture_pdf(output_path: Path, *, png_dir: Path = DIAGRAMS_PNG_DI
     story.append(PageBreak())
 
     story.append(Paragraph("Retrieval subsystems", st["h1"]))
-    story.append(Paragraph("Vector retrieval", st["h2"]))
-    story.extend(_bullets(st, VECTOR_RETRIEVAL_BULLETS))
-    story.append(Paragraph("Corpus router (six collections)", st["h2"]))
+    story.append(Paragraph("Corpus router", st["h2"]))
+    story.extend(_bullets(st, CORPUS_ROUTER_BULLETS))
+    story.append(Paragraph("Six corpora", st["h2"]))
     story.append(_table(("Key", "Qdrant collection", "Role", "Key payload indexes"), CORPUS_TABLE))
+    story.append(Paragraph("Vector retrieval (first-class peer to BQ)", st["h2"]))
+    story.extend(_bullets(st, VECTOR_RETRIEVAL_BULLETS))
     story.append(Paragraph("BigQuery retrieval", st["h2"]))
     story.extend(_bullets(st, BQ_RETRIEVAL_BULLETS))
     story.append(Spacer(1, 0.15 * inch))

@@ -288,13 +288,14 @@ def test_datasets_config_defaults_to_staging_dev(monkeypatch) -> None:
     assert cfg.get("staging") == "staging_dev"
 
 
-def test_reasoner_empty_llm_fails_closed() -> None:
+def test_reasoner_empty_llm_uses_ontology_or_fails_closed() -> None:
     with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=""):
-        plan = reason_bq_sql_plan("maize yield by district in Ghana", plan_type="Farmers")
-    assert plan["skip_bq"] is True
-    assert plan["selected_tables"] == []
-    assert plan["rationale"] == "reasoner_unavailable"
-    assert plan["table_hints"] == []
+        with patch.dict("os.environ", {"RAG_BQ_REASONER_RETRIES": "1"}):
+            plan = reason_bq_sql_plan("maize yield by district in Ghana", plan_type="Farmers")
+    # Yield measure → ontology last-resort plan (not silent skip).
+    assert plan["skip_bq"] is False
+    assert "stg_faostat_production" in plan["selected_tables"]
+    assert "ontology_fallback" in str(plan.get("rationale") or "")
 
 
 def test_reasoner_heuristic_africa_production_rank_when_llm_empty() -> None:
@@ -309,19 +310,33 @@ def test_reasoner_heuristic_africa_production_rank_when_llm_empty() -> None:
         "africa_default": True,
     }
     with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=""):
-        plan = reason_bq_sql_plan(q, decomposition=dec, plan_type="Farmers")
+        with patch.dict("os.environ", {"RAG_BQ_REASONER_RETRIES": "1"}):
+            plan = reason_bq_sql_plan(q, decomposition=dec, plan_type="Farmers")
     assert plan["skip_bq"] is False
-    assert plan["selected_tables"] == ["stg_faostat_production"]
-    assert plan["rationale"] == "heuristic_africa_production_rank"
+    assert "stg_faostat_production" in plan["selected_tables"]
     assert plan["table_hints"]
+    assert "ontology_fallback" in str(plan.get("rationale") or "") or "heuristic" in str(
+        plan.get("rationale") or ""
+    )
 
 
-def test_reasoner_invalid_json_fails_closed() -> None:
+def test_reasoner_invalid_json_ontology_or_fail_closed() -> None:
     with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value="not json"):
-        plan = reason_bq_sql_plan("What are prices?")
+        with patch.dict("os.environ", {"RAG_BQ_REASONER_RETRIES": "1"}):
+            plan = reason_bq_sql_plan("What are prices?")
+    # market_price resolves → ontology fallback rather than empty skip.
+    assert plan["skip_bq"] is False
+    assert plan["selected_tables"]
+    assert "ontology_fallback" in str(plan.get("rationale") or "")
+
+
+def test_reasoner_empty_llm_no_measure_fails_closed() -> None:
+    with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=""):
+        with patch.dict("os.environ", {"RAG_BQ_REASONER_RETRIES": "1"}):
+            plan = reason_bq_sql_plan("hello there how are you", plan_type="Farmers")
     assert plan["skip_bq"] is True
     assert plan["selected_tables"] == []
-    assert plan["rationale"] == "invalid_plan"
+
 
 
 def test_reasoner_uses_mock_llm_json() -> None:
@@ -377,9 +392,11 @@ def test_reasoner_rejects_unknown_only_tables() -> None:
     )
     with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=payload):
         plan = reason_bq_sql_plan("HDI for Kenya?")
-    assert plan["selected_tables"] == []
-    assert plan["skip_bq"] is True
-    assert plan["rationale"] == "invalid_plan"
+    # Unknown LLM tables → ontology fallback for socio_economic/HDI (not invent unknown ids).
+    assert "not_a_real_table" not in plan["selected_tables"]
+    assert plan["skip_bq"] is False
+    assert any("hdi" in t or "gdp" in t or "sdg" in t for t in plan["selected_tables"])
+    assert "ontology_fallback" in str(plan.get("rationale") or "")
 
 
 def test_reasoner_keeps_valid_among_unknown() -> None:

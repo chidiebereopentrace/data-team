@@ -1,6 +1,6 @@
-flowchart TB
-  START([generate]) --> PACK[pack context as Source N blocks]
-  PACK --> LLM[LLM answer with inline N footnotes]
+﻿flowchart TB
+  START([generate]) --> PACK["pack vector+BQ context<br/>Source N blocks"]
+  PACK --> LLM["LLM answer<br/>personas + recency tier<br/>inline N footnotes"]
   LLM --> STRIP[_strip_invalid_citation_markers]
   STRIP --> REF[referenced_citations]
   REF --> SCORE[score_cited_evidence Path B]

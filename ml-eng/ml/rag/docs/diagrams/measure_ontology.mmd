@@ -1,0 +1,7 @@
+flowchart TB
+  resolveMeasure[resolve_measure] --> reasonerScope[reasoner_scope<br/>candidate tables]
+  reasonerScope --> examples["examples:<br/>Yield to stg_faostat_production<br/>trade to stg_faostat_trade<br/>IPC to FEWS food security"]
+  reasonerScope --> bqSqlReasoner[bq_sql_reasoner<br/>LLM retries]
+  bqSqlReasoner -->|ok| execute[execute SQL]
+  bqSqlReasoner -->|fail closed| fallbackPlan[fallback_plan<br/>last resort]
+  fallbackPlan --> execute
