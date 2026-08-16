@@ -4,6 +4,7 @@ Aids the SQL reasoner (scoped prompts / fallback plans). Does not replace the LL
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -150,15 +151,18 @@ MEASURES: dict[str, MeasureSpec] = {
             "Agricultural Nutrition & Food Security",
             "Agricultural Humanitarian & Agricultural Emergency",
         ),
-        bq_index_domains=("fews", "ilri"),
+        bq_index_domains=("fews", "ilri", "faostat"),
         candidate_tables=(
             "stg_fews_food_security",
+            "stg_fews_market_prices",
+            "stg_faostat_production",
             "stg_ilri_household_food_security",
         ),
-        filter_hints="IPC / FEWS food security; crop not required",
+        filter_hints="IPC / FEWS spine; companions: retail prices, staple production, ILRI; crop not required",
         crop_required=False,
         default_task_mode="briefing",
         recency_tier="live",
+        companions=("market_price", "production"),
     ),
     "climate": MeasureSpec(
         id="climate",
@@ -554,20 +558,49 @@ def _alias_score(query_lower: str, alias: str) -> int:
     return 0
 
 
-def resolve_measure(
-    query: str,
-    decomposition: dict[str, Any] | None = None,
+def _score_measure(
+    mid: str,
+    *,
+    query_lower: str,
+    entity_blob: str,
+    domain_blob: str,
 ) -> MeasureHit | None:
-    """Best-effort measure resolution from aliases + decomposition flags (no LLM)."""
-    q = (query or "").strip()
-    if not q:
+    if mid not in MEASURES:
         return None
-    ql = q.lower()
-    dec = decomposition if isinstance(decomposition, dict) else {}
+    if mid in ("data_export_panel", "investor_best_country"):
+        return None
+    spec = MEASURES[mid]
+    score = 0
+    matched = ""
+    for alias in spec.aliases:
+        s = _alias_score(query_lower, alias)
+        if s > score:
+            score = s
+            matched = alias
+    for alias in spec.aliases:
+        al = alias.lower()
+        if al and al in entity_blob:
+            score = max(score, 6 + min(len(al), 8))
+            matched = matched or alias
+    for tag in spec.corpus_domains:
+        tl = tag.lower()
+        if tl and (tl in domain_blob or tl in query_lower):
+            score = max(score, 5)
+            matched = matched or tag
+        # Partial token overlap for long domain labels.
+        for token in re.findall(r"[a-z]{4,}", tl):
+            if token in entity_blob or token in domain_blob or token in query_lower:
+                score = max(score, 4)
+                matched = matched or tag
+                break
+    if score <= 0:
+        return None
+    return MeasureHit(spec, score=score, matched_alias=matched)
 
-    # Explicit composites / wrappers first.
+
+def _investor_forced_hit(query_lower: str) -> MeasureHit | None:
     if any(
-        phrase in ql
+        phrase in query_lower
         for phrase in (
             "best country for agricultural investment",
             "best african country for agricultural investment",
@@ -579,56 +612,110 @@ def resolve_measure(
             "best for agri investment",
         )
     ) or (
-        "investment" in ql
-        and re.search(r"\b(best|which)\b", ql)
-        and re.search(r"\b(country|countries|african)\b", ql)
-        and re.search(r"\b(agri|agricultur)", ql)
+        "investment" in query_lower
+        and re.search(r"\b(best|which)\b", query_lower)
+        and re.search(r"\b(country|countries|african)\b", query_lower)
+        and re.search(r"\b(agri|agricultur)", query_lower)
     ):
         return MeasureHit(MEASURES["investor_best_country"], score=100, matched_alias="investment")
+    return None
 
-    child: MeasureHit | None = None
-    best: MeasureHit | None = None
+
+def resolve_measures(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+    *,
+    top_k: int | None = None,
+) -> list[MeasureHit]:
+    """
+    Multi-label measure resolution from query + decomposition entities/domains.
+
+    Returns up to ``top_k`` scored hits (default 3, env ``RAG_MEASURE_TOP_K``).
+    Companion measure ids declared on the primary hit are appended when scorable
+    or always included at a soft floor score so spines stay multi-domain.
+    """
+    q = (query or "").strip()
+    if not q:
+        return []
+    ql = q.lower()
+    dec = decomposition if isinstance(decomposition, dict) else {}
+    try:
+        k = int(top_k) if top_k is not None else int(os.environ.get("RAG_MEASURE_TOP_K", "3") or 3)
+    except ValueError:
+        k = 3
+    k = max(1, min(k, 6))
+
+    forced = _investor_forced_hit(ql)
+    if forced is not None:
+        return [forced]
+
+    raw_entities = dec.get("entities")
+    entities: list[Any] = raw_entities if isinstance(raw_entities, list) else []
+    entity_blob = " ".join(str(e).lower() for e in entities)
+    raw_domains = dec.get("domains")
+    domains: list[Any] = raw_domains if isinstance(raw_domains, list) else []
+    domain_blob = " ".join(str(d).lower() for d in domains)
+
+    scored: list[MeasureHit] = []
     for mid in _PRIORITY_IDS:
-        if mid in ("data_export_panel", "investor_best_country"):
-            continue
-        spec = MEASURES[mid]
-        score = 0
-        matched = ""
-        for alias in spec.aliases:
-            s = _alias_score(ql, alias)
-            if s > score:
-                score = s
-                matched = alias
-        # Soft boost from entities / domains in decomposition.
-        raw_entities = dec.get("entities")
-        entities: list[Any] = raw_entities if isinstance(raw_entities, list) else []
-        blob = " ".join(str(e).lower() for e in entities)
-        for alias in spec.aliases[:6]:
-            if alias.lower() in blob:
-                score = max(score, 6)
-                matched = matched or alias
-        if score > 0 and (best is None or score > best.score):
-            best = MeasureHit(spec, score=score, matched_alias=matched)
+        hit = _score_measure(mid, query_lower=ql, entity_blob=entity_blob, domain_blob=domain_blob)
+        if hit is not None:
+            scored.append(hit)
+    scored.sort(key=lambda h: (-h.score, _PRIORITY_IDS.index(h.measure.id) if h.measure.id in _PRIORITY_IDS else 99))
 
-    child = best
-    if wants_data_export_panel(q) and child is not None:
+    if wants_data_export_panel(q) and scored:
+        child = scored[0]
         panel = MEASURES["data_export_panel"]
-        return MeasureHit(
-            panel,
-            score=max(child.score, 20),
-            matched_alias="africa panel" if wants_africa_panel(q) else "export panel",
-            child_measure_id=child.measure.id,
-        )
-    if wants_africa_panel(q) and child is None:
-        # Panel without clear child → default yield/production from query cues.
+        return [
+            MeasureHit(
+                panel,
+                score=max(child.score, 20),
+                matched_alias="africa panel" if wants_africa_panel(q) else "export panel",
+                child_measure_id=child.measure.id,
+            )
+        ]
+    if wants_africa_panel(q) and not scored:
         fallback_id = "yield" if re.search(r"\byields?\b", ql) else "production"
-        return MeasureHit(
-            MEASURES["data_export_panel"],
-            score=15,
-            matched_alias="all african countries",
-            child_measure_id=fallback_id,
+        return [
+            MeasureHit(
+                MEASURES["data_export_panel"],
+                score=15,
+                matched_alias="all african countries",
+                child_measure_id=fallback_id,
+            )
+        ]
+
+    primary = scored[:k]
+    if not primary:
+        return []
+
+    # Attach declared companions of the primary measure (multi-domain spine).
+    out: list[MeasureHit] = list(primary)
+    seen = {h.measure.id for h in out}
+    for companion_id in primary[0].measure.companions:
+        if companion_id in seen or companion_id not in MEASURES:
+            continue
+        c_hit = _score_measure(
+            companion_id, query_lower=ql, entity_blob=entity_blob, domain_blob=domain_blob
         )
-    return child
+        if c_hit is None:
+            c_hit = MeasureHit(
+                MEASURES[companion_id],
+                score=3,
+                matched_alias=f"companion_of_{primary[0].measure.id}",
+            )
+        out.append(c_hit)
+        seen.add(companion_id)
+    return out[: max(k, len(out))]
+
+
+def resolve_measure(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+) -> MeasureHit | None:
+    """Best single measure (compatibility wrapper around ``resolve_measures``)."""
+    hits = resolve_measures(query, decomposition, top_k=1)
+    return hits[0] if hits else None
 
 
 def effective_tables(hit: MeasureHit) -> list[str]:
@@ -768,6 +855,46 @@ def fallback_plan(
                 }
             )
 
+    # FEWS / IPC food security — spine + cross-domain companions (not production-only pad).
+    if hit.measure.id == "food_security_ipc":
+        ordered = [
+            "stg_fews_food_security",
+            "stg_fews_market_prices",
+            "stg_faostat_production",
+            "stg_ilri_household_food_security",
+        ]
+        ordered_present = [t for t in ordered if t in tables] or tables[:6]
+        intents = []
+        for tid in ordered_present:
+            intents.append(
+                {
+                    "goal": f"Food security signal from {tid}",
+                    "tables": [tid],
+                    "filters": (
+                        f"{hints}; {geo_filter}; year≈{year_hint}"
+                        + ("; price_type='Retail'" if "market_prices" in tid else "")
+                        + (
+                            "; element='Production'"
+                            if "faostat_production" in tid
+                            else ""
+                        )
+                    ),
+                    "notes": f"ontology_fallback_food_security_{tid}",
+                    "pattern": (
+                        "rank_by_sum"
+                        if "faostat_production" in tid
+                        and (africa_default or africa_panel or len(countries) != 1)
+                        else "custom"
+                    ),
+                    "metric": "value",
+                    "grain": ["country_name"]
+                    if (africa_default or africa_panel or len(countries) != 1)
+                    else ["country_name", "year"],
+                    "order_by": "value DESC",
+                }
+            )
+        tables = ordered_present
+
     if task_mode == "data_export_only" or hit.measure.id == "data_export_panel":
         intents.append(
             {
@@ -812,6 +939,7 @@ __all__ = [
     "get_measure",
     "reasoner_scope",
     "resolve_measure",
+    "resolve_measures",
     "resolve_recency_tier",
     "wants_africa_panel",
     "wants_data_export_panel",

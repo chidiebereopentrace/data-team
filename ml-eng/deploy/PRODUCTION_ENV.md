@@ -15,6 +15,7 @@ Full reference: [config/.env.example](../config/.env.example).
 | `QDRANT_COLLECTION_DATA_DESCRIPTIONS` | Removed; BQ table selection uses staging YAML only |
 | `NEWS_PUBLIC_REPORTS` or similar legacy alias | Use `QDRANT_COLLECTION_PUBLIC_REPORTS=public_reports` |
 | `GOOGLE_APPLICATION_CREDENTIALS=config/keys/...` | Invalid on Railway; use `GOOGLE_APPLICATION_CREDENTIALS_BASE64` |
+| `GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa.json` | Stale HF/serving path; entrypoint uses `/tmp/gcp-sa-key.json` only |
 | `RAG_LLM_BASE_URL` pointing at LAN / LM Studio | Production must use a public LLM endpoint (e.g. OpenRouter) |
 | Per-plan **70B** overrides | e.g. `RAG_LLM_MODEL_GOVERNMENT=...70b...`, `RAG_BQ_REASONER_MODEL_ID=...70b...` |
 | `RAG_LLM_RERANK=off` as primary rerank guidance | Use `RAG_RERANKER_MODE=cross_encoder` instead |
@@ -72,6 +73,16 @@ GOOGLE_APPLICATION_CREDENTIALS_BASE64=<base64 of GCP service account JSON>
 RAG NL-to-SQL queries **`staging_dev`** only (`BQ_DATASET_SILVER`). `BQ_DATASET_BRONZE` is for data-eng tooling, not the live RAG path.
 
 Encode key: [scripts/encode-gcp-key.sh](../scripts/encode-gcp-key.sh).
+
+**Railway bootstrap:** `Dockerfile.railway` / `Dockerfile.railway.streamlit` run [scripts/railway-entrypoint.sh](../scripts/railway-entrypoint.sh), which:
+
+1. Base64-decodes `GOOGLE_APPLICATION_CREDENTIALS_BASE64` to **`/tmp/gcp-sa-key.json`**
+2. Validates with `json.load` (container **exits non-zero** if decode/parse fails)
+3. Forces `GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa-key.json` and removes a stale `/tmp/gcp-sa.json` if present
+
+Do **not** set `GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa.json` in the Railway dashboard (that path caused production “not a valid json file” 500s). Prefer leaving `GOOGLE_APPLICATION_CREDENTIALS` unset and relying on BASE64 + entrypoint.
+
+`GET /ready` nests a `bq` object: when `BQ_PROJECT` is set, invalid/missing SA JSON or a failed BigQuery probe → `status: not_ready`.
 
 ### Reranker (local cross-encoder via fastembed — no torch)
 
@@ -156,7 +167,7 @@ Embeddings, hybrid search, and rerank models are **baked** in `Dockerfile.railwa
 
 1. **Build**: redeploy with **build cache cleared** after YAML / graph / Dockerfile warmup changes.
 2. **Qdrant**: all six collections exist and are populated (OTA may start empty).
-3. **Ready**: `GET /ready` returns `ready` (needs Qdrant + LLM creds).
+3. **Ready**: `GET /ready` returns `ready` (needs Qdrant + LLM creds; when `BQ_PROJECT` is set also needs valid GCP SA + BigQuery reachability — see nested `bq`).
 4. **Smoke queries**:
    - Meta: `{"query":"Who are you?"}`
    - Retrieval: maize or policy question — news / academic / policies paths populated

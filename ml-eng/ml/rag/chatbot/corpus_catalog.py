@@ -155,6 +155,7 @@ def select_corpora(
     plan_type: str | None = None,
     query: str = "",
     task_mode: str | None = None,
+    corpus_domain_tags: list[str] | None = None,
 ) -> CorpusSelection:
     """Heuristic gate/boost over the six corpora. Never returns an empty active set."""
     boosts = default_boosts()
@@ -175,6 +176,52 @@ def select_corpora(
     preferred: set[str] = set()
     skip: set[str] = set()
     reasons: list[str] = []
+
+    # Ontology / contract domain tags → soft corpus boosts (never exclusive skip).
+    tag_blob = " ".join(str(t).lower() for t in (corpus_domain_tags or []))
+    if not tag_blob:
+        tag_blob = " ".join(str(d).lower() for d in (dec.get("domains") or []) if str(d).strip())
+    if tag_blob:
+        if any(tok in tag_blob for tok in ("food security", "nutrition", "humanitarian", "ipc")):
+            preferred.update({"news", "public_reports", "policies"})
+            _boost(boosts, "news", 0.06)
+            _boost(boosts, "public_reports", 0.06)
+            _boost(boosts, "policies", 0.04)
+            reasons.append("domain_food_security")
+        if any(tok in tag_blob for tok in ("production", "yield", "crop")):
+            preferred.update({"public_reports", "news", "formation"})
+            _boost(boosts, "public_reports", 0.05)
+            _boost(boosts, "formation", 0.04)
+            reasons.append("domain_production")
+        if any(tok in tag_blob for tok in ("market", "price", "trade")):
+            preferred.update({"news", "ota", "public_reports"})
+            _boost(boosts, "news", 0.05)
+            _boost(boosts, "ota", 0.05)
+            reasons.append("domain_markets")
+        if any(tok in tag_blob for tok in ("climate", "rainfall", "drought", "environment")):
+            preferred.update({"academic_papers", "public_reports"})
+            _boost(boosts, "academic_papers", 0.06)
+            _boost(boosts, "public_reports", 0.04)
+            reasons.append("domain_climate")
+        if any(tok in tag_blob for tok in ("soil", "land")):
+            preferred.update({"academic_papers", "formation"})
+            _boost(boosts, "academic_papers", 0.05)
+            _boost(boosts, "formation", 0.05)
+            reasons.append("domain_soil")
+        if any(tok in tag_blob for tok in ("policy", "institutional", "econom")):
+            preferred.update({"policies", "public_reports", "ota"})
+            _boost(boosts, "policies", 0.06)
+            _boost(boosts, "ota", 0.04)
+            reasons.append("domain_policy_econ")
+        if any(tok in tag_blob for tok in ("research", "academic")):
+            preferred.add("academic_papers")
+            _boost(boosts, "academic_papers", 0.08)
+            reasons.append("domain_research")
+        if "agribusiness" in tag_blob or tag_blob.strip() == "agriculture":
+            preferred.update({"news", "ota", "public_reports", "policies"})
+            _boost(boosts, "news", 0.04)
+            _boost(boosts, "ota", 0.06)
+            reasons.append("domain_agribusiness")
 
     if mode == "briefing":
         preferred.update({"news", "ota"})

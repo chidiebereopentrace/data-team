@@ -47,7 +47,9 @@ from ml.rag.chatbot.bq_ranking_cache import (
     is_ranking_follow_up,
 )
 from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
+from ml.rag.chatbot.context_diversity import diversify_context_pack
 from ml.rag.chatbot.corpus_catalog import select_corpora
+from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
 from ml.rag.chatbot.generator import (
     filter_context_items,
     generate,
@@ -57,6 +59,7 @@ from ml.rag.chatbot.generator import (
     pin_bq_context_first,
     should_elevate_bq_context,
 )
+from ml.rag.chatbot.retrieval_contract import build_retrieval_contract
 from ml.rag.chatbot.query_decomposer import (
     decompose_query,
     normalize_geography_for_filter,
@@ -473,7 +476,18 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
         category = str(state.get("category") or (profile or {}).get("category") or "").strip() or None
         dec = apply_category_domain_hints(dec, category)
-        # Re-resolve after gates may trim geography (clarify may become appropriate).
+        # UI / API scopes must land in decomp so clarify, BQ plans, and retrieval agree.
+        dec = _apply_ui_scope_overrides(dec, state)
+        # Grounded entity/domain enrich → multi-measure retrieval contract tags.
+        dec = enrich_decomposition_facets(q, dec)
+        contract = build_retrieval_contract(q, decomposition=dec, known_tables=set())
+        if contract.corpus_domain_tags:
+            dec["corpus_domain_tags"] = list(contract.corpus_domain_tags)
+        if contract.primary_measures:
+            dec["primary_measures"] = list(contract.primary_measures)
+        if contract.companion_measures:
+            dec["companion_measures"] = list(contract.companion_measures)
+        # Re-resolve after gates/overrides may change geography or time.
         measure_hit = resolve_measure(q, dec)
         task_mode = resolve_task_mode(q, dec, profile_country=country)
         analytical = task_mode == "analytical"
@@ -538,6 +552,27 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         if enrich.get("enriched"):
             out["query"] = q
         return out
+
+
+def _apply_ui_scope_overrides(
+    decomposition: dict[str, Any],
+    state: RAGGraphState,
+) -> dict[str, Any]:
+    """Merge UI/API geo and time overrides into decomposition for control-plane + BQ."""
+    out = dict(decomposition or {})
+    ts = str(state.get("time_start_override") or "").strip()[:10]
+    te = str(state.get("time_end_override") or "").strip()[:10]
+    if ts:
+        out["time_start"] = ts
+    if te:
+        out["time_end"] = te
+    geo_ov = str(state.get("geo_override") or "").strip()
+    if geo_ov:
+        geo = list(out.get("geography") or []) if isinstance(out.get("geography"), list) else []
+        if geo_ov not in geo:
+            geo = [geo_ov, *geo]
+        out["geography"] = geo
+    return out
 
 
 def _tag_vector(
@@ -863,11 +898,13 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
         else {}
     )
     task_mode = str(state.get("task_mode") or "chat")
+    domain_tags = decomposition.get("corpus_domain_tags")
     selection = select_corpora(
         decomposition,
         plan_type=str(state.get("plan_type") or "") or None,
         query=str(state.get("query") or ""),
         task_mode=task_mode,
+        corpus_domain_tags=list(domain_tags) if isinstance(domain_tags, list) else None,
     )
     active = set(selection.active)
     boosts = selection.boosts
@@ -1334,17 +1371,33 @@ def node_rerank(state: RAGGraphState) -> dict[str, Any]:
     query = state.get("query") or ""
     merged = state.get("merged_context") or []
     top_k = int(state.get("rerank_top_k") or 20)
+    task_mode = str(state.get("task_mode") or "chat").strip().lower()
+    # Score a wider pool, then diversity-pack so domains reinforce each other
+    # instead of a flat news flood (or a blunt no-BQ top_k cut).
+    try:
+        pool = int(os.environ.get("RAG_RERANK_POOL_SIZE", "32") or 32)
+    except ValueError:
+        pool = 32
+    score_k = max(top_k, min(pool, max(len(merged), top_k)))
     dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
     numeric_query = is_numeric_data_query(str(query), dec)
     comparative_query = is_comparative_bq_query(str(query), dec)
-    top = rerank(
+    scored = rerank(
         query,
         merged,
-        top_k=top_k,
+        top_k=score_k,
         numeric_query=numeric_query,
         comparative_query=comparative_query,
     )
-    return {"reranked_context": top, "rerank_mode": last_rerank_mode()}
+    packed = diversify_context_pack(
+        scored,
+        top_k=None,
+        task_mode=task_mode,
+    )
+    # Honor explicit rerank_top_k as an upper bound after diversity packing.
+    if top_k > 0 and len(packed) > top_k:
+        packed = packed[:top_k]
+    return {"reranked_context": packed, "rerank_mode": last_rerank_mode()}
 
 
 def _has_usable_internal_context(reranked: list[dict[str, Any]]) -> bool:

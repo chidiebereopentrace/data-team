@@ -331,6 +331,23 @@ def _required_metric_cols_for_table(bare: str, samples_by_col: dict[str, set[str
     return out
 
 
+def _refs_for_sql_checks(sql: str, table_ids: set[str] | None = None) -> set[str]:
+    """
+    Tables to validate against for metric/column/sample checks.
+
+    Prefer tables actually referenced in the SQL. Only fall back to ``table_ids``
+    when the SQL has no parseable ``stg_*`` refs — never union plan-selected
+    companions into a single-table statement (that falsely demands ASTI
+    ``indicator`` filters on production SQL, etc.).
+    """
+    refs = referenced_stg_tables(sql)
+    if refs:
+        return refs
+    if not table_ids:
+        return set()
+    return {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
+
+
 def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None) -> str | None:
     """
     Require equality/IN filters on YAML metric-discriminator columns that have samples.
@@ -338,9 +355,7 @@ def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None
     Applies to every referenced ``stg_*`` table (element, price_type, measure_type, …),
     not only FAOSTAT.
     """
-    refs = referenced_stg_tables(sql)
-    if table_ids:
-        refs = refs | {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
+    refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None
     samples_map = value_samples_for_tables(refs)
@@ -377,9 +392,7 @@ def validate_sql_column_allowlist(sql: str, table_ids: set[str] | None = None) -
 
     When YAML columns cannot be loaded for any referenced table, skip the check.
     """
-    refs = referenced_stg_tables(sql)
-    if table_ids:
-        refs = refs | {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
+    refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None
     col_map = columns_for_tables(refs)
@@ -422,9 +435,7 @@ def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> s
 
     Skips columns with no samples and leaves LIKE filters alone.
     """
-    refs = referenced_stg_tables(sql)
-    if table_ids:
-        refs = refs | {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
+    refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None
     samples_map = value_samples_for_tables(refs)

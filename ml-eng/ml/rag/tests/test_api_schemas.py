@@ -87,6 +87,7 @@ def test_query_response_includes_artifacts() -> None:
     resp = QueryResponse(
         answer="See attached CSV.",
         session_id="sid1",
+        session_found=True,
         acf=ACFSignal(
             band="moderate",
             band_label="Moderate confidence",
@@ -110,6 +111,8 @@ def test_query_response_includes_artifacts() -> None:
     data = resp.model_dump()
     assert data["artifacts"][0]["kind"] == "csv"
     assert data["artifacts"][0]["url"].endswith("maize.csv")
+    assert data["session_found"] is True
+    assert data["session_ttl_seconds"] == 86400
 
 
 def test_allows_export_gates_query_plans() -> None:

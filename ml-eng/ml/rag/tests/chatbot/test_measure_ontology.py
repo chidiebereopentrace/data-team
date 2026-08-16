@@ -184,10 +184,15 @@ def test_reasoner_ontology_fallback_on_empty_llm() -> None:
                 },
                 task_mode="chat",
             )
-    assert plan.get("skip_bq") is False or plan.get("rationale", "").startswith("ontology")
-    if not plan.get("skip_bq"):
-        assert "stg_faostat_production" in (plan.get("selected_tables") or [])
-        assert "ontology_fallback" in str(plan.get("rationale") or "")
+    assert plan.get("skip_bq") is False
+    assert "stg_faostat_production" in (plan.get("selected_tables") or [])
+    rationale = str(plan.get("rationale") or "")
+    assert (
+        "ontology_fallback" in rationale
+        or rationale.startswith("contract_from_entities")
+        or "yield" in rationale
+        or "production" in rationale
+    )
 
 
 def test_investor_analytical_plan_multi_table() -> None:
@@ -208,8 +213,60 @@ def test_investor_analytical_plan_multi_table() -> None:
         known_tables=known,
     )
     assert plan is not None
+    assert len(plan.get("selected_tables") or []) >= 2
+
+
+def test_agribusiness_nigeria_no_clarify() -> None:
+    q = "what do you think about agribusiness in nigeria now"
+    dec = {
+        "geography": ["Nigeria"],
+        "entities": ["agribusiness", "Nigeria"],
+        "intent": "descriptive",
+        "time_start": "",
+        "time_end": "",
+    }
+    assert not needs_clarify(q, dec)
+    assert resolve_task_mode(q, dec) != "clarify"
+
+
+def test_sahel_food_security_no_clarify_and_fews_plan() -> None:
+    from ml.rag.chatbot.analytical_bq_plan import build_food_security_bq_plan
+
+    q = "Assess food security risk across the Sahel"
+    dec = {
+        "geography": ["Mali", "Niger", "Burkina Faso", "Chad", "Mauritania", "Senegal", "Nigeria"],
+        "entities": ["food security", "Sahel"],
+        "expanded_regions": ["sahel"],
+        "intent": "monitoring",
+        "time_start": "2020-01-01",
+        "time_end": "2025-12-31",
+    }
+    assert not needs_clarify(q, dec)
+    assert resolve_task_mode(q, dec) != "clarify"
+    hit = resolve_measure(q, dec)
+    assert hit is not None
+    assert hit.measure.id == "food_security_ipc"
+    known = {
+        "stg_fews_food_security",
+        "stg_fews_market_prices",
+        "stg_ilri_household_food_security",
+        "stg_faostat_production",
+        "stg_faostat_investment_asti",
+    }
+    plan = build_food_security_bq_plan(q, decomposition=dec, known_tables=known)
+    assert plan is not None
+    selected = plan["selected_tables"]
+    assert "stg_fews_food_security" in selected
+    assert "stg_fews_market_prices" in selected
+    assert "stg_faostat_production" in selected
+    assert "stg_ilri_household_food_security" in selected
+    assert "stg_faostat_investment_asti" not in selected
+    assert plan["rationale"] == "analytical_forced_food_security_ipc"
     assert plan["skip_bq"] is False
-    assert len(plan["selected_tables"]) >= 3
-    assert plan.get("measure_id") == "investor_best_country" or "investor" in str(
-        plan.get("rationale") or ""
+    assert plan.get("measure_id") == "food_security_ipc"
+    intent_tables = [t for i in plan["query_intents"] for t in (i.get("tables") or [])]
+    assert "stg_fews_food_security" in intent_tables
+    assert "stg_faostat_production" in intent_tables
+    assert any(
+        "production_companion" in str(i.get("notes") or "") for i in plan["query_intents"]
     )

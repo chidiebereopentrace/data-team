@@ -35,7 +35,7 @@ When `user_profile` is sent, **`plan_type`** and **`category`** are required. Un
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `country` | `string \| null` | No | Retrieval geo filter **only** when `plan_type` is `Farmers`. Ignored for other plans (geography comes from query decomposition). |
+| `country` | `string \| null` | No | **Free / single-country plans:** preferred country when clamping decomposition to one geography (profile wins over query-extracted geo). **Farmers only:** also applied as retrieval `geo_override` filter. Not a retrieval geo filter for Free, Government, NGOs, Agribusinesses, or Integrated. |
 | `plan_type` | `string` | **Yes** (if profile sent) | Access tier and retrieval gates. One of the [plan types](#plan-types). |
 | `category` | `string` | **Yes** (if profile sent) | Generation persona / tone. One of the [categories](#categories). |
 
@@ -75,8 +75,8 @@ Aggregated LLM token usage for **one request** (decomposer, BQ NL→SQL, reranke
 
 | ID | Retrieval / generation gates |
 |----|------------------------------|
-| `Free` | Single country; no cross-country compare; brief answers |
-| `Farmers` | Profile `country` geo filter; single country; plain-language framing |
+| `Free` | Single country; no cross-country compare; brief answers. Profile `country` preferred when clamping decomposition geography (not a retrieval geo filter). |
+| `Farmers` | Profile `country` as retrieval geo filter **and** single-country decomposition clamp; plain-language framing |
 | `Government` | National/sub-national + historical trends; no cross-country |
 | `NGOs` | Government-tier depth + multi-region overlap framing |
 | `Agribusinesses` | Cross-country comparison allowed; market/volatility framing |
@@ -114,7 +114,8 @@ Two patterns:
 1. Omit `chat_history` on each request.
 2. Reuse `session_id` from the previous response.
 3. Server stores `{conversation_summary, recent_turns}` in Redis (`RAG_REDIS_URL`) or in-process fallback.
-4. Session TTL default: **86400s** (24h).
+4. Session TTL default: **86400s** (24h) via `RAG_SESSION_TTL_SECONDS`. Responses include `session_ttl_seconds` (configured value) and `session_found` (`true` only when a prior blob was loaded for that id).
+5. Expired or unknown `session_id` → empty memory and `session_found: false` (no error).
 
 ### B. Client-owned history (stateless)
 
@@ -173,6 +174,17 @@ Readiness probe for load balancers.
   "status": "ready",
   "service": "rag",
   "missing_config_keys": [],
+  "bq": {
+    "project_set": true,
+    "project": "opentrace-prod-5ga4",
+    "gcp": {
+      "credentials_path_set": true,
+      "credentials_base64_set": true,
+      "path": "/tmp/gcp-sa-key.json",
+      "json_ok": true
+    },
+    "ok": true
+  },
   "redis": {
     "backend": "redis",
     "connected": true
@@ -182,9 +194,12 @@ Readiness probe for load balancers.
 
 | Field | Meaning |
 |-------|---------|
-| `status` | `"ready"` if Qdrant + LLM env present; else `"not_ready"` |
-| `missing_config_keys` | e.g. `QDRANT_URL`, `QDRANT_API_KEY`, `RAG_LLM_BASE_URL+RAG_LLM_API_KEY (or HF_API_TOKEN)` |
-| `redis` | Present when `RAG_REDIS_URL` / `REDIS_URL` is set; informational only |
+| `status` | `"ready"` if Qdrant + LLM env present **and** BigQuery is ready when `BQ_PROJECT` is set; else `"not_ready"` |
+| `missing_config_keys` | e.g. `QDRANT_URL`, `QDRANT_API_KEY`, `RAG_LLM_BASE_URL+RAG_LLM_API_KEY (or HF_API_TOKEN)`, `BQ_PROJECT+GCP credentials` |
+| `bq` | Always present. When `BQ_PROJECT` is set: GCP SA path must exist + parse as JSON, and a lightweight BigQuery `datasets.list` must succeed — otherwise `ok: false` and status is `not_ready`. When unset: `ok: true` with `skipped`. |
+| `redis` | Present when `RAG_REDIS_URL` / `REDIS_URL` is set; informational only (non-fatal) |
+
+Railway bootstrap writes validated credentials to **`/tmp/gcp-sa-key.json`** from `GOOGLE_APPLICATION_CREDENTIALS_BASE64`. Do **not** point `GOOGLE_APPLICATION_CREDENTIALS` at a stale `/tmp/gcp-sa.json`.
 
 ---
 
@@ -201,7 +216,7 @@ Production RAG exposes one endpoint per plan. The **path locks `plan_type`**; a 
 | POST | `/query/agribusinesses` | `Agribusinesses` |
 | POST | `/query/integrated` | `Integrated` |
 
-Request/response body matches [`POST /query`](#post-query). Send `user_profile.category` (and `country` for Farmers). Prefer these URLs for new frontend integrations.
+Request/response body matches [`POST /query`](#post-query). Send `user_profile.category`. For **Farmers**, also send `country` (retrieval geo filter). For **Free**, `country` is recommended so single-country decomposition prefers the profile country.
 
 ---
 
@@ -263,12 +278,14 @@ Unknown top-level keys (e.g. `stakeholder_type`, `audience_instructions`, `geo_o
 | `answer` | `string` | Prose answer with named source attribution and inline footnotes `[N]`, e.g. `According to Branca et al. (2012), …[6]`. No trailing Sources block by default. |
 | `citations` | `CitationItem[]` | Structured sources for UI rendering. |
 | `session_id` | `string` | Pass on the next request for continuity. |
+| `session_found` | `boolean` | `true` only when a prior server session blob was loaded. `false` for new/expired/missing ids or when `chat_history` is sent. |
+| `session_ttl_seconds` | `integer` | Configured session TTL (`RAG_SESSION_TTL_SECONDS`, default **86400**). |
 | `usage` | `UsageStats` | Per-request LLM token totals. |
 | `error` | `string \| null` | Pipeline-level error message if the graph set one; may still return partial `answer`. |
 | `trace` | `object \| null` | Present only when `include_trace: true`. |
 | `langfuse_trace_id` | `string \| null` | Langfuse trace id when tracing is enabled. |
 | `acf` | `ACFSignal` | Confidence band, score, and explanation. |
-| `artifacts` | `ArtifactItem[]` | Downloadable exports. Populated on **Agribusinesses** and **Integrated** when the user asks for CSV/chart/PDF/DOCX and builders succeed; otherwise `[]`. Production URLs come from S3-compatible storage (`AWS_S3_BUCKET_NAME` + `AWS_ENDPOINT_URL`, e.g. Railway neat-icebox) or GCS (`RAG_ARTIFACT_GCS_BUCKET`); local `file://` fallback for dev. |
+| `artifacts` | `ArtifactItem[]` | Downloadable exports. Populated on **Agribusinesses** and **Integrated** when the user asks for CSV/chart/PDF/DOCX and builders succeed; otherwise `[]`. Production URLs are signed for **`RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS` (default 3600, not 7 days)**. Refresh with [`GET /artifacts/{artifact_id}/url`](#get-artifactsartifact_idurl). |
 
 Plan-scoped routes inherit the same response. Export gate: `/query/agribusinesses` and `/query/integrated` (and generic `/query` when `user_profile.plan_type` is one of those). Other plans keep `artifacts: []` and may append an upgrade note in `answer` if an export is requested.
 
@@ -324,7 +341,8 @@ Plan-scoped routes inherit the same response. Export gate: `/query/agribusinesse
 
 ### Behavior notes
 
-- **Geo:** `user_profile.country` applies as retrieval filter only when `plan_type` is `Farmers`.
+- **Geo (Free):** `user_profile.country` is preferred when clamping decomposition to a single country. It is **not** applied as a retrieval-level `geo_override`.
+- **Geo (Farmers):** `user_profile.country` is both the decomposition preference and a retrieval geo filter.
 - **Plan gates:** Cross-country retrieval/compare is limited to `Agribusinesses` and `Integrated` plans.
 - **Omit `user_profile`:** Minimal queries (e.g. `"Who are you?"`) work with generic tone and no plan gates.
 - **Meta questions** (“Who are you?”, product FAQs) may short-circuit retrieval without full RAG.
@@ -503,10 +521,44 @@ When a user on a non-export route asks for a CSV, chart, or report, the assistan
 | `kind` | `csv \| chart \| docx \| pdf` | Export format |
 | `filename` | `string` | Suggested download filename |
 | `mime_type` | `string` | MIME type |
-| `url` | `string` | Presigned HTTPS URL (S3-compatible or GCS in production) |
+| `url` | `string` | Presigned HTTPS URL (S3-compatible or GCS in production). **Expires after the signed TTL (default 3600s).** |
 | `summary` | `string` | Short description of contents |
 | `citation_ids` | `integer[]` | Citation ids from the parent answer |
 | `byte_size` | `integer` | File size in bytes |
+
+---
+
+## `GET /artifacts/{artifact_id}/url`
+
+Re-sign a download URL after the original presigned URL expires.
+
+**Query params**
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `filename` | `string` | **Yes** | Exact `filename` from the original `ArtifactItem` |
+
+**Response 200**
+
+```json
+{
+  "id": "art_abc123def456",
+  "filename": "nigeria_maize.csv",
+  "url": "https://...",
+  "expires_in_seconds": 3600,
+  "storage_uri": "s3://bucket/rag-exports/art_abc123def456/nigeria_maize.csv"
+}
+```
+
+| Status | When |
+|--------|------|
+| **400** | Missing/unsafe `artifact_id` or `filename` |
+| **404** | Object not found in configured storage |
+| **500** | Signing / storage error |
+
+Env: `RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS` (default **3600**, minimum 60). Frontend must not assume a 7-day URL lifetime.
+
+---
 
 ```json
 {
@@ -611,7 +663,7 @@ Both use the same RAG graph, `UserProfile`, `chat_history`, `citations`, and `us
 
 | File | Role |
 |------|------|
-| [`ml/rag/app/api.py`](../app/api.py) | RAG routes (`/query`, `/health`, `/ready`) |
+| [`ml/rag/app/api.py`](../app/api.py) | RAG routes (`/query`, `/health`, `/ready`, `/artifacts/{id}/url`) |
 | [`ml/rag/api_schemas.py`](../api_schemas.py) | Shared `UserProfile`, `CitationItem`, `UsageStats` |
 | [`ml/rag/request_context.py`](../request_context.py) | Request field resolution |
 | [`ml/serving/chat/app.py`](../../serving/chat/app.py) | v1 chat routes |

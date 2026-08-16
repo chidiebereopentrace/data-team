@@ -186,4 +186,91 @@ def _upload_gcs(
     }
 
 
-__all__ = ["mime_type_for_filename", "upload_artifact"]
+def refresh_artifact_url(artifact_id: str, filename: str) -> dict[str, Any]:
+    """
+    Re-sign a download URL for an existing artifact (same object key as upload).
+
+    Key layout: ``{prefix}/{artifact_id}/{filename}``.
+    TTL: ``RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS`` (default 3600, min 60).
+    """
+    aid = (artifact_id or "").strip()
+    fname = (filename or "").strip()
+    if not aid or not fname:
+        raise ValueError("artifact_id and filename are required")
+    if "/" in aid or ".." in aid or "/" in fname or ".." in fname:
+        raise ValueError("artifact_id and filename must be path-safe (no slashes)")
+
+    ttl = _signed_url_ttl_seconds()
+    prefix = _artifact_prefix()
+    key = f"{prefix}/{aid}/{fname}"
+
+    if _s3_credentials_ready():
+        import boto3  # pyright: ignore[reportMissingImports]
+
+        bucket = _s3_bucket_name()
+        endpoint = os.environ.get("AWS_ENDPOINT_URL", "").strip()
+        region = (
+            os.environ.get("AWS_DEFAULT_REGION", "").strip()
+            or os.environ.get("AWS_REGION", "").strip()
+            or "auto"
+        )
+        client = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "").strip(),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "").strip(),
+            region_name=region,
+        )
+        try:
+            client.head_object(Bucket=bucket, Key=key)
+        except Exception as exc:
+            raise FileNotFoundError(f"Artifact not found: {aid}/{fname}") from exc
+        url = client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=ttl,
+        )
+        return {
+            "id": aid,
+            "filename": fname,
+            "url": url,
+            "expires_in_seconds": ttl,
+            "storage_uri": f"s3://{bucket}/{key}",
+        }
+
+    gcs_bucket = _gcs_bucket_name()
+    if gcs_bucket:
+        from google.cloud import storage  # lazy import
+
+        client = storage.Client()
+        blob = client.bucket(gcs_bucket).blob(key)
+        if not blob.exists():
+            raise FileNotFoundError(f"Artifact not found: {aid}/{fname}")
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(seconds=ttl),
+            method="GET",
+        )
+        return {
+            "id": aid,
+            "filename": fname,
+            "url": url,
+            "expires_in_seconds": ttl,
+            "storage_uri": f"gs://{gcs_bucket}/{key}",
+        }
+
+    local_root = os.environ.get("RAG_ARTIFACT_LOCAL_DIR", "").strip()
+    base = Path(local_root) if local_root else Path(tempfile.gettempdir()) / "rag_artifacts"
+    dest = base / f"{aid}_{fname}"
+    if not dest.is_file():
+        raise FileNotFoundError(f"Artifact not found: {aid}/{fname}")
+    return {
+        "id": aid,
+        "filename": fname,
+        "url": dest.as_uri(),
+        "expires_in_seconds": ttl,
+        "storage_uri": dest.as_uri(),
+    }
+
+
+__all__ = ["mime_type_for_filename", "upload_artifact", "refresh_artifact_url"]

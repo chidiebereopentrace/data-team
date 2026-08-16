@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from ml.rag.chatbot.artifact_storage import upload_artifact
+from ml.rag.chatbot.artifact_storage import refresh_artifact_url, upload_artifact
 from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.exports.chart_builder import build_chart
 from ml.rag.chatbot.exports.csv_builder import build_csv
@@ -55,6 +55,23 @@ def test_upload_artifact_local(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Non
     assert meta["mime_type"] == "text/csv"
     assert meta["byte_size"] == 9
     assert meta["url"].startswith("file://")
+
+    refreshed = refresh_artifact_url(meta["id"], meta["filename"])
+    assert refreshed["id"] == meta["id"]
+    assert refreshed["filename"] == "test.csv"
+    assert refreshed["url"] == meta["url"]
+    assert refreshed["expires_in_seconds"] >= 60
+
+
+def test_refresh_artifact_url_missing(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_ARTIFACT_LOCAL_DIR", str(tmp_path))
+    monkeypatch.delenv("RAG_ARTIFACT_GCS_BUCKET", raising=False)
+    monkeypatch.delenv("AWS_S3_BUCKET_NAME", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    with pytest.raises(FileNotFoundError):
+        refresh_artifact_url("art_missing000", "gone.csv")
 
 
 def test_upload_artifact_s3(monkeypatch: pytest.MonkeyPatch) -> None:

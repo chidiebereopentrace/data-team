@@ -176,13 +176,14 @@ def needs_clarify(
         or (hit is not None and not hit.measure.geography_required)
     )
     has_crop = _has_crop_or_commodity(q, decomposition)
-    crop_required = effective_crop_required(hit) if hit else True
-    if hit is None and not crop_required:
-        crop_required = True
-
-    # Measures that explicitly do not need crop (IPC, soil, climate, GDP, investment…).
-    if hit and not crop_required:
-        crop_required = False
+    # Crop is required only when the measure says so, or for numeric/ranking asks
+    # with no measure hit — not for soft opinion / agribusiness / food-security.
+    if hit is not None:
+        crop_required = bool(effective_crop_required(hit))
+    else:
+        crop_required = bool(
+            is_numeric_data_query(q, decomposition) or is_ranking_numeric_query(q)
+        )
 
     # Continental ranking with crop (when required) can proceed without an explicit country.
     if is_ranking_numeric_query(q) and (africa or has_region) and (has_crop or not crop_required):

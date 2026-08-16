@@ -10,6 +10,14 @@ from ml.rag.chatbot.bq_table_schema_yaml import pack_selected_table_hints
 
 _STAPLES = ("Maize", "Rice", "Cassava", "Sorghum", "Millet")
 
+# Priority spine first, then cross-domain companions (not exclusive FEWS-only).
+_FOOD_SECURITY_TABLES = (
+    "stg_fews_food_security",
+    "stg_fews_market_prices",
+    "stg_faostat_production",
+    "stg_ilri_household_food_security",
+)
+
 
 def analytical_sql_query_floor() -> int:
     try:
@@ -23,6 +31,117 @@ def analytical_sql_query_floor() -> int:
     return max(env, floor, 8)
 
 
+def build_food_security_bq_plan(
+    query: str,
+    *,
+    decomposition: dict[str, Any],
+    known_tables: set[str],
+) -> dict[str, Any] | None:
+    """FEWS/IPC priority spine plus prices, production, and ILRI companions.
+
+    Does not pad ASTI or treat a single table as sufficient. Each companion is
+    its own SQL intent (per-SQL validation applies per statement).
+    """
+    selected = [tid for tid in _FOOD_SECURITY_TABLES if tid in known_tables]
+    if not selected:
+        return None
+
+    geo = decomposition.get("geography") if isinstance(decomposition.get("geography"), list) else []
+    countries = [str(g).strip() for g in geo if str(g).strip()]
+    geo_filter = (
+        "countries=" + ",".join(countries[:16])
+        if countries
+        else "geography from question / expanded region"
+    )
+    ts = str(decomposition.get("time_start") or "")[:10] or "earliest"
+    te = str(decomposition.get("time_end") or "")[:10] or "latest"
+    y0 = ts[:4] if ts[:4].isdigit() else "start"
+    y1 = te[:4] if te[:4].isdigit() else "end"
+    multi = len(countries) != 1
+    grain_country = ["country_name"] if multi else ["country_name", "year"]
+
+    intents: list[dict[str, Any]] = []
+    if "stg_fews_food_security" in selected:
+        intents.append(
+            {
+                "goal": "FEWS / IPC food security phases by country in the scoped geography",
+                "tables": ["stg_fews_food_security"],
+                "filters": f"{geo_filter}; year between {y0} and {y1}",
+                "notes": "analytical_fews_food_security",
+                "pattern": "custom",
+                "metric": "value",
+                "grain": grain_country,
+                "order_by": "value DESC",
+            }
+        )
+    if "stg_fews_market_prices" in selected:
+        intents.append(
+            {
+                "goal": "Retail market prices companion for food-security assessment",
+                "tables": ["stg_fews_market_prices"],
+                "filters": f"price_type='Retail'; {geo_filter}; year between {y0} and {y1}",
+                "notes": "analytical_fews_market_prices",
+                "pattern": "custom",
+                "metric": "value",
+                "grain": ["country_name"],
+                "order_by": "value DESC",
+            }
+        )
+    if "stg_faostat_production" in selected:
+        staples = ", ".join(_STAPLES[:4])
+        intents.append(
+            {
+                "goal": (
+                    f"Staple crop production pressure companion ({staples}) "
+                    "by country — multi-country rank/IN, not single-country series"
+                ),
+                "tables": ["stg_faostat_production"],
+                "filters": (
+                    f"element='Production'; items in {list(_STAPLES[:4])}; "
+                    f"{geo_filter}; year between {y0} and {y1}"
+                ),
+                "notes": "analytical_food_security_production_companion",
+                "pattern": "rank_by_sum" if multi else "custom",
+                "metric": "value",
+                "grain": ["country_name", "product_name"] if multi else ["country_name", "year", "product_name"],
+                "order_by": "total DESC" if multi else "value DESC",
+            }
+        )
+    if "stg_ilri_household_food_security" in selected:
+        intents.append(
+            {
+                "goal": "ILRI household food security companion signals",
+                "tables": ["stg_ilri_household_food_security"],
+                "filters": f"{geo_filter}; year between {y0} and {y1}",
+                "notes": "analytical_ilri_household_food_security",
+                "pattern": "custom",
+                "metric": "value",
+                "grain": ["country_name"],
+                "order_by": "value DESC",
+            }
+        )
+    if not intents:
+        return None
+
+    plan: dict[str, Any] = {
+        "selected_tables": selected,
+        "query_intents": intents,
+        "skip_bq": False,
+        "rationale": "analytical_forced_food_security_ipc",
+        "analytical_mode": True,
+        "max_sql_queries": max(3, len(intents)),
+        "measure_id": "food_security_ipc",
+    }
+    hints, hints_truncated = pack_selected_table_hints(
+        selected,
+        query_terms=_pack_terms(query, decomposition),
+    )
+    plan["table_hints"] = hints
+    plan["index_truncated"] = False
+    plan["hints_truncated"] = hints_truncated
+    return plan
+
+
 def build_analytical_bq_plan(
     query: str,
     *,
@@ -32,10 +151,15 @@ def build_analytical_bq_plan(
     """
     Deterministic multi-intent plan for agricultural comparative / report queries.
 
-    Prefer ontology composite (e.g. investor_best_country); else production-centered
-    multi-intent with trade/yield companions. Never sets skip_bq.
+    Prefer ontology composite (e.g. investor_best_country); food_security_ipc → FEWS;
+    else production-centered multi-intent with trade/yield companions. Never sets skip_bq.
     """
     hit = resolve_measure(query, decomposition)
+    if hit is not None and hit.measure.id == "food_security_ipc":
+        fs = build_food_security_bq_plan(query, decomposition=decomposition, known_tables=known_tables)
+        if fs is not None:
+            return fs
+
     if hit is not None and (
         hit.measure.id == "investor_best_country"
         or hit.measure.default_task_mode == "analytical"
@@ -227,4 +351,8 @@ def _pack_terms(query: str, decomposition: dict[str, Any]) -> list[str]:
     return terms
 
 
-__all__ = ["analytical_sql_query_floor", "build_analytical_bq_plan"]
+__all__ = [
+    "analytical_sql_query_floor",
+    "build_analytical_bq_plan",
+    "build_food_security_bq_plan",
+]

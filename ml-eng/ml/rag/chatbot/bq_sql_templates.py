@@ -298,6 +298,10 @@ def match_country_crop_series(
     geo_countries: list[str] | None = None,
 ) -> bool:
     """Country (+ optional crop) production/price/yield time series — chart/CSV/export style."""
+    # Multi-country / regional expands must not collapse to a single-country series.
+    multi = [str(c).strip() for c in (geo_countries or []) if str(c).strip()]
+    if len(multi) > 1:
+        return False
     tables = _tables_set(selected_tables)
     fact = None
     for tid in (

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ml.rag.chatbot.bq_sql_templates import (
     build_faostat_country_rank_sql,
+    match_country_crop_series,
     match_faostat_country_rank,
     match_faostat_crop_rank,
     match_faostat_price_rank,
@@ -132,3 +133,19 @@ def test_try_sql_template_country_crop_series() -> None:
     assert "product_name = 'Maize'" in hit["sql"]
     assert "country_name = 'Nigeria'" in hit["sql"]
     assert "SELECT *" not in hit["sql"]
+
+
+def test_match_country_crop_series_rejects_multi_country() -> None:
+    assert not match_country_crop_series(
+        query="maize production series for Sahel countries",
+        selected_tables={"stg_faostat_production"},
+        entities=["Maize"],
+        geo_countries=["Mali", "Niger", "Burkina Faso", "Chad"],
+    )
+    assert match_country_crop_series(
+        query="Export maize production data for Nigeria as a CSV",
+        selected_tables={"stg_faostat_production"},
+        entities=["Maize"],
+        geo_country="Nigeria",
+        geo_countries=["Nigeria"],
+    )

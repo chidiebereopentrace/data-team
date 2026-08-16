@@ -12,6 +12,7 @@ Run locally: uvicorn ml.rag.api:app --reload --host 0.0.0.0 --port 7860
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import uuid
@@ -28,7 +29,7 @@ from ml.rag.local_env import load_rag_dotenv
 _ml_eng = Path(__file__).resolve().parents[3]
 load_rag_dotenv(_ml_eng)
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,11 +37,12 @@ from ml.rag.acf_signal import acf_signal_from_result
 from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats, UserProfile
 from ml.rag.chat_history import normalize_messages
 from ml.rag.chat_memory import flat_messages_to_memory
+from ml.rag.chatbot.artifact_storage import refresh_artifact_url
 from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS, allows_export
 from ml.rag.chat_turn import persist_session_turn
 from ml.rag.observability import flush_langfuse, get_current_trace_id, rag_trace_context, record_trace_score
 from ml.rag.request_context import resolve_request_context
-from ml.rag.session_store import delete_session, get_session_blob, redis_status
+from ml.rag.session_store import delete_session, get_session_blob, redis_status, session_ttl_seconds
 
 logger = logging.getLogger("ml.rag.api")
 
@@ -119,6 +121,18 @@ class QueryResponse(BaseModel):
         ),
     )
     session_id: str = Field(..., description="Pass on the next request for chat continuity")
+    session_found: bool = Field(
+        False,
+        description=(
+            "True when a prior server-side session blob was loaded for this request "
+            "(Redis / in-memory). False for new sessions, expired/missing ids, or "
+            "when chat_history is supplied (server session is not read)."
+        ),
+    )
+    session_ttl_seconds: int = Field(
+        default_factory=session_ttl_seconds,
+        description="Configured server session TTL (RAG_SESSION_TTL_SECONDS, default 86400).",
+    )
     usage: UsageStats = Field(default_factory=lambda: UsageStats())
     error: str | None = None
     trace: dict | None = None
@@ -131,9 +145,18 @@ class QueryResponse(BaseModel):
         description=(
             "Downloadable exports (CSV/chart/DOCX/PDF). Populated on Agribusinesses and "
             "Integrated plans when the query requests an export and builders succeed; "
-            "otherwise empty."
+            "otherwise empty. Signed URL TTL defaults to 3600s — refresh via "
+            "GET /artifacts/{artifact_id}/url."
         ),
     )
+
+
+class ArtifactUrlResponse(BaseModel):
+    id: str
+    filename: str
+    url: str
+    expires_in_seconds: int
+    storage_uri: str | None = None
 
 
 class TraceFeedbackRequest(BaseModel):
@@ -142,6 +165,64 @@ class TraceFeedbackRequest(BaseModel):
     trace_id: str = Field(..., min_length=1)
     score: float = Field(..., ge=0.0, le=1.0, description="1.0 = thumbs up, 0.0 = thumbs down")
     comment: str | None = Field(None, max_length=500)
+
+
+def _gcp_credentials_status() -> dict[str, Any]:
+    """Validate ADC path JSON when present; report BASE64 presence for ops."""
+    path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    base64_set = bool(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_BASE64", "").strip())
+    info: dict[str, Any] = {
+        "credentials_path_set": bool(path),
+        "credentials_base64_set": base64_set,
+        "path": path or None,
+        "json_ok": False,
+    }
+    if not path:
+        info["error"] = "GOOGLE_APPLICATION_CREDENTIALS not set"
+        return info
+    p = Path(path)
+    if not p.is_file():
+        info["error"] = f"credentials file missing: {path}"
+        return info
+    try:
+        with p.open(encoding="utf-8") as fh:
+            json.load(fh)
+        info["json_ok"] = True
+    except Exception as exc:
+        info["error"] = f"credentials JSON invalid: {exc}"
+    return info
+
+
+def _bq_readiness() -> dict[str, Any]:
+    """
+    Nested BigQuery readiness. When BQ_PROJECT is set, credentials must parse and a
+    lightweight datasets.list must succeed — otherwise the API is not_ready.
+    """
+    project = os.environ.get("BQ_PROJECT", "").strip()
+    gcp = _gcp_credentials_status()
+    info: dict[str, Any] = {
+        "project_set": bool(project),
+        "project": project or None,
+        "gcp": gcp,
+        "ok": False,
+    }
+    if not project:
+        info["ok"] = True
+        info["skipped"] = "BQ_PROJECT unset"
+        return info
+    if not gcp.get("json_ok"):
+        info["error"] = gcp.get("error") or "GCP credentials not ready"
+        return info
+    try:
+        from google.cloud import bigquery  # lazy import
+
+        client = bigquery.Client(project=project)
+        # Soft connectivity probe — list at most one dataset.
+        next(iter(client.list_datasets(max_results=1)), None)
+        info["ok"] = True
+    except Exception as exc:
+        info["error"] = str(exc)
+    return info
 
 
 @app.get("/health")
@@ -158,6 +239,8 @@ async def ready():
     (without revealing secrets). Useful for GCE managed instance groups / load balancers.
     Redis connectivity (if configured via RAG_REDIS_URL) is reported for observability but
     does not affect the ready status (sessions gracefully fall back to in-memory).
+    When BQ_PROJECT is set, GCP credentials must be valid JSON and BigQuery must respond;
+    otherwise status is not_ready (Free/paid NL2SQL depends on BQ).
     """
     # Critical keys for the current production scope (News/Research + BQ via NL2SQL path)
     critical = ["QDRANT_URL", "QDRANT_API_KEY"]
@@ -179,10 +262,16 @@ async def ready():
         except Exception:
             redis_info = {"backend": "error", "connected": False}
 
+    bq_info = _bq_readiness()
+    bq_blocks = bool(bq_info.get("project_set")) and not bool(bq_info.get("ok"))
+    if bq_blocks and "BQ_PROJECT+GCP credentials" not in missing:
+        missing.append("BQ_PROJECT+GCP credentials")
+
     payload: dict[str, Any] = {
-        "status": "ready" if not missing else "not_ready",
+        "status": "ready" if not missing and not bq_blocks else "not_ready",
         "service": "rag",
         "missing_config_keys": missing,
+        "bq": bq_info,
     }
     if redis_info:
         payload["redis"] = redis_info
@@ -192,19 +281,21 @@ async def ready():
 def _resolve_prior_memory(
     session_id: str | None,
     history_messages: list[dict[str, str]] | None,
-) -> tuple[str, str, list[dict[str, str]]]:
-    """Return (session_id, conversation_summary, recent_turns) before the current user message."""
+) -> tuple[str, str, list[dict[str, str]], bool]:
+    """Return (session_id, conversation_summary, recent_turns, session_found)."""
     if history_messages is not None:
         sid = (session_id or "").strip() or uuid.uuid4().hex
         prior = normalize_messages(history_messages)
         summary, recent = flat_messages_to_memory(prior)
-        return sid, summary, recent
+        return sid, summary, recent, False
 
     sid = (session_id or "").strip() or uuid.uuid4().hex
-    blob = get_session_blob(sid) or {"conversation_summary": "", "recent_turns": []}
+    blob = get_session_blob(sid)
+    session_found = blob is not None
+    blob = blob or {"conversation_summary": "", "recent_turns": []}
     summary = str(blob.get("conversation_summary") or "")
     recent = normalize_messages(blob.get("recent_turns"))
-    return sid, summary, recent
+    return sid, summary, recent, session_found
 
 
 def _persist_session_turn(
@@ -254,7 +345,7 @@ async def _run_query(
 
         from ml.rag.graph import run_rag
 
-        session_id, prior_summary, prior_recent = _resolve_prior_memory(
+        session_id, prior_summary, prior_recent, session_found = _resolve_prior_memory(
             request.session_id,
             ctx.history_messages,
         )
@@ -343,6 +434,8 @@ async def _run_query(
             citations=citations,
             acf=acf,
             session_id=session_id,
+            session_found=session_found,
+            session_ttl_seconds=session_ttl_seconds(),
             usage=usage,
             error=result.get("error"),
             trace=trace,
@@ -420,6 +513,29 @@ async def delete_session_endpoint(session_id: str):
     return {"status": "deleted", "session_id": sid}
 
 
+@app.get("/artifacts/{artifact_id}/url", response_model=ArtifactUrlResponse)
+async def get_artifact_url(
+    artifact_id: str,
+    filename: str = Query(..., min_length=1, description="Original artifact filename from the query response"),
+):
+    """
+    Re-sign a download URL for an existing export artifact.
+
+    Signed URLs expire after ``RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS`` (default **3600**).
+    Pass the ``id`` and ``filename`` from the original ``artifacts[]`` item.
+    """
+    try:
+        meta = refresh_artifact_url(artifact_id, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("artifact re-sign failed id=%s filename=%s", artifact_id, filename)
+        raise HTTPException(status_code=500, detail=f"Failed to refresh artifact URL: {exc}") from exc
+    return ArtifactUrlResponse.model_validate(meta)
+
+
 @app.post("/feedback")
 async def trace_feedback(request: TraceFeedbackRequest):
     """Record user feedback (thumbs up/down) on a Langfuse trace."""
@@ -443,6 +559,8 @@ async def root():
         "message": "OpenTrace RAG API",
         "docs": "/docs",
         "health": "/health",
+        "ready": "/ready",
         "query": "POST /query",
+        "artifact_url": "GET /artifacts/{artifact_id}/url?filename=...",
         "plan_routes": {slug: f"POST /query/{slug}" for slug in PLAN_ROUTE_SLUGS},
     }

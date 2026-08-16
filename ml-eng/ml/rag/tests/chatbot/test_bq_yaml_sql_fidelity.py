@@ -93,6 +93,20 @@ def test_required_metric_filters_accepts_element() -> None:
     assert validate_required_metric_filters(sql) is None
 
 
+def test_required_metric_filters_ignores_unreferenced_plan_companions() -> None:
+    """Plan may select ASTI + production; SQL only querying production must not demand indicator."""
+    sql = (
+        "SELECT year AS year, value, unit, product_name, country_name, element "
+        "FROM `opentrace-prod-5ga4.staging_dev.stg_faostat_production` "
+        "WHERE country_name = 'Nigeria' AND element = 'Production' "
+        "ORDER BY year LIMIT 100"
+    )
+    plan_tables = {"stg_faostat_production", "stg_faostat_investment_asti"}
+    assert validate_required_metric_filters(sql, plan_tables) is None
+    assert validate_sql_column_allowlist(sql, plan_tables) is None
+    assert validate_sql_value_samples(sql, plan_tables) is None
+
+
 def test_required_metric_filters_rejects_missing_price_type() -> None:
     sql = (
         "SELECT year, value FROM `proj.staging_dev.stg_fews_market_prices` "

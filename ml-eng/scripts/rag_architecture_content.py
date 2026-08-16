@@ -11,6 +11,7 @@ DIAGRAMS_PNG_DIR = DIAGRAMS_DIR / "png"
 
 OUTPUT_DOCX = DOCS_DIR / "OpenTrace-RAG-Pipeline-Architecture.docx"
 OUTPUT_PDF = DOCS_DIR / "OpenTrace-RAG-Pipeline-Architecture.pdf"
+OUTPUT_PPTX = DOCS_DIR / "OpenTrace-RAG-Pipeline-Architecture.pptx"
 
 DIAGRAM_FILES: Sequence[str] = (
     "system_context.mmd",

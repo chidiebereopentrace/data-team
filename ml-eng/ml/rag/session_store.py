@@ -235,6 +235,11 @@ def redis_status() -> dict[str, Any]:
     return {"backend": "memory-fallback", "connected": False, "reason": "RAG_REDIS_URL not set or connect failed"}
 
 
+def session_ttl_seconds() -> int:
+    """Configured session blob TTL (RAG_SESSION_TTL_SECONDS, default 86400)."""
+    return _SESSION_TTL_S
+
+
 def clear_fallback_for_tests() -> None:
     """Test helper only. Do not call in production."""
     with _fallback_lock:

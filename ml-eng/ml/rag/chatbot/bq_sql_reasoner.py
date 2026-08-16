@@ -17,12 +17,16 @@ from ml.rag.chatbot.agri_measure_ontology import (
     reasoner_scope,
     resolve_measure,
 )
+from ml.rag.chatbot.analytical_bq_plan import (
+    build_analytical_bq_plan,
+)
 from ml.rag.chatbot.bq_sql_patterns import normalize_pattern_name
 from ml.rag.chatbot.bq_table_schema_yaml import (
     format_reasoner_index,
     list_staging_table_index,
     pack_selected_table_hints,
 )
+from ml.rag.chatbot.fact_bq_plan import build_fact_bq_plan
 from ml.rag.chatbot.plan_policy import model_for_plan
 from ml.rag.chatbot.query_decomposer import (
     _AGRI_SCOPE_RE,
@@ -30,6 +34,7 @@ from ml.rag.chatbot.query_decomposer import (
     _extract_year_range,
     wants_africa_default_scope,
 )
+from ml.rag.chatbot.retrieval_contract import build_retrieval_contract, contract_to_bq_plan
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.observability import observed_span, update_current_span_metadata
 
@@ -250,8 +255,6 @@ def reason_bq_sql_plan(
     )
 
     if analytical_mode or mode == "analytical":
-        from ml.rag.chatbot.analytical_bq_plan import build_analytical_bq_plan
-
         analytical = build_analytical_bq_plan(query, decomposition=dec, known_tables=known)
         if analytical is not None:
             analytical["index_truncated"] = index_truncated
@@ -270,9 +273,38 @@ def reason_bq_sql_plan(
             )
             return analytical
 
-    if mode in ("fact_lookup", "data_export_only"):
-        from ml.rag.chatbot.fact_bq_plan import build_fact_bq_plan
+    # Entity/domain contract: multi-measure tables + intents before LLM freelancing.
+    # Specialized builders (e.g. food_security) run only when that measure is activated.
+    contract = build_retrieval_contract(query, decomposition=dec, known_tables=known)
+    if contract.primary_measures or contract.bq_tables:
+        plan = contract_to_bq_plan(
+            contract,
+            query=query,
+            decomposition=dec,
+            index_truncated=index_truncated,
+        )
+        if plan is not None and (
+            plan.get("skip_bq") or (plan.get("selected_tables") and plan.get("query_intents"))
+        ):
+            update_current_span_metadata(
+                {
+                    "selected_tables": plan.get("selected_tables"),
+                    "skip_bq": bool(plan.get("skip_bq")),
+                    "task_mode": mode,
+                    "intent_count": len(plan.get("query_intents") or []),
+                    "rationale": plan.get("rationale"),
+                    "measure_id": plan.get("measure_id"),
+                    "primary_measures": plan.get("primary_measures"),
+                    "corpus_domain_tags": plan.get("corpus_domain_tags"),
+                }
+            )
+            # Soft opinion / corpus-only: allow skip_bq and continue without LLM pad.
+            if plan.get("skip_bq"):
+                return plan
+            if plan.get("selected_tables") and plan.get("query_intents"):
+                return plan
 
+    if mode in ("fact_lookup", "data_export_only"):
         fact = build_fact_bq_plan(
             query,
             decomposition=dec,

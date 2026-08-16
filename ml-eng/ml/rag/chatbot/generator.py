@@ -26,6 +26,7 @@ from ml.rag.chatbot.answer_language import (
     is_english_answer_lang,
     language_instruction,
 )
+from ml.rag.chatbot.context_diversity import normalize_context_kind
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
@@ -183,8 +184,14 @@ def _generate_max_tokens() -> int:
     return int(os.environ.get("RAG_GENERATE_MAX_TOKENS", "2048") or 2048)
 
 
-def _context_max_chars(memory_block: str = "") -> int:
+def _context_max_chars(memory_block: str = "", *, soft_cap: bool = False) -> int:
     base = int(os.environ.get("RAG_GENERATE_CONTEXT_MAX_CHARS", "12000") or 12000)
+    if soft_cap:
+        try:
+            halved = int(os.environ.get("RAG_GENERATE_CONTEXT_MAX_CHARS_NO_BQ", str(max(4000, base // 2))) or base // 2)
+        except ValueError:
+            halved = max(4000, base // 2)
+        base = min(base, max(4000, halved))
     if memory_block.strip():
         return max(4000, base - len(memory_block))
     return base
@@ -566,6 +573,7 @@ def _build_prompt(
     task_mode: str = "chat",
     measure_id: str | None = None,
     recency_tier: str | None = None,
+    context_source_kinds: list[str] | None = None,
 ) -> list[dict[str, str]]:
     lang = (answer_lang or "").strip() or detect_answer_language(query)
     mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
@@ -626,6 +634,21 @@ def _build_prompt(
         "Never mention bigquery-public-data or other external warehouses. "
         "Do not suggest example queries the user should run."
     )
+    kinds = [str(k).strip().lower() for k in (context_source_kinds or []) if str(k).strip()]
+    unique_kinds = list(dict.fromkeys(kinds))
+    if len(unique_kinds) >= 2:
+        system = (
+            system
+            + "\n\nCROSS-DOMAIN SYNTHESIS: Context includes multiple source Types ("
+            + ", ".join(unique_kinds)
+            + "). Domains reinforce each other — weave them together. "
+            "Use structured/BigQuery rows for levels, trends, and comparisons when present; "
+            "use news, policy, public reports, and research for mechanisms, events, and "
+            "stakeholder context. Do not answer from only one Type when others are relevant. "
+            "If structured data is missing, still synthesize across the narrative corpora "
+            "that are present; admit the structured gap once and do not invent yields, IPC "
+            "phases, or exact production totals."
+        )
     intent_tone = ""
     if decomposition:
         intent = str(decomposition.get("intent") or "").strip().lower()
@@ -1303,9 +1326,15 @@ def generate(
             acf=no_evidence_acf(),
         )
 
-    ctx_budget = _context_max_chars(memory_block)
+    ctx_budget = _context_max_chars(
+        memory_block,
+        soft_cap=bool(
+            structured_bq_unavailable and task_mode in ("chat", "briefing")
+        ),
+    )
     chunk_cap = _chunk_max_chars()
     context_block, source_registry = _build_context_block(usable_context, ctx_budget, chunk_cap)
+    source_kinds = [normalize_context_kind(item) for item in usable_context]
 
     messages = _build_prompt(
         query,
@@ -1322,6 +1351,7 @@ def generate(
         task_mode=task_mode,
         measure_id=measure_id,
         recency_tier=recency_tier,
+        context_source_kinds=source_kinds,
     )
     llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
     if llama_answer:
