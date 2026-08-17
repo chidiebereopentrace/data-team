@@ -9,7 +9,7 @@ watchPatterns = ["ml/**", "config/**", "requirements.railway.txt"]
 [deploy]
 # Overrides dashboard Custom Start Command. Do not decode GCP_SA_JSON_B64 to /tmp/gcp-sa.json
 # here — railway-entrypoint.sh writes GOOGLE_APPLICATION_CREDENTIALS_BASE64 to /tmp/gcp-sa-key.json.
-startCommand = "uvicorn ml.rag.api:app --host 0.0.0.0 --port $PORT"
+startCommand = "sh -c 'uvicorn ml.rag.api:app --host 0.0.0.0 --port ${PORT:-7860}'"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
 

@@ -96,7 +96,7 @@ If `/query` returns:
 {"detail": "('File /tmp/gcp-sa.json is not a valid json file.', JSONDecodeError(...))"}
 ```
 
-This was caused by a Railway **Custom Start Command** that decoded `GCP_SA_JSON_B64` into `/tmp/gcp-sa.json` (empty file if that var is unset). [`railway.toml`](../railway.toml) now pins `startCommand` to uvicorn only; the entrypoint writes `/tmp/gcp-sa-key.json`.
+This was caused by a Railway **Custom Start Command** that decoded `GCP_SA_JSON_B64` into `/tmp/gcp-sa.json` (empty file if that var is unset). [`railway.toml`](../railway.toml) now pins `startCommand` to `sh -c 'uvicorn ml.rag.api:app --host 0.0.0.0 --port ${PORT:-7860}'`; the entrypoint writes `/tmp/gcp-sa-key.json`.
 
 1. **Clear** the dashboard Custom Start Command (after deploy it should show “set in railway.toml”).
 2. **Set** `GOOGLE_APPLICATION_CREDENTIALS_BASE64` — copy from `GCP_SA_JSON_B64` if that is where the key lives, or re-encode with `ml-eng/scripts/encode-gcp-key.sh` (single line, no quotes).
@@ -225,7 +225,7 @@ Do **not** expose Streamlit as the public Ask ADZA UI.
 After merging doc/Dockerfile changes:
 
 1. **API service (same env as Redis):**
-   - Confirm Settings → Start command is **set in railway.toml** (`uvicorn ml.rag.api:app --host 0.0.0.0 --port $PORT`). Clear any dashboard command that writes `/tmp/gcp-sa.json`.
+   - Confirm Settings → Start command is **set in railway.toml** (`sh -c 'uvicorn ml.rag.api:app --host 0.0.0.0 --port ${PORT:-7860}'`). Clear any dashboard command that writes `/tmp/gcp-sa.json`.
    - Set `GOOGLE_APPLICATION_CREDENTIALS_BASE64` (copy from `GCP_SA_JSON_B64` or re-encode with `scripts/encode-gcp-key.sh`).
    - **Delete** `GCP_SA_JSON_B64`, `GCP_SA_JSON`, and `GOOGLE_APPLICATION_CREDENTIALS` if present (never `/tmp/gcp-sa.json`).
    - Set `RAG_RERANKER_MODE=cross_encoder` and `RAG_RERANKER_MODEL=BAAI/bge-reranker-base`; set private `RAG_REDIS_URL`; delete Cohere/OpenRouter rerank vars.
