@@ -7,6 +7,8 @@ import time
 import uuid
 from pathlib import Path
 
+from ml.rag.gcp_credentials import bootstrap_gcp_credentials
+
 # Always prefer file values for these when loading data/local/.env (avoids stale shell exports).
 _ENV_FORCE_KEYS = frozenset({
     "QDRANT_URL",
@@ -156,6 +158,10 @@ def apply_ml_eng_path_defaults(repo_root: Path) -> None:
 
     gcp_raw = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
     if gcp_raw:
+        gcp_path = Path(gcp_raw.strip('"').strip("'"))
+        # Production bootstrap writes validated creds under /tmp; do not override.
+        if gcp_path.is_absolute() and gcp_path.is_file() and str(gcp_path).startswith("/tmp/"):
+            return
         resolved = _resolve_repo_path(repo_root, gcp_raw)
         if resolved is not None and resolved.is_file():
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(resolved)
@@ -210,6 +216,8 @@ def load_rag_dotenv(repo_root: Path) -> None:
     # #endregion
     load_data_local_dotenv(repo_root)
     load_config_dotenv(repo_root)
+    bq_project = os.environ.get("BQ_PROJECT", "").strip()
+    bootstrap_gcp_credentials(fail_on_legacy_invalid=bool(bq_project))
     apply_ml_eng_path_defaults(repo_root)
     apply_lm_studio_defaults()
     # #region agent log

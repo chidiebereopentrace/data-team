@@ -16,6 +16,8 @@ Full reference: [config/.env.example](../config/.env.example).
 | `NEWS_PUBLIC_REPORTS` or similar legacy alias | Use `QDRANT_COLLECTION_PUBLIC_REPORTS=public_reports` |
 | `GOOGLE_APPLICATION_CREDENTIALS=config/keys/...` | Invalid on Railway; use `GOOGLE_APPLICATION_CREDENTIALS_BASE64` |
 | `GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa.json` | Stale HF/serving path; entrypoint uses `/tmp/gcp-sa-key.json` only |
+| `GCP_SA_JSON_B64` / `GCP_SA_JSON` | Legacy HF/serving names; copy into `GOOGLE_APPLICATION_CREDENTIALS_BASE64` then delete |
+| Dashboard start that writes `/tmp/gcp-sa.json` | Replaced by [`railway.toml`](../railway.toml) `startCommand` (uvicorn only) |
 | `RAG_LLM_BASE_URL` pointing at LAN / LM Studio | Production must use a public LLM endpoint (e.g. OpenRouter) |
 | Per-plan **70B** overrides | e.g. `RAG_LLM_MODEL_GOVERNMENT=...70b...`, `RAG_BQ_REASONER_MODEL_ID=...70b...` |
 | `RAG_LLM_RERANK=off` as primary rerank guidance | Use `RAG_RERANKER_MODE=cross_encoder` instead |
@@ -82,7 +84,28 @@ Encode key: [scripts/encode-gcp-key.sh](../scripts/encode-gcp-key.sh).
 
 Do **not** set `GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa.json` in the Railway dashboard (that path caused production “not a valid json file” 500s). Prefer leaving `GOOGLE_APPLICATION_CREDENTIALS` unset and relying on BASE64 + entrypoint.
 
+**Python bootstrap (import time):** [`ml/rag/gcp_credentials.py`](../ml/rag/gcp_credentials.py) re-decodes `GOOGLE_APPLICATION_CREDENTIALS_BASE64` on every process start so Railway platform env injection cannot leave ADC pointing at stale `/tmp/gcp-sa.json` after the shell entrypoint.
+
 `GET /ready` nests a `bq` object: when `BQ_PROJECT` is set, invalid/missing SA JSON or a failed BigQuery probe → `status: not_ready`.
+
+### Troubleshooting — `File /tmp/gcp-sa.json is not a valid json file`
+
+If `/query` returns:
+
+```json
+{"detail": "('File /tmp/gcp-sa.json is not a valid json file.', JSONDecodeError(...))"}
+```
+
+This was caused by a Railway **Custom Start Command** that decoded `GCP_SA_JSON_B64` into `/tmp/gcp-sa.json` (empty file if that var is unset). [`railway.toml`](../railway.toml) now pins `startCommand` to uvicorn only; the entrypoint writes `/tmp/gcp-sa-key.json`.
+
+1. **Clear** the dashboard Custom Start Command (after deploy it should show “set in railway.toml”).
+2. **Set** `GOOGLE_APPLICATION_CREDENTIALS_BASE64` — copy from `GCP_SA_JSON_B64` if that is where the key lives, or re-encode with `ml-eng/scripts/encode-gcp-key.sh` (single line, no quotes).
+3. **Delete** `GCP_SA_JSON_B64`, `GCP_SA_JSON`, and `GOOGLE_APPLICATION_CREDENTIALS` (especially `/tmp/gcp-sa.json`).
+4. Confirm `BQ_PROJECT` and `BQ_DATASET_SILVER=staging_dev`.
+5. **Redeploy** (`Dockerfile.railway`).
+6. **Verify** `GET /ready` → `bq.gcp.path` is `/tmp/gcp-sa-key.json`, `bq.gcp.json_ok: true`, `status: ready`.
+
+If the container fails to start after deploy, check deploy logs for entrypoint `✗` lines (invalid BASE64 or missing creds when `BQ_PROJECT` is set).
 
 ### Reranker (local cross-encoder via fastembed — no torch)
 
@@ -201,10 +224,14 @@ Do **not** expose Streamlit as the public Ask ADZA UI.
 
 After merging doc/Dockerfile changes:
 
-1. **API service (same env as Redis):** set `RAG_RERANKER_MODE=cross_encoder` and `RAG_RERANKER_MODEL=BAAI/bge-reranker-base`; set private `RAG_REDIS_URL`; delete Cohere/OpenRouter rerank vars.
+1. **API service (same env as Redis):**
+   - Confirm Settings → Start command is **set in railway.toml** (`uvicorn ml.rag.api:app --host 0.0.0.0 --port $PORT`). Clear any dashboard command that writes `/tmp/gcp-sa.json`.
+   - Set `GOOGLE_APPLICATION_CREDENTIALS_BASE64` (copy from `GCP_SA_JSON_B64` or re-encode with `scripts/encode-gcp-key.sh`).
+   - **Delete** `GCP_SA_JSON_B64`, `GCP_SA_JSON`, and `GOOGLE_APPLICATION_CREDENTIALS` if present (never `/tmp/gcp-sa.json`).
+   - Set `RAG_RERANKER_MODE=cross_encoder` and `RAG_RERANKER_MODEL=BAAI/bge-reranker-base`; set private `RAG_REDIS_URL`; delete Cohere/OpenRouter rerank vars.
 2. **Streamlit service (other env):** copy pipeline vars from API; **omit** Redis; add QA debug flags only.
 3. Redeploy **both** with **build cache cleared**.
-4. Smoke API (`GET /ready` → Redis connected + `rerank_mode=cross_encoder`) and Streamlit (same query; inspector shows rerank scores).
+4. Smoke API (`GET /ready` → `bq.gcp.json_ok: true`, path `/tmp/gcp-sa-key.json`, Redis connected) and Streamlit (same query; inspector shows rerank scores).
 
 ---
 

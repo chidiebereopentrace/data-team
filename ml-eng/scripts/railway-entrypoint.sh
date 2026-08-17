@@ -40,6 +40,10 @@ elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]; then
     echo "✓ Existing GOOGLE_APPLICATION_CREDENTIALS validated: $CRED_PATH"
 else
     echo "⚠ Neither GOOGLE_APPLICATION_CREDENTIALS_BASE64 nor GOOGLE_APPLICATION_CREDENTIALS set"
+    if [ -n "${BQ_PROJECT:-}" ]; then
+        echo "✗ BQ_PROJECT is set but GCP credentials are missing"
+        exit 1
+    fi
     echo "  BigQuery NL2SQL will fail until credentials are provided"
 fi
 
