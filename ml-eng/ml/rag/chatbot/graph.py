@@ -1173,42 +1173,10 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         cands = state.get("bq_table_candidates") or []
         hints = [str(c.get("content") or "") for c in cands if c.get("content")]
 
-    # Enrich NL2SQL question with reasoner intents when present.
+    # Enrich NL2SQL leftover with reasoner intents when present; pattern SQL
+    # compiles from query_intents + the original question (not concatenated staples).
     raw_intents = plan.get("query_intents")
     intents: list[Any] = raw_intents if isinstance(raw_intents, list) else []
-    intent_lines = []
-    intent_cap = 10 if bool(state.get("analytical_mode")) else 5
-    for intent in intents[:intent_cap]:
-        if not isinstance(intent, dict):
-            continue
-        goal = str(intent.get("goal") or "").strip()
-        notes = str(intent.get("notes") or "").strip()
-        filters = str(intent.get("filters") or "").strip()
-        pattern = str(intent.get("pattern") or "").strip()
-        metric = str(intent.get("metric") or "").strip()
-        grain = intent.get("grain")
-        grain_s = ""
-        if isinstance(grain, list) and grain:
-            grain_s = "grain=" + ",".join(str(g) for g in grain)
-        tables = ", ".join(str(t) for t in (intent.get("tables") or []))
-        bit = "; ".join(
-            x
-            for x in (
-                goal,
-                f"tables={tables}" if tables else "",
-                f"pattern={pattern}" if pattern else "",
-                f"metric={metric}" if metric else "",
-                grain_s,
-                filters,
-                notes,
-            )
-            if x
-        )
-        if bit:
-            intent_lines.append(bit)
-    question = q
-    if intent_lines:
-        question = q + "\n\nSQL plan intents:\n- " + "\n- ".join(intent_lines)
 
     top_k = int(state.get("bq_top_k") or _DEFAULT_BQ_TOP_K)
     countries = resolve_retrieval_geographies(
@@ -1237,7 +1205,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         env_bumped = True
     try:
         results = retriever.retrieve(
-            question,
+            q,
             top_k=top_k,
             table_hints=hints,
             selected_tables=list(plan.get("selected_tables") or []),

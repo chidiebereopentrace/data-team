@@ -1,7 +1,11 @@
 """Tests for YAML-driven BQ context enrichment."""
 from __future__ import annotations
 
-from ml.rag.chatbot.bq_context_enrich import enrich_bq_results, resolve_row_semantics
+from ml.rag.chatbot.bq_context_enrich import (
+    enrich_bq_results,
+    format_row_prose,
+    resolve_row_semantics,
+)
 from ml.rag.chatbot.bq_table_schema_yaml import (
     column_description,
     discriminator_columns,
@@ -167,12 +171,35 @@ def test_enrich_single_row_prose() -> None:
     out = enrich_bq_results([item], query="maize production in South Africa 2020", plan={"selected_tables": ["stg_faostat_production"]})
     assert len(out) == 1
     content = out[0]["content"]
-    assert "OpenTrace structured data" in content
+    assert "FAOSTAT" in content
+    assert "OpenTrace statistical series" not in content
+    assert "stg_faostat_production" not in content
     assert "production" in content.lower()
     assert "tonnes" in content.lower()
     assert "NOT" in content
     assert isinstance(out[0]["metadata"].get("raw_row"), dict)
     assert out[0]["metadata"].get("value_semantics")
+
+
+def test_format_row_prose_fallback_omits_table_id() -> None:
+    prose = format_row_prose(
+        {
+            "table_id": "stg_yield_raw_data",
+            "source_domain": "",
+            "measure_label": "Yield",
+            "measure_value": 2.1,
+            "unit": "t/ha",
+            "geo": "Senegal",
+            "time": "2020",
+            "discriminators": {},
+            "not_this": [],
+            "table_description": "",
+            "grain": "",
+        }
+    )
+    assert prose.startswith("OpenTrace agricultural data")
+    assert "stg_yield_raw_data" not in prose
+    assert "FAOSTAT" not in prose
 
 
 def test_ranking_consolidation() -> None:
@@ -287,8 +314,9 @@ def test_build_prompt_structured_bq_numeric_available_guard() -> None:
     )
     sys_msg = messages[0]["content"]
     assert "CRITICAL" in sys_msg
-    assert "structured bigquery" in sys_msg.lower()
+    assert "statistical figures" in sys_msg.lower()
     assert "authoritative" in sys_msg.lower()
+    assert "structured bigquery" not in sys_msg.lower()
 
 
 def test_build_prompt_structured_bq_comparative_available_guard() -> None:

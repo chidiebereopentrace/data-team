@@ -69,7 +69,7 @@ def test_analytical_bq_plan_never_skips() -> None:
     )
     assert plan is not None
     assert plan["skip_bq"] is False
-    assert len(plan["query_intents"]) >= 3
+    assert len(plan["query_intents"]) >= 2
     assert "stg_faostat_production" in plan["selected_tables"]
 
 
@@ -91,3 +91,38 @@ def test_sections_fallback_without_headings() -> None:
     sections = sections_from_answer("My question", "Just a short answer.")
     assert sections[0]["heading"] == "Executive summary"
     assert sections[0]["body"] == "Just a short answer."
+
+
+def test_sections_from_inline_headings() -> None:
+    answer = (
+        "## Executive summary West Africa grew slowly. "
+        "## Country comparison Nigeria leads in maize. "
+        "## Conclusion Invest in yields."
+    )
+    sections = sections_from_answer("Q?", answer)
+    headings = [s["heading"] for s in sections]
+    assert "Executive summary" in headings
+    assert "Country comparison" in headings
+    assert any("Nigeria" in s["body"] for s in sections)
+
+
+def test_report_topic_is_not_query_slug() -> None:
+    from ml.rag.chatbot.exports.tabular import report_topic
+
+    query = (
+        "give me a docx file report of the trend of production and trade maize and rice "
+        "across west africa in 2022"
+    )
+    title, slug = report_topic(
+        query,
+        decomposition={
+            "entities": ["maize", "rice"],
+            "time_start": "2022-01-01",
+            "time_end": "2022-12-31",
+        },
+    )
+    assert "give_me_a_docx" not in slug
+    assert "west" in slug
+    assert "2022" in slug
+    assert "West Africa" in title
+    assert "2022" in title

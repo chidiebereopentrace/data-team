@@ -20,6 +20,7 @@ from ml.rag.chatbot.generator import (
     _no_data_fallback_message,
     _normalize_inline_citations,
     _registry_from_context_items,
+    _strip_invalid_citation_markers,
     _strip_model_sources_appendix,
     _strip_preamble_openers,
     dedupe_bq_context_items,
@@ -109,6 +110,29 @@ def test_bq_citation_format() -> None:
     assert "OpenTrace agricultural data" in line
     assert "yield_raw_data" not in line
     assert "Senegal" in line or "rice" in line
+
+
+def test_bq_citation_uses_faostat_when_table_is_definitive() -> None:
+    item = _bq_item()
+    item["metadata"]["table_id"] = "stg_faostat_production"
+    item["metadata"]["sql"] = (
+        "SELECT * FROM `opentrace-prod-5ga4.staging_dev.stg_faostat_production`"
+    )
+    line = _format_source_citation(item)
+    assert line is not None
+    assert line.startswith("[FAOSTAT]")
+    assert "[Structured data]" not in line
+    assert "stg_faostat" not in line
+
+
+def test_bq_citation_uses_domain_when_table_id_is_generic() -> None:
+    item = _bq_item()
+    item["metadata"]["sql"] = "SELECT * FROM `opentrace.raw_dev.yield_raw_data`"
+    item["metadata"]["source_domain"] = "fews_net"
+    line = _format_source_citation(item)
+    assert line is not None
+    assert line.startswith("[FEWS NET]")
+    assert "[Structured data]" not in line
 
 
 def _bq_error_item() -> dict:
@@ -622,9 +646,67 @@ def test_build_prompt_structured_bq_unavailable_guard() -> None:
         structured_bq_unavailable=True,
     )
     sys_msg = messages[0]["content"]
-    assert "CRITICAL" in sys_msg
-    assert "no usable rows" in sys_msg.lower()
-    assert "numeric facts" in sys_msg.lower()
+    assert "invent specific production totals" in sys_msg.lower()
+    assert "note for this turn" in sys_msg.lower()
+    assert "bigquery structured data was attempted" not in sys_msg.lower()
+    assert "opentrace structured data is unavailable" not in sys_msg.lower()
+    assert "no usable rows" not in sys_msg.lower()
+    assert "never mention bigquery" in sys_msg.lower()
+
+
+def test_build_prompt_analytical_brief_mode_headings() -> None:
+    messages = _build_prompt(
+        "West Africa maize and rice report 2022",
+        context_block="[News] policy chunk",
+        analytical_mode=True,
+    )
+    sys_msg = messages[0]["content"]
+    assert "ANALYTICAL BRIEF MODE" in sys_msg
+    assert "ANALYTICAL BRIEFING MODE" not in sys_msg
+    assert "ANALYTICAL REPORT MODE" not in sys_msg
+    assert "## Key Findings" in sys_msg
+    assert "## Regional & Country Picture" in sys_msg
+    assert "## Production, Trade & Markets" in sys_msg
+    assert "## Drivers & Context" in sys_msg
+    assert "## Data Notes" in sys_msg
+    assert "## Data gaps" not in sys_msg
+    assert "2–4 short paragraphs" not in sys_msg
+    assert "brief limits or gaps" not in sys_msg
+
+
+def test_build_prompt_chat_keeps_short_paragraph_length_rule() -> None:
+    messages = _build_prompt(
+        "What is Ask ADZA?",
+        context_block="[News] policy chunk",
+        task_mode="chat",
+    )
+    sys_msg = messages[0]["content"]
+    assert "2–4 short paragraphs" in sys_msg
+    assert "ANALYTICAL BRIEF MODE" not in sys_msg
+
+
+def test_build_prompt_fact_lookup_replaces_length_rule() -> None:
+    messages = _build_prompt(
+        "How much maize did Nigeria produce in 2020?",
+        context_block="[Structured data] production row",
+        task_mode="fact_lookup",
+    )
+    sys_msg = messages[0]["content"]
+    assert "FACT LOOKUP MODE" in sys_msg
+    assert "2–4 short paragraphs" not in sys_msg
+    assert "brief limits or gaps" not in sys_msg
+
+
+def test_citation_strip_preserves_markdown_newlines() -> None:
+    registry = [
+        SourceRef(source_id=1, item={"content": "a"}, citation_line="News A"),
+    ]
+    text = (
+        "## Executive summary\nWest Africa grew.[1]\n\n"
+        "## Regional overview\nMaize held up."
+    )
+    out = _strip_invalid_citation_markers(text, registry)
+    assert "\n## Regional overview\n" in out
 
 
 def test_build_prompt_africa_scope_line() -> None:
@@ -679,7 +761,10 @@ def test_generate_ranking_uses_narrative_when_bq_unavailable() -> None:
     assert "I don't have OpenTrace data" not in result.answer
     assert captured.get("messages")
     sys_msg = captured["messages"][0]["content"].lower()
-    assert "no usable rows" in sys_msg or "critical" in sys_msg
+    assert "invent specific production totals" in sys_msg
+    assert "bigquery structured data was attempted" not in sys_msg
+    assert "opentrace structured data is unavailable" not in sys_msg
+    assert "no usable rows" not in sys_msg
 
 
 def test_is_ranking_numeric_query() -> None:
@@ -747,6 +832,76 @@ def test_pin_bq_context_first() -> None:
     ]
     out = pin_bq_context_first(items)
     assert [x["_context_kind"] for x in out] == ["bigquery", "news", "policy"]
+
+
+def test_prefer_in_window_narrative_historical_analytical() -> None:
+    from ml.rag.chatbot.generator import prefer_in_window_narrative
+
+    items = [
+        {"_context_kind": "bigquery", "content": "bq", "metadata": {}},
+        {
+            "_context_kind": "news",
+            "content": "2026 news",
+            "metadata": {"published_at": "2026-01-15", "title": "now"},
+        },
+        {
+            "_context_kind": "news",
+            "content": "2022 news",
+            "metadata": {"published_at": "2022-06-01", "title": "then"},
+        },
+    ]
+    out = prefer_in_window_narrative(
+        items,
+        {"time_start": "2022-01-01", "time_end": "2022-12-31"},
+        analytical=True,
+    )
+    assert [x["content"] for x in out] == ["bq", "2022 news", "2026 news"]
+
+
+def test_prefer_in_window_narrative_skips_open_ended_window() -> None:
+    from ml.rag.chatbot.generator import prefer_in_window_narrative
+
+    items = [
+        {
+            "_context_kind": "news",
+            "content": "2026 news",
+            "metadata": {"published_at": "2026-01-15"},
+        },
+        {
+            "_context_kind": "news",
+            "content": "2022 news",
+            "metadata": {"published_at": "2022-06-01"},
+        },
+    ]
+    out = prefer_in_window_narrative(
+        items,
+        {"time_start": "2015-01-01", "time_end": "2026-12-31"},
+        analytical=True,
+    )
+    assert [x["content"] for x in out] == ["2026 news", "2022 news"]
+
+
+def test_prefer_in_window_narrative_skips_non_analytical() -> None:
+    from ml.rag.chatbot.generator import prefer_in_window_narrative
+
+    items = [
+        {
+            "_context_kind": "news",
+            "content": "2026 news",
+            "metadata": {"published_at": "2026-01-15"},
+        },
+        {
+            "_context_kind": "news",
+            "content": "2022 news",
+            "metadata": {"published_at": "2022-06-01"},
+        },
+    ]
+    out = prefer_in_window_narrative(
+        items,
+        {"time_start": "2022-01-01", "time_end": "2022-12-31"},
+        analytical=False,
+    )
+    assert [x["content"] for x in out] == ["2026 news", "2022 news"]
 
 
 def test_is_comparative_bq_query() -> None:

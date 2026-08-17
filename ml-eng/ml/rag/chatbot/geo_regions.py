@@ -38,7 +38,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
             "Benin",
             "Burkina Faso",
             "Cabo Verde",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Gambia",
             "Ghana",
             "Guinea",
@@ -162,7 +162,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
             "Chad",
             "Comoros",
             "Congo",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Democratic Republic of the Congo",
             "Djibouti",
             "Equatorial Guinea",
@@ -300,7 +300,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "countries": (
             "Benin",
             "Cameroon",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Equatorial Guinea",
             "Gabon",
             "Ghana",
@@ -350,7 +350,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
             "Chad",
             "Comoros",
             "Congo",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Democratic Republic of the Congo",
             "Djibouti",
             "Gabon",
@@ -395,7 +395,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
             "Benin",
             "Burkina Faso",
             "Cabo Verde",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Gambia",
             "Ghana",
             "Guinea",
@@ -415,7 +415,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "countries": (
             "Benin",
             "Burkina Faso",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Guinea-Bissau",
             "Mali",
             "Niger",
@@ -596,7 +596,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
     "mru": {
         "category": "rec",
         "aliases": ("mru", "mano river union"),
-        "countries": ("Cote d'Ivoire", "Guinea", "Liberia", "Sierra Leone"),
+        "countries": ("Côte d'Ivoire", "Guinea", "Liberia", "Sierra Leone"),
     },
     "ioc": {
         "category": "rec",
@@ -642,7 +642,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
             "Burkina Faso",
             "Cameroon",
             "Chad",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Guinea",
             "Mali",
             "Niger",
@@ -671,7 +671,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
     "volta_basin": {
         "category": "basin",
         "aliases": ("volta", "volta basin", "volta river basin"),
-        "countries": ("Benin", "Burkina Faso", "Cote d'Ivoire", "Ghana", "Mali", "Togo"),
+        "countries": ("Benin", "Burkina Faso", "Côte d'Ivoire", "Ghana", "Mali", "Togo"),
     },
     "lake_victoria_basin": {
         "category": "basin",
@@ -725,7 +725,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
             "Cameroon",
             "Central African Republic",
             "Chad",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Ghana",
             "Guinea",
             "Mali",
@@ -750,7 +750,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "countries": (
             "Benin",
             "Cameroon",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Ghana",
             "Guinea",
             "Liberia",
@@ -820,7 +820,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "aliases": ("coastal west africa", "west african coast", "littoral ouest africain"),
         "countries": (
             "Benin",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Gambia",
             "Ghana",
             "Guinea",
@@ -840,7 +840,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
     "cocoa_belt": {
         "category": "agroeco",
         "aliases": ("cocoa belt", "cacao belt", "west african cocoa"),
-        "countries": ("Cameroon", "Cote d'Ivoire", "Ghana", "Nigeria", "Togo"),
+        "countries": ("Cameroon", "Côte d'Ivoire", "Ghana", "Nigeria", "Togo"),
     },
     "cotton_zone_sahel": {
         "category": "agroeco",
@@ -868,7 +868,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "aliases": ("rice systems west africa", "west african rice", "riziculture ouest afrique"),
         "countries": (
             "Benin",
-            "Cote d'Ivoire",
+            "Côte d'Ivoire",
             "Ghana",
             "Guinea",
             "Mali",

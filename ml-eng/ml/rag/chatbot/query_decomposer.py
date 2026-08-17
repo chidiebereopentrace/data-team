@@ -94,6 +94,7 @@ _COUNTRY_ALIASES = {
     "guinea": "Guinea",
     "guinea-bissau": "Guinea-Bissau",
     "ivory coast": "Côte d'Ivoire",
+    "cote d'ivoire": "Côte d'Ivoire",
     "côte d'ivoire": "Côte d'Ivoire",
     "kenya": "Kenya",
     "lesotho": "Lesotho",

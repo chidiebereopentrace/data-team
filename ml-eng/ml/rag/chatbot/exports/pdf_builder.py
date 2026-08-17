@@ -4,6 +4,8 @@ from __future__ import annotations
 import io
 from typing import Any
 
+from ml.rag.chatbot.exports.markdown_flow import iter_markdown_blocks, to_reportlab_html
+
 
 def build_pdf(
     *,
@@ -35,26 +37,32 @@ def build_pdf(
     body_style = ParagraphStyle("OTBody", parent=styles["Normal"], fontSize=10, leading=14)
     story: list[Any] = []
 
-    story.append(Paragraph(title, title_style))
+    story.append(Paragraph(to_reportlab_html(title), title_style))
     story.append(Spacer(1, 0.2 * inch))
 
     for sec in sections:
         heading = (sec.get("heading") or "").strip()
         body = (sec.get("body") or "").strip()
         if heading:
-            story.append(Paragraph(heading, styles["Heading2"]))
+            story.append(Paragraph(to_reportlab_html(heading), styles["Heading2"]))
         if body:
-            for para in body.split("\n\n"):
-                story.append(Paragraph(para.strip().replace("\n", "<br/>"), body_style))
-                story.append(Spacer(1, 0.1 * inch))
+            for kind, content in iter_markdown_blocks(body):
+                html = to_reportlab_html(content)
+                if kind == "heading":
+                    story.append(Paragraph(html, styles["Heading3"]))
+                elif kind == "bullet":
+                    story.append(Paragraph(f"• {html}", body_style))
+                else:
+                    story.append(Paragraph(html, body_style))
+                story.append(Spacer(1, 0.08 * inch))
 
     if chart_png:
         story.append(Paragraph("Chart", styles["Heading2"]))
         story.append(Image(io.BytesIO(chart_png), width=6 * inch, height=3.5 * inch))
         story.append(Spacer(1, 0.15 * inch))
 
-    story.append(Paragraph("Data table", styles["Heading2"]))
     if table_rows:
+        story.append(Paragraph("Figures", styles["Heading2"]))
         cols = list({k for row in table_rows for k in row})
         data = [cols] + [[str(row.get(c, "")) for c in cols] for row in table_rows[:30]]
         tbl = Table(data, repeatRows=1)
@@ -69,21 +77,18 @@ def build_pdf(
         )
         story.append(tbl)
         story.append(Spacer(1, 0.15 * inch))
-    else:
-        story.append(Paragraph("No structured data was available for this query.", body_style))
-        story.append(Spacer(1, 0.15 * inch))
 
     if citations:
         story.append(Paragraph("Sources", styles["Heading2"]))
         for c in citations:
             cid = c.get("id", "")
-            text = str(c.get("text", "")).replace("&", "&amp;").replace("<", "&lt;")
+            text = to_reportlab_html(str(c.get("text", "")))
             story.append(Paragraph(f"[{cid}] {text}", body_style))
 
     if acf_summary:
         story.append(Spacer(1, 0.1 * inch))
         story.append(Paragraph("Confidence summary", styles["Heading2"]))
-        story.append(Paragraph(acf_summary.replace("\n", "<br/>"), body_style))
+        story.append(Paragraph(to_reportlab_html(acf_summary), body_style))
 
     doc.build(story)
     name = filename if filename.endswith(".pdf") else f"{filename}.pdf"

@@ -443,10 +443,10 @@ def generation_plan_addendum(plan: GenerationPlan | dict[str, Any] | None) -> st
     if plan_obj.evidence_priority:
         parts.append(f"Evidence priority: {', '.join(plan_obj.evidence_priority[:5])}.")
     if plan_obj.must_ground_in == "bigquery":
-        parts.append("Ground quantitative claims in structured BigQuery rows when present.")
+        parts.append("Ground quantitative claims in OpenTrace figures when present.")
     elif plan_obj.must_ground_in == "narrative":
         parts.append("Ground claims in news, policy, research, or reports; do not invent structured totals.")
     for note in plan_obj.synthesis_notes[:2]:
         parts.append(note)
-    text = " ".join(parts)
+    text = "\n".join(parts)
     return text[:400]

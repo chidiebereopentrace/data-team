@@ -158,7 +158,8 @@ def _continental_scope_hint(
     return (
         "- CONTINENTAL/REGIONAL scope (Africa or subregion): rank or aggregate across "
         "African countries using country_name (or equivalent) on the fact table only; "
-        "do NOT filter country_name = 'Africa'; do NOT invent dim_geography / dim_* "
+        "do NOT filter country_name = 'Africa' or a region label such as 'West Africa' "
+        "or 'Sahel'; do NOT invent dim_geography / dim_* "
         "or any country-list subquery; do NOT join GDP/HDI tables for a country list "
         "unless that table is in the selected table set"
     )

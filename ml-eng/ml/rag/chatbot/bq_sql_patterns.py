@@ -198,23 +198,36 @@ def build_time_series_sql(
     blob: str = "",
     geo_clause: str = "",
     aggregation: str = "sum",
+    grain: list[str] | None = None,
 ) -> str:
-    lim = max(1, min(int(limit or 50), 100))
-    metric_col = _safe_ident(metric, default="value")
     ycol = _year_col(table_id)
+    extra = _safe_idents(
+        [g for g in (grain or []) if str(g).strip().lower() not in {ycol.lower(), "year"}],
+        default=[],
+    )
+    lim = max(1, min(int(limit or 50), 200 if extra else 100))
+    metric_col = _safe_ident(metric, default="value")
     year_filter = f"AND {ycol} >= {int(year) - 10} AND {ycol} <= {int(year)} " if year else ""
     disc_blob = blob or (element or "")
     product_list = products or ([product_name] if product_name else None)
+    if extra:
+        select_cols = ", ".join([*extra, f"{ycol} AS year"])
+        group_cols = ", ".join([*extra, ycol])
+        order_cols = f"{ycol}, {extra[0]}"
+    else:
+        select_cols = f"{ycol} AS year"
+        group_cols = ycol
+        order_cols = ycol
     return (
-        f"SELECT {ycol} AS year, {_agg_expr(aggregation, metric_col)} AS total "
+        f"SELECT {select_cols}, {_agg_expr(aggregation, metric_col)} AS total "
         f"FROM {_fqn(project_id, dataset, table_id)} "
         f"WHERE 1=1 "
         f"{year_filter}"
         f"{geo_clause}"
         f"{_discriminator_clause(table_id, disc_blob)}"
         f"{_product_clause(table_id, product_list)}"
-        f"GROUP BY {ycol} "
-        f"ORDER BY {ycol} "
+        f"GROUP BY {group_cols} "
+        f"ORDER BY {order_cols} "
         f"LIMIT {lim}"
     )
 
@@ -382,6 +395,7 @@ def try_sql_pattern(
         sql = build_time_series_sql(
             **common,
             year=year,
+            grain=grain,
             limit=max(limit, 50),
         )
     elif pattern == "yoy_delta":

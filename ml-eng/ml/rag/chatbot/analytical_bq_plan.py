@@ -6,7 +6,11 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.agri_measure_ontology import fallback_plan, resolve_measure
-from ml.rag.chatbot.bq_table_schema_yaml import pack_selected_table_hints, table_supports_sql_pattern
+from ml.rag.chatbot.bq_table_schema_yaml import (
+    match_product_samples,
+    pack_selected_table_hints,
+    table_supports_sql_pattern,
+)
 
 _STAPLES = ("Maize", "Rice", "Cassava", "Sorghum", "Millet")
 
@@ -25,10 +29,23 @@ def analytical_sql_query_floor() -> int:
     except ValueError:
         env = 10
     try:
-        floor = int(os.environ.get("RAG_ANALYTICAL_BQ_MIN_QUERIES", "8") or 8)
+        floor = int(os.environ.get("RAG_ANALYTICAL_BQ_MIN_QUERIES", "5") or 5)
     except ValueError:
-        floor = 8
-    return max(env, floor, 8)
+        floor = 5
+    return max(3, min(max(env, floor), 8))
+
+
+def _asked_products(query: str, decomposition: dict[str, Any]) -> list[str]:
+    blob_parts = [query or ""]
+    entities = decomposition.get("entities")
+    if isinstance(entities, list):
+        blob_parts.extend(str(e) for e in entities if str(e).strip())
+    found = match_product_samples("stg_faostat_production", " ".join(blob_parts))
+    return found[:6] if found else list(_STAPLES[:3])
+
+
+def _wants_trade(query: str) -> bool:
+    return bool(re.search(r"\b(trade|export|import)\b", query or "", re.IGNORECASE))
 
 
 def build_food_security_bq_plan(
@@ -215,110 +232,61 @@ def build_analytical_bq_plan(
     te = str(decomposition.get("time_end") or "")[:10] or "latest"
     y0 = ts[:4] if ts[:4].isdigit() else "start"
     y1 = te[:4] if te[:4].isdigit() else "end"
+    products = _asked_products(query, decomposition)
+    product_filter = "items in " + ", ".join(products)
     want_yield = bool(re.search(r"\byields?\b", query or "", re.IGNORECASE))
+    want_trade = _wants_trade(query)
     primary_element = "Yield" if want_yield else "Production"
 
     selected = ["stg_faostat_production"]
-    for tid in ("stg_faostat_trade", "stg_faostat_prices", "stg_africa_gdp_ppp", "stg_faostat_investment_asti"):
-        if tid in known_tables and tid not in selected:
-            selected.append(tid)
-        if len(selected) >= 5:
-            break
+    if want_trade and "stg_faostat_trade" in known_tables:
+        selected.append("stg_faostat_trade")
+
+    rank_grain = ["country_name", "product_name"] if len(products) > 1 else ["country_name"]
+    series_grain = (
+        ["country_name", "product_name", "year"] if len(products) > 1 else ["country_name", "year"]
+    )
 
     intents: list[dict[str, Any]] = [
         {
-            "goal": f"Country agricultural {primary_element} ranking for the region/time window",
+            "goal": f"Country {primary_element} ranking for {', '.join(products)}",
             "tables": ["stg_faostat_production"],
-            "filters": f"element='{primary_element}'; {geo_filter}; year between {y0} and {y1}",
-            "notes": f"analytical_rank_{primary_element.lower()}",
+            "filters": f"element='{primary_element}'; {product_filter}; {geo_filter}; year≈{y1}",
+            "notes": "analytical_products_by_country",
             "pattern": "rank_by_sum",
             "metric": "value",
-            "grain": ["country_name"],
+            "grain": rank_grain,
             "order_by": "total DESC",
         },
         {
-            "goal": f"Production by country for staple crops ({', '.join(_STAPLES[:3])})",
+            "goal": f"{primary_element} time series by country for {', '.join(products)}",
             "tables": ["stg_faostat_production"],
-            "filters": (
-                f"element='Production'; items in {list(_STAPLES)}; {geo_filter}; "
-                f"year≈{y1}"
-            ),
-            "notes": "analytical_staples_by_country",
-            "pattern": "rank_by_sum",
-            "metric": "value",
-            "grain": ["country_name", "product_name"],
-            "order_by": "total DESC",
-        },
-        {
-            "goal": f"{primary_element} time series endpoints ({y0} vs {y1}) by country",
-            "tables": ["stg_faostat_production"],
-            "filters": f"element='{primary_element}'; {geo_filter}; years {y0} and {y1}",
+            "filters": f"element='{primary_element}'; {product_filter}; {geo_filter}; years {y0} and {y1}",
             "notes": "analytical_series_endpoints",
             "pattern": "time_series",
             "metric": "value",
-            "grain": ["country_name", "year"],
+            "grain": series_grain,
             "order_by": "year ASC",
-        },
-        {
-            "goal": "Top commodities by production volume in the geography",
-            "tables": ["stg_faostat_production"],
-            "filters": f"element='Production'; {geo_filter}; year≈{y1}",
-            "notes": "analytical_top_commodities",
-            "pattern": "rank_by_sum",
-            "metric": "value",
-            "grain": ["product_name"],
-            "order_by": "total DESC",
         },
     ]
 
     if "stg_faostat_trade" in selected:
-        intents.append(
-            {
-                "goal": "Agricultural trade (export/import) comparison by country",
-                "tables": ["stg_faostat_trade"],
-                "filters": f"{geo_filter}; year between {y0} and {y1}",
-                "notes": "analytical_trade",
-                "pattern": "rank_by_sum",
-                "metric": "value",
-                "grain": ["country_name"],
-                "order_by": "total DESC",
-            }
-        )
-
-    if want_yield:
-        intents.append(
-            {
-                "goal": "Crop yield comparison across countries (element=Yield)",
-                "tables": ["stg_faostat_production"],
-                "filters": f"element='Yield'; {geo_filter}; year≈{y1}",
-                "notes": "analytical_yield",
-                "pattern": "rank_by_sum",
-                "metric": "value",
-                "grain": ["country_name", "product_name"],
-                "order_by": "total DESC",
-            }
-        )
-
-    for tid, goal in (
-        ("stg_africa_gdp_ppp", "GDP PPP companion by country"),
-        ("stg_faostat_investment_asti", "ASTI investment companion by country"),
-    ):
-        if tid in selected:
+        for element, notes in (
+            ("Export quantity", "analytical_trade_export"),
+            ("Import quantity", "analytical_trade_import"),
+        ):
             intents.append(
                 {
-                    "goal": goal,
-                    "tables": [tid],
-                    "filters": f"{geo_filter}; year between {y0} and {y1}",
-                    "notes": f"analytical_{tid}",
-                    "pattern": "rank_by_sum" if table_supports_sql_pattern(tid) else "custom",
+                    "goal": f"{element} by country for {', '.join(products)}",
+                    "tables": ["stg_faostat_trade"],
+                    "filters": f"element='{element}'; {product_filter}; {geo_filter}; year between {y0} and {y1}",
+                    "notes": notes,
+                    "pattern": "rank_by_sum",
                     "metric": "value",
-                    "grain": ["country_name"],
-                    "order_by": "total DESC" if table_supports_sql_pattern(tid) else "value DESC",
+                    "grain": rank_grain,
+                    "order_by": "total DESC",
                 }
             )
-
-    floor = analytical_sql_query_floor()
-    intents = intents[:floor]
 
     plan: dict[str, Any] = {
         "selected_tables": selected,
@@ -326,7 +294,7 @@ def build_analytical_bq_plan(
         "skip_bq": False,
         "rationale": "analytical_forced_multi_intent",
         "analytical_mode": True,
-        "max_sql_queries": floor,
+        "max_sql_queries": max(3, len(intents)),
         "measure_id": hit.measure.id if hit else None,
     }
     hints, hints_truncated = pack_selected_table_hints(
@@ -347,7 +315,7 @@ def _pack_terms(query: str, decomposition: dict[str, Any]) -> list[str]:
     geo = decomposition.get("geography")
     if isinstance(geo, list):
         terms.extend(str(g).strip() for g in geo[:8] if str(g).strip())
-    terms.extend(_STAPLES)
+    terms.extend(_asked_products(query, decomposition))
     if query:
         terms.append(query[:80])
     return terms

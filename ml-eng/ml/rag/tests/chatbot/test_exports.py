@@ -12,6 +12,7 @@ from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.exports.chart_builder import build_chart
 from ml.rag.chatbot.exports.csv_builder import build_csv
 from ml.rag.chatbot.exports.docx_builder import build_docx
+from ml.rag.chatbot.exports.markdown_flow import iter_markdown_blocks, to_reportlab_html
 from ml.rag.chatbot.exports.tabular import rows_from_bq_results
 
 
@@ -207,6 +208,51 @@ def test_rows_from_bq_results_skips_no_valid_sql_diagnostic() -> None:
     assert rows_from_bq_results(bq) == []
 
 
+def test_build_docx_renders_markdown_bold_and_lists() -> None:
+    import io
+
+    from docx import Document
+
+    data, _name = build_docx(
+        title="Maize brief",
+        sections=[
+            {
+                "heading": "Key Findings",
+                "body": (
+                    "Nigeria led **maize** output in 2022.\n\n"
+                    "- Coverage for 2022 remains limited in available sources.\n"
+                    "- Trade figures are thinner than production."
+                ),
+            }
+        ],
+        table_rows=None,
+        filename="brief.docx",
+    )
+    doc = Document(io.BytesIO(data))
+    texts = [p.text for p in doc.paragraphs]
+    assert "Key Findings" in texts
+    assert any("Nigeria led maize output in 2022." in t for t in texts)
+    assert any("**" not in t and "maize" in t for t in texts)
+    bold_found = False
+    for p in doc.paragraphs:
+        for run in p.runs:
+            if run.bold and "maize" in (run.text or ""):
+                bold_found = True
+    assert bold_found
+    styles = {p.style.name for p in doc.paragraphs if p.style is not None}
+    assert "List Bullet" in styles
+
+
+def test_iter_markdown_blocks_and_html() -> None:
+    blocks = iter_markdown_blocks(
+        "Lead with **maize**.\n\n- First limit\n- Second limit\n\n## Extra heading\nBody."
+    )
+    kinds = [k for k, _ in blocks]
+    assert kinds == ["paragraph", "bullet", "bullet", "heading", "paragraph"]
+    html = to_reportlab_html("Nigeria led **maize** output.")
+    assert html == "Nigeria led <b>maize</b> output."
+
+
 def test_build_docx_empty_table_note_not_prep_error() -> None:
     import io
 
@@ -221,7 +267,8 @@ def test_build_docx_empty_table_note_not_prep_error() -> None:
     assert name == "report.docx"
     doc = Document(io.BytesIO(data))
     text = "\n".join(p.text for p in doc.paragraphs)
-    assert "No structured data was available for this query." in text
+    assert "No structured data was available for this query." not in text
+    assert "Data table" not in text
     assert "prep_error" not in text
     assert "All SQL attempts failed" not in text
     assert "no_valid_sql" not in text

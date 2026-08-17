@@ -12,7 +12,7 @@ from ml.rag.chatbot.exports.chart_builder import build_chart
 from ml.rag.chatbot.exports.csv_builder import build_csv
 from ml.rag.chatbot.exports.docx_builder import build_docx
 from ml.rag.chatbot.exports.pdf_builder import build_pdf
-from ml.rag.chatbot.exports.tabular import rows_from_bq_results, slugify_filename
+from ml.rag.chatbot.exports.tabular import report_topic, rows_from_bq_results
 from ml.rag.chatbot.plan_policy import allows_export
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 
@@ -39,7 +39,10 @@ def _citation_ids(citations: list[dict[str, Any]] | None) -> list[int]:
     ids: list[int] = []
     for c in citations or []:
         try:
-            ids.append(int(c.get("id")))
+            id_raw = c.get("id")
+            if not isinstance(id_raw, int):
+                id_raw = 0
+            ids.append(int(id_raw))
         except (TypeError, ValueError):
             continue
     return ids
@@ -54,6 +57,13 @@ def sections_from_answer(query: str, answer: str) -> list[dict[str, str]]:
             {"heading": "Question", "body": query},
         ]
 
+    text = re.sub(r"(?<![#\n])(#{1,3}\s+)", r"\n\1", text)
+    text = re.sub(
+        r"^(#{1,3}\s+)([A-Z][A-Za-z]+(?:\s+[a-z]+){0,4})[ \t]+(?=[A-Z])",
+        r"\1\2\n",
+        text,
+        flags=re.MULTILINE,
+    )
     matches = list(_HEADING_RE.finditer(text))
     if len(matches) < 2:
         return [
@@ -91,11 +101,6 @@ def _caption_sections(query: str, answer: str) -> list[dict[str, str]]:
         {"heading": "Data summary", "body": text or "Structured data export."},
         {"heading": "Question", "body": query},
     ]
-
-
-def _chart_title(query: str) -> str:
-    q = (query or "").strip()
-    return q[:80] if q else "OpenTrace data"
 
 
 def _expand_export_kinds(
@@ -156,7 +161,8 @@ def run_exports(
     if data_export and not rows:
         return []
 
-    base = slugify_filename(query)
+    dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
+    doc_title, base = report_topic(query, decomposition=dec)
     citation_ids = _citation_ids(citations)
     acf = _acf_summary(state)
     if data_export_only:
@@ -187,7 +193,7 @@ def run_exports(
                         continue
                     data, fname = build_chart(
                         rows,
-                        title=_chart_title(query),
+                        title=doc_title,
                         filename=f"{base}.png",
                     )
                     chart_png = data
@@ -195,11 +201,11 @@ def run_exports(
                 elif kind == "docx":
                     if chart_png is None and len(rows) >= 2:
                         try:
-                            chart_png, _ = build_chart(rows, title=_chart_title(query), filename="tmp.png")
+                            chart_png, _ = build_chart(rows, title=doc_title, filename="tmp.png")
                         except ValueError:
                             chart_png = None
                     data, fname = build_docx(
-                        title=_chart_title(query),
+                        title=doc_title,
                         sections=sections,
                         table_rows=rows or None,
                         chart_png=chart_png,
@@ -211,11 +217,11 @@ def run_exports(
                 elif kind == "pdf":
                     if chart_png is None and len(rows) >= 2:
                         try:
-                            chart_png, _ = build_chart(rows, title=_chart_title(query), filename="tmp.png")
+                            chart_png, _ = build_chart(rows, title=doc_title, filename="tmp.png")
                         except ValueError:
                             chart_png = None
                     data, fname = build_pdf(
-                        title=_chart_title(query),
+                        title=doc_title,
                         sections=sections,
                         table_rows=rows or None,
                         chart_png=chart_png,

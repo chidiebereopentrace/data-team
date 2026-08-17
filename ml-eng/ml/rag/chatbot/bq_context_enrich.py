@@ -14,7 +14,12 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     table_source_meta,
 )
 from ml.rag.chatbot.bq_trend_companion import maybe_attach_ranking_trend
-from ml.rag.chatbot.generator import is_ranking_numeric_query, is_usable_context_item
+from ml.rag.chatbot.generator import (
+    _BQ_PUBLIC_LABEL,
+    _public_source_label,
+    is_ranking_numeric_query,
+    is_usable_context_item,
+)
 
 _YEAR_SQL_RE = re.compile(r"\byear\s*=\s*(\d{4})\b", re.IGNORECASE)
 _ELEMENT_SQL_RE = re.compile(r"\belement\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
@@ -405,12 +410,15 @@ def format_row_prose(
     template: str = "",
 ) -> str:
     """Build human-readable context prose from resolved semantics."""
-    table_id = str(semantics.get("table_id") or "bigquery")
+    table_id = _s(semantics.get("table_id"))
     domain = _s(semantics.get("source_domain"))
-    layer = _s(semantics.get("source_layer")) or "staging_dev"
-    title = f"OpenTrace structured data — {table_id} ({layer})"
-    if domain:
-        title += f" [{domain}]"
+    source_name = _public_source_label(table_id, {"source_domain": domain})
+    if source_name:
+        title = source_name
+    else:
+        title = _BQ_PUBLIC_LABEL
+        if domain and "stg_" not in domain.lower():
+            title += f" [{domain}]"
 
     lines = [title]
     desc = _s(semantics.get("table_description"))

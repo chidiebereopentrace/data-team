@@ -9,6 +9,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_configured, llm_default_timeout_s, llm_model_id
@@ -97,6 +98,52 @@ _BQ_ROW_HINT_KEYS = (
     "region",
 )
 _BQ_PUBLIC_LABEL = "OpenTrace agricultural data"
+
+
+def _public_source_label(table_id: str | None, meta: dict[str, Any] | None = None) -> str | None:
+    """Return a clean institutional source name, or None to use the structured-data fallback."""
+    tid = (table_id or "").lower().strip()
+    payload = meta or {}
+    domain = str(payload.get("source_domain") or "").strip().lower()
+    if domain:
+        if "faostat" in domain or domain == "fao":
+            return "FAOSTAT"
+        if "fews" in domain:
+            return "FEWS NET"
+        if "ilri" in domain:
+            return "ILRI"
+        if "wfp" in domain:
+            return "WFP"
+        if "nasa" in domain:
+            return "NASA POWER"
+        if "copernicus" in domain or "era5" in domain:
+            return "Copernicus ERA5"
+        if "isric" in domain:
+            return "ISRIC"
+        if "isda" in domain:
+            return "iSDA"
+
+    if "faostat" in tid:
+        return "FAOSTAT"
+    if "fews" in tid:
+        return "FEWS NET"
+    if "ilri" in tid:
+        return "ILRI"
+    if "wfp" in tid or "vampire" in tid:
+        return "WFP"
+    if "nasa_power" in tid or "nasa" in tid:
+        return "NASA POWER"
+    if "copernicus" in tid or "era5" in tid:
+        return "Copernicus ERA5"
+    if "isric" in tid:
+        return "ISRIC"
+    if "isda" in tid:
+        return "iSDA"
+    if "hdi" in tid:
+        return "UNDP / HDI"
+    if "gdp" in tid:
+        return "World Bank / GDP"
+    return None
 
 _RANKING_QUERY_RE = re.compile(
     r"\b("
@@ -360,6 +407,69 @@ def pin_bq_context_first(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return bq_items + other_items
 
 
+def _item_published_year(item: dict[str, Any]) -> int | None:
+    meta = _item_metadata(item)
+    for key in ("published_at", "date", "year"):
+        raw = str(meta.get(key) or "").strip()
+        if len(raw) >= 4 and raw[:4].isdigit():
+            year = int(raw[:4])
+            if 1900 <= year <= 2100:
+                return year
+    return None
+
+
+def _historical_year_window(
+    decomposition: dict[str, Any] | None,
+) -> tuple[int, int] | None:
+    if not isinstance(decomposition, dict):
+        return None
+    ts = str(decomposition.get("time_start") or "").strip()[:4]
+    te = str(decomposition.get("time_end") or "").strip()[:4]
+    start = int(ts) if ts.isdigit() else None
+    end = int(te) if te.isdigit() else None
+    if start is None and end is None:
+        return None
+    if start is None:
+        start = end
+    if end is None:
+        end = start
+    if start is None or end is None:
+        return None
+    if start > end:
+        start, end = end, start
+    if end >= date.today().year:
+        return None
+    return start, end
+
+
+def prefer_in_window_narrative(
+    items: list[dict[str, Any]],
+    decomposition: dict[str, Any] | None,
+    *,
+    analytical: bool,
+) -> list[dict[str, Any]]:
+    """For historical analytical queries, pack in-window narrative ahead of later news."""
+    if not analytical or not items:
+        return items
+    window = _historical_year_window(decomposition)
+    if window is None:
+        return items
+    y0, y1 = window
+    bq: list[dict[str, Any]] = []
+    in_window: list[dict[str, Any]] = []
+    out_window: list[dict[str, Any]] = []
+    for item in items:
+        if _source_kind(item) == "bigquery":
+            bq.append(item)
+            continue
+        year = _item_published_year(item)
+        if year is not None and y0 <= year <= y1:
+            in_window.append(item)
+        else:
+            out_window.append(item)
+    return bq + in_window + out_window
+
+
 def filter_context_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drop BQ error and validation-failure chunks before generation."""
     return [item for item in items if is_usable_context_item(item)]
@@ -373,7 +483,11 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
     if kind == "bigquery":
         if not is_usable_context_item(item):
             return None
+        table_id = str(meta.get("table_id") or _bq_table_from_meta(meta) or "").strip()
+        source_name = _public_source_label(table_id, meta)
         hint = _bq_row_hint(meta)
+        if source_name:
+            return f"[{source_name}] {hint}" if hint else f"[{source_name}]"
         if hint:
             return f"[Structured data] {_BQ_PUBLIC_LABEL} ({hint})"
         return f"[Structured data] {_BQ_PUBLIC_LABEL}"
@@ -594,9 +708,9 @@ def _strip_invalid_citation_markers(answer: str, source_registry: list[SourceRef
     text = re.sub(r"\[(?!\s*Source\s)(\d+)\]", _keep_bracket, answer)
     text = re.sub(r"\[Source\s+(\d+)\]", _keep_bracket, text, flags=re.IGNORECASE)
     text = re.sub(r"(?<!\[)\bSource\s+(\d+)\b(?!\])", _keep_bracket, text, flags=re.IGNORECASE)
-    # Collapse orphaned punctuation/spacing left by removed markers.
-    text = re.sub(r"\s{2,}", " ", text)
-    text = re.sub(r"\s+([,.;])", r"\1", text)
+    # Collapse orphaned punctuation/spacing left by removed markers; keep newlines.
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"[ \t]+([,.;])", r"\1", text)
     return text.strip()
 
 
@@ -607,8 +721,8 @@ def _strip_all_inline_citation_markers(answer: str) -> str:
     text = re.sub(r"\[(?!\s*Source\s)\d+\]", "", answer)
     text = re.sub(r"\[Source\s+\d+\]", "", text, flags=re.IGNORECASE)
     text = re.sub(r"(?<!\[)\bSource\s+\d+\b(?!\])", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s{2,}", " ", text)
-    text = re.sub(r"\s+([,.;])", r"\1", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"[ \t]+([,.;])", r"\1", text)
     return text.strip()
 
 
@@ -645,6 +759,8 @@ def _build_prompt(
 ) -> list[dict[str, str]]:
     lang = (answer_lang or "").strip() or detect_answer_language(query)
     mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
+    if analytical_mode and mode == "chat":
+        mode = "analytical"
     if inline_citations:
         cite_rules = (
             "When stating a specific fact, number, or claim from the context, name the source in readable "
@@ -664,56 +780,82 @@ def _build_prompt(
             "Never refer to in-document labels from the context such as 'Table 6.1', 'Figure 2', "
             "'Fig. 3', or 'Appendix A' — paraphrase the finding instead. "
         )
-    system = (
-        "You are an agricultural business-intelligence assistant for OpenTrace stakeholders "
-        "(government, NGOs, agribusiness, finance, farmers). "
-        "OpenTrace / Ask ADZA is scoped to African agriculture, food systems, climate, "
-        "markets, and related policy — unless the user explicitly names a non-African place. "
-        "For unscoped which-country or continental rankings, answer from African OpenTrace "
-        "evidence (especially structured data). Do not crown a non-African country from "
-        "Wikipedia or general knowledge when Africa-scoped evidence is missing. "
-        # Lead with the answer. This instruction must come first because LLMs weight
-        # early-prompt content most heavily; burying it lower causes the model to
-        # default to thesis-style preambles (testing R8: 'lead with a clear answer').
-        "Your first sentence is the direct answer to the user's question — no preamble, "
-        "no 'According to the context...', no 'It is important to note...', no scene-setting. "
-        "After the direct answer, support it with the relevant evidence in plain prose. "
-        "Write clear, decisive prose for decision-makers — not a database console, not an academic paper. "
-        "Answer ONLY using facts in the Context below from numbered OpenTrace sources "
-        "(each chunk is labeled [Source N] with Type and Citation lines when available). "
-        "Synthesize evidence across all numbered sources — do not rely on a single snippet. "
-        + cite_rules
-        + "Do not paste raw context headers, Type lines, Citation lines, or pipe-delimited "
-        "[Source N | ...] strings into the answer. "
-        "Do not output a Sources, References, or Bibliography section; the system appends one. "
-        "Never echo BigQuery or SQL table identifiers (e.g. stg_*, bronze table names) in the prose. "
-        "Sources labeled Type: Wikipedia or Type: Web search are supplemental external context — "
-        "prefer OpenTrace news, research, and structured data when available; treat web sources as "
-        "partial background and state limits when relying on them. "
-        # Length matches the question. The previous fixed '4–8 paragraphs' floor was the
-        # single biggest cause of thesis-style answers — the model padded with hedges
-        # and restatements to hit the target even on simple lookups. Drop the floor;
-        # let the question determine the length.
+    mode_replaces_length = mode in {"analytical", "fact_lookup", "briefing", "data_export_only"}
+    length_rules = (
+        "Never pad with filler, restatements of the question, or hedges. "
+        "Include specific numbers, dates, and regions when present in the context. "
+        "Match length to the question: 2–4 sentences for simple lookups; a structured brief "
+        "for complex multi-country or trend questions. "
+        if mode_replaces_length
+        else
         "Length matches the question: 2–4 sentences for a simple lookup, 2–4 short paragraphs "
         "for a complex synthesis. Never pad with filler, restatements of the question, or hedges to fill space. "
         "For complex questions structure the answer as: (1) direct answer first, "
         "(2) supporting evidence by theme, region, or time period, (3) brief limits or gaps. "
         "For compare or trend questions, organize by region or time period when the context provides that breakdown. "
         "Include specific numbers, dates, and regions when present in the context. "
-        # Anti-thesis openings. Listed explicitly because the model otherwise reaches
-        # for these by default (the corpus is heavily academic). Tested phrases from
-        # internal R6/R8 reports.
-        "Forbidden openings — never start with: 'The context provided', 'Based on the context', "
+    )
+    system = (
+        "You are an agricultural business-intelligence assistant for OpenTrace stakeholders "
+        "(government, NGOs, agribusiness, finance, farmers, and policy actors). "
+        "Your role is to produce clear, decisive, decision-ready analysis on African agriculture, "
+        "food systems, climate, markets, production, trade, prices, and related policy. "
+        "Write as an external intelligence analyst, not as a system explaining its own internal "
+        "data coverage. "
+        "OpenTrace / Ask ADZA is scoped to African agriculture, food systems, climate, "
+        "markets, and related policy — unless the user explicitly names a non-African place. "
+        "For unscoped which-country or continental rankings, answer from African OpenTrace "
+        "evidence (especially structured data). Do not crown a non-African country from "
+        "Wikipedia or general knowledge when Africa-scoped evidence is missing. "
+        "Your first sentence is the direct answer to the user's question — no preamble, "
+        "no 'According to the context...', no 'According to the available sources...', "
+        "no 'It is important to note...', no scene-setting. "
+        "After the direct answer, support it with the relevant evidence in plain prose. "
+        "Write clear, decisive prose for decision-makers — not a database console, not an academic paper. "
+        "Answer ONLY using facts in the Context below from numbered OpenTrace sources "
+        "(each chunk is labeled [Source N] with Type and Citation lines when available). "
+        "Synthesize evidence across all numbered sources — do not rely on a single snippet. "
+        "Do not invent figures, rankings, or year values that are not present in the Context. "
+        + cite_rules
+        + "When a structured data source has a clear institutional origin, attribute it by that "
+        "institution's name (FAOSTAT, FEWS NET, ILRI, WFP, NASA POWER, Copernicus ERA5, ISRIC, "
+        "iSDA, UNDP/HDI, World Bank/GDP). When the institutional source is not definitive, use "
+        "the neutral label: Structured data — OpenTrace agricultural data. "
+        "Do not paste raw context headers, Type lines, Citation lines, or pipe-delimited "
+        "[Source N | ...] strings into the answer. "
+        "Do not output a Sources, References, or Bibliography section; the system appends one. "
+        "Never echo BigQuery or SQL table identifiers (e.g. stg_*, bronze table names) in the prose. "
+        "Never mention staging, SQL, pipeline status, or tell the user that a query was attempted "
+        "and failed. Never claim that structured data is missing or unavailable as a product status. "
+        "Sources labeled Type: Wikipedia or Type: Web search are supplemental external context — "
+        "prefer OpenTrace news, research, and structured data when available; treat web sources as "
+        "partial background and state limits when relying on them. "
+        + length_rules
+        + "Forbidden openings — never start with: 'The context provided', 'Based on the context', "
         "'Unfortunately', 'It is important to note', 'It is worth noting', 'This study examines', "
-        "'The evidence suggests', 'In recent years', 'Across the literature', or any similar academic / "
+        "'The evidence suggests', 'In recent years', 'Across the literature', "
+        "'According to the available sources', or any similar academic / "
         "meta-commentary opener. Start with the substantive answer instead. "
         + language_instruction(lang, inline_citations=inline_citations)
         + " "
-        "If evidence is partial, state limits briefly after the substantive answer. "
+        "Produce the strongest possible analysis from the evidence that is present. "
+        "Place any coverage limitations only at the end, in short neutral language. "
+        "Never turn missing data into the main subject of the answer. Never write multi-paragraph "
+        "discussions of data gaps in the body. "
+        "Never mention internal system status, BigQuery availability, structured-data gaps, "
+        "or product data limitations in the main body of the answer. "
+        "When writing analytical or multi-country answers, prioritise a clean intelligence product "
+        "over exhaustive transparency about missing series. "
         "Do not invent sources, cite Source IDs not in the Context, or invent statistics. "
         "Never output SQL, query code, table DDL, pipeline steps, or instructions to run BigQuery. "
         "Never mention bigquery-public-data or other external warehouses. "
-        "Do not suggest example queries the user should run."
+        "Do not suggest example queries the user should run. "
+        "Keep all country, region, and year claims aligned with what appears in the Context. "
+        "Never mention BigQuery, staging, SQL, or internal system status in the answer body. "
+        "Never write that a structured query returned no rows, that no reliable trend can be made, "
+        "or that the answer is a data gap. "
+        "When coverage is limited, use only neutral professional wording such as: "
+        "'Coverage for [year / region / commodity] remains limited in available sources.'"
     )
     kinds = [str(k).strip().lower() for k in (context_source_kinds or []) if str(k).strip()]
     unique_kinds = list(dict.fromkeys(kinds))
@@ -723,12 +865,11 @@ def _build_prompt(
             + "\n\nCROSS-DOMAIN SYNTHESIS: Context includes multiple source Types ("
             + ", ".join(unique_kinds)
             + "). Domains reinforce each other — weave them together. "
-            "Use structured/BigQuery rows for levels, trends, and comparisons when present; "
+            "Use OpenTrace figures for levels, trends, and comparisons when present; "
             "use news, policy, public reports, and research for mechanisms, events, and "
             "stakeholder context. Do not answer from only one Type when others are relevant. "
-            "If structured data is missing, still synthesize across the narrative corpora "
-            "that are present; admit the structured gap once and do not invent yields, IPC "
-            "phases, or exact production totals."
+            "If structured figures are missing, still synthesize across the narrative corpora "
+            "that are present; do not invent yields, IPC phases, or exact production totals."
         )
     intent_tone = ""
     if decomposition:
@@ -768,28 +909,49 @@ def _build_prompt(
         if gen_plan_addendum:
             system = system + "\n\n" + gen_plan_addendum
     if analytical_mode or mode == "analytical":
-        bq_cite = (
-            "Prefer OpenTrace structured data (Type: structured / BigQuery) for every quantitative "
-            "claim — cite those [N] footnotes first. "
-            if inline_citations
-            else "Prefer OpenTrace structured data (Type: structured / BigQuery) for every quantitative "
-            "claim — attribute in prose when needed; do not insert [N] footnotes. "
-        )
         system = (
             system
-            + "\n\nANALYTICAL REPORT MODE: Structure the answer with these markdown headings "
-            "in order:\n"
-            "## Executive summary\n"
-            "## Regional overview\n"
-            "## Country comparison\n"
-            "## Major products\n"
-            "## Data gaps\n"
-            "## Conclusion\n"
-            + bq_cite
-            + "Do not invent production totals, rankings, or "
-            "year values that are not in Context. If structured rows are thin, say so under Data gaps. "
-            "Keep country lists aligned with the geography in Context; do not substitute unrelated "
-            "countries from narrative PDFs."
+            + "\n\nANALYTICAL BRIEF MODE (mandatory structure and voice):\n"
+            "You are writing a short professional agricultural intelligence brief for decision-makers "
+            "(government, agribusiness, finance, policy). Write as an external analyst, not as a system "
+            "explaining its own limitations.\n\n"
+            "Required structure (use exactly these markdown headings, in this order, and nothing else):\n"
+            "## Key Findings\n"
+            "## Regional & Country Picture\n"
+            "## Production, Trade & Markets\n"
+            "## Drivers & Context\n"
+            "## Data Notes\n\n"
+            "Section guidance:\n"
+            "## Key Findings — Open with the strongest, most decision-relevant conclusions supported "
+            "by the Context. Lead with substance. Never open with gaps or caveats. Be specific "
+            "(numbers, years, countries, crops) whenever the Context supports it.\n"
+            "## Regional & Country Picture — Synthesise geographic patterns. Compare or contrast "
+            "countries/regions only when the Context provides the necessary material.\n"
+            "## Production, Trade & Markets — Focus on production volumes, yields, trade flows, "
+            "prices, or market conditions as supported by the Context. Prefer institutional sources "
+            "(FAOSTAT, FEWS NET, and similar) when they are present and definitive. When the source "
+            "is not definitive, treat the figures as Structured data — OpenTrace agricultural data.\n"
+            "## Drivers & Context — Explain mechanisms, policy actions, climate or pest pressures, "
+            "or other drivers only to the extent the Context supports them. Distinguish correlation "
+            "from causation. Do not invent causal claims.\n"
+            "## Data Notes — This is the only place where limitations may appear. Keep it to 2–5 "
+            "short bullets. Use neutral professional language only. Never expand gaps into narrative "
+            "discussion. Never mention internal system behaviour or BigQuery.\n"
+            "Rules:\n"
+            "- Lead the entire answer with the strongest available findings. Never open with gaps, "
+            "missing data, or statements about what OpenTrace does or does not have.\n"
+            "- In Key Findings, Regional & Country Picture, Production/Trade/Markets, and Drivers: "
+            "write only positive synthesis from the Context.\n"
+            "- Put ALL limitations, missing series, incomplete coverage, or thin evidence exclusively "
+            "in the final ## Data Notes section.\n"
+            "- Never write that structured data is unavailable, that a query returned no rows, "
+            "that OpenTrace lacks the data, that no reliable trend can be made, or that this is a "
+            "data gap. In Data Notes use: "
+            "\"Coverage for [year/region/commodity] remains limited in available sources.\"\n"
+            "- Do not invent production totals, rankings, yields, or year values that are not in Context.\n"
+            "- Keep country and regional claims aligned with geography present in Context.\n"
+            "- Tone: clear, decisive, concise. No academic padding, no thesis-style openings, "
+            "no restating the question."
         )
     elif mode == "fact_lookup":
         system = (
@@ -808,8 +970,8 @@ def _build_prompt(
         system = (
             system
             + "\n\nRESEARCH SYNTHESIS MODE: Synthesize academic/policy evidence in plain "
-            "stakeholder language. Prefer peer-reviewed and policy corpora; use BQ only for "
-            "bibliographic/project facts. Do not invent citations."
+            "stakeholder language. Prefer peer-reviewed and policy corpora; use statistical "
+            "series only for bibliographic/project facts. Do not invent citations."
         )
     elif mode == "data_export_only":
         system = (
@@ -827,19 +989,19 @@ def _build_prompt(
         )
     if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
         system = (
-            "CRITICAL: BigQuery structured data was attempted but returned no usable rows. "
-            "Do NOT invent specific numeric facts (production totals, precise yield figures, "
-            "prices, GDP, population counts, or ranked country answers) from news or policy "
-            "text alone. If the question asks for a numeric answer from structured data, "
-            "state clearly that OpenTrace structured data is unavailable for this query and "
-            "avoid naming a specific number or country unless a structured-data source in "
-            "Context explicitly provides it.\n\n"
+            "Note for this turn: no structured numeric rows are available in Context for the "
+            "requested measure. Do not invent specific production totals, precise yields, prices, "
+            "GDP figures, or ranked country answers. Synthesise the strongest available narrative "
+            "evidence (news, policy, research, reports). Place any coverage limits only in a short "
+            "final Data Notes section if writing an analytical brief; otherwise state limits briefly "
+            "at the end. Never mention BigQuery, structured-data availability, or internal system "
+            "status in the answer prose.\n\n"
         ) + system
     if structured_bq_numeric_available:
         system = (
-            "CRITICAL: Context includes OpenTrace structured BigQuery data with explicit "
+            "CRITICAL: Context includes OpenTrace statistical figures with explicit "
             "measure labels and units. For numeric answers (totals, yields, prices, GDP, "
-            "population counts, rankings), use those structured rows as the authoritative "
+            "population counts, rankings), use those figures as the authoritative "
             "source. Do not override them with policy, news, or web narrative that cites "
             "a different number, unit, or country.\n\n"
         ) + system
@@ -1381,8 +1543,7 @@ def generate(
                 citations=[],
                 acf=no_evidence_acf(
                     explanation=(
-                        "Structured BigQuery data was required for this numeric question "
-                        "but returned no usable rows."
+                        "No OpenTrace sources matched this numeric question."
                     )
                 ),
             )
@@ -1447,6 +1608,11 @@ def generate(
 
     usable_context = dedupe_bq_context_items(
         usable_context_after_geo_purity(context_items, decomposition)
+    )
+    usable_context = prefer_in_window_narrative(
+        usable_context,
+        decomposition,
+        analytical=analytical_mode or task_mode == "analytical",
     )
 
     # Sprint 1 (Jul 2026): if geo/error filtering leaves too little usable context,

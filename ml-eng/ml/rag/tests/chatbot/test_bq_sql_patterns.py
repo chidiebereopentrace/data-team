@@ -252,10 +252,10 @@ def test_analytical_plan_tags_trade_and_series_patterns() -> None:
     )
     assert plan is not None
     by_notes = {i["notes"]: i["pattern"] for i in plan["query_intents"]}
-    assert by_notes["analytical_staples_by_country"] == "rank_by_sum"
+    assert by_notes["analytical_products_by_country"] == "rank_by_sum"
     assert by_notes["analytical_series_endpoints"] == "time_series"
-    assert by_notes["analytical_trade"] == "rank_by_sum"
-    assert by_notes["analytical_stg_africa_gdp_ppp"] == "rank_by_sum"
+    assert by_notes["analytical_trade_export"] == "rank_by_sum"
+    assert by_notes["analytical_trade_import"] == "rank_by_sum"
 
 
 def test_food_security_plan_keeps_ipc_and_ilri_custom() -> None:
@@ -318,6 +318,69 @@ def test_try_sql_patterns_kenya_nigeria_maize_series() -> None:
     assert "country_name IN (" in sqls
     samples = value_samples_for_tables({"stg_faostat_production"})
     assert hits[0]["product_name"] in samples["stg_faostat_production"]["product_name"]
+
+
+def test_time_series_honors_country_grain() -> None:
+    sql = build_time_series_sql(
+        project_id="proj",
+        dataset="staging_dev",
+        table_id="stg_faostat_production",
+        year=2022,
+        products=["Maize", "Rice"],
+        grain=["country_name", "year"],
+        element="Production",
+        blob="element='Production'; maize rice",
+    )
+    assert "GROUP BY country_name, year" in sql
+    assert "country_name" in sql.split("GROUP BY")[0]
+    assert _validate_sql(sql, {"staging_dev"}, 10) is not None
+
+
+def test_try_sql_patterns_west_africa_maize_rice_production_trade() -> None:
+    from ml.rag.chatbot.geo_regions import expand_regions_in_decomposition
+
+    query = (
+        "give me a docx file report of the trend of production and trade maize and rice "
+        "across west africa in 2022"
+    )
+    dec = expand_regions_in_decomposition(
+        {
+            "geography": [],
+            "entities": ["maize", "rice"],
+            "time_start": "2022-01-01",
+            "time_end": "2022-12-31",
+        },
+        query,
+    )
+    countries = [str(g) for g in (dec.get("geography") or [])]
+    assert "Nigeria" in countries
+    assert "Senegal" in countries
+    plan = build_analytical_bq_plan(
+        query,
+        decomposition=dec,
+        known_tables={"stg_faostat_production", "stg_faostat_trade"},
+    )
+    assert plan is not None
+    hits = try_sql_patterns(
+        plan["query_intents"],
+        project_id="proj",
+        dataset="staging_dev",
+        query=query,
+        entities=["maize", "rice"],
+        time_start="2022-01-01",
+        time_end="2022-12-31",
+        geo_countries=countries,
+    )
+    assert hits
+    sqls = " ".join(h["sql"] for h in hits)
+    assert "country_name IN (" in sqls
+    assert "Nigeria" in sqls
+    assert "Senegal" in sqls
+    assert "Maize" in sqls
+    assert "Rice" in sqls
+    assert "Export quantity" in sqls
+    assert "'West Africa'" not in sqls
+    assert any("GROUP BY country_name, year" in h["sql"] or "GROUP BY country_name, product_name, year" in h["sql"] for h in hits)
 
 
 def test_join_fragments_related_pair() -> None:

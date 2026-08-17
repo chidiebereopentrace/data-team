@@ -293,6 +293,7 @@ _GENERIC_SAMPLE_TOKENS = frozenset(
 )
 _PREFERRED_DISCRIMINATOR_DEFAULTS = (
     "Production",
+    "Export quantity",
     "Producer Price (USD/tonne)",
     "Retail",
     "population",
