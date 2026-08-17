@@ -114,7 +114,7 @@ Two patterns:
 1. Omit `chat_history` on each request.
 2. Reuse `session_id` from the previous response.
 3. Server stores `{conversation_summary, recent_turns}` in Redis (`RAG_REDIS_URL`) or in-process fallback.
-4. Session TTL default: **86400s** (24h) via `RAG_SESSION_TTL_SECONDS`. Responses include `session_ttl_seconds` (configured value) and `session_found` (`true` only when a prior blob was loaded for that id).
+4. Session TTL default: **604800s** (7 days) via `RAG_SESSION_TTL_SECONDS`. Responses include `session_ttl_seconds` (configured value) and `session_found` (`true` only when a prior blob was loaded for that id).
 5. Expired or unknown `session_id` → empty memory and `session_found: false` (no error).
 
 ### B. Client-owned history (stateless)
@@ -279,13 +279,13 @@ Unknown top-level keys (e.g. `stakeholder_type`, `audience_instructions`, `geo_o
 | `citations` | `CitationItem[]` | Structured sources for UI rendering. |
 | `session_id` | `string` | Pass on the next request for continuity. |
 | `session_found` | `boolean` | `true` only when a prior server session blob was loaded. `false` for new/expired/missing ids or when `chat_history` is sent. |
-| `session_ttl_seconds` | `integer` | Configured session TTL (`RAG_SESSION_TTL_SECONDS`, default **86400**). |
+| `session_ttl_seconds` | `integer` | Configured session TTL (`RAG_SESSION_TTL_SECONDS`, default **604800**). |
 | `usage` | `UsageStats` | Per-request LLM token totals. |
 | `error` | `string \| null` | Pipeline-level error message if the graph set one; may still return partial `answer`. |
 | `trace` | `object \| null` | Present only when `include_trace: true`. |
 | `langfuse_trace_id` | `string \| null` | Langfuse trace id when tracing is enabled. |
 | `acf` | `ACFSignal` | Confidence band, score, and explanation. |
-| `artifacts` | `ArtifactItem[]` | Downloadable exports. Populated on **Agribusinesses** and **Integrated** when the user asks for CSV/chart/PDF/DOCX and builders succeed; otherwise `[]`. Production URLs are signed for **`RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS` (default 3600, not 7 days)**. Refresh with [`GET /artifacts/{artifact_id}/url`](#get-artifactsartifact_idurl). |
+| `artifacts` | `ArtifactItem[]` | Downloadable exports. Populated on **Agribusinesses** and **Integrated** when the user asks for CSV/chart/PDF/DOCX and builders succeed; otherwise `[]`. Production URLs are signed for **`RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS` (default 86400 = 24h)**. Refresh with [`GET /artifacts/{artifact_id}/url`](#get-artifactsartifact_idurl). |
 
 Plan-scoped routes inherit the same response. Export gate: `/query/agribusinesses` and `/query/integrated` (and generic `/query` when `user_profile.plan_type` is one of those). Other plans keep `artifacts: []` and may append an upgrade note in `answer` if an export is requested.
 
@@ -491,6 +491,8 @@ Single chat turn through the same RAG pipeline as `/query`, with v1 response sha
 | `assistant_message` | `string` | Same content as `answer` on `/query`. |
 | `citations` | `CitationItem[]` | Same as `/query`. |
 | `session_id` | `string` | Session for next turn. |
+| `session_found` | `boolean` | `true` only when a prior server session blob was loaded. `false` for new/expired/missing ids or when `chat_history` is sent. |
+| `session_ttl_seconds` | `integer` | Configured session TTL (`RAG_SESSION_TTL_SECONDS`, default **604800**). |
 | `usage` | `UsageStats` | Same as `/query`. |
 | `request_id` | `string` | Unique ID for this HTTP request (support/debug). |
 | `created_at` | `string` | ISO-8601 UTC timestamp. |
@@ -521,7 +523,7 @@ When a user on a non-export route asks for a CSV, chart, or report, the assistan
 | `kind` | `csv \| chart \| docx \| pdf` | Export format |
 | `filename` | `string` | Suggested download filename |
 | `mime_type` | `string` | MIME type |
-| `url` | `string` | Presigned HTTPS URL (S3-compatible or GCS in production). **Expires after the signed TTL (default 3600s).** |
+| `url` | `string` | Presigned HTTPS URL (S3-compatible or GCS in production). **Expires after the signed TTL (default 86400s / 24h).** |
 | `summary` | `string` | Short description of contents |
 | `citation_ids` | `integer[]` | Citation ids from the parent answer |
 | `byte_size` | `integer` | File size in bytes |
@@ -545,7 +547,7 @@ Re-sign a download URL after the original presigned URL expires.
   "id": "art_abc123def456",
   "filename": "nigeria_maize.csv",
   "url": "https://...",
-  "expires_in_seconds": 3600,
+  "expires_in_seconds": 86400,
   "storage_uri": "s3://bucket/rag-exports/art_abc123def456/nigeria_maize.csv"
 }
 ```
@@ -556,7 +558,7 @@ Re-sign a download URL after the original presigned URL expires.
 | **404** | Object not found in configured storage |
 | **500** | Signing / storage error |
 
-Env: `RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS` (default **3600**, minimum 60). Frontend must not assume a 7-day URL lifetime.
+Env: `RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS` (default **86400** / 24 hours, minimum 60). Session blobs last 7 days; download URLs last 24 hours. Refresh with this endpoint after expiry.
 
 ---
 
@@ -604,7 +606,7 @@ Env: `RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS` (default **3600**, minimum 60). Front
 | Debug trace | `include_trace` | Not exposed |
 | Session create | Implicit UUID | `POST /v1/sessions` or bootstrap |
 | Pipeline error | `error` string in 200 body | **502** JSON |
-| Extra fields | — | `request_id`, `created_at` |
+| Extra fields | `session_found`, `session_ttl_seconds` | `request_id`, `created_at`, `session_found`, `session_ttl_seconds` |
 
 Both use the same RAG graph, `UserProfile`, `chat_history`, `citations`, and `usage`.
 

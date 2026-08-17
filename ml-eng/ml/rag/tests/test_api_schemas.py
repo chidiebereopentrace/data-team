@@ -6,6 +6,7 @@ from ml.rag.acf_signal import acf_signal_from_result
 from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats
 from ml.rag.app.api import QueryResponse
 from ml.rag.chatbot.plan_policy import allows_export
+from ml.serving.chat.schemas import ChatSuccessResponse
 
 
 def test_usage_stats_from_dict_aliases() -> None:
@@ -112,7 +113,7 @@ def test_query_response_includes_artifacts() -> None:
     assert data["artifacts"][0]["kind"] == "csv"
     assert data["artifacts"][0]["url"].endswith("maize.csv")
     assert data["session_found"] is True
-    assert data["session_ttl_seconds"] == 86400
+    assert data["session_ttl_seconds"] == 604800
 
 
 def test_allows_export_gates_query_plans() -> None:
@@ -135,3 +136,23 @@ def test_acf_signal_from_result_path_b() -> None:
     assert sig.score == 76
     assert sig.band == "strong"
     assert sig.claim_level == "national"
+
+
+def test_chat_success_response_includes_session_fields() -> None:
+    resp = ChatSuccessResponse(
+        assistant_message="ok",
+        acf=ACFSignal(
+            band="moderate",
+            band_label="Moderate confidence",
+            score=55,
+            explanation="Partial structured support.",
+            note="Partial structured support.",
+        ),
+        session_id="sid1",
+        session_found=True,
+        request_id="req-1",
+        created_at="2026-08-17T00:00:00+00:00",
+    )
+    data = resp.model_dump()
+    assert data["session_found"] is True
+    assert data["session_ttl_seconds"] == 604800

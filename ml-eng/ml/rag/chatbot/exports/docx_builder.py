@@ -4,6 +4,9 @@ from __future__ import annotations
 import io
 from typing import Any
 
+from docx import Document
+from docx.shared import Inches, Pt
+
 
 def build_docx(
     *,
@@ -15,10 +18,6 @@ def build_docx(
     acf_summary: str | None = None,
     filename: str = "report.docx",
 ) -> tuple[bytes, str]:
-    # Lazy import — avoids loading python-docx at Railway startup when no export runs.
-    from docx import Document
-    from docx.shared import Inches, Pt
-
     doc = Document()
     doc.add_heading(title, level=0)
 
@@ -30,15 +29,17 @@ def build_docx(
         if body:
             for para in body.split("\n\n"):
                 p = doc.add_paragraph(para.strip())
-                p.style.font.size = Pt(11)
+                style = p.style
+                if style is not None:
+                    style.font.size = Pt(11)
 
     if chart_png:
         doc.add_heading("Chart", level=1)
         pic_stream = io.BytesIO(chart_png)
         doc.add_picture(pic_stream, width=Inches(6))
 
+    doc.add_heading("Data table", level=1)
     if table_rows:
-        doc.add_heading("Data table", level=1)
         cols = list({k for row in table_rows for k in row})
         table = doc.add_table(rows=1, cols=len(cols))
         table.style = "Table Grid"
@@ -49,6 +50,8 @@ def build_docx(
             cells = table.add_row().cells
             for i, col in enumerate(cols):
                 cells[i].text = str(row.get(col, ""))
+    else:
+        doc.add_paragraph("No structured data was available for this query.")
 
     if citations:
         doc.add_heading("Sources", level=1)

@@ -119,7 +119,7 @@ def _add_conversation_memory(doc) -> None:
             "Omit chat_history on each request.",
             "Reuse session_id from the previous response.",
             "Server stores {conversation_summary, recent_turns} in Redis (RAG_REDIS_URL) or in-process fallback.",
-            "Session TTL default: 86400 seconds (24 hours).",
+            "Session TTL default: 604800 seconds (7 days).",
         ],
     )
     add_heading(doc, "Client-owned history (stateless)", level=2)

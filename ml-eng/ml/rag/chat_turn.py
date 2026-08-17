@@ -29,6 +29,7 @@ class ChatTurnResult:
     pipeline_error: str | None = None
     raw_result: dict[str, Any] | None = None
     langfuse_trace_id: str | None = None
+    session_found: bool = False
 
 
 def _empty_session_blob() -> dict[str, Any]:
@@ -70,10 +71,12 @@ def _resolve_prior_and_profile(
     explicit_category: str | None,
     explicit_plan_type: str | None,
     explicit_country: str | None,
-) -> tuple[str, str, list[dict[str, str]], str | None, str | None, str | None]:
+) -> tuple[str, str, list[dict[str, str]], str | None, str | None, str | None, bool]:
     """
-    Returns (session_id, summary, recent_turns, category, plan_type, country).
+    Returns (session_id, summary, recent_turns, category, plan_type, country, session_found).
     Explicit request fields win; otherwise fall back to the session blob.
+    session_found is False when conversation_history is supplied (server session is
+    not used as memory) or when no blob exists for the id.
     """
     if conversation_history is not None:
         sid = (session_id or "").strip() or uuid.uuid4().hex
@@ -82,9 +85,12 @@ def _resolve_prior_and_profile(
         summary, recent = flat_messages_to_memory(prior)
         sid_key = (session_id or "").strip()
         blob = (get_session_blob(sid_key) or _empty_session_blob()) if sid_key else _empty_session_blob()
+        session_found = False
     else:
         sid = (session_id or "").strip() or uuid.uuid4().hex
-        blob = get_session_blob(sid) or _empty_session_blob()
+        loaded = get_session_blob(sid)
+        session_found = loaded is not None
+        blob = loaded or _empty_session_blob()
         summary = str(blob.get("conversation_summary") or "")
         recent = normalize_messages(blob.get("recent_turns"))
 
@@ -110,7 +116,7 @@ def _resolve_prior_and_profile(
     else:
         country = _blob_str(blob, "country")
 
-    return sid, summary, recent, cat, plan, country
+    return sid, summary, recent, cat, plan, country, session_found
 
 
 def persist_session_turn(
@@ -177,7 +183,7 @@ def execute_chat_turn(
     explicit_plan = plan_type or (str(profile.get("plan_type") or "").strip() or None)
     explicit_country = str(profile.get("country") or "").strip() or None
 
-    sid, prior_summary, prior_recent, cat, plan, country = _resolve_prior_and_profile(
+    sid, prior_summary, prior_recent, cat, plan, country, session_found = _resolve_prior_and_profile(
         session_id,
         history,
         explicit_cat,
@@ -259,4 +265,5 @@ def execute_chat_turn(
         pipeline_error=err_s,
         raw_result=dict(result),
         langfuse_trace_id=langfuse_trace_id,
+        session_found=session_found,
     )

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from ml.rag.chatbot.bq_sql_templates import (
+    _product_name_for_table,
+    build_country_crop_series_sql,
     build_faostat_country_rank_sql,
     match_country_crop_series,
     match_faostat_country_rank,
@@ -149,3 +151,20 @@ def test_match_country_crop_series_rejects_multi_country() -> None:
         geo_country="Nigeria",
         geo_countries=["Nigeria"],
     )
+
+
+def test_trade_maize_maps_to_maize_corn() -> None:
+    assert _product_name_for_table("stg_faostat_trade", "Maize") == "Maize (corn)"
+    sql = build_country_crop_series_sql(
+        project_id="proj",
+        dataset="staging_dev",
+        table_id="stg_faostat_trade",
+        country="Nigeria",
+        product_name="Maize",
+        element="Export quantity",
+        year_start=2022,
+        year_end=2022,
+    )
+    assert "Maize (corn)" in sql
+    assert "Export quantity" in sql
+    assert "year >= 2022" in sql

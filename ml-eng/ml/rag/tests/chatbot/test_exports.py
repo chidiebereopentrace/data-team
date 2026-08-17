@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import pytest
 
-from ml.rag.chatbot.artifact_storage import refresh_artifact_url, upload_artifact
+from ml.rag.chatbot.artifact_storage import (
+    _signed_url_ttl_seconds,
+    refresh_artifact_url,
+    upload_artifact,
+)
 from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.exports.chart_builder import build_chart
 from ml.rag.chatbot.exports.csv_builder import build_csv
+from ml.rag.chatbot.exports.docx_builder import build_docx
 from ml.rag.chatbot.exports.tabular import rows_from_bq_results
 
 
@@ -60,7 +65,12 @@ def test_upload_artifact_local(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Non
     assert refreshed["id"] == meta["id"]
     assert refreshed["filename"] == "test.csv"
     assert refreshed["url"] == meta["url"]
-    assert refreshed["expires_in_seconds"] >= 60
+    assert refreshed["expires_in_seconds"] == 86400
+
+
+def test_signed_url_ttl_defaults_to_24h(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS", raising=False)
+    assert _signed_url_ttl_seconds() == 86400
 
 
 def test_refresh_artifact_url_missing(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -138,6 +148,33 @@ def test_run_exports_csv(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     assert artifacts[0]["citation_ids"] == [1]
 
 
+def test_run_exports_skips_csv_when_no_valid_sql(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setenv("RAG_ARTIFACT_LOCAL_DIR", str(tmp_path))
+    monkeypatch.delenv("RAG_ARTIFACT_GCS_BUCKET", raising=False)
+    monkeypatch.delenv("AWS_S3_BUCKET_NAME", raising=False)
+    artifacts = run_exports(
+        export_kind="csv",
+        query="Compare maize production in Kenya and Nigeria CSV",
+        answer="no accurate CSV export can be generated from OpenTrace sources",
+        bq_results=[
+            {
+                "source": "bigquery",
+                "content": "[BQ no_valid_sql: All SQL attempts failed validation or execution]",
+                "metadata": {
+                    "status": "no_valid_sql",
+                    "prep_error": "All SQL attempts failed validation or execution",
+                    "validation_failed": True,
+                },
+            }
+        ],
+        citations=[],
+        state={},
+        export_enabled=True,
+        plan_type="Agribusinesses",
+    )
+    assert artifacts == []
+
+
 def test_run_exports_blocked_without_route_flag() -> None:
     with pytest.raises(ValueError, match="export not enabled"):
         run_exports(
@@ -150,3 +187,41 @@ def test_run_exports_blocked_without_route_flag() -> None:
             export_enabled=False,
             plan_type="Agribusinesses",
         )
+
+
+def test_rows_from_bq_results_skips_no_valid_sql_diagnostic() -> None:
+    bq = [
+        {
+            "source": "bigquery",
+            "content": "[BQ no_valid_sql: All SQL attempts failed validation or execution]",
+            "metadata": {
+                "status": "no_valid_sql",
+                "prep_error": "All SQL attempts failed validation or execution; model=deepseek/x",
+                "nl2sql_raw": "SELECT 1",
+                "nl2sql_model": "deepseek/x",
+                "sql_source": "nl2sql",
+                "validation_failed": True,
+            },
+        }
+    ]
+    assert rows_from_bq_results(bq) == []
+
+
+def test_build_docx_empty_table_note_not_prep_error() -> None:
+    import io
+
+    from docx import Document
+
+    data, name = build_docx(
+        title="Maize and rice in West Africa, 2022",
+        sections=[{"heading": "Executive summary", "body": "No figures available."}],
+        table_rows=None,
+        filename="report.docx",
+    )
+    assert name == "report.docx"
+    doc = Document(io.BytesIO(data))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "No structured data was available for this query." in text
+    assert "prep_error" not in text
+    assert "All SQL attempts failed" not in text
+    assert "no_valid_sql" not in text

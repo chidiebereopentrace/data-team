@@ -112,14 +112,20 @@ def _parse_row_content(content: str) -> dict[str, Any] | None:
 
 
 def _raw_row_from_item(item: dict[str, Any]) -> dict[str, Any]:
-    meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    meta_raw = item.get("metadata")
+    if not isinstance(meta_raw, dict):
+        meta_raw = {}
+    meta: dict[str, Any] = meta_raw
     existing = meta.get("raw_row")
     if isinstance(existing, dict):
         return dict(existing)
-    parsed = _parse_row_content(str(item.get("content") or ""))
+    content_raw = item.get("content")
+    if not isinstance(content_raw, str):
+        content_raw = ""
+    parsed = _parse_row_content(str(content_raw))
     if parsed:
         return dict(parsed)
-    return {k: v for k, v in meta.items() if k not in _BQ_PROVENANCE_KEYS and v is not None}
+    return {k: v for k, v in (meta or {}).items() if k not in _BQ_PROVENANCE_KEYS and v is not None}
 
 
 def _sql_aliases(sql: str) -> list[str]:
@@ -539,23 +545,26 @@ def _stamp_acf_metadata(
 ) -> dict[str, Any]:
     """Stamp year, as_of_date, metric, unit, and value fields for ACF scoring."""
     out = dict(meta)
-    raw = row if isinstance(row, dict) else out.get("raw_row") if isinstance(out.get("raw_row"), dict) else {}
+    raw_existing = out.get("raw_row")
+    raw: dict[str, Any] = row if isinstance(row, dict) else (
+        raw_existing if isinstance(raw_existing, dict) else {}
+    )
     year, as_of = _resolve_observation_date(raw, sql=sql, decomposition=decomposition)
     if year is not None:
         out["year"] = year
     if as_of:
         out["as_of_date"] = as_of
 
-    sem = semantics if isinstance(semantics, dict) else out.get("value_semantics")
-    if isinstance(sem, dict):
-        measure_label = _s(sem.get("measure_label"))
+    sem_raw = semantics if isinstance(semantics, dict) else out.get("value_semantics")
+    if isinstance(sem_raw, dict):
+        measure_label = _s(sem_raw.get("measure_label"))
         if measure_label:
             out["metric"] = measure_label
-        unit = _s(sem.get("unit"))
+        unit = _s(sem_raw.get("unit"))
         if unit:
             out["unit"] = unit
-        if out.get("value") is None and sem.get("measure_value") is not None:
-            out["value"] = sem.get("measure_value")
+        if out.get("value") is None and sem_raw.get("measure_value") is not None:
+            out["value"] = sem_raw.get("measure_value")
 
     element = _element_from_sql(sql) or _s(raw.get("element"))
     if element and not _s(out.get("metric")):

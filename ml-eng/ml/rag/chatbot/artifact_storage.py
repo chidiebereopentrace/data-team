@@ -52,11 +52,11 @@ def _artifact_prefix() -> str:
 
 
 def _signed_url_ttl_seconds() -> int:
-    raw = os.environ.get("RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS", "3600").strip()
+    raw = os.environ.get("RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS", "86400").strip()
     try:
         return max(60, int(raw))
     except ValueError:
-        return 3600
+        return 86400
 
 
 def _max_artifact_bytes() -> int:
@@ -191,7 +191,7 @@ def refresh_artifact_url(artifact_id: str, filename: str) -> dict[str, Any]:
     Re-sign a download URL for an existing artifact (same object key as upload).
 
     Key layout: ``{prefix}/{artifact_id}/{filename}``.
-    TTL: ``RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS`` (default 3600, min 60).
+    TTL: ``RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS`` (default 86400, min 60).
     """
     aid = (artifact_id or "").strip()
     fname = (filename or "").strip()

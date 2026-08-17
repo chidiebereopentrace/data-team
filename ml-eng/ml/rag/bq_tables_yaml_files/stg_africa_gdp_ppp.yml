@@ -36,6 +36,7 @@ columns:
 - name: gdp_per_capita_ppp
   type: FLOAT64
   description: gdp per capita ppp
+  sql_aggregation: avg
 - name: ingested_at
   type: STRING
   description: ingested at

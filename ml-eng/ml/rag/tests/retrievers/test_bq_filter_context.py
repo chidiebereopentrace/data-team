@@ -143,3 +143,31 @@ def test_format_query_constraints_africa_scope() -> None:
     )
     assert "CONTINENTAL/REGIONAL scope" in block
     assert "2020" in block
+
+
+def test_format_query_constraints_uses_integer_years() -> None:
+    block = _format_query_constraints(
+        geo_country="Ghana",
+        time_start="2022-01-01",
+        time_end="2022-12-31",
+        entities=["maize"],
+        domains=None,
+    )
+    assert "year BETWEEN 2022 AND 2022" in block
+    assert "2022-01-01" not in block
+    assert "2022-12-31" not in block
+
+
+def test_format_query_constraints_skips_continental_hint_when_countries_expanded() -> None:
+    block = _format_query_constraints(
+        geo_country=None,
+        geo_countries=["Nigeria", "Ghana", "Senegal", "Mali"],
+        time_start="2022-01-01",
+        time_end="2022-12-31",
+        entities=["maize", "rice"],
+        domains=["agriculture"],
+        query="production and trade maize and rice across west africa in 2022",
+    )
+    assert "CONTINENTAL/REGIONAL scope" not in block
+    assert "Nigeria" in block
+    assert "year BETWEEN 2022 AND 2022" in block

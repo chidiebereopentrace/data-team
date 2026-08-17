@@ -61,8 +61,9 @@ Details: [ARCHITECTURE.md §4](ARCHITECTURE.md#4-runtime-pipeline-run_rag).
 | Variable | Meaning |
 |----------|---------|
 | `RAG_REDIS_URL` / `REDIS_URL` | Connection string for Redis (Memorystore, Upstash, sidecar, etc.). When present the session store and BQ/bronze caches become shared and durable. |
-| `RAG_SESSION_TTL_SECONDS` | Expiry for conversation blobs (default **86400** = 24 h). 0 = no expiry. |
+| `RAG_SESSION_TTL_SECONDS` | Expiry for conversation blobs (default **604800** = 7 days). 0 = no expiry. |
 | `RAG_CACHE_TTL_SECONDS` | Default TTL for secondary caches (BQ schema, bronze catalog) (default **3600**). |
+| `RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS` | Signed artifact download URL lifetime (default **86400** = 24 h). |
 | `RAG_REDIS_CONNECT_TIMEOUT_S` | Socket timeout for initial connect/ping (default **2**). |
 
 See also [`ml/rag/session_store.py`](ml/rag/session_store.py) (the facade) and `ARCHITECTURE.md §12.7`.
@@ -118,7 +119,7 @@ Meta / identity and product questions short-circuit retrieval (see `assistant_id
 
 **Redis config** (new in scaling release):
 - `RAG_REDIS_URL` (or `REDIS_URL`): e.g. `redis://host:6379/0` or rediss:// for TLS.
-- `RAG_SESSION_TTL_SECONDS` (default 86400), `RAG_CACHE_TTL_SECONDS` (default 3600 for BQ/bronze caches), `RAG_REDIS_CONNECT_TIMEOUT_S`.
+- `RAG_SESSION_TTL_SECONDS` (default 604800 / 7 days), `RAG_CACHE_TTL_SECONDS` (default 3600 for BQ/bronze caches), `RAG_REDIS_CONNECT_TIMEOUT_S`.
 
 See `session_store.py`, `ARCHITECTURE.md`, and the production deploy guide for details.
 

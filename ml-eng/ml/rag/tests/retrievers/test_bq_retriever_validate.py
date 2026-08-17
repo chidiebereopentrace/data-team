@@ -240,3 +240,123 @@ def test_bq_was_attempted_with_candidates() -> None:
     assert _bq_was_attempted({"bq_table_candidates": [{"table_name": "stg_x"}]})
     assert _bq_was_attempted({"bq_sql_debug": [{"status": "no_valid_sql", "sql": ""}]})
     assert not _bq_was_attempted({"bq_sql_plan": {"skip_bq": True, "selected_tables": []}})
+
+
+def test_retrieve_empty_nl2sql_rows_retries_template() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    nl_sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2022 AND element = 'Production' "
+        "GROUP BY country_name LIMIT 10"
+    )
+    tmpl_sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2022 AND element = 'Production' AND product_name = 'Maize' "
+        "GROUP BY country_name ORDER BY total DESC LIMIT 10"
+    )
+    empty_job = MagicMock()
+    empty_job.result.return_value = []
+    filled_job = MagicMock()
+    filled_job.result.return_value = [{"country_name": "Nigeria", "total": 10.0}]
+    client = MagicMock()
+    client.query.side_effect = [empty_job, filled_job]
+    with patch.object(retriever, "_nl_to_sql_queries", return_value=[nl_sql]):
+        with patch.object(retriever, "_get_client", return_value=client):
+            with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
+                with patch(
+                    "ml.rag.retrievers.bq_retriever.try_sql_template",
+                    return_value={"sql": tmpl_sql, "template": "faostat_crop_rank"},
+                ) as tmpl:
+                    items = retriever.retrieve(
+                        "maize production west africa 2022",
+                        selected_tables=["stg_faostat_production"],
+                        time_start="2022-01-01",
+                        time_end="2022-12-31",
+                    )
+    tmpl.assert_called()
+    assert any("Nigeria" in str(it.get("content")) for it in items)
+    assert any((it.get("metadata") or {}).get("sql_source") == "template" for it in items)
+
+
+def test_retrieve_pattern_hits_still_nl2sql_leftover_custom() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    pattern_sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2022 AND element = 'Production' "
+        "GROUP BY country_name ORDER BY total DESC LIMIT 10"
+    )
+    leftover_sql = (
+        "SELECT country FROM `proj.staging_dev.stg_ilri_household_food_security` "
+        "LIMIT 10"
+    )
+    client = MagicMock()
+    client.query.return_value.result.return_value = [{"country_name": "Nigeria", "total": 1}]
+    with patch(
+        "ml.rag.retrievers.bq_retriever.try_sql_patterns",
+        return_value=[
+            {
+                "sql": pattern_sql,
+                "pattern": "rank_by_sum",
+                "table_id": "stg_faostat_production",
+                "intent_index": 0,
+            }
+        ],
+    ):
+        with patch.object(retriever, "_nl_to_sql_queries", return_value=[leftover_sql]) as nl:
+            with patch.object(retriever, "_get_client", return_value=client):
+                with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
+                    items = retriever.retrieve(
+                        "maize production and household food security 2022",
+                        selected_tables=[
+                            "stg_faostat_production",
+                            "stg_ilri_household_food_security",
+                        ],
+                        query_intents=[
+                            {
+                                "pattern": "rank_by_sum",
+                                "tables": ["stg_faostat_production"],
+                            },
+                            {
+                                "pattern": "custom",
+                                "tables": ["stg_ilri_household_food_security"],
+                            },
+                        ],
+                        time_start="2022-01-01",
+                    )
+    nl.assert_called_once()
+    leftover_tables = nl.call_args.kwargs.get("selected_tables")
+    assert leftover_tables == ["stg_ilri_household_food_security"]
+    sources = {(it.get("metadata") or {}).get("sql_source") for it in items}
+    assert "pattern" in sources
+    assert "nl2sql" in sources
+
+
+def test_retrieve_zero_rows_labeled_empty_result() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    nl_sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2022 AND element = 'Production' "
+        "GROUP BY country_name LIMIT 10"
+    )
+    client = MagicMock()
+    client.query.return_value.result.return_value = []
+    with patch.object(retriever, "_nl_to_sql_queries", return_value=[nl_sql]):
+        with patch.object(retriever, "_get_client", return_value=client):
+            with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
+                with patch(
+                    "ml.rag.retrievers.bq_retriever.try_sql_template",
+                    return_value=None,
+                ):
+                    items = retriever.retrieve(
+                        "maize production 2022",
+                        selected_tables=["stg_faostat_production"],
+                        time_start="2022-01-01",
+                    )
+    assert len(items) == 1
+    meta = items[0]["metadata"]
+    assert meta["status"] == "empty_result"
+    assert "no rows" in (meta.get("prep_error") or "").lower()

@@ -106,7 +106,7 @@ def test_session_persist_and_fallback_profile() -> None:
         assert blob["plan_type"] == "Farmers"
         assert blob["country"] == "Ghana"
 
-        sid, _summary, _recent, cat, plan, country = _resolve_prior_and_profile(
+        sid, _summary, _recent, cat, plan, country, found = _resolve_prior_and_profile(
             "sess-persona",
             None,
             None,
@@ -117,6 +117,7 @@ def test_session_persist_and_fallback_profile() -> None:
         assert cat == "Farmers"
         assert plan == "Farmers"
         assert country == "Ghana"
+        assert found is True
 
 
 def test_request_context_session_fallback_plan_and_country() -> None:

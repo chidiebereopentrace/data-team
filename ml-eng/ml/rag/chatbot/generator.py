@@ -82,6 +82,7 @@ _BQ_FAILURE_MARKERS = (
     "[bq validation failed",
     "[bq no_project",
     "[bq no_valid_sql",
+    "[bq empty_result",
 )
 _BQ_ROW_HINT_KEYS = (
     "country",
@@ -268,7 +269,13 @@ def is_usable_context_item(item: dict[str, Any]) -> bool:
     if meta.get("validation_failed") or meta.get("execution_error"):
         return False
     status = str(meta.get("status") or "").strip().lower()
-    if status in {"no_project", "no_valid_sql", "validation_failed", "execution_error"}:
+    if status in {
+        "no_project",
+        "no_valid_sql",
+        "validation_failed",
+        "execution_error",
+        "empty_result",
+    }:
         return False
     raw = str(item.get("content") or item.get("text") or "").strip().lower()
     return not any(marker in raw for marker in _BQ_FAILURE_MARKERS)

@@ -74,6 +74,8 @@ def _intent_for_table(
         filters = f"price_type='Retail'; {filters}"
     elif "faostat_trade" in table_id:
         filters = f"{filters}; trade element from question"
+        pattern = "rank_by_sum" if multi_country else "custom"
+        order_by = "total DESC" if multi_country else "value DESC"
     return {
         "goal": f"{measure_id} signal from {table_id}",
         "tables": [table_id],

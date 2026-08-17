@@ -612,7 +612,8 @@ ENV_VARS: Sequence[Sequence[str]] = (
     ("RAG_RERANKER_MODE", "cross_encoder | openrouter | cohere | llm | off"),
     ("RAG_RERANKER_MODEL", "Cross-encoder model (default BAAI/bge-reranker-base)"),
     ("RAG_REDIS_URL", "Session blobs + shared caches"),
-    ("RAG_SESSION_TTL_SECONDS", "Session TTL (default 86400)"),
+    ("RAG_SESSION_TTL_SECONDS", "Session TTL (default 604800 / 7 days)"),
+    ("RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS", "Signed artifact URL TTL (default 86400 / 24h)"),
     ("RAG_WEB_FALLBACK_ENABLED", "Post-rerank Wikipedia/Tavily (default off)"),
     ("RAG_CITATIONS_MODE", "referenced (default) or all"),
     ("RAG_GENERATE_MAX_TOKENS", "Answer length cap (default 2048)"),
@@ -671,7 +672,7 @@ OBSERVABILITY_BULLETS: Sequence[str] = (
     "POST /feedback on RAG API records trace scores via langfuse_trace_id.",
     "include_trace on POST /query returns decomposition + retrieval counts.",
     "Streamlit inspector: full state, bq_sql_debug, bq_cache_hit, ACF fields.",
-    "Redis keys: rag:session:<session_id> (TTL RAG_SESSION_TTL_SECONDS, default 24h).",
+    "Redis keys: rag:session:<session_id> (TTL RAG_SESSION_TTL_SECONDS, default 7 days).",
 )
 
 NODE_SPECS: list[dict[str, Any]] = [

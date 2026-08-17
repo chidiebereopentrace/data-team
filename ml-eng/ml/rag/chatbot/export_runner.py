@@ -149,12 +149,16 @@ def run_exports(
         raise ValueError(f"export not allowed for plan_type={plan_type!r}")
 
     rows = rows_from_bq_results(bq_results)
-    base = slugify_filename(query)
-    citation_ids = _citation_ids(citations)
-    acf = _acf_summary(state)
     analytical = bool(state.get("analytical_mode"))
     task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
     data_export_only = task_mode == "data_export_only"
+    data_export = export_kind in {"csv", "chart", "multi"} or data_export_only
+    if data_export and not rows:
+        return []
+
+    base = slugify_filename(query)
+    citation_ids = _citation_ids(citations)
+    acf = _acf_summary(state)
     if data_export_only:
         sections = _caption_sections(query, answer)
     else:

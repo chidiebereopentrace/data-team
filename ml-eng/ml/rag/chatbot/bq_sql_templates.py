@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ml.rag.chatbot.bq_table_schema_yaml import columns_for_tables
+from ml.rag.chatbot.bq_table_schema_yaml import columns_for_tables, match_product_samples
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.query_decomposer import _extract_countries
 
@@ -39,7 +39,7 @@ _SERIES_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Common crop aliases → exact FAOSTAT product_name labels (YAML samples).
+# Speech synonyms for crop detection. Warehouse labels come from YAML samples.
 _CROP_ALIASES: tuple[tuple[str, str], ...] = (
     ("maize", "Maize"),
     ("corn", "Maize"),
@@ -132,6 +132,13 @@ def _product_col(table_id: str) -> str:
     if table_id == "stg_yield_raw_data":
         return "product"
     return "product_name"
+
+
+def _product_name_for_table(table_id: str, product_name: str | None) -> str | None:
+    if not product_name:
+        return None
+    hits = match_product_samples(table_id, product_name)
+    return hits[0] if hits else product_name
 
 
 def _default_element(table_id: str, *, want_yield: bool) -> str | None:
@@ -419,7 +426,9 @@ def build_country_crop_series_sql(
     if ptype:
         clauses.append(f"price_type = {_sql_literal(ptype)}")
     if product_name:
-        clauses.append(f"{_product_col(tid)} = {_sql_literal(product_name)}")
+        clauses.append(
+            f"{_product_col(tid)} = {_sql_literal(_product_name_for_table(tid, product_name) or product_name)}"
+        )
     if year_start is not None:
         clauses.append(f"{ycol} >= {int(year_start)}")
     if year_end is not None:

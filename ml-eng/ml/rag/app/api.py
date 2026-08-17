@@ -131,7 +131,7 @@ class QueryResponse(BaseModel):
     )
     session_ttl_seconds: int = Field(
         default_factory=session_ttl_seconds,
-        description="Configured server session TTL (RAG_SESSION_TTL_SECONDS, default 86400).",
+        description="Configured server session TTL (RAG_SESSION_TTL_SECONDS, default 604800).",
     )
     usage: UsageStats = Field(default_factory=lambda: UsageStats())
     error: str | None = None
@@ -145,7 +145,7 @@ class QueryResponse(BaseModel):
         description=(
             "Downloadable exports (CSV/chart/DOCX/PDF). Populated on Agribusinesses and "
             "Integrated plans when the query requests an export and builders succeed; "
-            "otherwise empty. Signed URL TTL defaults to 3600s — refresh via "
+            "otherwise empty. Signed URL TTL defaults to 86400s — refresh via "
             "GET /artifacts/{artifact_id}/url."
         ),
     )
@@ -521,7 +521,7 @@ async def get_artifact_url(
     """
     Re-sign a download URL for an existing export artifact.
 
-    Signed URLs expire after ``RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS`` (default **3600**).
+    Signed URLs expire after ``RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS`` (default **86400**).
     Pass the ``id`` and ``filename`` from the original ``artifacts[]`` item.
     """
     try:

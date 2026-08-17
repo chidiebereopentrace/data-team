@@ -166,8 +166,11 @@ RAG_REDIS_URL=redis://redis.railway.internal:6379/0
 # Or Railway variable reference from the Redis service:
 # RAG_REDIS_URL=${{Redis.REDIS_URL}}
 
-RAG_SESSION_TTL_SECONDS=86400
+# Session blobs: 7 days. If Railway already has 86400, change it or the dashboard wins.
+RAG_SESSION_TTL_SECONDS=604800
 RAG_CACHE_TTL_SECONDS=3600
+# Signed artifact download URLs (24h). If Railway still has 3600, change it or the dashboard wins.
+RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS=86400
 # RAG_REDIS_CONNECT_TIMEOUT_S=2
 ```
 

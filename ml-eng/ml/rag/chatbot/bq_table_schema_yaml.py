@@ -16,6 +16,7 @@ Public API:
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -246,6 +247,242 @@ def measure_columns(table_id: str) -> list[str]:
     return out
 
 
+_GEO_COLUMN_CANDIDATES = ("country_name", "country")
+_YEAR_COLUMN_CANDIDATES = ("year", "harvest_year", "observation_year", "mp_year")
+_PRODUCT_COLUMN_CANDIDATES = ("product_name", "product", "item")
+_PATTERN_DENY_TABLES = frozenset(
+    {
+        "stg_fews_cross_border_trade",
+        "stg_ilri_household_food_security",
+    }
+)
+_PATTERN_DENY_GRAIN_RE = re.compile(
+    r"household|border_point|lat/lon|\blat\b|plot_id|\bplot\b|germplasm|"
+    r"grid_id|\bgrid\b|sensor|occurrence|farm/cow|\bfarm\b|respondent|"
+    r"entity row|protected_area|study\s*×",
+    re.IGNORECASE,
+)
+_AVG_SEMANTIC_RE = re.compile(
+    r"per[_\s-]?capita|\brate\b|\bindex\b|\bshare\b|\byield\b|\bprice",
+    re.IGNORECASE,
+)
+_SPEECH_SYNONYMS = {
+    "corn": "maize",
+    "peanut": "groundnut",
+    "peanuts": "groundnuts",
+    "soya": "soy",
+    "soyabean": "soybean",
+    "soyabeans": "soybeans",
+}
+_GENERIC_SAMPLE_TOKENS = frozenset(
+    {
+        "of",
+        "and",
+        "or",
+        "the",
+        "with",
+        "from",
+        "n",
+        "e",
+        "c",
+        "other",
+        "products",
+        "nes",
+        "nec",
+    }
+)
+_PREFERRED_DISCRIMINATOR_DEFAULTS = (
+    "Production",
+    "Producer Price (USD/tonne)",
+    "Retail",
+    "population",
+)
+_AUTO_DEFAULT_DISCRIMINATOR_COLS = frozenset({"element", "price_type", "measure_type"})
+_WORD_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+
+
+def _column_names(table_id: str) -> set[str]:
+    schema = load_table_schema(table_id)
+    if not schema:
+        return set()
+    return {str(c.get("name") or "").strip() for c in _schema_columns(schema) if str(c.get("name") or "").strip()}
+
+
+def geo_column(table_id: str) -> str | None:
+    """Country label column from YAML, preferring ``country_name`` over ``country``."""
+    names = _column_names(table_id)
+    by_low = {n.lower(): n for n in names}
+    for cand in _GEO_COLUMN_CANDIDATES:
+        if cand in by_low:
+            return by_low[cand]
+    return None
+
+
+def year_column(table_id: str) -> str | None:
+    names = _column_names(table_id)
+    by_low = {n.lower(): n for n in names}
+    for cand in _YEAR_COLUMN_CANDIDATES:
+        if cand in by_low:
+            return by_low[cand]
+    return None
+
+
+def product_column(table_id: str) -> str | None:
+    names = _column_names(table_id)
+    by_low = {n.lower(): n for n in names}
+    samples = value_samples_for_tables({table_id}).get(_strip_fqn(table_id).lower()) or {}
+    for cand in _PRODUCT_COLUMN_CANDIDATES:
+        if cand in samples and cand in by_low:
+            return by_low[cand]
+    for cand in _PRODUCT_COLUMN_CANDIDATES:
+        if cand in by_low:
+            return by_low[cand]
+    return None
+
+
+def table_supports_sql_pattern(table_id: str) -> bool:
+    """True when YAML grain is country×year facts that SUM/AVG patterns can compile."""
+    bare = _strip_fqn(table_id).lower()
+    if not bare or bare in _PATTERN_DENY_TABLES or bare.startswith("stg_ilri_"):
+        return False
+    schema = load_table_schema(bare)
+    if not schema:
+        return False
+    grain = str(schema.get("grain") or "")
+    if _PATTERN_DENY_GRAIN_RE.search(grain):
+        return False
+    if geo_column(bare) is None:
+        return False
+    if year_column(bare) is None:
+        return False
+    return bool(measure_columns(bare))
+
+
+def measure_sql_aggregation(table_id: str, column: str, *, element: str | None = None) -> str:
+    """``sum`` or ``avg`` from YAML ``sql_aggregation``, else measure semantics."""
+    el = str(element or "").strip()
+    if el and _AVG_SEMANTIC_RE.search(el):
+        return "avg"
+    schema = load_table_schema(table_id)
+    want = str(column or "").strip()
+    if schema and want:
+        for col in _schema_columns(schema):
+            if str(col.get("name") or "").strip() != want:
+                continue
+            explicit = str(col.get("sql_aggregation") or "").strip().lower()
+            if explicit in {"sum", "avg"}:
+                return explicit
+            blob = f"{want} {col.get('description') or ''}"
+            return "avg" if _AVG_SEMANTIC_RE.search(blob) else "sum"
+    if want and _AVG_SEMANTIC_RE.search(want):
+        return "avg"
+    return "sum"
+
+
+def resolve_measure_column(table_id: str, requested: str | None) -> str | None:
+    measures = measure_columns(table_id)
+    if not measures:
+        return None
+    want = str(requested or "").strip()
+    if want:
+        for name in measures:
+            if name.lower() == want.lower():
+                return name
+    return measures[0]
+
+
+def _alnum_tokens(text: str) -> list[str]:
+    return [m.group(0).lower() for m in _WORD_RE.finditer(text or "")]
+
+
+def expand_speech_text(text: str) -> str:
+    out = (text or "").lower()
+    for src, dst in _SPEECH_SYNONYMS.items():
+        out = re.sub(rf"\b{re.escape(src)}\b", dst, out)
+    return out
+
+
+def match_value_samples(blob: str, samples: set[str] | list[str]) -> list[str]:
+    """Pick warehouse labels whose head token appears in the query (speech synonyms expanded)."""
+    expanded = expand_speech_text(blob)
+    blob_tokens = set(_alnum_tokens(expanded))
+    if not blob_tokens:
+        return []
+    grouped: dict[str, list[str]] = {}
+    sample_order = {str(s).strip(): i for i, s in enumerate(samples or [])}
+    for raw in samples or []:
+        sample = str(raw).strip()
+        if not sample:
+            continue
+        toks = [t for t in _alnum_tokens(sample) if t not in _GENERIC_SAMPLE_TOKENS]
+        if not toks:
+            continue
+        head = _SPEECH_SYNONYMS.get(toks[0], toks[0])
+        if head not in blob_tokens:
+            continue
+        grouped.setdefault(head, []).append(sample)
+    chosen: list[str] = []
+    for head, group in grouped.items():
+        scored: list[tuple[Any, ...]] = []
+        for sample in group:
+            extra = [
+                t
+                for t in _alnum_tokens(sample)
+                if t not in _GENERIC_SAMPLE_TOKENS and _SPEECH_SYNONYMS.get(t, t) != head
+            ]
+            extra_hits = sum(
+                1 for t in extra if t in blob_tokens or _SPEECH_SYNONYMS.get(t, t) in blob_tokens
+            )
+            if extra and extra_hits == 0:
+                scored.append((1, len(extra), sample_order.get(sample, 10**9), sample))
+            else:
+                scored.append((0, -extra_hits, len(sample), sample))
+        scored.sort()
+        chosen.append(scored[0][-1])
+
+    def _head_pos(sample: str) -> int:
+        toks = [t for t in _alnum_tokens(sample) if t not in _GENERIC_SAMPLE_TOKENS]
+        if not toks:
+            return 10**9
+        head = _SPEECH_SYNONYMS.get(toks[0], toks[0])
+        found = re.search(rf"\b{re.escape(head)}\b", expanded)
+        return found.start() if found else 10**9
+
+    chosen.sort(key=_head_pos)
+    return chosen
+
+
+def match_product_samples(table_id: str, blob: str) -> list[str]:
+    col = product_column(table_id)
+    if not col:
+        return []
+    samples_map = value_samples_for_tables({table_id}).get(_strip_fqn(table_id).lower()) or {}
+    samples = samples_map.get(col) or set()
+    return match_value_samples(blob, samples)
+
+
+def discriminator_equality_filters(table_id: str, blob: str) -> list[tuple[str, str]]:
+    """``(column, sample)`` filters from YAML samples; prefer query matches then known defaults."""
+    samples_map = value_samples_for_tables({table_id}).get(_strip_fqn(table_id).lower()) or {}
+    product_col = (product_column(table_id) or "").lower()
+    skip = {product_col, "unit", "country", "country_name", "market_name"} - {""}
+    out: list[tuple[str, str]] = []
+    for col, samples in samples_map.items():
+        if col.lower() in skip:
+            continue
+        matched = match_value_samples(blob, samples)
+        if matched:
+            out.append((col, matched[0]))
+            continue
+        if col.lower() not in _AUTO_DEFAULT_DISCRIMINATOR_COLS:
+            continue
+        for preferred in _PREFERRED_DISCRIMINATOR_DEFAULTS:
+            if preferred in samples:
+                out.append((col, preferred))
+                break
+    return out
+
+
 def table_source_meta(table_id: str) -> dict[str, Any]:
     """Compact table-level metadata for BQ context enrichment."""
     schema = load_table_schema(table_id) or {}
@@ -321,9 +558,12 @@ def columns_for_tables(table_ids: set[str] | list[str]) -> dict[str, set[str]]:
 
 def value_samples_for_tables(
     table_ids: set[str] | list[str],
-) -> dict[str, dict[str, set[str]]]:
-    """Return ``{bare_table: {column: {sample_values}}}`` from YAML ``*_value_samples``."""
-    out: dict[str, dict[str, set[str]]] = {}
+) -> dict[str, dict[str, list[str]]]:
+    """Return ``{bare_table: {column: [sample_values]}}`` from YAML ``*_value_samples``.
+
+    Sample order follows the YAML list (first listed label is the catalog default).
+    """
+    out: dict[str, dict[str, list[str]]] = {}
     for raw in table_ids or []:
         bare = _strip_fqn(str(raw)).lower()
         if not bare:
@@ -339,13 +579,20 @@ def value_samples_for_tables(
                     n = str(col.get("name") or "").strip()
                     if n:
                         yaml_cols.add(n)
-        by_col: dict[str, set[str]] = {}
+        by_col: dict[str, list[str]] = {}
         for sample_key, samples in schema.items():
             if not isinstance(sample_key, str) or not sample_key.endswith(_SAMPLE_KEY_SUFFIX):
                 continue
             if not isinstance(samples, list) or not samples:
                 continue
-            vals: set[str] = {str(item).strip() for item in samples if str(item).strip()}
+            vals: list[str] = []
+            seen: set[str] = set()
+            for item in samples:
+                text = str(item).strip()
+                if not text or text in seen:
+                    continue
+                seen.add(text)
+                vals.append(text)
             if not vals:
                 continue
             col_name = column_for_sample_key(sample_key)
@@ -355,7 +602,12 @@ def value_samples_for_tables(
                     target = "product_name"
                 elif col_name == "product" and "product_name" in yaml_cols:
                     target = "product_name"
-            by_col.setdefault(target, set()).update(vals)
+            existing = by_col.setdefault(target, [])
+            existing_set = set(existing)
+            for text in vals:
+                if text not in existing_set:
+                    existing.append(text)
+                    existing_set.add(text)
         if by_col:
             out[bare] = by_col
     return out

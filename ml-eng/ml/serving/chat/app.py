@@ -37,7 +37,7 @@ from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats
 from ml.rag.observability import flush_langfuse
 from ml.rag.rate_limiter import check_plan_rate_limit, get_rate_limit_status
 from ml.rag.request_context import bootstrap_category, resolve_request_context
-from ml.rag.session_store import delete_session, get_session_blob
+from ml.rag.session_store import delete_session, get_session_blob, session_ttl_seconds
 from ml.serving.chat.schemas import (
     CategoryType,
     ChatRequest,
@@ -247,6 +247,8 @@ async def _plan_chat(
             citations=citations,
             acf=acf,
             session_id=turn.session_id,
+            session_found=turn.session_found,
+            session_ttl_seconds=session_ttl_seconds(),
             usage=usage,
             request_id=request_id,
             created_at=created_at,
@@ -407,6 +409,8 @@ async def v1_chat(body: ChatRequest):
             citations=citations,
             acf=acf,
             session_id=turn.session_id,
+            session_found=turn.session_found,
+            session_ttl_seconds=session_ttl_seconds(),
             usage=usage,
             request_id=request_id,
             created_at=created_at,

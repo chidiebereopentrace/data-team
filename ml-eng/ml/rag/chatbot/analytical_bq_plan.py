@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.agri_measure_ontology import fallback_plan, resolve_measure
-from ml.rag.chatbot.bq_table_schema_yaml import pack_selected_table_hints
+from ml.rag.chatbot.bq_table_schema_yaml import pack_selected_table_hints, table_supports_sql_pattern
 
 _STAPLES = ("Maize", "Rice", "Cassava", "Sorghum", "Millet")
 
@@ -46,7 +46,8 @@ def build_food_security_bq_plan(
     if not selected:
         return None
 
-    geo = decomposition.get("geography") if isinstance(decomposition.get("geography"), list) else []
+    geo_raw = decomposition.get("geography")
+    geo = geo_raw if isinstance(geo_raw, list) else []
     countries = [str(g).strip() for g in geo if str(g).strip()]
     geo_filter = (
         "countries=" + ",".join(countries[:16])
@@ -81,10 +82,10 @@ def build_food_security_bq_plan(
                 "tables": ["stg_fews_market_prices"],
                 "filters": f"price_type='Retail'; {geo_filter}; year between {y0} and {y1}",
                 "notes": "analytical_fews_market_prices",
-                "pattern": "custom",
+                "pattern": "rank_by_sum" if multi else "custom",
                 "metric": "value",
-                "grain": ["country_name"],
-                "order_by": "value DESC",
+                "grain": ["country"],
+                "order_by": "total DESC" if multi else "value DESC",
             }
         )
     if "stg_faostat_production" in selected:
@@ -165,18 +166,18 @@ def build_analytical_bq_plan(
         or hit.measure.default_task_mode == "analytical"
         and hit.measure.companions
     ):
-        plan = fallback_plan(
+        ontology_plan = fallback_plan(
             hit,
             query=query,
             decomposition=decomposition,
             known_tables=known_tables,
             task_mode="analytical",
         )
-        if plan is not None and not plan.get("skip_bq"):
+        if ontology_plan is not None and not ontology_plan.get("skip_bq"):
             floor = analytical_sql_query_floor()
-            intents = list(plan.get("query_intents") or [])
+            intents = list(ontology_plan.get("query_intents") or [])
             # Pad with companion table intents toward floor.
-            for tid in list(plan.get("selected_tables") or []):
+            for tid in list(ontology_plan.get("selected_tables") or []):
                 if len(intents) >= floor:
                     break
                 if any(tid in (i.get("tables") or []) for i in intents):
@@ -187,22 +188,23 @@ def build_analytical_bq_plan(
                         "tables": [tid],
                         "filters": str((intents[0].get("filters") if intents else "") or ""),
                         "notes": f"analytical_companion_{tid}",
-                        "pattern": "custom",
+                        "pattern": "rank_by_sum" if table_supports_sql_pattern(tid) else "custom",
                         "metric": "value",
                         "grain": ["country_name"],
-                        "order_by": "value DESC",
+                        "order_by": "total DESC" if table_supports_sql_pattern(tid) else "value DESC",
                     }
                 )
-            plan["query_intents"] = intents[:floor]
-            plan["analytical_mode"] = True
-            plan["max_sql_queries"] = floor
-            plan["rationale"] = f"analytical_forced_{hit.measure.id}"
-            return plan
+            ontology_plan["query_intents"] = intents[:floor]
+            ontology_plan["analytical_mode"] = True
+            ontology_plan["max_sql_queries"] = floor
+            ontology_plan["rationale"] = f"analytical_forced_{hit.measure.id}"
+            return ontology_plan
 
     if "stg_faostat_production" not in known_tables:
         return None
 
-    geo = decomposition.get("geography") if isinstance(decomposition.get("geography"), list) else []
+    geo_raw = decomposition.get("geography")
+    geo = geo_raw if isinstance(geo_raw, list) else []
     countries = [str(g).strip() for g in geo if str(g).strip()]
     geo_filter = (
         "countries=" + ",".join(countries[:16])
@@ -242,17 +244,17 @@ def build_analytical_bq_plan(
                 f"year≈{y1}"
             ),
             "notes": "analytical_staples_by_country",
-            "pattern": "custom",
+            "pattern": "rank_by_sum",
             "metric": "value",
             "grain": ["country_name", "product_name"],
-            "order_by": "value DESC",
+            "order_by": "total DESC",
         },
         {
             "goal": f"{primary_element} time series endpoints ({y0} vs {y1}) by country",
             "tables": ["stg_faostat_production"],
             "filters": f"element='{primary_element}'; {geo_filter}; years {y0} and {y1}",
             "notes": "analytical_series_endpoints",
-            "pattern": "custom",
+            "pattern": "time_series",
             "metric": "value",
             "grain": ["country_name", "year"],
             "order_by": "year ASC",
@@ -276,10 +278,10 @@ def build_analytical_bq_plan(
                 "tables": ["stg_faostat_trade"],
                 "filters": f"{geo_filter}; year between {y0} and {y1}",
                 "notes": "analytical_trade",
-                "pattern": "custom",
+                "pattern": "rank_by_sum",
                 "metric": "value",
                 "grain": ["country_name"],
-                "order_by": "value DESC",
+                "order_by": "total DESC",
             }
         )
 
@@ -290,10 +292,10 @@ def build_analytical_bq_plan(
                 "tables": ["stg_faostat_production"],
                 "filters": f"element='Yield'; {geo_filter}; year≈{y1}",
                 "notes": "analytical_yield",
-                "pattern": "custom",
+                "pattern": "rank_by_sum",
                 "metric": "value",
                 "grain": ["country_name", "product_name"],
-                "order_by": "value DESC",
+                "order_by": "total DESC",
             }
         )
 
@@ -308,10 +310,10 @@ def build_analytical_bq_plan(
                     "tables": [tid],
                     "filters": f"{geo_filter}; year between {y0} and {y1}",
                     "notes": f"analytical_{tid}",
-                    "pattern": "custom",
+                    "pattern": "rank_by_sum" if table_supports_sql_pattern(tid) else "custom",
                     "metric": "value",
                     "grain": ["country_name"],
-                    "order_by": "value DESC",
+                    "order_by": "total DESC" if table_supports_sql_pattern(tid) else "value DESC",
                 }
             )
 

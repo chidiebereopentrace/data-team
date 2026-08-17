@@ -36,6 +36,7 @@ columns:
 - name: hdi_value
   type: FLOAT64
   description: hdi value
+  sql_aggregation: avg
 - name: source_natural_key
   type: STRING
   description: source natural key

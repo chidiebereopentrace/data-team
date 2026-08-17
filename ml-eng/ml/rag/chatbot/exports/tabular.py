@@ -5,12 +5,19 @@ import ast
 import re
 from typing import Any
 
+from ml.rag.chatbot.generator import is_usable_context_item
+
 _BQ_SKIP_META = frozenset({
     "sql",
     "sql_index",
     "sql_count",
     "execution_error",
     "validation_failed",
+    "status",
+    "prep_error",
+    "nl2sql_raw",
+    "nl2sql_model",
+    "sql_source",
     "tier",
     "data_level",
     "source_id",
@@ -57,6 +64,8 @@ def rows_from_bq_results(bq_results: list[dict[str, Any]] | None) -> list[dict[s
     out: list[dict[str, Any]] = []
     for item in bq_results or []:
         if str(item.get("source") or "") != "bigquery":
+            continue
+        if not is_usable_context_item(item):
             continue
         meta = _item_metadata(item)
         raw_ranked = meta.get("ranked_rows")

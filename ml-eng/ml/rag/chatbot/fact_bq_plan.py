@@ -22,22 +22,23 @@ def build_fact_bq_plan(
     """Ontology-aware forced plan (skip_bq=false) with one or two focused intents."""
     hit = resolve_measure(query, decomposition)
     if hit is not None:
-        plan = fallback_plan(
+        ontology_plan = fallback_plan(
             hit,
             query=query,
             decomposition=decomposition,
             known_tables=known_tables,
             task_mode=task_mode,
         )
-        if plan is not None:
-            plan["rationale"] = f"fact_forced_{task_mode}_{hit.measure.id}"
-            return plan
+        if ontology_plan is not None:
+            ontology_plan["rationale"] = f"fact_forced_{task_mode}_{hit.measure.id}"
+            return ontology_plan
 
     # Legacy production fallback when ontology misses but production table exists.
     if "stg_faostat_production" not in known_tables:
         return None
 
-    geo = decomposition.get("geography") if isinstance(decomposition.get("geography"), list) else []
+    geo_raw = decomposition.get("geography")
+    geo = geo_raw if isinstance(geo_raw, list) else []
     countries = [str(g).strip() for g in geo if str(g).strip()]
     africa_panel = bool(decomposition.get("africa_panel")) or wants_africa_panel(query)
     geo_filter = (
@@ -53,7 +54,8 @@ def build_fact_bq_plan(
     te = str(decomposition.get("time_end") or "")[:10]
     year_hint = (te or ts or "")[:4] or "year from question"
 
-    entities = decomposition.get("entities") if isinstance(decomposition.get("entities"), list) else []
+    entities_raw = decomposition.get("entities")
+    entities = entities_raw if isinstance(entities_raw, list) else []
     item_hint = ", ".join(str(e).strip() for e in entities[:4] if str(e).strip()) or "crop from question"
     want_yield = bool(re.search(r"\byields?\b", query or "", re.IGNORECASE))
     element = "Yield" if want_yield else "Production"
@@ -79,7 +81,7 @@ def build_fact_bq_plan(
                 "tables": ["stg_faostat_production"],
                 "filters": f"element='{element}'; {geo_filter}; year around {year_hint}",
                 "notes": "fact_export_table",
-                "pattern": "custom",
+                "pattern": "time_series",
                 "metric": "value",
                 "grain": ["country_name", "product_name", "year"],
                 "order_by": "year ASC",

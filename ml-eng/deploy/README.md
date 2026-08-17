@@ -115,8 +115,9 @@ Example environment (Cloud Run or GCE startup script / Secret Manager):
 
 ```
 RAG_REDIS_URL=redis://10.x.x.x:6379/0          # or rediss:// for TLS + auth
-RAG_SESSION_TTL_SECONDS=86400
+RAG_SESSION_TTL_SECONDS=604800
 RAG_CACHE_TTL_SECONDS=3600
+RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS=86400
 RAG_REDIS_CONNECT_TIMEOUT_S=2
 ```
 

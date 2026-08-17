@@ -53,6 +53,7 @@ def build_pdf(
         story.append(Image(io.BytesIO(chart_png), width=6 * inch, height=3.5 * inch))
         story.append(Spacer(1, 0.15 * inch))
 
+    story.append(Paragraph("Data table", styles["Heading2"]))
     if table_rows:
         cols = list({k for row in table_rows for k in row})
         data = [cols] + [[str(row.get(c, "")) for c in cols] for row in table_rows[:30]]
@@ -66,8 +67,10 @@ def build_pdf(
                 ]
             )
         )
-        story.append(Paragraph("Data table", styles["Heading2"]))
         story.append(tbl)
+        story.append(Spacer(1, 0.15 * inch))
+    else:
+        story.append(Paragraph("No structured data was available for this query.", body_style))
         story.append(Spacer(1, 0.15 * inch))
 
     if citations:
