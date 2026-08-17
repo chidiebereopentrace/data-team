@@ -1,6 +1,6 @@
 # RAG pipeline (graph / agentic)
 
-Modular RAG that queries **BigQuery** and **Qdrant** (news, research, OTA), then merges → reranks → generates an answer. Implemented as a **LangGraph** in [`chatbot/graph.py`](chatbot/graph.py).
+Modular RAG with **two co-equal retrieval legs** — **Qdrant** (six vector corpora) and **BigQuery** (staging YAML + NL2SQL) — that fuse at `merge`, then rerank → **generation strategy** → LLM answer. Implemented as a **LangGraph** in [`chatbot/graph.py`](chatbot/graph.py).
 
 | Document | Use when |
 |----------|----------|
@@ -13,22 +13,30 @@ Modular RAG that queries **BigQuery** and **Qdrant** (news, research, OTA), then
 ## Graph shape (current)
 
 ```
-START → decompose ─┬─ identity meta? ──→ generate_meta ──→ END
-                   ├─ product query? ──→ generate_product ──→ END
-                   └─ else → parallel_retrieve → bq_reason → bq_retrieve → merge → rerank ─┬─ weak context? → web_fallback → generate → END
-                                                                                          └─ else ───────────────────────────────→ generate → END
-                                         │
-                        ┌────────────────┼────────────────┐
-                        ▼                ▼                ▼
-                  news vector     research vector    (other corpora)
+START → decompose ─┬─ short-circuit routes (meta / product / social / clarify) ──→ END
+                   └─ full_rag:
+                        parallel_retrieve  ← VECTOR LEG (6 Qdrant corpora, thread pool)
+                             ↓
+                        bq_reason → bq_retrieve  ← BQ LEG (YAML reasoner + NL2SQL)
+                             ↓
+                        merge  ← first fusion of vector_*_results + bq_results
+                             ↓
+                        rerank + diversify
+                             ↓
+                        web_fallback? (optional)
+                             ↓
+                        node_generate:
+                          build_generation_plan → generate (+ ACF, citations)
+                             ↓
+                        export → END
 ```
 
-- **decompose**: heuristics + optional LLM → geography, time range, entities, domains; routes identity meta (`who are you`), product KB (`what is the aim of OpenTrace`), or full RAG.
-- **generate_meta** / **generate_product**: short-circuit paths with no retrieval; product answers use [`chatbot/data/opentrace_product.json`](chatbot/data/opentrace_product.json).
-- **parallel_retrieve**: news + research (+ other corpora) Qdrant search (thread pool).
-- **bq_reason**: staging YAML reasoner (`bq_tables_yaml_files` + `node_bq_reason`) selects tables and emits `bq_table_candidates` / `bq_sql_plan` (no Qdrant).
-- **bq_retrieve**: NL-to-SQL (LM Studio or HF) from table hints → execute SELECTs; up to `RAG_BQ_MAX_SQL_QUERIES` queries.
-- **merge / rerank / web_fallback / generate**: fuse context; rerank via `RAG_RERANKER_MODE=cross_encoder` (fastembed ONNX on Railway and locally); when `RAG_WEB_FALLBACK_ENABLED=1` and internal context is weak, fetch Wikipedia (then Tavily if wiki empty) via [`retrievers/web_retriever.py`](retrievers/web_retriever.py); answer via [`llm_chat.py`](llm_chat.py).
+- **decompose**: enricher + heuristics + optional LLM → geography, time, entities, domains; [`retrieval_contract`](chatbot/retrieval_contract.py) + `task_mode`; routes meta/product/clarify or full RAG.
+- **parallel_retrieve (VECTOR LEG)**: [`select_corpora`](chatbot/corpus_catalog.py) gates/boosts six collections; each runs [`VectorRetriever`](retrievers/vector_retriever.py) (E5 embed, geo/time filters, hybrid RRF, cascade fallbacks) → `vector_news_results`, `vector_academic_papers_results`, `vector_policies_results`, `vector_public_reports_results`, `vector_formation_results`, `vector_ota_results`.
+- **bq_reason / bq_retrieve (BQ LEG)**: staging YAML reasoner selects tables → NL2SQL → `bq_results`. Independent of vector hits; graph node order is sequential but legs are peers until `merge`.
+- **merge / rerank**: fuse BQ rows + all vector chunks; cross-encoder rerank (pool 24, top ~18) + diversity pack; optional web fallback (Wikipedia/Tavily).
+- **build_generation_plan** ([`generation_plan.py`](chatbot/generation_plan.py)): post-retrieval strategy — answer shape, evidence priority, grounding rules — injected into the prompt before the LLM call.
+- **generate**: context packing, [`llm_chat.py`](llm_chat.py), ACF scoring, structured citations.
 
 Details: [ARCHITECTURE.md §4](ARCHITECTURE.md#4-runtime-pipeline-run_rag).
 
@@ -67,7 +75,7 @@ See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/c
 
 ```json
 {
-  "answer": "Prose with inline footnotes [14][18] only",
+  "answer": "Prose without inline footnotes by default; clients render citations[]",
   "citations": [
     { "id": 14, "kind": "academic", "text": "[Academic] ...", "url": null },
     { "id": 18, "kind": "news", "text": "[News] ...", "url": "https://..." }
@@ -106,7 +114,7 @@ Reuse **`session_id`** for **server-side** `{conversation_summary, recent_turns}
 
 **`user_profile`**: `plan_type` (access tier + retrieval gates) and `category` (generation persona) are required when the profile is sent; **`country`** is a **retrieval geo filter only** for **`plan_type: Farmers`**. Other plans use geography from query decomposition. Legacy `stakeholder_type`, `audience_instructions`, and top-level `geo_override` are rejected.
 
-Meta / identity and product questions short-circuit retrieval (see `assistant_identity.py`, `product_knowledge.py`). Full RAG answers use numbered context sources (`[Source N]` in the LLM context) with Wikipedia-style inline footnotes (`[1]`, `[5]`) in prose. Referenced sources appear in **`citations`** by default (`RAG_CITATIONS_MODE=referenced`; set `all` for every packed source). BQ validation/execution failures are dropped before generation; model-written Sources appendices are stripped; table names and SQL are not shown to users.
+Meta / identity and product questions short-circuit retrieval (see `assistant_identity.py`, `product_knowledge.py`). Full RAG answers use numbered context sources (`[Source N]` in the LLM context). **Default chat** does **not** put Wikipedia-style `[N]` footnotes in prose — clients should render the structured **`citations`** array (packed sources for that turn). Inline `[N]` footnotes are enabled for analytical write-ups, DOCX/PDF/multi exports, or when the user explicitly asks for footnotes/inline citations. When inline footnotes are on, `RAG_CITATIONS_MODE=referenced` (default) filters `citations` to those markers; set `all` for every packed source. BQ validation/execution failures are dropped before generation; model-written Sources appendices are stripped; table names and SQL are not shown to users.
 
 **Redis config** (new in scaling release):
 - `RAG_REDIS_URL` (or `REDIS_URL`): e.g. `redis://host:6379/0` or rediss:// for TLS.
@@ -401,8 +409,8 @@ Root metadata includes corpus counts, `empty_retrieval`, BQ soft-fail flags, `we
 |----------|--------|
 | `RAG_LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
 | `RAG_LLM_API_KEY` | Your OpenRouter API key |
-| `RAG_LLM_MODEL_ID` | `meta-llama/llama-3.1-8b-instruct` |
-| `RAG_SUMMARY_MODEL_ID` | `meta-llama/llama-3.1-8b-instruct` |
+| `RAG_LLM_MODEL_ID` | `qwen/qwen3-30b-a3b-instruct-2507` |
+| `RAG_SUMMARY_MODEL_ID` | `qwen/qwen3-30b-a3b-instruct-2507` |
 | `RAG_EMBEDDINGS_MODE` | `fastembed` (baked in image) |
 | `QDRANT_URL` / `QDRANT_API_KEY` | Qdrant Cloud |
 | Six `QDRANT_COLLECTION_*` | news, academic, policies, public_reports, formation, OTA |

@@ -76,6 +76,37 @@ def _ota_chunk() -> dict:
     }
 
 
+def _ghana_rice_bq_chunk() -> dict:
+    return {
+        "content": "Ghana produced 973,000 metric tons of rice in 2020.",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "source_id": "stg_faostat_production:country_name=Ghana:year=2020",
+            "country_name": "Ghana",
+            "product_name": "Rice",
+            "element": "Production",
+            "year": 2020,
+            "value": 973000,
+            "unit": "t",
+            "geo_country_primary": "Ghana",
+        },
+    }
+
+
+def _public_report_chunk() -> dict:
+    return {
+        "content": "Kenya IPC Phase 2 areas expanded in the arid north.",
+        "score": 0.88,
+        "metadata": {
+            "doc_kind": "public_report",
+            "title": "Kenya IPC update",
+            "published_at": "2024-02-01",
+            "geo_country_primary": "Kenya",
+        },
+    }
+
+
 def _install_pipeline_mocks(
     stack,
     *,
@@ -85,23 +116,37 @@ def _install_pipeline_mocks(
     public_reports=None,
     formation=None,
     ota=None,
+    bq_results=None,
     llm_answer="ok",
 ):
     """Patch every external boundary of the graph for deterministic runs."""
-    stack.enter_context(
-        mock.patch.object(
-            graph_mod,
-            "node_bq_reason",
-            return_value={"bq_sql_plan": {"skip_bq": True, "selected_tables": []}, "bq_table_candidates": []},
+    if bq_results:
+        stack.enter_context(
+            mock.patch.object(
+                graph_mod,
+                "reason_bq_sql_plan",
+                return_value={
+                    "skip_bq": False,
+                    "selected_tables": ["stg_faostat_production"],
+                    "table_hints": ["Table: staging_dev.stg_faostat_production"],
+                    "query_intents": [],
+                },
+            )
         )
-    )
-    stack.enter_context(
-        mock.patch.object(
-            graph_mod,
-            "node_bq_retrieve",
-            return_value={"bq_results": [], "bq_sql_queries": [], "bq_sql_debug": []},
+        stack.enter_context(
+            mock.patch(
+                "ml.rag.chatbot.graph.BQRetriever.retrieve",
+                return_value=list(bq_results),
+            )
         )
-    )
+    else:
+        stack.enter_context(
+            mock.patch.object(
+                graph_mod,
+                "reason_bq_sql_plan",
+                return_value={"skip_bq": True, "selected_tables": [], "query_intents": []},
+            )
+        )
     stack.enter_context(
         mock.patch.object(graph_mod, "_retrieve_news", return_value=news or [])
     )
@@ -125,7 +170,9 @@ def _install_pipeline_mocks(
     # Deterministic reranker: identity passthrough truncated to top_k.
     stack.enter_context(
         mock.patch.object(
-            graph_mod, "rerank", side_effect=lambda q, items, top_k=20: list(items)[:top_k]
+            graph_mod,
+            "rerank",
+            side_effect=lambda q, items, top_k=20, **kwargs: list(items)[:top_k],
         )
     )
     # Keep web fallback out of the way (internal context decides the path).
@@ -161,9 +208,10 @@ def test_pipeline_data_query_returns_answer_citations_and_acf() -> None:
     assert result.get("acf_band")
     assert isinstance(result.get("acf_score"), (int, float))
     assert result.get("acf_note") or result.get("acf_explanation")
-    # Citations resolved from the inline [1].
+    # Citations populated from packed sources (inline [N] stripped in default chat).
     assert result.get("citations")
     assert result["citations"][0]["id"] == 1
+    assert "[1]" not in result["answer"]
     # Usage accounting wired.
     assert "usage" in result
 
@@ -246,3 +294,115 @@ def test_pipeline_accepts_session_id() -> None:
     assert result.get("answer")
     assert result.get("acf_band")
     assert "usage" in result
+
+
+def _gen_plan(result: dict) -> dict:
+    plan = result.get("generation_plan")
+    assert isinstance(plan, dict), "generation_plan missing from pipeline result"
+    return plan
+
+
+# ---------------------------------------------------------------------------
+# 6. Generation plan golden paths (post-retrieval strategy)
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_ghana_rice_generation_plan_numeric_fact_bq_first() -> None:
+    import contextlib
+
+    with contextlib.ExitStack() as stack:
+        _install_pipeline_mocks(
+            stack,
+            bq_results=[_ghana_rice_bq_chunk()],
+            llm_answer="Ghana produced 973,000 metric tons of rice in 2020.",
+        )
+        result = run_rag("What was Ghana rice production in 2020?")
+
+    plan = _gen_plan(result)
+    assert plan.get("answer_shape") == "numeric_fact"
+    assert (plan.get("evidence_priority") or [None])[0] == "bigquery"
+    assert plan.get("must_ground_in") == "bigquery"
+
+
+def test_pipeline_compare_generation_plan() -> None:
+    import contextlib
+
+    with contextlib.ExitStack() as stack:
+        _install_pipeline_mocks(
+            stack,
+            bq_results=[_ghana_rice_bq_chunk()],
+            news=[_news_chunk()],
+            llm_answer="Nigeria and Kenya differ in maize output.",
+        )
+        result = run_rag(
+            "Compare Nigeria and Kenya maize production in 2022.",
+            plan_type="Agribusinesses",
+        )
+
+    plan = _gen_plan(result)
+    assert plan.get("answer_shape") == "comparison"
+
+
+def test_pipeline_briefing_generation_plan() -> None:
+    import contextlib
+
+    with contextlib.ExitStack() as stack:
+        _install_pipeline_mocks(
+            stack,
+            news=[_news_chunk()],
+            public_reports=[_public_report_chunk()],
+            ota=[_ota_chunk()],
+            llm_answer="- Kenya IPC Phase 2 expanded.\n- Rice prices stable.",
+        )
+        result = run_rag("Give me a food security briefing for Kenya.")
+
+    plan = _gen_plan(result)
+    assert plan.get("answer_shape") == "briefing_digest"
+
+
+def test_pipeline_research_generation_plan() -> None:
+    import contextlib
+
+    with contextlib.ExitStack() as stack:
+        _install_pipeline_mocks(
+            stack,
+            academic=[_academic_chunk()],
+            policies=[_news_chunk()],
+            llm_answer="Research shows drought-tolerant varieties improve yields.",
+        )
+        result = run_rag("What does research say about drought-tolerant rice varieties?")
+
+    plan = _gen_plan(result)
+    assert plan.get("answer_shape") == "research_synthesis"
+
+
+def test_pipeline_export_generation_plan() -> None:
+    import contextlib
+
+    with contextlib.ExitStack() as stack:
+        _install_pipeline_mocks(
+            stack,
+            bq_results=[_ghana_rice_bq_chunk()],
+            llm_answer="Table caption for Ghana rice production export.",
+        )
+        result = run_rag(
+            "Export csv Ghana rice production 2015-2020",
+            plan_type="Agribusinesses",
+            export_enabled=True,
+        )
+
+    plan = _gen_plan(result)
+    assert plan.get("answer_shape") == "export_table"
+    assert (plan.get("evidence_priority") or [None])[0] == "bigquery"
+
+
+def test_pipeline_gap_generation_plan() -> None:
+    import contextlib
+
+    with contextlib.ExitStack() as stack:
+        _install_pipeline_mocks(stack, news=[], academic=[], ota=[], llm_answer="should not appear")
+        result = run_rag("What are tulip exports from Antarctica?")
+
+    plan = _gen_plan(result)
+    assert plan.get("answer_shape") == "gap_ack"
+    assert plan.get("must_ground_in") == "any"

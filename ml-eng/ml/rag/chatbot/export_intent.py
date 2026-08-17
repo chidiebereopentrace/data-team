@@ -30,6 +30,17 @@ _MULTI_RE = re.compile(
     r"\b(full\s+report|complete\s+package|report\s+with\s+charts?)\b",
     re.IGNORECASE,
 )
+_INLINE_CITE_REQUEST_RE = re.compile(
+    r"\b("
+    r"footnotes?|"
+    r"inline\s+citations?|"
+    r"cite\s+(?:sources|them)\s+in\s+the\s+text|"
+    r"with\s+citations?\s+in\s+(?:the\s+)?(?:text|answer|prose)|"
+    r"numbered\s+citations?|"
+    r"source\s+footnotes?"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 def detect_export_intent(query: str) -> ExportKind | None:
@@ -60,6 +71,30 @@ def detect_export_intent(query: str) -> ExportKind | None:
     return None
 
 
+def want_inline_citations(
+    query: str,
+    *,
+    task_mode: str | None = None,
+    export_intent: str | None = None,
+) -> bool:
+    """
+    Whether the answer should include Wikipedia-style [N] footnotes in prose.
+
+    Default chat returns structured citations[] only. Inline footnotes are for
+    write-up/export paths (DOCX/PDF/multi), analytical reports, or an explicit ask.
+    CSV/chart-only exports stay off.
+    """
+    ei = (export_intent or "").strip().lower()
+    if ei in {"docx", "pdf", "multi"}:
+        return True
+    tm = (task_mode or "").strip().lower()
+    if tm == "analytical":
+        return True
+    if _INLINE_CITE_REQUEST_RE.search(query or ""):
+        return True
+    return False
+
+
 EXPORT_UPGRADE_MESSAGE = (
     "Downloadable exports (CSV, charts, Word reports, and PDFs) are available on the "
     "Agribusinesses and Integrated Ask ADZA plans. Upgrade your subscription or switch "
@@ -67,4 +102,9 @@ EXPORT_UPGRADE_MESSAGE = (
 )
 
 
-__all__ = ["ExportKind", "detect_export_intent", "EXPORT_UPGRADE_MESSAGE"]
+__all__ = [
+    "ExportKind",
+    "detect_export_intent",
+    "want_inline_citations",
+    "EXPORT_UPGRADE_MESSAGE",
+]

@@ -212,11 +212,11 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Retrieval controls")
-    news_top_k = st.number_input("News chunks (top_k)", min_value=1, max_value=50, value=20)
-    academic_top_k = st.number_input("Academic chunks (top_k)", min_value=1, max_value=50, value=20)
-    bq_top_k = st.number_input("BQ rows (top_k)", min_value=1, max_value=100, value=15)
+    news_top_k = st.number_input("News chunks (top_k)", min_value=1, max_value=50, value=12)
+    academic_top_k = st.number_input("Academic chunks (top_k)", min_value=1, max_value=50, value=10)
+    bq_top_k = st.number_input("BQ rows (top_k)", min_value=1, max_value=100, value=12)
     ota_top_k = st.number_input("OTA chunks (top_k)", min_value=1, max_value=30, value=10)
-    rerank_top_k = st.number_input("Rerank context size", min_value=1, max_value=50, value=20)
+    rerank_top_k = st.number_input("Rerank context size", min_value=1, max_value=50, value=18)
     st.divider()
     plan_type_options = [p["id"] for p in PLAN_TYPES]
     category_options = [c["id"] for c in CATEGORIES]

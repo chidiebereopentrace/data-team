@@ -30,7 +30,7 @@ services:
       # QDRANT_COLLECTION_FORMATION: formation
       # QDRANT_COLLECTION_OTA_INSIGHTS: OTA_insights
       RAG_LLM_BASE_URL: ${RAG_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
-      RAG_LLM_MODEL_ID: ${RAG_LLM_MODEL_ID:-meta-llama/llama-3.1-8b-instruct}
+      RAG_LLM_MODEL_ID: ${RAG_LLM_MODEL_ID:-qwen/qwen3-30b-a3b-instruct-2507}
       RAG_GENERATE_TEMPERATURE: ${RAG_GENERATE_TEMPERATURE:-0.5}
       RAG_GENERATE_MAX_TOKENS: "1024"
 

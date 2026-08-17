@@ -95,7 +95,7 @@ def test_all_plan_models_default_to_8b(monkeypatch) -> None:
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("RAG_LLM_MODEL_ID", raising=False)
-    expected = "meta-llama/llama-3.1-8b-instruct"
+    expected = "qwen/qwen3-30b-a3b-instruct-2507"
     assert llm_model_id() == expected
     for plan in ("Free", "Farmers", "Government", "NGOs", "Agribusinesses", "Integrated"):
         assert model_for_plan(plan) == expected

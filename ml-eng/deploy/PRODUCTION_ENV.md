@@ -45,15 +45,15 @@ QDRANT_COLLECTION_FORMATION=formation
 QDRANT_COLLECTION_OTA_INSIGHTS=OTA_insights
 ```
 
-### LLM (OpenRouter — chat 8B; BQ planner/NL2SQL on DeepSeek)
+### LLM (OpenRouter — chat Qwen3-30B-A3B; BQ planner/NL2SQL on DeepSeek)
 
 ```bash
 RAG_LLM_BASE_URL=https://openrouter.ai/api/v1
 RAG_LLM_API_KEY=<OPENROUTER_API_KEY>
-RAG_LLM_MODEL_ID=meta-llama/llama-3.1-8b-instruct
-RAG_SUMMARY_MODEL_ID=meta-llama/llama-3.1-8b-instruct
+RAG_LLM_MODEL_ID=qwen/qwen3-30b-a3b-instruct-2507
+RAG_SUMMARY_MODEL_ID=qwen/qwen3-30b-a3b-instruct-2507
 RAG_LLM_TIMEOUT_S=300
-# BQ table planner + SQL generation (dedicated; keep chat on 8B)
+# BQ table planner + SQL generation (dedicated; keep chat on Qwen)
 RAG_BQ_REASONER_MODEL_ID=deepseek/deepseek-v4-flash-0731
 RAG_BQ_NL2SQL_MODEL_ID=deepseek/deepseek-v4-flash-0731
 ```

@@ -31,7 +31,7 @@ from ml.rag.chatbot.plan_policy import (
 )
 from ml.rag.chatbot.task_mode import clarify_answer, resolve_task_mode
 from ml.rag.chatbot.query_enricher import enrich_query_with_memory
-from ml.rag.chatbot.agri_measure_ontology import resolve_measure, resolve_recency_tier
+from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_measure, resolve_recency_tier
 from ml.rag.chatbot.product_knowledge import is_product_query
 from ml.rag.chatbot.query_gate import (
     classify_social_query,
@@ -50,6 +50,7 @@ from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
 from ml.rag.chatbot.context_diversity import diversify_context_pack
 from ml.rag.chatbot.corpus_catalog import select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
+from ml.rag.chatbot.generation_plan import build_generation_plan
 from ml.rag.chatbot.generator import (
     filter_context_items,
     generate,
@@ -86,6 +87,19 @@ from ml.rag.observability import (
 )
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_NEWS_TOP_K = 12
+_DEFAULT_ACADEMIC_TOP_K = 10
+_DEFAULT_OTA_TOP_K = 10
+_DEFAULT_BQ_TOP_K = 12
+_DEFAULT_RERANK_TOP_K = 18
+_DEFAULT_RERANK_POOL_SIZE = 24
+
+_BRIEFING_NEWS_TOP_K = 16
+_BRIEFING_OTA_TOP_K = 12
+_FACT_LOOKUP_NEWS_TOP_K = 10
+_FACT_LOOKUP_ACADEMIC_TOP_K = 8
+_DECISION_SUPPORT_OTA_TOP_K = 12
 
 
 def _env_on(name: str, *, default: bool = True) -> bool:
@@ -446,6 +460,7 @@ class RAGGraphState(TypedDict, total=False):
     enriched_query: str | None
     measure_id: str | None
     recency_tier: str | None
+    generation_plan: dict[str, Any] | None
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
@@ -593,7 +608,7 @@ def _tag_vector(
 
 
 def _news_kwargs(state: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
-    top_k = int(state.get("news_top_k") or 20)
+    top_k = int(state.get("news_top_k") or _DEFAULT_NEWS_TOP_K)
     kwargs: dict[str, Any] = {
         "doc_kind": "news_article",
         "top_k": top_k,
@@ -609,7 +624,7 @@ def _news_kwargs(state: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
 def _dense_corpus_kwargs(state: RAGGraphState, _dec: dict[str, Any], *, doc_kind: str) -> dict[str, Any]:
     """Kwargs for academic / policy / public_reports / formation dense named search."""
     return {
-        "top_k": int(state.get("academic_top_k") or 20),
+        "top_k": int(state.get("academic_top_k") or _DEFAULT_ACADEMIC_TOP_K),
         "doc_kind": doc_kind,
         "vector_search_mode": "dense_named",
     }
@@ -631,7 +646,7 @@ def _retrieve_legacy_research(state: RAGGraphState) -> list[dict[str, Any]]:
 
     def _legacy_kwargs(st: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
         return {
-            "top_k": int(st.get("academic_top_k") or 20),
+            "top_k": int(st.get("academic_top_k") or _DEFAULT_ACADEMIC_TOP_K),
             "doc_kinds": [
                 "academic_article",
                 "policy_document",
@@ -697,7 +712,7 @@ def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
     )
     ts = (state.get("time_start_override") or dec.get("time_start") or "").strip()[:10]
     te = (state.get("time_end_override") or dec.get("time_end") or "").strip()[:10]
-    top_k = int(state.get("news_top_k") or 20)
+    top_k = int(state.get("news_top_k") or _DEFAULT_NEWS_TOP_K)
     news_coll = os.environ.get("QDRANT_COLLECTION_NEWS", "news_data").strip() or "news_data"
     vr = VectorRetriever(collection_name=news_coll)
     strict_compare = _strict_compare_filters(dec)
@@ -831,7 +846,7 @@ def _retrieve_ota(state: RAGGraphState) -> list[dict[str, Any]]:
     vr = VectorRetriever(collection_name=coll)
 
     q = (state.get("query") or "").strip()
-    top_k = int(state.get("ota_top_k") or 10)
+    top_k = int(state.get("ota_top_k") or _DEFAULT_OTA_TOP_K)
 
     dec = state.get("decomposition") or {}
     countries = resolve_retrieval_geographies(
@@ -915,14 +930,14 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     academic_k = state.get("academic_top_k")
     if task_mode == "briefing":
         if news_k is None:
-            news_k = 28
+            news_k = _BRIEFING_NEWS_TOP_K
         if ota_k is None:
-            ota_k = 16
+            ota_k = _BRIEFING_OTA_TOP_K
     elif task_mode in ("fact_lookup", "data_export_only"):
         if news_k is None:
-            news_k = 10
+            news_k = _FACT_LOOKUP_NEWS_TOP_K
         if academic_k is None:
-            academic_k = 8
+            academic_k = _FACT_LOOKUP_ACADEMIC_TOP_K
 
     intent = str(decomposition.get("intent") or "").strip().lower()
     rationale = selection.rationale or ""
@@ -932,7 +947,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
         or "intent_decision_support" in rationale
         or "plan_ota_boost" in rationale
     ):
-        ota_k = 16
+        ota_k = _DECISION_SUPPORT_OTA_TOP_K
 
     state_for_retrieve = cast(RAGGraphState, dict(state))
     if news_k is not None:
@@ -1195,7 +1210,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     if intent_lines:
         question = q + "\n\nSQL plan intents:\n- " + "\n- ".join(intent_lines)
 
-    top_k = int(state.get("bq_top_k") or 15)
+    top_k = int(state.get("bq_top_k") or _DEFAULT_BQ_TOP_K)
     countries = resolve_retrieval_geographies(
         geo_override=str(state.get("geo_override") or ""),
         geography=dec.get("geography") if isinstance(dec.get("geography"), list) else None,
@@ -1370,14 +1385,17 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
 def node_rerank(state: RAGGraphState) -> dict[str, Any]:
     query = state.get("query") or ""
     merged = state.get("merged_context") or []
-    top_k = int(state.get("rerank_top_k") or 20)
+    top_k = int(state.get("rerank_top_k") or _DEFAULT_RERANK_TOP_K)
     task_mode = str(state.get("task_mode") or "chat").strip().lower()
     # Score a wider pool, then diversity-pack so domains reinforce each other
     # instead of a flat news flood (or a blunt no-BQ top_k cut).
     try:
-        pool = int(os.environ.get("RAG_RERANK_POOL_SIZE", "32") or 32)
+        pool = int(
+            os.environ.get("RAG_RERANK_POOL_SIZE", str(_DEFAULT_RERANK_POOL_SIZE))
+            or _DEFAULT_RERANK_POOL_SIZE
+        )
     except ValueError:
-        pool = 32
+        pool = _DEFAULT_RERANK_POOL_SIZE
     score_k = max(top_k, min(pool, max(len(merged), top_k)))
     dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
     numeric_query = is_numeric_data_query(str(query), dec)
@@ -1607,12 +1625,39 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         gkw["recency_tier"] = state.get("recency_tier")
     if state.get("answer_lang"):
         gkw["answer_lang"] = state.get("answer_lang")
+    if state.get("export_intent"):
+        gkw["export_intent"] = state.get("export_intent")
     if not usable_bq:
         gkw["structured_bq_unavailable"] = True
     elif is_numeric_data_query(str(query), dec_dict):
         gkw["structured_bq_numeric_available"] = True
     elif is_comparative_bq_query(str(query), dec_dict):
         gkw["structured_bq_comparative_available"] = True
+    reranked = state.get("reranked_context") or []
+    measure_hit = None
+    mid = state.get("measure_id")
+    if mid:
+        spec = MEASURES.get(str(mid))
+        if spec:
+            measure_hit = MeasureHit(spec, score=100, matched_alias=str(mid))
+    contract_dict: dict[str, Any] | None = None
+    if dec_dict:
+        contract_dict = {
+            "primary_measures": dec_dict.get("primary_measures") or [],
+            "companion_measures": dec_dict.get("companion_measures") or [],
+        }
+    gen_plan = build_generation_plan(
+        str(query),
+        task_mode=task_mode,
+        decomposition=dec_dict,
+        measure_hit=measure_hit,
+        retrieval_contract=contract_dict,
+        reranked_context=list(reranked),
+        plan_type=str(state.get("plan_type") or "") or None,
+        category=str(state.get("category") or "") or None,
+        measure_id=str(mid) if mid else None,
+    )
+    gkw["generation_plan"] = gen_plan.to_dict()
     gen_result = generate(query, context, **gkw)
 
     # ACF Path B is computed post-cite inside generate/_finalize_generation_result.
@@ -1623,6 +1668,7 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         "answer": gen_result.answer,
         "citations": gen_result.citations,
         "answer_lang": answer_lang,
+        "generation_plan": gen_plan.to_dict(),
         **acf_result_to_state(acf),
     }
 

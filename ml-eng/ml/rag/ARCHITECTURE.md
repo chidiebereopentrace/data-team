@@ -12,13 +12,13 @@ The RAG stack answers natural-language questions about African agriculture and f
 |--------|------------|------|
 | **Unstructured text (VECTOR LEG)** | Qdrant Cloud (six corpora) | News, academic papers, policies, public reports, formation, OTA insights — via corpus router + E5/hybrid cascade |
 | **Structured tables (BQ LEG)** | BigQuery (`BQ_DATASET_SILVER` / `staging_dev`) | Measure ontology + staging YAML reasoner + NL-to-SQL → row-level facts |
-| **Orchestration** | LangGraph in [`chatbot/graph.py`](chatbot/graph.py) | Control plane → parallel vector retrieve → BQ reason/retrieve → merge both legs |
-| **Generation** | [`llm_chat.py`](llm_chat.py) | OpenAI-compatible backend (`RAG_LLM_BASE_URL`) or Hugging Face router |
+| **Orchestration** | LangGraph in [`chatbot/graph.py`](chatbot/graph.py) | Control plane → **vector leg** (six Qdrant corpora) + **BQ leg** (YAML reasoner + NL2SQL) → merge → rerank → **generation strategy** → generate |
+| **Generation** | [`llm_chat.py`](llm_chat.py) + [`generation_plan.py`](chatbot/generation_plan.py) | OpenAI-compatible backend; post-retrieval strategy shapes answer/evidence before the LLM call |
 
 **Design choices:**
 
-- **Vector and BQ are peers** — unstructured corpora are not an afterthought; `parallel_retrieve` runs before BQ and both fuse at `merge`.
-- **Control plane** — enricher → decompose → Africa panel/ranking → [`agri_measure_ontology`](chatbot/agri_measure_ontology.py) → `task_mode` (including clarify / research / briefing).
+- **Vector and BQ are peers** — unstructured corpora are not an afterthought. The graph runs `parallel_retrieve` (six Qdrant corpora in a thread pool) then the BQ leg; both outputs fuse at `merge`. Neither leg waits on the other's *results* — only graph node ordering is sequential.
+- **Three-layer reasoner stack** — (1) **pre-retrieval**: enricher → decompose → ontology → `task_mode` → [`retrieval_contract`](chatbot/retrieval_contract.py); (2) **retrieval**: [`select_corpora`](chatbot/corpus_catalog.py) + [`bq_sql_reasoner`](chatbot/bq_sql_reasoner.py) + rerank; (3) **post-retrieval**: [`build_generation_plan`](chatbot/generation_plan.py) decides answer shape and evidence priority before `generate`.
 - **Ontology aids the BQ reasoner** (scoped tables/filters); does not replace the LLM; fallback only after retries.
 - **Staging-only SQL** — live queries never target silver/gold; vector chunks may still *describe* other layers.
 - **Retrieval uses the working query** (optionally enriched from memory); prior turns affect enricher + generation.
@@ -38,86 +38,93 @@ flowchart TB
     ST[streamlit_app.py]
   end
 
-  subgraph control [Control plane inside decompose]
+  subgraph control [Control plane — decompose]
     EN[query_enricher]
     DEC[decompose_query]
-    AF[africa_default or africa_panel]
+    FE[facet_enrich]
+    RC[retrieval_contract]
     ONT[resolve_measure]
     TM[resolve_task_mode]
-    EN --> DEC --> AF --> ONT --> TM
+    EN --> DEC --> ONT --> TM --> FE --> RC
   end
 
-  subgraph graph [LangGraph]
+  subgraph graph [LangGraph full_rag path]
     D[decompose]
-    PR[parallel_retrieve VECTOR]
+    PR[parallel_retrieve]
     BQR[bq_reason]
     BQ[bq_retrieve]
     M[merge]
-    R[rerank]
+    R[rerank plus diversify]
     WF[web_fallback]
-    G[generate]
+    NG[node_generate]
     X[export]
     D --> PR --> BQR --> BQ --> M --> R
-    R -->|weak and web on| WF --> G
-    R -->|enough| G --> X
+    R -->|weak and web on| WF --> NG
+    R -->|enough| NG --> X
   end
 
-  entry --> graph
+  entry --> D
   D -.-> control
 
-  subgraph router [corpus_router]
+  subgraph vectorLeg [VECTOR LEG — six Qdrant corpora]
     SC[select_corpora]
+    TP[ThreadPoolExecutor]
+    RN[_retrieve_news]
+    RA[_retrieve_academic]
+    RP[_retrieve_policies]
+    RPR[_retrieve_public_reports]
+    RF[_retrieve_formation]
+    RO[_retrieve_ota]
+    VR[VectorRetriever per corpus]
+    SC --> TP
+    TP --> RN & RA & RP & RPR & RF & RO
+    RN & RA & RP & RPR & RF & RO --> VR
   end
 
-  PR --> SC
+  PR --> vectorLeg
 
-  subgraph corpora [Qdrant six corpora]
-    N[news_data]
-    A[academic_papers]
-    P[policies]
-    PUB[public_reports]
-    F[formation]
-    O[OTA_insights]
+  subgraph bqLeg [BQ LEG — staging_dev]
+    YAML[bq_sql_reasoner plus ontology scope]
+    BR[BQRetriever NL2SQL execute]
+    BQR --> YAML --> BR
   end
 
-  SC --> N
-  SC --> A
-  SC --> P
-  SC --> PUB
-  SC --> F
-  SC --> O
-
-  subgraph cascade [per corpus VectorRetriever]
-    EMB[embed query E5]
-    FIL[filters doc_kind geo time]
+  subgraph perCorpus [Per-corpus search cascade]
+    EMB[E5 embed]
+    FIL[payload filters doc_kind geo time]
     HYB[dense plus sparse RRF]
-    CAS[cascade widen time drop filters]
+    CAS[widen time drop filters]
+    EMB --> FIL --> HYB --> CAS
   end
 
-  N --> EMB
-  A --> EMB
-  P --> EMB
-  PUB --> EMB
-  F --> EMB
-  O --> EMB
-  EMB --> FIL --> HYB --> CAS
+  VR --> perCorpus
 
-  BQR --> YAML[ontology scope plus bq_sql_reasoner]
-  BQ --> BR[BQRetriever templates NL2SQL execute]
+  subgraph generateInternals [Inside node_generate]
+    PIN[pin_bq_context_first]
+    GP[build_generation_plan]
+    PROMPT[_build_prompt plus addendum]
+    LLM[llm_chat_complete]
+    ACF[ACF plus citations]
+    PIN --> GP --> PROMPT --> LLM --> ACF
+  end
+
+  NG --> generateInternals
 
   subgraph external [External services]
     QD[(Qdrant Cloud)]
     BQDB[(BigQuery)]
-    LLM[OpenAI-compatible LLM]
+    LLMsvc[OpenAI-compatible LLM]
   end
 
-  CAS --> QD
+  perCorpus --> QD
   BR --> BQDB
-  D --> LLM
-  BQR --> LLM
-  BR --> LLM
-  G --> LLM
+  D --> LLMsvc
+  BQR --> LLMsvc
+  BR --> LLMsvc
+  LLM --> LLMsvc
 ```
+
+**Dual-leg model:** Vector hits land in `vector_*_results` state fields; BQ rows land in `bq_results`. **`merge`** is the first node that combines both legs into `merged_context`. **`rerank`** scores the fused pool (default pool 24, output ~18) and **`diversify_context_pack`** prevents a news-only flood. **`build_generation_plan`** (inside `node_generate`, after rerank) reads the reranked fingerprint plus `task_mode`/ontology — it shapes the prompt but does **not** filter chunks in v1.
 
 `select_corpora` (heuristic gate, max soft-skip 3) chooses which of the six collections to query in a thread pool. Each selected corpus runs the shared `VectorRetriever` path: E5 embed → payload filters → optional hybrid dense+sparse RRF → filter cascade (widen time ±1y, drop time, drop geo). Soft-fail empty corpora continue the graph.
 
@@ -193,33 +200,45 @@ Implemented in [`chatbot/graph.py`](chatbot/graph.py). Entry: `run_rag(query, **
 
 | Node | Function | Reads state | Writes state |
 |------|----------|-------------|--------------|
-| **decompose** | `decompose_query` | `query` | `decomposition` |
-| **parallel_retrieve** | thread pool + `select_corpora` | `query`, `decomposition`, overrides | `vector_news_results`, `vector_academic_papers_results`, `vector_policies_results`, `vector_public_reports_results`, `vector_formation_results`, `vector_ota_results`, `corpus_selection` |
-| **bq_reason** | staging YAML SQL reasoner | `query`, `decomposition` | `bq_sql_plan`, `bq_table_candidates` |
+| **decompose** | enricher + `decompose_query` + ontology + contract | `query`, memory | `decomposition`, `task_mode`, `measure_id`, route flags |
+| **parallel_retrieve** | `select_corpora` + thread pool + six `_retrieve_*` | `query`, `decomposition`, `task_mode`, overrides | `vector_news_results`, `vector_academic_papers_results`, `vector_policies_results`, `vector_public_reports_results`, `vector_formation_results`, `vector_ota_results`, `corpus_selection` |
+| **bq_reason** | staging YAML SQL reasoner | `query`, `decomposition`, `task_mode` | `bq_sql_plan`, `bq_table_candidates` |
 | **bq_retrieve** | `BQRetriever.retrieve` | `query`, `decomposition`, hints | `bq_results`, (SQL in row metadata) |
-| **merge** | concat + labels | BQ + vector lists | `merged_context` |
-| **rerank** | `rerank` | `query`, `merged_context` | `reranked_context` |
-| **generate** | `generate` | `query`, `reranked_context`, memory | `answer` |
+| **merge** | concat + corpus labels + OFIA tier | all `vector_*_results` + `bq_results` | `merged_context` |
+| **rerank** | `rerank` + `diversify_context_pack` | `query`, `merged_context`, `task_mode` | `reranked_context` |
+| **web_fallback** | Wikipedia / Tavily (optional) | `reranked_context` | `web_results`, may append to `reranked_context` |
+| **generate** | `build_generation_plan` → `generate` | `query`, `reranked_context`, memory, `task_mode` | `answer`, `citations`, `generation_plan`, ACF fields |
+| **export** | artifact builder | `answer`, `export_intent` | `artifacts` |
 
 After `bq_retrieve`, the graph aggregates distinct executed SQL strings into **`bq_sql_queries`** (for Streamlit/debug).
+
+Short-circuit nodes (`generate_meta`, `generate_product`, `generate_social`, `generate_clarify`, `insufficient_context`) skip retrieval and generation strategy.
 
 ### 4.2 `RAGGraphState` fields
 
 | Field | Description |
 |-------|-------------|
 | `query` | Latest user question |
-| `decomposition` | `intent`, `entities`, `geography`, `domains`, `time_start`, `time_end` |
+| `decomposition` | `intent`, `entities`, `geography`, `domains`, `time_start`, `time_end`, `primary_measures`, `corpus_domain_tags` |
+| `task_mode` | `clarify`, `analytical`, `fact_lookup`, `briefing`, `data_export_only`, `research`, `chat` |
+| `measure_id`, `recency_tier` | From [`agri_measure_ontology`](chatbot/agri_measure_ontology.py) |
 | `bq_table_candidates` | One hint dict per staging table selected by the YAML reasoner (`source: staging_yaml`) |
-| `vector_news_results` | News chunks |
-| `vector_academic_results` | Research corpus chunks |
-| `vector_results` | `news + academic` (convenience) |
+| `vector_news_results` | News chunks from Qdrant |
+| `vector_academic_papers_results` | Academic paper chunks |
+| `vector_policies_results` | Policy document chunks |
+| `vector_public_reports_results` | Public report chunks |
+| `vector_formation_results` | Formation / extension chunks |
+| `vector_ota_results` | OTA insight chunks |
+| `vector_academic_results` | Deprecated alias; prefer per-corpus keys above |
 | `bq_results` | BigQuery rows as context dicts (`metadata.sql`, row fields) |
 | `bq_sql_queries` | Unique SQL strings executed |
-| `merged_context` | All sources before rerank |
-| `reranked_context` | Subset passed to generator |
+| `merged_context` | BQ + all vector corpora before rerank |
+| `reranked_context` | Diversity-packed subset passed to generator |
+| `generation_plan` | Post-retrieval strategy dict (`answer_shape`, `evidence_priority`, `must_ground_in`, `rationale`) — debug/inspector |
 | `answer` | Final text |
-| `geo_override`, `time_*_override` | UI/API overrides for news (and BQ decomposition kwargs) |
-| `news_top_k`, `academic_top_k`, `bq_top_k`, `rerank_top_k` | Retrieval limits |
+| `citations` | Structured source refs resolved from packed context |
+| `geo_override`, `time_*_override` | UI/API overrides for vector + BQ |
+| `news_top_k`, `academic_top_k`, `ota_top_k`, `bq_top_k`, `rerank_top_k` | Retrieval limits (code defaults in `graph.py`; optional env override for rerank pool only) |
 | `conversation_summary`, `recent_turns` | Multi-turn generator memory |
 | `chat_history` | Legacy verbatim-only history |
 
@@ -367,11 +386,49 @@ Conditional node after rerank (`RAG_WEB_FALLBACK_ENABLED=1`, off by default).
 - Transient (non-rate-limit) errors are retried once after `RAG_TAVILY_BACKOFF_S` (default 2 s).
 - `retrieve_web_fallback_detailed` returns a `WebFallbackResult(items, status, reason)`. When the status is `rate_limited` / `error` / `disabled` / `empty` AND the existing reranked context is below `RAG_WEB_FALLBACK_MIN_CHUNKS`, the graph routes to `node_insufficient_context` (deterministic "I don't have enough information" answer, no citations) instead of letting `node_generate` fabricate around stale internal chunks.
 
+### 7.2.2 Generation strategy ([`chatbot/generation_plan.py`](chatbot/generation_plan.py))
+
+Deterministic post-retrieval reasoner — runs inside **`node_generate`** after rerank, before the LLM call. Does **not** re-retrieve or filter chunks in v1; only shapes the system prompt.
+
+**Inputs:** `task_mode`, `decomposition`, `measure_id` / `MeasureHit`, retrieval contract tags (`primary_measures`), reranked context fingerprint (counts by `_context_kind`).
+
+**Outputs (`generation_plan` on state):**
+
+| Field | Role |
+|-------|------|
+| `answer_shape` | `numeric_fact`, `ranking`, `comparison`, `trend`, `briefing_digest`, `research_synthesis`, `export_table`, `gap_ack`, … |
+| `evidence_priority` | Ordered source kinds, e.g. `["bigquery", "news", "public_report"]` |
+| `lead_with` | `structured_value` or `narrative_context` |
+| `must_ground_in` | `bigquery` / `narrative` / `any` |
+| `ontology` | measure id, geo, time window, companion measures |
+| `synthesis_notes` | 1–3 deterministic instruction strings |
+| `rationale` | Code path id for Streamlit inspector |
+
+**Rule layers:** gap (no usable context) → task mode base shape → measure ontology evidence priority → context fingerprint (BQ present + numeric query elevates BQ) → query heuristics (`is_ranking_numeric_query`, etc.).
+
+`generation_plan_addendum()` renders a short block (&lt;400 chars) appended in `_build_prompt` after stakeholder [`plan_policy`](chatbot/plan_policy.py) addendum and before task-mode blocks.
+
+```mermaid
+flowchart LR
+  subgraph planInputs [Inputs]
+    TM[task_mode]
+    ONT[measure ontology]
+    RC[contract tags]
+    CTX[reranked fingerprint]
+  end
+  planInputs --> BUILD[build_generation_plan]
+  BUILD --> ADD[generation_plan_addendum]
+  ADD --> PROMPT[_build_prompt]
+  PROMPT --> LLM[llm_chat_complete]
+```
+
+Regenerate diagram PNGs after editing `docs/diagrams/*.mmd`: `python scripts/generate_rag_architecture_pdf.py` from `ml-eng/`. Source files to sync: `runtime_graph.mmd`, `merge_rerank.mmd`, `generation_strategy.mmd` (new).
+
 ### 7.3 Generate ([`chatbot/generator.py`](chatbot/generator.py))
 
 - Builds **system + user** messages for OpenRouter / OpenAI-compatible APIs.
 - **Context packing:** numbered `[Source N | kind | detail]` labels; rank-weighted char budget (default **12000** total, **3000** per chunk); BQ structured-data chunks get a minimum floor.
-- **Prompt:** multi-paragraph synthesis; inline `[Source N]` citations when stating facts from context.
+- **Prompt stack:** base system rules → cross-domain synthesis → category tone → `plan_policy` stakeholder addendum → **`generation_plan` addendum** → task-mode block (FACT LOOKUP / BRIEFING / ANALYTICAL / …) → packed `[Source N]` context.
 - Calls `llm_chat_complete` with `RAG_GENERATE_MAX_TOKENS` (default **2048**), `RAG_GENERATE_TEMPERATURE` (default 0.5).
 - **Sources block:** appended after generation when `RAG_CITATIONS_MODE=referenced` (default) — only sources the model cited inline; set `all` to list every packed source. Covers news, academic, policy/public, OTA, BigQuery structured data, Wikipedia, and Tavily web search.
 - On failure: returns OpenRouter-oriented timeout hint + context excerpt.

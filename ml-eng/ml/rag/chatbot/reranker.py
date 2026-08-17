@@ -359,7 +359,6 @@ def _rerank_cross_encoder(
         scored.append(
             {
                 **item,
-                "content": passages[i],
                 "_order": i,
                 "_ce_score_raw": raw,
                 "_ce_score": ns,
@@ -416,7 +415,6 @@ def _rerank_llm(
         scored.append(
             {
                 **item,
-                "content": text,
                 "_order": i,
                 "_llm_score": raw,
                 "_source_boost": boost,
@@ -451,7 +449,6 @@ def _rerank_off(
         scored.append(
             {
                 **item,
-                "content": text,
                 "_order": i,
                 "_llm_score": -1.0,
                 "_source_boost": boost,
@@ -498,7 +495,6 @@ def _rerank_openrouter(
         scored.append(
             {
                 **item,
-                "content": passages[idx],
                 "_order": idx,
                 "_openrouter_score": relevance,
                 "_source_boost": boost,
@@ -583,7 +579,6 @@ def _rerank_cohere(
         scored.append(
             {
                 **item,
-                "content": passages[idx],
                 "_order": idx,
                 "_cohere_score": relevance,
                 "_source_boost": boost,

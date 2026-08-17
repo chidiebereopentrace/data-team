@@ -10,7 +10,7 @@
 # Railway secrets (minimum — see deploy/PRODUCTION_ENV.md):
 #   RAG_LLM_BASE_URL=https://openrouter.ai/api/v1
 #   RAG_LLM_API_KEY=<OPENROUTER_API_KEY>
-#   RAG_LLM_MODEL_ID=meta-llama/llama-3.1-8b-instruct
+#   RAG_LLM_MODEL_ID=qwen/qwen3-30b-a3b-instruct-2507
 #   QDRANT_URL, QDRANT_API_KEY
 #   QDRANT_COLLECTION_NEWS=news_data
 #   QDRANT_COLLECTION_ACADEMIC_PAPERS=academic_papers

@@ -23,7 +23,7 @@ docker run --rm -p 8080:8080 \
   -e QDRANT_URL="https://..." \
   -e QDRANT_API_KEY="..." \
   -e RAG_LLM_BASE_URL="http://host.docker.internal:1234/v1" \
-  -e RAG_LLM_MODEL_ID="meta-llama/llama-3.1-8b-instruct" \
+  -e RAG_LLM_MODEL_ID="qwen/qwen3-30b-a3b-instruct-2507" \
   -e RAG_GENERATE_TEMPERATURE="0.5" \
   -e BQ_PROJECT="opentrace-prod-5ga4" \
   -e BQ_DATASET_SILVER="staging_dev" \

@@ -50,12 +50,12 @@ When `user_profile` is sent, **`plan_type`** and **`category`** are required. Un
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `integer` | Footnote number matching inline `[N]` in the answer (1-based index into packed context). |
+| `id` | `integer` | Source id (matches inline `[N]` when footnotes are present; otherwise packed-context index). |
 | `kind` | `string` | Normalized source type: `academic`, `news`, `structured_data`, `policy`, `ota`, `web_wikipedia`, `web_search`, etc. |
 | `text` | `string` | Human-readable citation line, e.g. `[Academic] Branca et al. (2012). …`, `[News] Title — Publisher (2025-12-31)`. |
 | `url` | `string \| null` | Link when available (news, DOI, Wikipedia, web). Often `null` for academic/structured data. |
 
-By default only **referenced** sources (those cited inline in the answer) appear in `citations`. Server env `RAG_CITATIONS_MODE=all` includes every packed source.
+**Default chat** returns prose **without** inline `[N]` footnotes; render `citations[]` in the UI. Inline footnotes appear for analytical write-ups, DOCX/PDF/multi exports, or when the user asks for footnotes / inline citations. In that mode, `RAG_CITATIONS_MODE=referenced` (default) keeps only cited sources; `all` includes every packed source. When inline footnotes are off, `citations` lists the packed sources for the turn.
 
 ### `UsageStats`
 
@@ -275,7 +275,7 @@ Unknown top-level keys (e.g. `stakeholder_type`, `audience_instructions`, `geo_o
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `answer` | `string` | Prose answer with named source attribution and inline footnotes `[N]`, e.g. `According to Branca et al. (2012), …[6]`. No trailing Sources block by default. |
+| `answer` | `string` | Prose answer. Default chat has **no** inline `[N]` footnotes (use `citations[]`). Inline footnotes appear for write-ups / DOCX-PDF exports / explicit request. No trailing Sources block by default. |
 | `citations` | `CitationItem[]` | Structured sources for UI rendering. |
 | `session_id` | `string` | Pass on the next request for continuity. |
 | `session_found` | `boolean` | `true` only when a prior server session blob was loaded. `false` for new/expired/missing ids or when `chat_history` is sent. |
@@ -293,7 +293,7 @@ Plan-scoped routes inherit the same response. Export gate: `/query/agribusinesse
 
 ```json
 {
-  "answer": "Nigeria's rice production has trended upward. According to Ariom and Dimon (2022), improved varieties are widely used among cereal growers.[7] Business News Nigeria (2025) reports regional price variation in May 2026.[9]",
+  "answer": "Nigeria's rice production has trended upward. According to Ariom and Dimon (2022), improved varieties are widely used among cereal growers. Business News Nigeria (2025) reports regional price variation in May 2026.",
   "citations": [
     {
       "id": 7,

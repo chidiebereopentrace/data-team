@@ -122,7 +122,10 @@ def adapt_cited_claims(cited_items: list[Any]) -> list[ExtractedClaim]:
                 item.get("_context_kind") or item.get("source") or ""
             ).strip().lower()
             if kind in ("bigquery", "structured_data"):
-                claims.append(from_row(record, geo_field="region"))
+                if record.get("region") or record.get("ranked_rows"):
+                    claims.append(from_row(record, geo_field="region"))
+                else:
+                    claims.append(from_payload(record))
             else:
                 claims.append(from_payload(record))
         except Exception as exc:

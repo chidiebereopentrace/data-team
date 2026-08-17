@@ -7,6 +7,7 @@ functions for full retrieval / flow observability after each query.
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Literal
 
 import requests
@@ -15,6 +16,14 @@ import streamlit as st
 from ml.rag.chatbot.generator import usable_context_after_geo_purity
 
 BackendMode = Literal["in_process", "http_api"]
+
+_INSPECTOR_META_SKIP = frozenset({"tier", "as_of_date"})
+_RERANK_PREVIEW_PREFIX_RE = re.compile(r"^\[[^\]]+\]\n?", re.MULTILINE)
+
+
+def _strip_rerank_preview_prefix(content: str) -> str:
+    """Remove a leading rerank metadata line like ``[geo=Ghana; year=2020]``."""
+    return _RERANK_PREVIEW_PREFIX_RE.sub("", content, count=1).lstrip()
 
 INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "is_meta_query",
@@ -57,6 +66,7 @@ INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "export_intent",
     "task_mode",
     "analytical_mode",
+    "generation_plan",
     "artifacts",
     "langfuse_trace_id",
     "_backend_mode",
@@ -343,10 +353,19 @@ def render_chunk_rows(items: list[dict[str, Any]], *, preview_chars: int = 600) 
                 st.caption(" · ".join(score_parts) + f"  ·  source: {source}")
             if meta:
                 st.json(
-                    {k: v for k, v in meta.items() if v is not None and v != ""},
+                    {
+                        k: v
+                        for k, v in meta.items()
+                        if k not in _INSPECTOR_META_SKIP and v is not None and v != ""
+                    },
                     expanded=False,
                 )
-            preview = content if len(content) <= preview_chars else content[:preview_chars] + "…"
+            preview_raw = _strip_rerank_preview_prefix(content)
+            preview = (
+                preview_raw
+                if len(preview_raw) <= preview_chars
+                else preview_raw[:preview_chars] + "…"
+            )
             st.markdown(preview if preview else "_(empty content)_")
 
 
@@ -412,6 +431,16 @@ def render_request_context(
         if expanded:
             st.caption(f"Expanded regions: {', '.join(str(x) for x in expanded)}")
 
+    gen_plan = _as_dict(result.get("generation_plan"))
+    if gen_plan:
+        shape = str(gen_plan.get("answer_shape") or "—")
+        priority = gen_plan.get("evidence_priority") or []
+        priority_head = priority[0] if isinstance(priority, list) and priority else "—"
+        st.caption(
+            f"generation_plan: shape={shape} · evidence_priority={priority_head}"
+            + (f" · rationale={gen_plan.get('rationale')}" if gen_plan.get("rationale") else "")
+        )
+
     if query:
         st.caption(f"Query: {query}")
     if geo:
@@ -443,11 +472,13 @@ def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = Non
     with r1[7]:
         st.metric("OTA", len(result.get("vector_ota_results") or []))
 
-    r1b = st.columns(2)
+    r1b = st.columns(3)
     with r1b[0]:
         st.metric("Web", len(result.get("web_results") or []))
     with r1b[1]:
-        st.metric("→ generator", len(result.get("reranked_context") or []))
+        st.metric("→ reranked", len(result.get("reranked_context") or []))
+    with r1b[2]:
+        st.metric("→ cited", len(result.get("citations") or []))
 
     r2 = st.columns(4)
     with r2[0]:
@@ -584,6 +615,7 @@ def render_retrieval_tabs(result: dict[str, Any]) -> None:
         reranked,
         result.get("decomposition") if isinstance(result.get("decomposition"), dict) else None,
     )
+    citations = list(result.get("citations") or [])
     tabs = st.tabs([
         f"News ({len(result.get('vector_news_results') or [])})",
         f"Academic ({len(result.get('vector_academic_papers_results') or [])})",
@@ -594,7 +626,7 @@ def render_retrieval_tabs(result: dict[str, Any]) -> None:
         f"BQ tables ({len(result.get('bq_table_candidates') or [])})",
         f"BQ rows ({len(result.get('bq_results') or [])})",
         f"Merged ({len(result.get('merged_context') or [])})",
-        f"Generator input ({len(reranked)})",
+        f"Reranked ({len(reranked)})",
         f"Web ({len(result.get('web_results') or [])})",
     ])
     with tabs[0]:
@@ -617,9 +649,9 @@ def render_retrieval_tabs(result: dict[str, Any]) -> None:
         render_chunk_rows(list(result.get("merged_context") or []))
     with tabs[9]:
         st.caption(
-            f"Reranked context passed toward the generator ({len(reranked)}). "
-            f"After usable + geo-purity filters: {len(usable_for_gen)} "
-            f"(dropped {len(reranked) - len(usable_for_gen)})."
+            f"Reranked toward generator: {len(reranked)} · "
+            f"Usable after filters: {len(usable_for_gen)} · "
+            f"Cited in answer: {len(citations)}"
         )
         if len(usable_for_gen) < len(reranked):
             st.warning(

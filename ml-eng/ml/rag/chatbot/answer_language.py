@@ -259,6 +259,16 @@ _MIRROR_INSTRUCTION = (
     "Avoid academic hedges unless the context explicitly supports the qualification."
 )
 
+_MIRROR_INSTRUCTION_NO_INLINE = (
+    "Answer in the same language as the user question. This includes African and regional "
+    "languages such as Igbo, Yoruba, Twi, Efik, Swahili, French, Hausa, Portuguese, Arabic, "
+    "Amharic, Zulu, Xhosa, Somali, Wolof, Kinyarwanda, and Nigerian Pidgin, as well as "
+    "code-mixing when that is how they wrote. "
+    "Keep numbers and proper nouns faithful; do not insert [N] or [Source N] footnote markers. "
+    "Do not switch to English unless the user wrote in English. "
+    "Avoid academic hedges unless the context explicitly supports the qualification."
+)
+
 # Deterministic insufficient-context copy (6 canned languages).
 _INSUFFICIENT_EN = (
     "I don't have enough reliable information to answer that confidently right now. "
@@ -442,22 +452,23 @@ def is_english_answer_lang(lang: str) -> bool:
     return (lang or "en").strip().lower() == "en"
 
 
-def language_instruction(lang: str) -> str:
+def language_instruction(lang: str, *, inline_citations: bool = False) -> str:
     """System-prompt addendum: English business prose vs named-language mirror."""
+    mirror = _MIRROR_INSTRUCTION if inline_citations else _MIRROR_INSTRUCTION_NO_INLINE
     tag = (lang or "en").strip().lower()
     if tag == "en":
         return _EN_INSTRUCTION
     if tag == "mixed":
         return (
             "The user is code-mixing languages. Mirror their mix; do not force pure English. "
-            + _MIRROR_INSTRUCTION
+            + mirror
         )
     if tag == "unknown":
         return _EN_INSTRUCTION
     display = _LANG_DISPLAY.get(tag, tag)
     return (
         f"Answer in {display} (language code: {tag}). "
-        + _MIRROR_INSTRUCTION
+        + mirror
     )
 
 

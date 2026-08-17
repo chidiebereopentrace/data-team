@@ -116,6 +116,7 @@ def test_cross_encoder_reorders_to_query_relevant_chunk(monkeypatch) -> None:
     """The cross-encoder must lift the most-relevant chunk above the others,
     even when the static source boost would otherwise prefer a different one."""
     items = _sample_items()
+    original_content = {item["_context_kind"]: item["content"] for item in items}
     fake_model = mock.Mock()
     fake_model.predict.return_value = [0.1, 0.95, 0.2]  # news, academic, bq
     monkeypatch.setattr(
@@ -132,6 +133,9 @@ def test_cross_encoder_reorders_to_query_relevant_chunk(monkeypatch) -> None:
         assert "_ce_score_raw" in entry
         assert "_source_boost" in entry
         assert "_rerank_score" in entry
+        kind = entry["_context_kind"]
+        assert entry["content"] == original_content[kind]
+        assert not entry["content"].startswith("[geo=")
 
 
 def test_cross_encoder_normalises_scores_into_unit_range(monkeypatch) -> None:

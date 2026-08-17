@@ -217,7 +217,7 @@ def default_category_for_plan(plan_type: str | None) -> str | None:
     return _defaults.get((plan_type or "").strip())
 
 
-_DEFAULT_CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct"
+_DEFAULT_CHAT_MODEL = "qwen/qwen3-30b-a3b-instruct-2507"
 
 
 def model_for_plan(plan_type: str | None) -> str | None:
@@ -226,7 +226,7 @@ def model_for_plan(plan_type: str | None) -> str | None:
     Reads per-plan env vars; falls back to the shared 8B default when unset.
     Returns None when plan_type is unknown — callers fall back to RAG_LLM_MODEL_ID.
 
-    All plan tiers default to the same chat model (``meta-llama/llama-3.1-8b-instruct``).
+    All plan tiers default to the same chat model (``qwen/qwen3-30b-a3b-instruct-2507``).
     Per-plan env overrides still work when explicitly set.
     """
     pt = (plan_type or "").strip()

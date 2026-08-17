@@ -268,3 +268,46 @@ def test_context_ranked_table_bq_with_stamped_metadata() -> None:
         reference_date=date(2021, 1, 1),
     )
     assert acf.band != "no_evidence"
+
+
+def test_adapt_country_level_bq_without_region() -> None:
+    item = {
+        "content": "Ghana rice production 973000 t in 2020",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "country_name": "Ghana",
+            "product_name": "Rice",
+            "element": "Production",
+            "year": 2020,
+            "value": 973000,
+            "unit": "t",
+            "direction": "unknown",
+            "geo_country_primary": "Ghana",
+            "geo_countries": "Ghana",
+            "as_of_date": "2020-01-01",
+            "tier": 2,
+            "sql": "SELECT * FROM `proj.staging_dev.stg_faostat_production`",
+        },
+    }
+    claims = adapt_cited_claims([item])
+    assert len(claims) == 1
+
+
+def test_adapt_subnational_bq_with_region_uses_from_row() -> None:
+    item = {
+        "content": "Northern Ghana IPC phase 3",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "region": "Northern",
+            "country_name": "Ghana",
+            "year": 2024,
+            "value": 3,
+            "as_of_date": "2024-06-01",
+            "geo_country_primary": "Ghana",
+            "sql": "SELECT * FROM `proj.staging_dev.stg_fews_ipc`",
+        },
+    }
+    claims = adapt_cited_claims([item])
+    assert len(claims) == 1

@@ -19,8 +19,10 @@ from ml.rag.chatbot.generator import (
     _generate_max_tokens,
     _no_data_fallback_message,
     _normalize_inline_citations,
+    _registry_from_context_items,
     _strip_model_sources_appendix,
     _strip_preamble_openers,
+    dedupe_bq_context_items,
     extract_referenced_source_ids,
     filter_context_items,
     generate,
@@ -290,9 +292,10 @@ def test_generate_returns_generation_result_without_sources_block() -> None:
             result = generate("What about rice?", registry_items)
     assert isinstance(result, GenerationResult)
     assert "Sources" not in result.answer
-    assert "[1]" in result.answer
-    assert len(result.citations) == 1
-    assert result.citations[0]["id"] == 1
+    assert "[1]" not in result.answer
+    assert "Rice policy shifted." in result.answer
+    # Default chat: packed sources populate citations[] without inline footnotes.
+    assert len(result.citations) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +598,21 @@ def test_generate_strips_preamble_from_llm_output() -> None:
             result = generate("What changed in rice policy?", items)
     assert not result.answer.lower().startswith("based on the context")
     assert "Rice policy shifted in Senegal." in result.answer
+    assert "[1]" not in result.answer
+    assert len(result.citations) == 1
+
+
+def test_generate_keeps_inline_footnotes_when_requested() -> None:
+    items = [_news_item()]
+    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
+        mock_llm.return_value = "Rice policy shifted.[1]"
+        result = generate(
+            "Summarize with footnotes",
+            items,
+            export_intent="pdf",
+        )
     assert "[1]" in result.answer
+    assert len(result.citations) == 1
 
 
 def test_build_prompt_structured_bq_unavailable_guard() -> None:
@@ -825,6 +842,7 @@ def test_finalize_generation_result_emits_citations_span_metadata() -> None:
                 "Answer cites [1] only.",
                 registry,
                 query="Kenya maize yields?",
+                inline_citations=True,
             )
 
     assert isinstance(result, GenerationResult)
@@ -866,8 +884,133 @@ def test_finalize_generation_strips_invalid_citation_markers() -> None:
             "Nigeria leads African production in 2020 [1][6].",
             registry,
             query="best agricultural activity 2020",
+            inline_citations=True,
         )
     assert "[1]" in result.answer
     assert "[6]" not in result.answer
     assert len(result.citations) == 1
+
+
+def test_finalize_inline_off_strips_markers_and_returns_all_citations() -> None:
+    registry = [
+        SourceRef(
+            source_id=1,
+            item={"_context_kind": "news", "content": "a", "metadata": {"doc_kind": "news_article"}},
+            citation_line="News A",
+        ),
+        SourceRef(
+            source_id=2,
+            item={"_context_kind": "bigquery", "content": "b", "metadata": {}},
+            citation_line="BQ B",
+        ),
+    ]
+    with mock.patch("ml.rag.chatbot.generator.observed_span") as mock_span:
+        mock_span.return_value.__enter__ = mock.Mock(return_value=None)
+        mock_span.return_value.__exit__ = mock.Mock(return_value=False)
+        result = _finalize_generation_result(
+            "Maize yields rose in Kenya.[1] See also [2].",
+            registry,
+            query="Kenya maize yields?",
+            inline_citations=False,
+        )
+    assert "[1]" not in result.answer
+    assert "[2]" not in result.answer
+    assert "Maize yields rose in Kenya" in result.answer
+    assert len(result.citations) == 2
+    assert {c["id"] for c in result.citations} == {1, 2}
+
+
+def test_build_prompt_default_disables_inline_footnotes() -> None:
+    messages = _build_prompt("What are maize yields in Kenya?", context_block="[Source 1] …")
+    sys_msg = messages[0]["content"]
+    assert "Do NOT insert [N]" in sys_msg
+    assert "then add the matching footnote number [N]" not in sys_msg
+
+
+def test_build_prompt_inline_citations_enabled() -> None:
+    messages = _build_prompt(
+        "Write a PDF report with footnotes",
+        context_block="[Source 1] …",
+        inline_citations=True,
+    )
+    sys_msg = messages[0]["content"]
+    assert "then add the matching footnote number [N]" in sys_msg
+    assert "Do NOT insert [N]" not in sys_msg
+
+
+def _ghana_rice_bq_item() -> dict:
+    return {
+        "content": (
+            "Ghana produced 973,000 metric tons of rice in 2020 "
+            "(OpenTrace structured production data)."
+        ),
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "source_id": "stg_faostat_production:country_name=Ghana:year=2020",
+            "country_name": "Ghana",
+            "product_name": "Rice",
+            "element": "Production",
+            "year": 2020,
+            "value": 973000,
+            "unit": "t",
+            "direction": "unknown",
+            "geo_country_primary": "Ghana",
+            "geo_countries": "Ghana",
+            "as_of_date": "2020-01-01",
+            "tier": 2,
+            "sql": (
+                "SELECT country_name, product_name, element, year, value "
+                "FROM `proj.staging_dev.stg_faostat_production` "
+                "WHERE country_name = 'Ghana' AND year = 2020"
+            ),
+        },
+    }
+
+
+def test_dedupe_bq_context_items_collapses_same_source_id() -> None:
+    item = _ghana_rice_bq_item()
+    dupes = [dict(item) for _ in range(7)]
+    deduped = dedupe_bq_context_items(dupes + [_news_item()])
+    assert len(deduped) == 2
+    assert sum(1 for x in deduped if x.get("_context_kind") == "bigquery") == 1
+
+
+def test_build_context_block_registers_bq_when_body_truncated() -> None:
+    """Citations must survive tight budgets that leave no room for chunk body."""
+    items = [_ghana_rice_bq_item()]
+    block, registry = _build_context_block(items, budget=120, chunk_cap=120)
+    assert len(registry) == 1
+    assert registry[0].citation_line is not None
+    assert "country_name=Ghana" in registry[0].citation_line
+    assert block == "" or "[Source 1]" not in block or len(block) <= 120
+
+
+def test_registry_from_context_items_builds_citable_refs() -> None:
+    items = [_ghana_rice_bq_item(), _news_item()]
+    registry = _registry_from_context_items(items)
+    assert len(registry) == 2
+    assert registry[0].source_id == 1
+    assert registry[1].source_id == 2
+
+
+def test_ghana_rice_pack_finalize_non_empty_citations_and_acf() -> None:
+    items = [_ghana_rice_bq_item()]
+    _, registry = _build_context_block(items, budget=120, chunk_cap=120)
+    if not registry:
+        registry = _registry_from_context_items(items)
+    with mock.patch("ml.rag.chatbot.generator.observed_span") as mock_span:
+        mock_span.return_value.__enter__ = mock.Mock(return_value=None)
+        mock_span.return_value.__exit__ = mock.Mock(return_value=False)
+        result = _finalize_generation_result(
+            "Ghana produced 973,000 metric tons of rice in 2020.",
+            registry,
+            query="what was the production of rice like in ghana in 2020",
+            inline_citations=False,
+        )
+    assert len(result.citations) == 1
+    assert result.citations[0]["kind"] == "structured_data"
+    assert result.acf is not None
+    assert result.acf.band != "no_evidence"
+    assert result.acf.claim_level is not None
 
