@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from ml.rag.chatbot.bq_sql_validate import (
+    broaden_empty_sql_once,
+    inject_missing_metric_filters,
     validate_required_metric_filters,
     validate_sql_column_allowlist,
     validate_sql_value_samples,
@@ -156,3 +158,128 @@ def test_schema_filter_guide_no_bronze_area_item_as_primary() -> None:
     # Must not list bare area/item as recommended filter columns.
     assert "product / crop: product, product_name, item" not in guide
     assert "metric discriminator" in guide
+
+
+def test_inject_missing_element_production() -> None:
+    sql = (
+        "SELECT * FROM `opentrace-prod-5ga4.staging_dev.stg_faostat_production` "
+        "WHERE country_name = 'Nigeria' AND product_name = 'Maize' ORDER BY year"
+    )
+    fixed, notes = inject_missing_metric_filters(
+        sql,
+        query="maize production Nigeria 2022",
+    )
+    assert any("element='Production'" in n for n in notes)
+    assert "element = 'Production'" in fixed
+    assert validate_required_metric_filters(fixed) is None
+    assert "ORDER BY year" in fixed
+    assert "product_name = 'Maize'" in fixed
+    assert "country_name = 'Nigeria'" in fixed
+
+
+def test_inject_keeps_string_literals_before_group_by() -> None:
+    sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2022 AND country_name = 'Nigeria' AND product_name = 'Maize' "
+        "GROUP BY country_name LIMIT 5"
+    )
+    fixed, notes = inject_missing_metric_filters(
+        sql,
+        query="maize production Nigeria 2022",
+    )
+    assert notes
+    assert "element = 'Production'" in fixed
+    assert "product_name = 'Maize'" in fixed
+    assert "country_name = 'Nigeria'" in fixed
+    assert "GROUP BY country_name" in fixed
+    assert "product_nam " not in fixed
+
+
+def test_inject_missing_element_prefers_yield() -> None:
+    sql = (
+        "SELECT country_name, value FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE country_name = 'Kenya' AND year = 2020"
+    )
+    fixed, notes = inject_missing_metric_filters(sql, query="maize yield Kenya 2020")
+    assert any("element='Yield'" in n for n in notes)
+    assert "element = 'Yield'" in fixed
+    assert validate_required_metric_filters(fixed) is None
+
+
+def test_inject_missing_price_type_retail() -> None:
+    sql = (
+        "SELECT year, value FROM `proj.staging_dev.stg_fews_market_prices` "
+        "WHERE country = 'Ethiopia' AND product_name = 'Maize' ORDER BY year"
+    )
+    fixed, notes = inject_missing_metric_filters(
+        sql,
+        query="retail maize price Ethiopia",
+    )
+    assert any("price_type='Retail'" in n for n in notes)
+    assert "price_type = 'Retail'" in fixed
+    assert validate_required_metric_filters(fixed) is None
+
+
+def test_inject_missing_skips_when_element_present() -> None:
+    sql = (
+        "SELECT year, value FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE country_name = 'Nigeria' AND product_name = 'Maize' "
+        "AND element = 'Production' ORDER BY year"
+    )
+    fixed, notes = inject_missing_metric_filters(sql, query="maize production Nigeria")
+    assert notes == []
+    assert fixed == sql
+
+
+def test_inject_does_not_fix_bad_element_label() -> None:
+    sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2020 AND element = 'Prod' "
+        "GROUP BY country_name LIMIT 5"
+    )
+    fixed, notes = inject_missing_metric_filters(sql, query="maize production")
+    assert notes == []
+    assert "element = 'Prod'" in fixed
+    err = validate_sql_value_samples(fixed)
+    assert err is not None
+    assert "Prod" in err or "prod" in err.lower()
+
+
+def test_broaden_empty_sql_widens_single_year() -> None:
+    sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2022 AND element = 'Production' AND product_name = 'Maize' "
+        "GROUP BY country_name LIMIT 5"
+    )
+    out = broaden_empty_sql_once(sql, crop_required=True)
+    assert out is not None
+    assert "year BETWEEN 2021 AND 2023" in out
+    assert "product_name = 'Maize'" in out
+    assert "stg_faostat_production" in out
+
+
+def test_broaden_empty_sql_drops_optional_product() -> None:
+    sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE year = 2022 AND element = 'Production' AND product_name = 'Maize' "
+        "GROUP BY country_name LIMIT 5"
+    )
+    out = broaden_empty_sql_once(sql, crop_required=False)
+    assert out is not None
+    assert "year BETWEEN 2021 AND 2023" in out
+    assert "product_name = 'Maize'" not in out
+    assert "dim_" not in out
+
+
+def test_broaden_empty_sql_noop_without_year_or_product() -> None:
+    sql = (
+        "SELECT country_name, SUM(value) AS total "
+        "FROM `proj.staging_dev.stg_faostat_production` "
+        "WHERE element = 'Production' AND year BETWEEN 2020 AND 2022 "
+        "GROUP BY country_name LIMIT 5"
+    )
+    assert broaden_empty_sql_once(sql, crop_required=True) is None

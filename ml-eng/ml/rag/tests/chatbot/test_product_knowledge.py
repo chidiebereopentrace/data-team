@@ -42,6 +42,9 @@ def test_is_product_query_positive() -> None:
     assert is_product_query("Tell me about OpenTrace")
     assert is_product_query("What is OFIA?")
     assert is_product_query("Why partner with OpenTrace?")
+    assert is_product_query("c'est quoi OpenTrace")
+    assert is_product_query("OpenTrace ni nini")
+    assert is_product_query("wetin be OpenTrace")
 
 
 def test_is_product_query_negative_ag_data() -> None:

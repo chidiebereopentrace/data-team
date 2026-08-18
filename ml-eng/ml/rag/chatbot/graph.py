@@ -35,6 +35,7 @@ from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_m
 from ml.rag.chatbot.product_knowledge import is_product_query
 from ml.rag.chatbot.query_gate import (
     classify_social_query,
+    early_non_rag_route,
     generate_social_answer,
     is_greeting_query,
     is_out_of_scope_query,
@@ -463,8 +464,46 @@ class RAGGraphState(TypedDict, total=False):
     generation_plan: dict[str, Any] | None
 
 
+def _early_route_decompose_state(raw_q: str, route: str) -> dict[str, Any]:
+    """Build decompose output for early non-RAG short-circuit on raw user text."""
+    answer_lang = detect_answer_language(raw_q)
+    export_intent = detect_export_intent(raw_q)
+    base: dict[str, Any] = {
+        "decomposition": {},
+        "is_meta_query": route == "meta",
+        "is_product_query": route == "product",
+        "is_greeting_query": route == "greeting",
+        "is_out_of_scope_query": route == "out_of_scope",
+        "is_language_unknown": False,
+        "answer_lang": answer_lang,
+        "export_intent": export_intent,
+        "task_mode": "chat",
+        "analytical_mode": False,
+    }
+    return base
+
+
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
     raw_q = (state.get("query") or "").strip()
+    route = early_non_rag_route(raw_q)
+    if route:
+        answer_lang = detect_answer_language(raw_q)
+        export_intent = detect_export_intent(raw_q)
+        with observed_span(
+            "decompose",
+            input_data={"query": raw_q[:200], "enriched": False, "early_short_circuit": True},
+        ):
+            update_current_span_metadata(
+                {
+                    "route_candidate": route,
+                    "answer_lang": answer_lang,
+                    "export_intent": export_intent,
+                    "early_short_circuit": True,
+                    "skipped_decompose_llm": True,
+                    "skipped_retrieval": True,
+                }
+            )
+        return _early_route_decompose_state(raw_q, route)
     enrich = enrich_query_with_memory(
         raw_q,
         conversation_summary=state.get("conversation_summary")
@@ -1215,6 +1254,8 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
             entities=entities,
             domains=domains,
             **bq_geo,
+            crop_required=bool(plan.get("crop_required", True)),
+            geography_required=bool(plan.get("geography_required", True)),
         )
     finally:
         if env_bumped:

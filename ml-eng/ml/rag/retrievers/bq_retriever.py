@@ -17,7 +17,9 @@ from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, truncate_utf8
 from ml.rag.chatbot.bq_sql_patterns import try_sql_patterns
 from ml.rag.chatbot.bq_sql_templates import try_sql_template
 from ml.rag.chatbot.bq_sql_validate import (
+    broaden_empty_sql_once,
     dry_run_sql,
+    inject_missing_metric_filters,
     sql_retry_enabled,
     validate_required_metric_filters,
     validate_sql_column_allowlist,
@@ -653,6 +655,25 @@ class BQRetriever(BaseRetriever):
                 return f"dry_run_failed: {dry_err[:300]}"
             return None
 
+        def _maybe_inject(sql: str) -> str:
+            metric_err = validate_required_metric_filters(sql, selected_tables or None)
+            if not metric_err:
+                return sql
+            cue = question or query or ""
+            fixed, notes = inject_missing_metric_filters(
+                sql,
+                selected_tables or None,
+                query=cue,
+            )
+            if not notes:
+                return sql
+            revalidated = _validate_sql(fixed, allowed_datasets, limit)
+            if revalidated is None:
+                return sql
+            logger.info("BQ discriminator auto-inject: %s", "; ".join(notes))
+            return revalidated
+
+        validated = _maybe_inject(validated)
         check_err = _post_checks(validated)
         if check_err and sql_retry_enabled():
             allowed_list = ", ".join(sorted(selected_tables)) or "(none)"
@@ -661,7 +682,7 @@ class BQRetriever(BaseRetriever):
                 f"Previous SQL failed validation:\n{check_err}\n\n"
                 "Fix the SQL. Use ONLY columns from the Columns blocks in the table hints. "
                 "Equality-filter every metric discriminator that has *_value_samples "
-                "(element / price_type / measure_type / scenario_name / etc.) with exact sample strings. "
+                "(element, price_type, measure_type, indicator, treatment, …) using exact sample strings. "
                 "Prefer grain columns + value + unit over SELECT *. "
                 f"Use ONLY these tables: {allowed_list}. "
                 "Never invent dim_geography, dim_*, bronze/raw column names, or any table outside that list. "
@@ -685,7 +706,7 @@ class BQRetriever(BaseRetriever):
                 retry_validated = _validate_sql(retry_sql, allowed_datasets, limit)
                 if retry_validated is None:
                     return None, f"retry_validation_failed: {check_err[:200]}"
-                validated = retry_validated
+                validated = _maybe_inject(retry_validated)
                 check_err = _post_checks(validated)
         if check_err:
             return None, check_err
@@ -899,6 +920,8 @@ class BQRetriever(BaseRetriever):
 
         raw_intents = kwargs.get("query_intents")
         query_intents: list[Any] | None = raw_intents if isinstance(raw_intents, list) else None
+        crop_required = bool(kwargs.get("crop_required", True))
+        geography_required = bool(kwargs.get("geography_required", True))
 
         sql_input = kwargs.get("sql")
         sql_queries: list[str] = []
@@ -1130,6 +1153,40 @@ class BQRetriever(BaseRetriever):
                     })
                     continue
 
+                if not rows:
+                    broadened = broaden_empty_sql_once(
+                        validated,
+                        crop_required=crop_required,
+                        geography_required=geography_required,
+                    )
+                    if broadened:
+                        revalidated, _prep_err = self._prepare_sql(
+                            broadened,
+                            question=query,
+                            table_hints=hint_list,
+                            selected_tables=selected_tables,
+                            allowed_datasets=allowed,
+                            limit=limit,
+                            client=client,
+                            geo_country=geo_country,
+                            geo_countries=geo_countries,
+                            time_start=time_start,
+                            time_end=time_end,
+                            entities=entities,
+                            domains=domains,
+                            query=query,
+                        )
+                        if revalidated:
+                            try:
+                                job = client.query(revalidated)
+                                rows = list(job.result())
+                                validated = revalidated
+                            except Exception as exc:
+                                logger.warning(
+                                    "BQ broaden-once execute failed: %s",
+                                    str(exc)[:200],
+                                )
+
                 for row in rows[:limit]:
                     d = dict(row)
                     meta = project_bq_row_acf(
@@ -1166,12 +1223,36 @@ class BQRetriever(BaseRetriever):
         else:
             _run_sql_batch(sql_queries, source=sql_source)
 
-        # After NL2SQL/pattern prepare failures or 0-row success, try ranking template once.
+        # After NL2SQL/pattern prepare failures or 0-row success, try deterministic SQL.
         if (
             sql_source in {"nl2sql", "pattern"}
             and not any_usable_rows
             and selected_tables
         ):
+            if not pattern_sqls:
+                rescue_hits = try_sql_patterns(
+                    query_intents,
+                    project_id=self.project_id,
+                    dataset=ds_name,
+                    query=query,
+                    entities=entities,
+                    time_start=time_start,
+                    time_end=time_end,
+                    selected_tables=selected_tables,
+                    limit=rows_per_query,
+                    geo_country=geo_country,
+                    geo_countries=geo_countries,
+                )
+                if rescue_hits:
+                    pattern_meta = {
+                        "hits": rescue_hits,
+                        "pattern": rescue_hits[0].get("pattern"),
+                    }
+                    rescue_sqls = [
+                        str(h["sql"]) for h in rescue_hits if str(h.get("sql") or "").strip()
+                    ]
+                    if rescue_sqls:
+                        _run_sql_batch(rescue_sqls, source="pattern")
             tmpl_batch = _maybe_template()
             if tmpl_batch:
                 _run_sql_batch(tmpl_batch, source="template")

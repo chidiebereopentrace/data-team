@@ -457,13 +457,9 @@ def format_row_prose(
     if not_this:
         lines.append(f"What this is NOT: {', '.join(str(x) for x in not_this)}.")
 
-    prov_bits = []
-    if template:
-        prov_bits.append(f"template={template}")
-    if sql_source:
-        prov_bits.append(f"sql_source={sql_source}")
-    if prov_bits:
-        lines.append("Provenance: " + "; ".join(prov_bits))
+    # template / sql_source stay in metadata only — do not surface internal
+    # pipeline vocabulary into the LLM context.
+    _ = template, sql_source
 
     return "\n".join(lines)
 
@@ -689,10 +685,8 @@ def _consolidate_ranking_batch(
     body = "\n".join(
         [
             "",
-            "Ranked OpenTrace structured results (highest first):",
+            "Ranked results (highest first):",
             *rank_lines,
-            "",
-            "Authoritative for which-country / highest-lowest questions matching this SQL.",
         ]
     )
     content = header + body

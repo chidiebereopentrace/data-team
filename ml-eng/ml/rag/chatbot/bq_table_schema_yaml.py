@@ -300,6 +300,15 @@ _PREFERRED_DISCRIMINATOR_DEFAULTS = (
 )
 _AUTO_DEFAULT_DISCRIMINATOR_COLS = frozenset({"element", "price_type", "measure_type"})
 _WORD_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+_YIELD_QUERY_RE = re.compile(r"\byields?\b", re.IGNORECASE)
+_PRODUCTION_QUERY_RE = re.compile(
+    r"\b(production|produced|output|tonnes?|tons?)\b",
+    re.IGNORECASE,
+)
+_PRODUCER_PRICE_QUERY_RE = re.compile(r"\b(producer|farm\s*gate)\b", re.IGNORECASE)
+_WHOLESALE_QUERY_RE = re.compile(r"\bwholesale\b", re.IGNORECASE)
+_POPULATION_QUERY_RE = re.compile(r"\b(population|people|ipc)\b", re.IGNORECASE)
+_CLASSIFICATION_QUERY_RE = re.compile(r"\b(classification|phase)\b", re.IGNORECASE)
 
 
 def _column_names(table_id: str) -> set[str]:
@@ -462,6 +471,73 @@ def match_product_samples(table_id: str, blob: str) -> list[str]:
     return match_value_samples(blob, samples)
 
 
+def default_discriminator_value(
+    col: str,
+    samples: set[str] | list[str] | None,
+    *,
+    query: str = "",
+) -> str | None:
+    """Pick a YAML sample for a discriminator column. Never invent labels."""
+    sample_set = {str(s).strip() for s in (samples or []) if str(s).strip()}
+    if not sample_set:
+        return None
+    by_low = {s.lower(): s for s in sample_set}
+    col_l = (col or "").strip().lower()
+    q = query or ""
+
+    def _from_cands(*cands: str) -> str | None:
+        for cand in cands:
+            hit = by_low.get(cand.lower())
+            if hit:
+                return hit
+        return None
+
+    if col_l == "element":
+        if _YIELD_QUERY_RE.search(q):
+            hit = _from_cands("Yield")
+            if hit:
+                return hit
+        if _PRODUCTION_QUERY_RE.search(q):
+            hit = _from_cands("Production")
+            if hit:
+                return hit
+
+    if col_l == "price_type":
+        if _PRODUCER_PRICE_QUERY_RE.search(q):
+            hit = _from_cands("Producer")
+            if hit:
+                return hit
+        if _WHOLESALE_QUERY_RE.search(q):
+            hit = _from_cands("Wholesale")
+            if hit:
+                return hit
+        hit = _from_cands("Retail")
+        if hit:
+            return hit
+
+    if col_l == "measure_type":
+        if _POPULATION_QUERY_RE.search(q):
+            hit = _from_cands("population")
+            if hit:
+                return hit
+        if _CLASSIFICATION_QUERY_RE.search(q):
+            hit = _from_cands("classification")
+            if hit:
+                return hit
+
+    matched = match_value_samples(q, sample_set)
+    if matched:
+        return matched[0]
+
+    for preferred in _PREFERRED_DISCRIMINATOR_DEFAULTS:
+        hit = by_low.get(preferred.lower())
+        if hit:
+            return hit
+
+    ordered = sorted(sample_set, key=lambda s: (len(s), s.lower()))
+    return ordered[0]
+
+
 def discriminator_equality_filters(table_id: str, blob: str) -> list[tuple[str, str]]:
     """``(column, sample)`` filters from YAML samples; prefer query matches then known defaults."""
     samples_map = value_samples_for_tables({table_id}).get(_strip_fqn(table_id).lower()) or {}
@@ -477,10 +553,9 @@ def discriminator_equality_filters(table_id: str, blob: str) -> list[tuple[str, 
             continue
         if col.lower() not in _AUTO_DEFAULT_DISCRIMINATOR_COLS:
             continue
-        for preferred in _PREFERRED_DISCRIMINATOR_DEFAULTS:
-            if preferred in samples:
-                out.append((col, preferred))
-                break
+        default = default_discriminator_value(col, samples, query=blob)
+        if default:
+            out.append((col, default))
     return out
 
 

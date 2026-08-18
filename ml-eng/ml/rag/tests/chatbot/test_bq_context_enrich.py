@@ -177,6 +177,8 @@ def test_enrich_single_row_prose() -> None:
     assert "production" in content.lower()
     assert "tonnes" in content.lower()
     assert "NOT" in content
+    assert "Provenance:" not in content
+    assert "sql_source=" not in content
     assert isinstance(out[0]["metadata"].get("raw_row"), dict)
     assert out[0]["metadata"].get("value_semantics")
 
@@ -221,8 +223,13 @@ def test_ranking_consolidation() -> None:
     ranked = out[0]["metadata"].get("ranked_rows")
     assert isinstance(ranked, list) and len(ranked) == 3
     assert ranked[0]["label"] == "South Africa"
-    assert "Ranked OpenTrace structured results" in out[0]["content"]
-    assert "1. South Africa" in out[0]["content"]
+    content = out[0]["content"]
+    assert "Ranked results (highest first):" in content
+    assert "Ranked OpenTrace structured results" not in content
+    assert "Authoritative for which-country" not in content
+    assert "Provenance:" not in content
+    assert "sql_source=" not in content
+    assert "1. South Africa" in content
 
 
 def test_ranking_consolidation_stamps_acf_metadata() -> None:

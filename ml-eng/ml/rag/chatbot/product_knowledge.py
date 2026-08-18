@@ -49,6 +49,16 @@ _PRODUCT_INTENT_PATTERNS: tuple[str, ...] = (
     r"\bexplain.*pillars?\b",
     r"\b(?:moat|traction|sovereignty)\b",
     r"\binfrastructure company\b",
+    # Localized product intents
+    r"\bc['']est\s+quoi\s+opentrace\b",
+    r"\bqu['']est[- ]ce\s+que\s+opentrace\b",
+    r"\bmission\s+d['']opentrace\b",
+    r"\bopentrace\s+ni\s+nini\b",
+    r"\blengo\s+la\s+opentrace\b",
+    r"\bmenene\s+opentrace\b",
+    r"\bo\s+que\s+[ée]\s+opentrace\b",
+    r"\bo\s+que\s+e\s+opentrace\b",
+    r"\bwetin\s+be\s+opentrace\b",
 )
 
 _BRAND_RE = re.compile("|".join(_BRAND_PATTERNS), re.IGNORECASE)

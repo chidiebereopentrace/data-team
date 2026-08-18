@@ -5,6 +5,9 @@ import re
 from typing import Any
 
 from ml.rag.chat_history import normalize_messages
+from ml.rag.chatbot.assistant_identity import is_meta_query
+from ml.rag.chatbot.product_knowledge import is_product_query
+from ml.rag.chatbot.query_gate import is_greeting_query
 
 _ANAPHORA_RE = re.compile(
     r"\b("
@@ -30,7 +33,7 @@ _ELLIPTICAL_RE = re.compile(
 
 _SHORT_FOLLOWUP_RE = re.compile(
     r"^\s*("
-    r"yes|no|ok|okay|thanks|thank\s+you|"
+    r"yes|no|ok|okay|"
     r"niger|kenya|nigeria|ethiopia|somalia|uganda|senegal|zambia|"
     r"maize|rice|cassava|wheat|coffee"
     r")\s*\.?\s*$",
@@ -55,13 +58,14 @@ def _looks_elliptical(query: str) -> bool:
     q = (query or "").strip()
     if not q:
         return False
+    if is_greeting_query(q) or is_meta_query(q) or is_product_query(q, None):
+        return False
     if _ANAPHORA_RE.search(q):
         return True
     if _ELLIPTICAL_RE.match(q):
         return True
     if len(q.split()) <= 6 and _SHORT_FOLLOWUP_RE.match(q):
         return True
-    # Very short geo/crop only follow-up.
     if len(q.split()) <= 4 and not re.search(
         r"\b(what|which|how|why|when|show|give|compare|analy)\b", q, re.IGNORECASE
     ):
@@ -90,6 +94,13 @@ def enrich_query_with_memory(
             "enriched": False,
             "prior_topic": prior_topic,
         }
+    if is_greeting_query(original) or is_meta_query(original) or is_product_query(original, None):
+        return {
+            "enriched_query": original,
+            "original_query": original,
+            "enriched": False,
+            "prior_topic": prior_topic,
+        }
     if not _looks_elliptical(original):
         return {
             "enriched_query": original,
@@ -97,7 +108,6 @@ def enrich_query_with_memory(
             "enriched": False,
             "prior_topic": prior_topic,
         }
-    # Avoid re-merging if the follow-up already contains the prior topic tokens.
     prior_tokens = {t.lower() for t in re.findall(r"[A-Za-z]{4,}", prior_topic)}
     cur_tokens = {t.lower() for t in re.findall(r"[A-Za-z]{4,}", original)}
     if prior_tokens and len(prior_tokens & cur_tokens) >= max(2, len(prior_tokens) // 3):

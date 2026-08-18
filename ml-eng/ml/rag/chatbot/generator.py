@@ -27,7 +27,7 @@ from ml.rag.chatbot.answer_language import (
     is_english_answer_lang,
     language_instruction,
 )
-from ml.rag.chatbot.context_diversity import normalize_context_kind
+from ml.rag.chatbot.context_diversity import dedupe_context_items, normalize_context_kind
 from ml.rag.chatbot.export_intent import want_inline_citations
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
@@ -52,6 +52,23 @@ _SOURCE_REF_RE = re.compile(
     re.IGNORECASE,
 )
 _VERBOSE_INLINE_REF_RE = re.compile(r"\[Source\s+(\d+)\s*\|[^\]]*\]", re.IGNORECASE)
+_SOURCE_MULTI_REF_RE = re.compile(r"\[Sources?\s+([\d,\sand]+)\]", re.IGNORECASE)
+_PLAIN_MULTI_REF_RE = re.compile(r"\[(?!\s*Source\s)(\d+(?:\s*[,–-]\s*\d+)+)\]")
+_PIPE_LABEL_REF_RE = re.compile(
+    r"\[(?:Wikipedia|News|Academic|Policy/Public|Policy|Public|Web|Structured\s+data)\s*\|[^\]]*\]",
+    re.IGNORECASE,
+)
+_NON_PLAIN_BRACKET_RE = re.compile(r"\[(?!\d+\])[^\]]*\]")
+_SOCIAL_URL_HOSTS = ("linkedin.com", "twitter.com", "x.com", "facebook.com", "fb.com")
+_KNOWN_ANALYTICAL_HEADINGS = (
+    "Key Findings",
+    "Regional & Country Picture",
+    "Production, Trade & Markets",
+    "Drivers & Context",
+    "Data Notes",
+    "Executive summary",
+    "Regional overview",
+)
 _MODEL_SOURCES_APPENDIX_RE = re.compile(
     r"\n+(?:Sources|References|Bibliography)\s*:?\s*\n[\s\S]*\Z",
     re.IGNORECASE,
@@ -493,12 +510,32 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
         return f"[Structured data] {_BQ_PUBLIC_LABEL}"
 
     if kind in ("academic_article", "academic"):
+        raw_title = str(meta.get("article_title") or meta.get("title") or "")
+        raw_authors = str(meta.get("authors") or "")
+        if (
+            len(raw_title) > 300
+            or len(raw_authors) > 300
+            or "\n" in raw_title
+            or "\n" in raw_authors
+        ):
+            return None
         cite = format_academic_citation(meta)
-        return f"[Academic] {cite}" if cite else None
+        line = f"[Academic] {cite}" if cite else None
+        return None if line and _looks_like_body_prose(line) else line
 
     if kind in ("policy_document", "public_report", "policy", "public_report"):
+        raw_title = str(meta.get("article_title") or meta.get("title") or "")
+        raw_authors = str(meta.get("authors") or "")
+        if (
+            len(raw_title) > 300
+            or len(raw_authors) > 300
+            or "\n" in raw_title
+            or "\n" in raw_authors
+        ):
+            return None
         cite = format_academic_citation(meta)
-        return f"[Policy/Public] {cite}" if cite else None
+        line = f"[Policy/Public] {cite}" if cite else None
+        return None if line and _looks_like_body_prose(line) else line
 
     if kind in ("news_article", "news"):
         title = str(meta.get("title") or meta.get("source_file") or "").strip()
@@ -508,7 +545,8 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
             entry = f"{title} — {src}" if src else title
             if date:
                 entry += f" ({date})"
-            return f"[News] {entry}"
+            line = f"[News] {entry}"
+            return None if _looks_like_body_prose(line) else line
         return None
 
     if kind in ("ota_insight", "ota_metric"):
@@ -670,6 +708,86 @@ def _build_context_block(
     return "\n\n".join(parts), registry
 
 
+def _expand_id_bracket_content(inner: str) -> str:
+    """Expand comma/range id lists into sequential plain [N] markers."""
+    text = (inner or "").strip()
+    if not text:
+        return ""
+    range_m = re.fullmatch(r"(\d+)\s*[–-]\s*(\d+)", text)
+    if range_m:
+        start, end = int(range_m.group(1)), int(range_m.group(2))
+        if start <= end and end <= 30 and (end - start) <= 20:
+            return "".join(f"[{i}]" for i in range(start, end + 1))
+        return ""
+    ids = re.findall(r"\d+", text)
+    return "".join(f"[{i}]" for i in ids)
+
+
+def _strip_non_plain_brackets(text: str) -> str:
+    """Remove bracket labels that are not plain numeric footnotes."""
+    return _NON_PLAIN_BRACKET_RE.sub("", text or "")
+
+
+def _collapse_duplicate_citation_markers(text: str) -> str:
+    """Collapse immediate duplicate footnote markers such as [3][3] or ([3]) [3]."""
+    if not text:
+        return text
+    out = text
+    out = re.sub(r"\(\[(\d+)\]\)\s*\[\1\]", r"[\1]", out)
+    out = re.sub(r"\[(\d+)\]\s*\(\[\1\]\)", r"[\1]", out)
+    prev = None
+    while prev != out:
+        prev = out
+        out = re.sub(r"\[(\d+)\]\s*\[\1\]", r"[\1]", out)
+    return out
+
+
+def _cleanup_citation_spacing(text: str) -> str:
+    """Tidy spacing after marker removal without collapsing newlines."""
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"[ \t]+([,.;])", r"\1", text)
+    text = re.sub(r"\s+\.", ".", text)
+    return text.strip()
+
+
+def _looks_like_body_prose(line: str) -> bool:
+    """True when a citation line looks like dumped body text rather than a one-liner."""
+    if not line:
+        return True
+    if "\n" in line:
+        return True
+    if len(line) > 300:
+        return True
+    stripped = line.strip()
+    return stripped.startswith("In ,") or stripped.startswith(", ")
+
+
+def _normalize_markdown_headings(text: str) -> str:
+    """Ensure ATX headings start on their own line and split known headings from body."""
+    if not text:
+        return text
+    out = re.sub(r"(\S)\s+(#{2,3}\s)", r"\1\n\n\2", text)
+    for heading in _KNOWN_ANALYTICAL_HEADINGS:
+        pattern = rf"(#{{2,3}}\s+{re.escape(heading)})\s+(\S.+)"
+        out = re.sub(pattern, r"\1\n\n\2", out, flags=re.IGNORECASE)
+    return out
+
+
+def _is_social_url(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    host = urlparse(url).netloc.lower()
+    return any(s in host for s in _SOCIAL_URL_HOSTS)
+
+
+def _pick_best_http_url(candidates: list[str]) -> str | None:
+    http = [u.strip() for u in candidates if str(u or "").strip().startswith("http")]
+    if not http:
+        return None
+    non_social = [u for u in http if not _is_social_url(u)]
+    return non_social[0] if non_social else http[0]
+
+
 def _strip_model_sources_appendix(text: str) -> str:
     """Remove model-written Sources/References blocks that poison footnote extraction."""
     if not text:
@@ -687,15 +805,23 @@ def _normalize_inline_citations(text: str) -> str:
     if not text:
         return text
     text = _VERBOSE_INLINE_REF_RE.sub(lambda m: f"[{m.group(1)}]", text)
+    text = _SOURCE_MULTI_REF_RE.sub(lambda m: _expand_id_bracket_content(m.group(1)), text)
     text = re.sub(r"\[Source\s+(\d+)\]", r"[\1]", text, flags=re.IGNORECASE)
+    text = _PLAIN_MULTI_REF_RE.sub(lambda m: _expand_id_bracket_content(m.group(1)), text)
+    text = _PIPE_LABEL_REF_RE.sub("", text)
     text = re.sub(r"(?<!\[)\bSource\s+(\d+)\b(?!\])", r"[\1]", text, flags=re.IGNORECASE)
+    text = _collapse_duplicate_citation_markers(text)
+    text = _strip_non_plain_brackets(text)
     return text
 
 
 def _strip_invalid_citation_markers(answer: str, source_registry: list[SourceRef]) -> str:
     """Remove [N] / [Source N] footnotes that reference missing registry IDs."""
-    if not answer or not source_registry:
+    if not answer:
         return answer
+    text = _normalize_inline_citations(answer)
+    if not source_registry:
+        return _cleanup_citation_spacing(_strip_non_plain_brackets(text))
     valid = {ref.source_id for ref in source_registry}
 
     def _keep_bracket(m: re.Match[str]) -> str:
@@ -705,25 +831,23 @@ def _strip_invalid_citation_markers(answer: str, source_registry: list[SourceRef
             return ""
         return m.group(0) if n in valid else ""
 
-    text = re.sub(r"\[(?!\s*Source\s)(\d+)\]", _keep_bracket, answer)
+    text = re.sub(r"\[(?!\s*Source\s)(\d+)\]", _keep_bracket, text)
     text = re.sub(r"\[Source\s+(\d+)\]", _keep_bracket, text, flags=re.IGNORECASE)
     text = re.sub(r"(?<!\[)\bSource\s+(\d+)\b(?!\])", _keep_bracket, text, flags=re.IGNORECASE)
-    # Collapse orphaned punctuation/spacing left by removed markers; keep newlines.
-    text = re.sub(r"[ \t]{2,}", " ", text)
-    text = re.sub(r"[ \t]+([,.;])", r"\1", text)
-    return text.strip()
+    text = _strip_non_plain_brackets(text)
+    return _cleanup_citation_spacing(text)
 
 
 def _strip_all_inline_citation_markers(answer: str) -> str:
     """Remove every [N] / [Source N] marker when inline footnotes are disabled."""
     if not answer:
         return answer
-    text = re.sub(r"\[(?!\s*Source\s)\d+\]", "", answer)
+    text = _normalize_inline_citations(answer)
+    text = re.sub(r"\[(?!\s*Source\s)\d+\]", "", text)
     text = re.sub(r"\[Source\s+\d+\]", "", text, flags=re.IGNORECASE)
     text = re.sub(r"(?<!\[)\bSource\s+\d+\b(?!\])", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"[ \t]{2,}", " ", text)
-    text = re.sub(r"[ \t]+([,.;])", r"\1", text)
-    return text.strip()
+    text = _strip_non_plain_brackets(text)
+    return _cleanup_citation_spacing(text)
 
 
 def extract_referenced_source_ids(answer: str) -> set[int]:
@@ -770,6 +894,11 @@ def _build_prompt(
             "(2012), agriculture's GDP share rose.[6]'). "
             "Never refer to in-document labels from the context such as 'Table 6.1', 'Figure 2', "
             "'Fig. 3', or 'Appendix A' — paraphrase the finding and cite with the Citation line + [N] only. "
+            "Only cite sources that appear in Context with a Citation line / [Source N]. "
+            "Inline markers must be plain [N] only — never [Source N], [Source 1, 3], or [Wikipedia | …]. "
+            "Do not invent author-year references that are not on a Context Citation line. "
+            "Do not repeat the same [N] twice in a row. "
+            "Each ## heading must be on its own line with a blank line before it. "
         )
     else:
         cite_rules = (
@@ -779,6 +908,9 @@ def _build_prompt(
             "structured citations separately for the client. "
             "Never refer to in-document labels from the context such as 'Table 6.1', 'Figure 2', "
             "'Fig. 3', or 'Appendix A' — paraphrase the finding instead. "
+            "Only cite sources that appear in Context with a Citation line. "
+            "Do not invent author-year references that are not on a Context Citation line. "
+            "Each ## heading must be on its own line with a blank line before it. "
         )
     mode_replaces_length = mode in {"analytical", "fact_lookup", "briefing", "data_export_only"}
     length_rules = (
@@ -1113,6 +1245,7 @@ def _clean_answer(text: str) -> str:
     if "[/INST]" in text:
         text = text.split("[/INST]")[-1].strip()
     text = re.sub(r"^(Context:|Question:).*$", "", text, flags=re.MULTILINE | re.IGNORECASE).strip()
+    text = _normalize_markdown_headings(text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = _strip_sql_from_answer(text) or text.strip()
     text = _strip_doc_table_figure_labels(text) or text.strip()
@@ -1136,45 +1269,26 @@ def _citation_kind_normalized(kind: str) -> str:
 
 
 def _citation_url(kind: str, meta: dict[str, Any]) -> str | None:
-    """Extract a clickable URL for a citation, trying multiple metadata fields.
-
-    Sprint 1, Week 3: improved to check url/link/source_url for ALL source types
-    (not just news), so academic papers with a direct URL also get clickable links
-    even when DOI is missing.
-    """
+    """Extract a clickable URL for a citation, trying multiple metadata fields."""
     k = kind.lower()
+    url_keys = ("canonical_url", "url", "link", "source_url")
 
-    # Web sources — url is always present
     if k in ("web_wikipedia", "web_search"):
-        url = str(meta.get("url") or "").strip()
-        return url or None
+        return _pick_best_http_url([str(meta.get(key) or "") for key in url_keys])
 
-    # News — check multiple URL field names
     if k in ("news_article", "news"):
-        for key in ("url", "link", "source_url"):
-            url = str(meta.get(key) or "").strip()
-            if url.startswith("http"):
-                return url
-        return None
+        return _pick_best_http_url([str(meta.get(key) or "") for key in url_keys])
 
-    # Academic / policy / public report — DOI preferred, then direct URL fallback
     if k in ("academic_article", "academic", "policy_document", "policy", "public_report"):
         doi = str(meta.get("doi") or "").strip()
         if doi.startswith("http"):
             return doi
         if doi:
             return f"https://doi.org/{doi.lstrip('doi:').strip()}"
-        # Fallback: check for direct url/link fields (some ingested records have these)
-        for key in ("url", "link", "source_url"):
-            url = str(meta.get(key) or "").strip()
-            if url.startswith("http"):
-                return url
-        return None
+        return _pick_best_http_url([str(meta.get(key) or "") for key in url_keys])
 
-    # OTA insights — check for url field
     if k in ("ota_insight", "ota_metric"):
-        url = str(meta.get("url") or meta.get("source_url") or "").strip()
-        return url if url.startswith("http") else None
+        return _pick_best_http_url([str(meta.get(key) or "") for key in url_keys])
 
     return None
 
@@ -1204,9 +1318,10 @@ def _referenced_source_refs(
     mode = _citations_mode()
     if mode == "referenced":
         cited_ids = extract_referenced_source_ids(answer)
-        if not cited_ids:
-            return []
-        return [r for r in source_registry if r.source_id in cited_ids]
+        if cited_ids:
+            return [r for r in source_registry if r.source_id in cited_ids]
+        # Author-year-only prose with inline on: attach packed registry rather than [].
+        return list(source_registry)
     return list(source_registry)
 
 
@@ -1469,6 +1584,7 @@ def _call_llama(
     *,
     purpose: str = "generate",
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Call configured LLM backend; never raises on HTTP errors.
 
@@ -1476,7 +1592,7 @@ def _call_llama(
     When None, falls back to llm_model_id() which reads RAG_LLM_MODEL_ID from env.
     """
     gen_timeout = float(os.environ.get("RAG_GENERATE_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
-    max_toks = _generate_max_tokens()
+    max_toks = max_tokens if max_tokens is not None else _generate_max_tokens()
     # Sprint 1 (Jul 2026): set to 0.7 so responses have natural variety across similar
     # queries. The "no synthesis on gaps" test-1 concern is handled by code-level
     # guardrails (empty context → `_no_data_fallback_message` without an LLM call;
@@ -1609,6 +1725,7 @@ def generate(
     usable_context = dedupe_bq_context_items(
         usable_context_after_geo_purity(context_items, decomposition)
     )
+    usable_context = dedupe_context_items(usable_context)
     usable_context = prefer_in_window_narrative(
         usable_context,
         decomposition,

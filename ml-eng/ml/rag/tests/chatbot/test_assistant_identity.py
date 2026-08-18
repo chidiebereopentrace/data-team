@@ -15,6 +15,14 @@ def test_is_meta_query_identity() -> None:
     assert is_meta_query("Who are you?")
     assert is_meta_query("what is your name")
     assert is_meta_query("What are you doing?")
+    assert is_meta_query("Are you a bot?")
+
+
+def test_is_meta_query_multilingual() -> None:
+    assert is_meta_query("qui es-tu")
+    assert is_meta_query("wewe ni nani")
+    assert is_meta_query("who you be")
+    assert is_meta_query("ungubani")
 
 
 def test_is_meta_query_product_moved_to_product_knowledge() -> None:

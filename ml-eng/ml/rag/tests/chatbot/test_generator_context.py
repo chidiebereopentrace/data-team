@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from unittest import mock
 
+from ml.rag.chatbot.context_diversity import dedupe_context_items
 from ml.rag.chatbot.generator import (
     GenerationResult,
     SourceRef,
@@ -12,6 +13,7 @@ from ml.rag.chatbot.generator import (
     _build_context_block,
     _build_prompt,
     _clean_answer,
+    _citation_url,
     _context_max_chars,
     _finalize_generation_result,
     _format_source_citation,
@@ -285,7 +287,8 @@ def test_append_citations_no_refs_when_unreferenced() -> None:
     answer = "Production trends improved with no inline cites."
     with mock.patch.dict(os.environ, {"RAG_CITATIONS_MODE": "referenced"}):
         out = _append_structured_citations(answer, registry)
-    assert "Sources" not in out
+    assert "Sources" in out
+    assert "1. [News]" in out
 
 
 def test_referenced_citations_structured_shape() -> None:
@@ -1168,4 +1171,152 @@ def test_ghana_rice_pack_finalize_non_empty_citations_and_acf() -> None:
     assert result.acf is not None
     assert result.acf.band != "no_evidence"
     assert result.acf.claim_level is not None
+
+
+def test_normalize_multi_source_brackets() -> None:
+    out = _normalize_inline_citations("Trends rose [Source 1, 3] across regions.")
+    assert "[1]" in out
+    assert "[3]" in out
+    assert "[Source 1, 3]" not in out
+
+
+def test_normalize_strips_wikipedia_pipe_label() -> None:
+    out = _normalize_inline_citations("Maize is a staple [Wikipedia | Maize] in West Africa.")
+    assert "[Wikipedia" not in out
+    assert "| Maize]" not in out
+
+
+def test_normalize_collapses_duplicate_markers() -> None:
+    out = _normalize_inline_citations("Prices rose ([3]) [3] sharply.")
+    assert out.count("[3]") == 1
+
+
+def test_strip_invalid_citation_markers_drops_unknown_id() -> None:
+    registry = [SourceRef(i, _news_item(), f"[News] {i}") for i in range(1, 6)]
+    out = _strip_invalid_citation_markers("Trends rose [1] and [99] here.", registry)
+    assert "[1]" in out
+    assert "[99]" not in out
+
+
+def test_format_academic_citation_strips_affiliation_digit() -> None:
+    cite = format_academic_citation(
+        {
+            "authors": "Nicolas Depetris Chauvin 1, Francis Mulangu and Guido Porto 1",
+            "publication_year": "2012",
+            "article_title": "When Africa awakens",
+        }
+    )
+    assert "Chauvin 1" not in cite
+    assert "Porto 1" not in cite
+    assert "2012" in cite
+
+
+def test_format_academic_citation_no_leading_comma() -> None:
+    cite = format_academic_citation(
+        {
+            "authors": ", Elizabeth J. Z. Robinson 1",
+            "publication_year": "2021",
+            "article_title": "Forest conservation",
+        }
+    )
+    assert not cite.startswith(",")
+    assert "Robinson" in cite
+
+
+def test_format_source_citation_rejects_body_prose() -> None:
+    item = {
+        "_context_kind": "academic",
+        "metadata": {
+            "authors": "Someone",
+            "article_title": "x" * 400,
+            "publication_year": "2020",
+        },
+    }
+    assert _format_source_citation(item) is None
+
+
+def test_dedupe_context_items_same_doi() -> None:
+    items = [
+        {
+            "content": "chunk one " + ("x" * 40),
+            "_context_kind": "academic",
+            "metadata": {"doi": "10.1234/abc", "article_title": "Paper A", "authors": "Smith"},
+        },
+        {
+            "content": "chunk two " + ("y" * 40),
+            "_context_kind": "academic",
+            "metadata": {"doi": "https://doi.org/10.1234/abc", "article_title": "Paper A", "authors": "Smith"},
+        },
+    ]
+    out = dedupe_context_items(items)
+    assert len(out) == 1
+
+
+def test_clean_answer_splits_midline_heading() -> None:
+    out = _clean_answer("Intro text ## Key Findings Maize production rose in 2020.")
+    assert "\n\n## Key Findings\n\n" in out
+    assert "Maize production rose" in out
+
+
+def test_finalize_inline_on_returns_registry_without_markers() -> None:
+    registry = [
+        SourceRef(1, _news_item(), "[News] Title A"),
+        SourceRef(2, _bq_item(), "[Structured data] BQ"),
+    ]
+    with mock.patch("ml.rag.chatbot.generator.observed_span") as mock_span:
+        mock_span.return_value.__enter__ = mock.Mock(return_value=None)
+        mock_span.return_value.__exit__ = mock.Mock(return_value=False)
+        result = _finalize_generation_result(
+            "Andersson Djurfeldt et al. (2018) note rising yields.",
+            registry,
+            query="West Africa maize",
+            inline_citations=True,
+        )
+    assert len(result.citations) == 2
+    assert "[1]" not in result.answer
+
+
+def test_finalize_inline_on_referenced_subset_when_markers_present() -> None:
+    registry = [
+        SourceRef(1, _news_item(), "[News] Title A"),
+        SourceRef(2, _bq_item(), "[Structured data] BQ"),
+    ]
+    with mock.patch("ml.rag.chatbot.generator.observed_span") as mock_span:
+        mock_span.return_value.__enter__ = mock.Mock(return_value=None)
+        mock_span.return_value.__exit__ = mock.Mock(return_value=False)
+        result = _finalize_generation_result(
+            "Yields rose.[1]",
+            registry,
+            query="Kenya maize",
+            inline_citations=True,
+        )
+    assert len(result.citations) == 1
+    assert result.citations[0]["id"] == 1
+
+
+def test_citation_url_prefers_doi() -> None:
+    url = _citation_url(
+        "academic",
+        {"doi": "10.1234/abc", "url": "https://example.com/paper"},
+    )
+    assert url == "https://doi.org/10.1234/abc"
+
+
+def test_citation_url_deprioritizes_social_share() -> None:
+    url = _citation_url(
+        "news",
+        {
+            "url": "https://www.linkedin.com/posts/example-maize",
+            "canonical_url": "https://www.weforum.org/agenda/2020/maize/",
+        },
+    )
+    assert url == "https://www.weforum.org/agenda/2020/maize/"
+
+
+def test_citation_url_keeps_social_when_only_option() -> None:
+    url = _citation_url(
+        "news",
+        {"url": "https://www.linkedin.com/posts/example-maize"},
+    )
+    assert "linkedin.com" in (url or "")
 

@@ -54,16 +54,53 @@ def normalize_context_kind(item: dict[str, Any]) -> str:
     return _KIND_ALIASES.get(raw, raw or "other")
 
 
+def _normalize_doi(val: str) -> str:
+    v = val.strip().lower()
+    v = re.sub(r"^https?://(?:dx\.)?doi\.org/", "", v)
+    return v.lstrip("doi:").strip()
+
+
+def _normalize_url_key(val: str) -> str:
+    from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
+    v = val.strip()
+    if not v.startswith("http"):
+        return v.lower()
+    parsed = urlparse(v)
+    qs = [
+        (k, vq)
+        for k, vq in parse_qsl(parsed.query, keep_blank_values=True)
+        if not k.lower().startswith(("utm_", "fbclid", "li_"))
+    ]
+    clean = parsed._replace(query=urlencode(qs), fragment="")
+    return urlunparse(clean).lower()
+
+
 def _dedupe_key(item: dict[str, Any]) -> str:
     meta = _item_metadata(item)
-    for key in ("url", "source_url", "canonical_url", "doi"):
-        val = str(meta.get(key) or "").strip().lower()
-        if val:
-            return f"url:{val}"
-    title = str(meta.get("title") or meta.get("headline") or "").strip().lower()
-    title = re.sub(r"\s+", " ", title)
-    if len(title) >= 12:
-        return f"title:{title[:160]}"
+    doi = _normalize_doi(str(meta.get("doi") or ""))
+    if doi:
+        return f"doi:{doi}"
+
+    for key in ("canonical_url", "url", "link", "source_url"):
+        val = str(meta.get(key) or "").strip()
+        if val.startswith("http"):
+            return f"url:{_normalize_url_key(val)}"
+
+    title = re.sub(
+        r"\s+",
+        " ",
+        str(meta.get("article_title") or meta.get("title") or meta.get("headline") or "").strip().lower(),
+    )
+    authors = re.sub(r"\s+", " ", str(meta.get("authors") or "").strip().lower())
+    year = str(meta.get("publication_year") or meta.get("year") or "").strip()
+    if title and (authors or year):
+        return f"work:{title[:160]}|{authors[:120]}|{year}"
+
+    doc_id = str(meta.get("document_id") or meta.get("source_file") or "").strip().lower()
+    if doc_id and title:
+        return f"doc:{doc_id}|{title[:80]}"
+
     text = str(item.get("content") or item.get("text") or "").strip().lower()
     text = re.sub(r"\s+", " ", text)[:240]
     if text:

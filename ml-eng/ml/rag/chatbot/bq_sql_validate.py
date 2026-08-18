@@ -7,6 +7,7 @@ from typing import Any
 
 from ml.rag.chatbot.bq_table_schema_yaml import (
     columns_for_tables,
+    default_discriminator_value,
     load_table_schema,
     value_samples_for_tables,
 )
@@ -38,6 +39,23 @@ _IN_FILTER_RE = re.compile(
 # Equality or IN on a column (string or non-string RHS) — used for required filters.
 _COL_FILTERED_RE = re.compile(
     r"\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:=\s*|IN\s*\()",
+    re.IGNORECASE,
+)
+_WHERE_RE = re.compile(r"\bWHERE\b", re.IGNORECASE)
+_TRAILING_CLAUSE_RE = re.compile(
+    r"\b(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING|QUALIFY)\b",
+    re.IGNORECASE,
+)
+_YEAR_EQ_RE = re.compile(
+    r"\b(year|harvest_year|planting_year)\s*=\s*(\d{4})\b",
+    re.IGNORECASE,
+)
+_PRODUCT_EQ_RE = re.compile(
+    r"\b(product_name|product|item)\s*=\s*'((?:''|[^'])*)'",
+    re.IGNORECASE,
+)
+_PRODUCT_IN_RE = re.compile(
+    r"\b(product_name|product|item)\s+IN\s*\([^)]*\)",
     re.IGNORECASE,
 )
 
@@ -311,9 +329,12 @@ def _filtered_columns(sql: str) -> set[str]:
 def _required_metric_cols_for_table(bare: str, samples_by_col: dict[str, set[str]]) -> list[str]:
     """Return metric-discriminator columns that must be filtered for this table."""
     schema = load_table_schema(bare) or {}
-    grain = str(schema.get("grain") or "").lower().replace("×", " ")
+    grain_raw = schema.get("grain")
+    if not isinstance(grain_raw, str):
+        grain_raw = ""
+    grain = str(grain_raw).lower().replace("×", " ")
     grain_tokens = set(re.findall(r"[a-z][a-z0-9_]*", grain))
-    sample_cols = {str(k).lower(): k for k in samples_by_col}
+    sample_cols = {str(k).lower(): k for k in (samples_by_col or {})}
     required: list[str] = []
     for cl, _orig in sample_cols.items():
         stem = cl[:-5] if cl.endswith("_name") else cl
@@ -329,6 +350,118 @@ def _required_metric_cols_for_table(bare: str, samples_by_col: dict[str, set[str
             seen.add(c)
             out.append(c)
     return out
+
+
+def _split_trailing_clauses(sql: str) -> tuple[str, str]:
+    """Split SQL into (head, trailing GROUP/ORDER/LIMIT/HAVING/QUALIFY tail)."""
+    # Search the original SQL. Do not map offsets from a string-stripped copy —
+    # shorter replacements shift indices into the middle of identifiers.
+    match = _TRAILING_CLAUSE_RE.search(sql or "")
+    if not match:
+        return (sql or "").rstrip().rstrip(";"), ""
+    return (sql or "")[: match.start()].rstrip(), (sql or "")[match.start() :]
+
+
+def _append_where_filters(sql: str, extra: str) -> str:
+    """AND extra predicates into WHERE, or insert WHERE before trailing clauses."""
+    extra = extra.strip()
+    if not extra:
+        return sql
+    head, tail = _split_trailing_clauses(sql)
+    if _WHERE_RE.search(_strip_string_literals(head)):
+        joined = f"{head} AND {extra}"
+    else:
+        joined = f"{head} WHERE {extra}"
+    if tail:
+        return f"{joined} {tail}".rstrip()
+    return joined.rstrip()
+
+
+def inject_missing_metric_filters(
+    sql: str,
+    table_ids: set[str] | None = None,
+    *,
+    query: str = "",
+) -> tuple[str, list[str]]:
+    """
+    Auto-inject equality filters for required metric discriminators that are missing.
+
+    Returns (possibly_modified_sql, notes like ``stg_faostat_production.element='Production'``).
+    Only injects values that exist in YAML ``*_value_samples``.
+    """
+    text = (sql or "").strip()
+    if not text:
+        return text, []
+
+    refs = _refs_for_sql_checks(text, table_ids)
+    if not refs:
+        return text, []
+
+    samples_map = value_samples_for_tables(refs)
+    if not samples_map:
+        return text, []
+
+    filtered = _filtered_columns(text)
+    clauses: list[str] = []
+    notes: list[str] = []
+
+    for bare in sorted(refs):
+        by_col = samples_map.get(bare) or {}
+        by_col_set = {k: set(v) for k, v in by_col.items()}
+        for col in _required_metric_cols_for_table(bare, by_col_set):
+            if col in filtered:
+                continue
+            sample_vals: set[str] = set()
+            orig_col = col
+            for key, vals in by_col.items():
+                if str(key).lower() == col:
+                    sample_vals = set(vals)
+                    orig_col = str(key)
+                    break
+            default = default_discriminator_value(orig_col, sample_vals, query=query)
+            if not default:
+                continue
+            lit = default.replace("'", "''")
+            clauses.append(f"{orig_col} = '{lit}'")
+            notes.append(f"{bare}.{orig_col}='{default}'")
+
+    if not clauses:
+        return text, []
+
+    extra = " AND ".join(clauses)
+    return _append_where_filters(text, extra), notes
+
+
+def broaden_empty_sql_once(
+    sql: str,
+    *,
+    crop_required: bool = True,
+    geography_required: bool = True,
+) -> str | None:
+    """
+    Soften a valid-but-empty SQL once: widen a single-year equality, optionally drop product.
+
+    Never drops geography filters. Returns None when nothing can be softened.
+    """
+    text = (sql or "").strip()
+    if not text:
+        return None
+    out = text
+    changed = False
+    year_match = _YEAR_EQ_RE.search(out)
+    if year_match:
+        year = int(year_match.group(2))
+        col = year_match.group(1)
+        out = _YEAR_EQ_RE.sub(f"{col} BETWEEN {year - 1} AND {year + 1}", out, count=1)
+        changed = True
+    if not crop_required:
+        replaced = _PRODUCT_EQ_RE.sub("1=1", out)
+        replaced = _PRODUCT_IN_RE.sub("1=1", replaced)
+        if replaced != out:
+            out = replaced
+            changed = True
+    _ = geography_required
+    return out if changed else None
 
 
 def _refs_for_sql_checks(sql: str, table_ids: set[str] | None = None) -> set[str]:
@@ -366,7 +499,8 @@ def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None
     previews: list[str] = []
     for bare in sorted(refs):
         by_col = samples_map.get(bare) or {}
-        for col in _required_metric_cols_for_table(bare, by_col):
+        by_col_set: dict[str, set[str]] = {k: set(v) for k, v in by_col.items()}
+        for col in _required_metric_cols_for_table(bare, by_col_set):
             if col in filtered:
                 continue
             missing.append(f"{bare}.{col}")
