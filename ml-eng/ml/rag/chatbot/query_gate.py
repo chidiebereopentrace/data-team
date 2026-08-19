@@ -18,11 +18,11 @@ from ml.rag.chatbot.answer_language import (
 )
 from ml.rag.chatbot.assistant_identity import META_ANSWER_FOOTER
 from ml.rag.chatbot.assistant_identity import is_meta_query
-from ml.rag.chatbot.product_knowledge import is_product_query
+from ml.rag.chatbot.product_knowledge import is_help_query, is_product_query
 
 SocialKind = Literal["greeting", "out_of_scope"]
 SocialSubKind = Literal["greeting", "thanks", "bye"]
-EarlyRoute = Literal["meta", "product", "greeting", "out_of_scope"]
+EarlyRoute = Literal["meta", "product", "help", "greeting", "out_of_scope"]
 
 _EMOJI_RE = re.compile(
     r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F600-\U0001F64F]+",
@@ -411,6 +411,8 @@ def early_non_rag_route(raw_query: str) -> EarlyRoute | None:
         return None
     if is_meta_query(q):
         return "meta"
+    if is_help_query(q):
+        return "help"
     if is_product_query(q, {}):
         return "product"
     if is_greeting_query(q):
@@ -450,7 +452,7 @@ def is_out_of_scope_query(query: str, decomposition: dict[str, Any] | None = Non
     q = (query or "").strip()
     if not q:
         return False
-    if is_greeting_query(q) or is_meta_query(q) or is_product_query(q, decomposition):
+    if is_greeting_query(q) or is_meta_query(q) or is_help_query(q) or is_product_query(q, decomposition):
         return False
     if not _facets_empty(decomposition):
         return False
@@ -547,6 +549,7 @@ __all__ = [
     "SOCIAL_TEMPLATES",
     "early_non_rag_route",
     "is_greeting_query",
+    "is_help_query",
     "is_out_of_scope_query",
     "classify_social_query",
     "classify_social_subkind",

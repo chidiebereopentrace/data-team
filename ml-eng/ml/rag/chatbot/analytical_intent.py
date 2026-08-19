@@ -70,7 +70,8 @@ def is_analytical_query(query: str, decomposition: dict[str, Any] | None = None)
 
     dec = decomposition if isinstance(decomposition, dict) else {}
     intent = str(dec.get("intent") or "").strip().lower()
-    geo = dec.get("geography") if isinstance(dec.get("geography"), list) else []
+    geo_raw = dec.get("geography")
+    geo = geo_raw if isinstance(geo_raw, list) else []
     has_multi_geo = len([g for g in geo if str(g).strip()]) >= 2
     has_region = bool(detect_regions_in_text(q))
     export = detect_export_intent(q)

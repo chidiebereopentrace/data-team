@@ -67,3 +67,15 @@ def test_integrated_plan_boosts_ota(monkeypatch) -> None:
     sel = select_corpora({}, plan_type="Integrated", query="maize outlook")
     assert "ota" in sel.active
     assert "plan_ota_boost" in sel.rationale
+
+
+def test_fact_lookup_selects_fewer_corpora_than_analytical(monkeypatch) -> None:
+    monkeypatch.delenv("RAG_CORPUS_ROUTER", raising=False)
+    query = "maize production in Kenya 2020"
+    dec = {"intent": "descriptive", "corpus_domain_tags": ["production", "crop"]}
+    fact = select_corpora(dec, query=query, task_mode="fact_lookup")
+    analytical = select_corpora(dec, query=query, task_mode="analytical")
+    assert len(fact.active) <= 3
+    assert len(fact.active) < len(analytical.active)
+    assert "public_reports" in fact.active
+    assert "news" in fact.active

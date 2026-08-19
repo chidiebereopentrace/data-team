@@ -255,17 +255,66 @@ class GenerationResult:
     answer: str
     citations: list[dict[str, Any]]
     acf: ACFResult | None = None
+    generate_input_chars: int | None = None
 
 
-def _generate_max_tokens() -> int:
-    return int(os.environ.get("RAG_GENERATE_MAX_TOKENS", "2048") or 2048)
+_TASK_MODE_MAX_TOKENS: dict[str, int] = {
+    "fact_lookup": 384,
+    "chat": 384,
+    "briefing": 640,
+    "data_export_only": 256,
+    "analytical": 1280,
+    "research": 1024,
+    "clarify": 512,
+}
+
+_TASK_MODE_CONTEXT_CHARS: dict[str, int] = {
+    "fact_lookup": 6000,
+    "chat": 6000,
+    "briefing": 9000,
+    "data_export_only": 5000,
+    "analytical": 12000,
+    "research": 10000,
+    "clarify": 4000,
+}
+
+_EXPORT_CAPTION_BLOCK = (
+    "\n\nARTIFACT EXPORT MODE: Write only a 2–5 sentence caption summarizing the "
+    "table/chart/report the user will download. No multi-section brief, no essay, "
+    "no Key Findings or other report headings in the chat answer."
+)
 
 
-def _context_max_chars(memory_block: str = "", *, soft_cap: bool = False) -> int:
-    base = int(os.environ.get("RAG_GENERATE_CONTEXT_MAX_CHARS", "12000") or 12000)
+def _generate_max_tokens(task_mode: str | None = None) -> int:
+    env_ceiling = int(os.environ.get("RAG_GENERATE_MAX_TOKENS", "2048") or 2048)
+    mode = (task_mode or "chat").strip().lower()
+    default = _TASK_MODE_MAX_TOKENS.get(mode, 512)
+    return min(env_ceiling, default)
+
+
+def _context_max_chars(
+    memory_block: str = "",
+    *,
+    task_mode: str | None = None,
+    soft_cap: bool = False,
+) -> int:
+    mode = (task_mode or "chat").strip().lower()
+    base = _TASK_MODE_CONTEXT_CHARS.get(mode, 12000)
+    env_override = os.environ.get("RAG_GENERATE_CONTEXT_MAX_CHARS", "").strip()
+    if env_override:
+        try:
+            base = min(base, int(env_override))
+        except ValueError:
+            pass
     if soft_cap:
         try:
-            halved = int(os.environ.get("RAG_GENERATE_CONTEXT_MAX_CHARS_NO_BQ", str(max(4000, base // 2))) or base // 2)
+            halved = int(
+                os.environ.get(
+                    "RAG_GENERATE_CONTEXT_MAX_CHARS_NO_BQ",
+                    str(max(4000, base // 2)),
+                )
+                or base // 2
+            )
         except ValueError:
             halved = max(4000, base // 2)
         base = min(base, max(4000, halved))
@@ -880,6 +929,7 @@ def _build_prompt(
     context_source_kinds: list[str] | None = None,
     inline_citations: bool = False,
     generation_plan: dict[str, Any] | None = None,
+    export_intent: str | None = None,
 ) -> list[dict[str, str]]:
     lang = (answer_lang or "").strip() or detect_answer_language(query)
     mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
@@ -1041,50 +1091,51 @@ def _build_prompt(
         if gen_plan_addendum:
             system = system + "\n\n" + gen_plan_addendum
     if analytical_mode or mode == "analytical":
-        system = (
-            system
-            + "\n\nANALYTICAL BRIEF MODE (mandatory structure and voice):\n"
-            "You are writing a short professional agricultural intelligence brief for decision-makers "
-            "(government, agribusiness, finance, policy). Write as an external analyst, not as a system "
-            "explaining its own limitations.\n\n"
-            "Required structure (use exactly these markdown headings, in this order, and nothing else):\n"
-            "## Key Findings\n"
-            "## Regional & Country Picture\n"
-            "## Production, Trade & Markets\n"
-            "## Drivers & Context\n"
-            "## Data Notes\n\n"
-            "Section guidance:\n"
-            "## Key Findings — Open with the strongest, most decision-relevant conclusions supported "
-            "by the Context. Lead with substance. Never open with gaps or caveats. Be specific "
-            "(numbers, years, countries, crops) whenever the Context supports it.\n"
-            "## Regional & Country Picture — Synthesise geographic patterns. Compare or contrast "
-            "countries/regions only when the Context provides the necessary material.\n"
-            "## Production, Trade & Markets — Focus on production volumes, yields, trade flows, "
-            "prices, or market conditions as supported by the Context. Prefer institutional sources "
-            "(FAOSTAT, FEWS NET, and similar) when they are present and definitive. When the source "
-            "is not definitive, treat the figures as Structured data — OpenTrace agricultural data.\n"
-            "## Drivers & Context — Explain mechanisms, policy actions, climate or pest pressures, "
-            "or other drivers only to the extent the Context supports them. Distinguish correlation "
-            "from causation. Do not invent causal claims.\n"
-            "## Data Notes — This is the only place where limitations may appear. Keep it to 2–5 "
-            "short bullets. Use neutral professional language only. Never expand gaps into narrative "
-            "discussion. Never mention internal system behaviour or BigQuery.\n"
-            "Rules:\n"
-            "- Lead the entire answer with the strongest available findings. Never open with gaps, "
-            "missing data, or statements about what OpenTrace does or does not have.\n"
-            "- In Key Findings, Regional & Country Picture, Production/Trade/Markets, and Drivers: "
-            "write only positive synthesis from the Context.\n"
-            "- Put ALL limitations, missing series, incomplete coverage, or thin evidence exclusively "
-            "in the final ## Data Notes section.\n"
-            "- Never write that structured data is unavailable, that a query returned no rows, "
-            "that OpenTrace lacks the data, that no reliable trend can be made, or that this is a "
-            "data gap. In Data Notes use: "
-            "\"Coverage for [year/region/commodity] remains limited in available sources.\"\n"
-            "- Do not invent production totals, rankings, yields, or year values that are not in Context.\n"
-            "- Keep country and regional claims aligned with geography present in Context.\n"
-            "- Tone: clear, decisive, concise. No academic padding, no thesis-style openings, "
-            "no restating the question."
-        )
+        if not export_intent:
+            system = (
+                system
+                + "\n\nANALYTICAL BRIEF MODE (mandatory structure and voice):\n"
+                "You are writing a short professional agricultural intelligence brief for decision-makers "
+                "(government, agribusiness, finance, policy). Write as an external analyst, not as a system "
+                "explaining its own limitations.\n\n"
+                "Required structure (use exactly these markdown headings, in this order, and nothing else):\n"
+                "## Key Findings\n"
+                "## Regional & Country Picture\n"
+                "## Production, Trade & Markets\n"
+                "## Drivers & Context\n"
+                "## Data Notes\n\n"
+                "Section guidance:\n"
+                "## Key Findings — Open with the strongest, most decision-relevant conclusions supported "
+                "by the Context. Lead with substance. Never open with gaps or caveats. Be specific "
+                "(numbers, years, countries, crops) whenever the Context supports it.\n"
+                "## Regional & Country Picture — Synthesise geographic patterns. Compare or contrast "
+                "countries/regions only when the Context provides the necessary material.\n"
+                "## Production, Trade & Markets — Focus on production volumes, yields, trade flows, "
+                "prices, or market conditions as supported by the Context. Prefer institutional sources "
+                "(FAOSTAT, FEWS NET, and similar) when they are present and definitive. When the source "
+                "is not definitive, treat the figures as Structured data — OpenTrace agricultural data.\n"
+                "## Drivers & Context — Explain mechanisms, policy actions, climate or pest pressures, "
+                "or other drivers only to the extent the Context supports them. Distinguish correlation "
+                "from causation. Do not invent causal claims.\n"
+                "## Data Notes — This is the only place where limitations may appear. Keep it to 2–5 "
+                "short bullets. Use neutral professional language only. Never expand gaps into narrative "
+                "discussion. Never mention internal system behaviour or BigQuery.\n"
+                "Rules:\n"
+                "- Lead the entire answer with the strongest available findings. Never open with gaps, "
+                "missing data, or statements about what OpenTrace does or does not have.\n"
+                "- In Key Findings, Regional & Country Picture, Production/Trade/Markets, and Drivers: "
+                "write only positive synthesis from the Context.\n"
+                "- Put ALL limitations, missing series, incomplete coverage, or thin evidence exclusively "
+                "in the final ## Data Notes section.\n"
+                "- Never write that structured data is unavailable, that a query returned no rows, "
+                "that OpenTrace lacks the data, that no reliable trend can be made, or that this is a "
+                "data gap. In Data Notes use: "
+                "\"Coverage for [year/region/commodity] remains limited in available sources.\"\n"
+                "- Do not invent production totals, rankings, yields, or year values that are not in Context.\n"
+                "- Keep country and regional claims aligned with geography present in Context.\n"
+                "- Tone: clear, decisive, concise. No academic padding, no thesis-style openings, "
+                "no restating the question."
+            )
     elif mode == "fact_lookup":
         system = (
             system
@@ -1106,11 +1157,9 @@ def _build_prompt(
             "series only for bibliographic/project facts. Do not invent citations."
         )
     elif mode == "data_export_only":
-        system = (
-            system
-            + "\n\nDATA EXPORT MODE: Write only a 2–4 sentence caption summarizing the table/chart "
-            "the user will download. No essay, no multi-section report, no long narrative."
-        )
+        system = system + _EXPORT_CAPTION_BLOCK.replace("ARTIFACT EXPORT MODE", "DATA EXPORT MODE")
+    if export_intent and mode != "data_export_only":
+        system = system + _EXPORT_CAPTION_BLOCK
     # Keep category plainness/precision when answering in a named non-English language
     # (avoids English academic bleed on e.g. Igbo + Farmers).
     if category and cat_tone and not is_english_answer_lang(lang) and lang not in ("unknown", ""):
@@ -1515,6 +1564,7 @@ def _finalize_generation_result(
     query: str = "",
     decomposition: dict[str, Any] | None = None,
     inline_citations: bool = False,
+    generate_input_chars: int | None = None,
 ) -> GenerationResult:
     """Attach structured citations and score ACF Path B on cited sources only."""
     t0 = time.perf_counter()
@@ -1565,6 +1615,7 @@ def _finalize_generation_result(
                 "cited_ids": cited_ids,
                 "kind_counts": kind_counts,
                 "latency_ms": trace_elapsed_ms(t0),
+                "generate_ms": trace_elapsed_ms(t0),
                 "acf_status": acf_status,
                 "acf_band": acf.band,
                 "acf_band_label": acf.band_label,
@@ -1576,7 +1627,12 @@ def _finalize_generation_result(
                 "acf_config_version": acf.config_version,
             }
         )
-        return GenerationResult(answer=prose, citations=citations, acf=acf)
+        return GenerationResult(
+            answer=prose,
+            citations=citations,
+            acf=acf,
+            generate_input_chars=generate_input_chars,
+        )
 
 
 def _call_llama(
@@ -1692,6 +1748,7 @@ def generate(
                 recency_tier=recency_tier,
                 inline_citations=inline_citations,
                 generation_plan=generation_plan,
+                export_intent=export_intent_s,
             )
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = (
@@ -1704,7 +1761,14 @@ def generate(
                     "  Then a final line: 'ACF: no evidence.'\n"
                     "No other prose. No hedging. No caveats beyond the ACF line.\n\n"
                 ) + messages[0]["content"]
-            llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
+            gen_max = _generate_max_tokens(task_mode)
+            input_chars = sum(len(str(m.get("content") or "")) for m in messages)
+            llama_answer = _call_llama(
+                messages,
+                purpose="generate",
+                model=model_for_plan(plan_type),
+                max_tokens=gen_max,
+            )
             if llama_answer:
                 cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
                 return _finalize_generation_result(
@@ -1713,6 +1777,7 @@ def generate(
                     query=query,
                     decomposition=decomposition,
                     inline_citations=inline_citations,
+                    generate_input_chars=input_chars,
                 )
         # Default (RAG_ALLOW_UNGROUNDED off or LLM returned nothing): structured
         # gap message so testers can distinguish "no data" from "low confidence".
@@ -1745,6 +1810,7 @@ def generate(
 
     ctx_budget = _context_max_chars(
         memory_block,
+        task_mode=task_mode,
         soft_cap=bool(
             structured_bq_unavailable and task_mode in ("chat", "briefing")
         ),
@@ -1773,8 +1839,23 @@ def generate(
         context_source_kinds=source_kinds,
         inline_citations=inline_citations,
         generation_plan=generation_plan,
+        export_intent=export_intent_s,
     )
-    llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
+    gen_max = _generate_max_tokens(task_mode)
+    input_chars = sum(len(str(m.get("content") or "")) for m in messages)
+    update_current_span_metadata(
+        {
+            "generate_max_tokens": gen_max,
+            "generate_input_chars": input_chars,
+            "task_mode": task_mode,
+        }
+    )
+    llama_answer = _call_llama(
+        messages,
+        purpose="generate",
+        model=model_for_plan(plan_type),
+        max_tokens=gen_max,
+    )
     if llama_answer:
         cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
         return _finalize_generation_result(
@@ -1783,6 +1864,7 @@ def generate(
             query=query,
             decomposition=decomposition,
             inline_citations=inline_citations,
+            generate_input_chars=input_chars,
         )
 
     if llm_configured():
@@ -1802,4 +1884,5 @@ def generate(
         acf=no_evidence_acf(
             explanation="Generation failed before citations could be scored."
         ),
+        generate_input_chars=input_chars,
     )

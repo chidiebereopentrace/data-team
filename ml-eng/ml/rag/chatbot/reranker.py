@@ -616,7 +616,9 @@ def _finalize_rerank_trace(
         "input_count": input_count,
         "output_count": len(items),
         "top_k": top_k,
+        "rerank_pool_size": input_count,
         "latency_ms": trace_elapsed_ms(start),
+        "rerank_ms": trace_elapsed_ms(start),
     }
     if model:
         meta["model"] = model

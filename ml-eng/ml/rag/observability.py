@@ -277,6 +277,7 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
     is_shortcut = bool(
         result.get("is_meta_query")
         or result.get("is_product_query")
+        or result.get("is_help_query")
         or result.get("is_greeting_query")
         or result.get("is_out_of_scope_query")
         or result.get("is_language_unknown")
@@ -315,6 +316,40 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
         summary["error"] = str(result.get("error"))[:200]
     if result.get("latency_ms") is not None:
         summary["latency_ms"] = float(result["latency_ms"])
+    task_mode = result.get("task_mode")
+    if task_mode:
+        summary["task_mode"] = str(task_mode)
+    for key in (
+        "early_short_circuit",
+        "skipped_decompose_llm",
+        "skipped_retrieval",
+        "decompose_llm_ms",
+        "vector_ms",
+        "corpus_count",
+        "cascade_level",
+        "bq_nl2sql_ms",
+        "bq_execute_ms",
+        "sql_source",
+        "rerank_ms",
+        "rerank_pool_size",
+        "generate_ms",
+        "generate_max_tokens",
+        "generate_input_chars",
+        "generate_input_tokens",
+        "bq_timeout",
+        "route_candidate",
+    ):
+        if result.get(key) is not None:
+            summary[key] = result.get(key)
+    corpus_sel = result.get("corpus_selection")
+    if isinstance(corpus_sel, dict) and corpus_sel.get("active"):
+        summary["corpus_count"] = summary.get("corpus_count") or len(corpus_sel.get("active") or [])
+    chars = summary.get("generate_input_chars")
+    if summary.get("generate_input_tokens") is None and chars is not None:
+        try:
+            summary["generate_input_tokens"] = int((int(chars) + 3) // 4)
+        except (TypeError, ValueError):
+            pass
     return summary
 
 
@@ -353,6 +388,8 @@ def infer_rag_route(result: dict[str, Any]) -> str:
     """Derive pipeline route label from a ``run_rag()`` result dict."""
     if result.get("is_meta_query"):
         return "meta"
+    if result.get("is_help_query"):
+        return "help"
     if result.get("is_product_query"):
         return "product"
     if result.get("is_greeting_query"):

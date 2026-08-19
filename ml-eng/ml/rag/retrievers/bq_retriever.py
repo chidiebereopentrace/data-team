@@ -366,6 +366,9 @@ class BQRetriever(BaseRetriever):
             self.nl2sql_enabled = os.environ.get("RAG_BQ_NL2SQL_ENABLED", "1").strip().lower() in ("1", "true", "on")
         self._client = None
         self._last_nl2sql_raws: list[str] = []
+        self.last_sql_source: str | None = None
+        self.last_bq_execute_ms: float | None = None
+        self.last_bq_nl2sql_ms: float | None = None
 
     def _record_nl2sql_raw(self, raw: str | None, *, parsed_ok: bool) -> None:
         """Keep short snippets of failed/empty NL2SQL generations for inspector debug."""
@@ -847,6 +850,7 @@ class BQRetriever(BaseRetriever):
                     "latency_ms": trace_elapsed_ms(nl2sql_t0),
                 }
             )
+            self.last_bq_nl2sql_ms = trace_elapsed_ms(nl2sql_t0)
             return queries[:max_queries]
 
     @_observe_span(as_type="span", name="retrieval.bq", capture_input=False, capture_output=False)
@@ -863,6 +867,9 @@ class BQRetriever(BaseRetriever):
         ``bq_sql_queries`` / ``bq_sql_debug``.
         """
         t0 = time.perf_counter()
+        self.last_sql_source = None
+        self.last_bq_execute_ms = None
+        self.last_bq_nl2sql_ms = None
         if not self.project_id:
             update_current_span_metadata({"status": "no_project", "row_count": 0})
             return [
@@ -933,6 +940,9 @@ class BQRetriever(BaseRetriever):
             sql_queries = [str(s).strip() for s in sql_input if str(s).strip()]
             explicit_sql = bool(sql_queries)
 
+        task_mode = str(kwargs.get("task_mode") or "").strip().lower()
+        fast_fact = task_mode in ("fact_lookup", "data_export_only")
+
         template_meta: dict[str, Any] | None = None
         pattern_meta: dict[str, Any] | None = None
         ds_name = self.datasets_config.get("staging", "staging_dev")
@@ -942,79 +952,7 @@ class BQRetriever(BaseRetriever):
         nl2sql_sqls: list[str] = []
         leftover_intents: list[Any] = []
 
-        if not sql_queries and not explicit_sql:
-            pattern_hits = try_sql_patterns(
-                query_intents,
-                project_id=self.project_id,
-                dataset=ds_name,
-                query=query,
-                entities=entities,
-                time_start=time_start,
-                time_end=time_end,
-                selected_tables=selected_tables,
-                limit=rows_per_query,
-                geo_country=geo_country,
-                geo_countries=geo_countries,
-            )
-            if pattern_hits:
-                pattern_meta = {
-                    "hits": pattern_hits,
-                    "pattern": pattern_hits[0].get("pattern"),
-                }
-                pattern_sqls = [str(h["sql"]) for h in pattern_hits if str(h.get("sql") or "").strip()]
-                compiled_idx = {h.get("intent_index") for h in pattern_hits}
-                if isinstance(query_intents, list):
-                    leftover_intents = [
-                        intent
-                        for idx, intent in enumerate(query_intents)
-                        if idx not in compiled_idx and isinstance(intent, dict)
-                    ]
-                sql_source = "pattern"
-
-            leftover_tables: list[str] = []
-            for intent in leftover_intents:
-                for raw in intent.get("tables") or []:
-                    tid = str(raw).strip().split(".")[-1].lower()
-                    if tid.startswith("stg_") and tid not in leftover_tables:
-                        leftover_tables.append(tid)
-            need_nl2sql = self.nl2sql_enabled and (
-                not pattern_sqls
-                or leftover_intents
-                or not query_intents
-            )
-            if need_nl2sql:
-                nl_tables = leftover_tables or (
-                    sorted(selected_tables) if selected_tables else None
-                )
-                nl2sql_sqls = self._nl_to_sql_queries(
-                    query,
-                    table_hints=hint_list,
-                    geo_country=geo_country,
-                    geo_countries=geo_countries,
-                    time_start=time_start,
-                    time_end=time_end,
-                    entities=entities,
-                    domains=domains,
-                    selected_tables=nl_tables,
-                    query=query,
-                )
-                if nl2sql_sqls and not pattern_sqls:
-                    sql_source = "nl2sql"
-
-        if explicit_sql:
-            sql_source = "explicit"
-        elif pattern_sqls and nl2sql_sqls:
-            sql_source = "pattern"
-        elif pattern_sqls:
-            sql_source = "pattern"
-        elif nl2sql_sqls:
-            sql_source = "nl2sql"
-        elif sql_queries:
-            sql_source = "nl2sql"
-        else:
-            sql_source = "none"
-
-        def _maybe_template() -> list[str]:
+        def _try_template_sql() -> list[str]:
             nonlocal template_meta, sql_source
             hit = try_sql_template(
                 query=query,
@@ -1034,10 +972,97 @@ class BQRetriever(BaseRetriever):
             sql_source = "template"
             return [str(hit["sql"])]
 
-        if not sql_queries:
-            sql_queries = list(pattern_sqls) + list(nl2sql_sqls)
-        if not sql_queries:
-            sql_queries = _maybe_template()
+        if not sql_queries and not explicit_sql:
+            template_sqls = _try_template_sql()
+            if template_sqls:
+                sql_queries = template_sqls
+            else:
+                pattern_hits = try_sql_patterns(
+                    query_intents,
+                    project_id=self.project_id,
+                    dataset=ds_name,
+                    query=query,
+                    entities=entities,
+                    time_start=time_start,
+                    time_end=time_end,
+                    selected_tables=selected_tables,
+                    limit=rows_per_query,
+                    geo_country=geo_country,
+                    geo_countries=geo_countries,
+                )
+                if pattern_hits:
+                    pattern_meta = {
+                        "hits": pattern_hits,
+                        "pattern": pattern_hits[0].get("pattern"),
+                    }
+                    pattern_sqls = [
+                        str(h["sql"]) for h in pattern_hits if str(h.get("sql") or "").strip()
+                    ]
+                    compiled_idx = {h.get("intent_index") for h in pattern_hits}
+                    if isinstance(query_intents, list):
+                        leftover_intents = [
+                            intent
+                            for idx, intent in enumerate(query_intents)
+                            if idx not in compiled_idx and isinstance(intent, dict)
+                        ]
+                    sql_source = "pattern"
+
+                leftover_tables: list[str] = []
+                for intent in leftover_intents:
+                    for raw in intent.get("tables") or []:
+                        tid = str(raw).strip().split(".")[-1].lower()
+                        if tid.startswith("stg_") and tid not in leftover_tables:
+                            leftover_tables.append(tid)
+                need_nl2sql = self.nl2sql_enabled and (
+                    not pattern_sqls
+                    or leftover_intents
+                    or not query_intents
+                )
+                if need_nl2sql:
+                    nl_tables = leftover_tables or (
+                        sorted(selected_tables) if selected_tables else None
+                    )
+                    prev_max = os.environ.get("RAG_BQ_MAX_SQL_QUERIES")
+                    if fast_fact:
+                        os.environ["RAG_BQ_MAX_SQL_QUERIES"] = "1"
+                    try:
+                        nl2sql_sqls = self._nl_to_sql_queries(
+                            query,
+                            table_hints=hint_list[:1] if fast_fact and hint_list else hint_list,
+                            geo_country=geo_country,
+                            geo_countries=geo_countries,
+                            time_start=time_start,
+                            time_end=time_end,
+                            entities=entities,
+                            domains=domains,
+                            selected_tables=nl_tables,
+                            query=query,
+                        )
+                    finally:
+                        if fast_fact:
+                            if prev_max is None:
+                                os.environ.pop("RAG_BQ_MAX_SQL_QUERIES", None)
+                            else:
+                                os.environ["RAG_BQ_MAX_SQL_QUERIES"] = prev_max
+                    if nl2sql_sqls and not pattern_sqls:
+                        sql_source = "nl2sql"
+                if not sql_queries:
+                    sql_queries = list(pattern_sqls) + list(nl2sql_sqls)
+
+        if explicit_sql:
+            sql_source = "explicit"
+        elif pattern_sqls and nl2sql_sqls:
+            sql_source = "pattern"
+        elif pattern_sqls:
+            sql_source = "pattern"
+        elif nl2sql_sqls:
+            sql_source = "nl2sql"
+        elif sql_queries and sql_source == "template":
+            sql_source = "template"
+        elif sql_queries:
+            sql_source = sql_source if sql_source != "none" else "nl2sql"
+        else:
+            sql_source = "none"
 
         if not sql_queries:
             reason = (
@@ -1056,6 +1081,10 @@ class BQRetriever(BaseRetriever):
                     "sql_source": sql_source,
                 }
             )
+            self.last_sql_source = sql_source
+            self.last_bq_execute_ms = 0.0
+            if self.last_bq_nl2sql_ms is None:
+                self.last_bq_nl2sql_ms = 0.0
             return [
                 _bq_diagnostic_item(
                     status="no_valid_sql",
@@ -1072,6 +1101,7 @@ class BQRetriever(BaseRetriever):
         any_usable_rows = False
         prepared_ok = False
         queries_left = max_queries
+        execute_t0 = time.perf_counter()
 
         def _run_sql_batch(batch: list[str], *, source: str) -> None:
             nonlocal budget, any_usable_rows, prepared_ok, queries_left
@@ -1253,9 +1283,10 @@ class BQRetriever(BaseRetriever):
                     ]
                     if rescue_sqls:
                         _run_sql_batch(rescue_sqls, source="pattern")
-            tmpl_batch = _maybe_template()
-            if tmpl_batch:
-                _run_sql_batch(tmpl_batch, source="template")
+            if sql_source != "template":
+                tmpl_batch = _try_template_sql()
+                if tmpl_batch:
+                    _run_sql_batch(tmpl_batch, source="template")
 
         if not items:
             if prepared_ok:
@@ -1293,8 +1324,14 @@ class BQRetriever(BaseRetriever):
                 "row_count": len(items),
                 "sql_hashes": sql_hashes[:10],
                 "latency_ms": trace_elapsed_ms(t0),
+                "bq_execute_ms": trace_elapsed_ms(execute_t0),
                 "sql_source": sql_source,
                 "nl2sql_model": _nl2sql_model_id(),
+                "task_mode": task_mode or None,
             }
         )
+        self.last_sql_source = sql_source
+        self.last_bq_execute_ms = trace_elapsed_ms(execute_t0)
+        if self.last_bq_nl2sql_ms is None:
+            self.last_bq_nl2sql_ms = 0.0
         return items

@@ -12,6 +12,10 @@ def test_infer_pipeline_route_product() -> None:
     assert infer_pipeline_route({"is_product_query": True}) == "product"
 
 
+def test_infer_pipeline_route_help() -> None:
+    assert infer_pipeline_route({"is_help_query": True, "is_product_query": True}) == "help"
+
+
 def test_infer_pipeline_route_greeting() -> None:
     assert infer_pipeline_route({"is_greeting_query": True}) == "greeting"
 

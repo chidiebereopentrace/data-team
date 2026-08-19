@@ -167,7 +167,7 @@ def web_fallback_enabled() -> bool:
 
 
 def _web_timeout_s() -> float:
-    return _env_float("RAG_WEB_TIMEOUT_S", 8.0)
+    return _env_float("RAG_WEB_TIMEOUT_S", 5.0)
 
 
 # --- Tavily daily quota counter (in-process, per UTC day) ---
@@ -233,6 +233,8 @@ def needs_web_fallback(
     reranked_context: list[dict[str, Any]],
     *,
     enabled: bool | None = None,
+    task_mode: str | None = None,
+    has_usable_bq: bool | None = None,
 ) -> bool:
     """
     Return True when supplemental web retrieval should run.
@@ -246,8 +248,19 @@ def needs_web_fallback(
     if not enabled:
         return False
 
+    mode = (task_mode or "").strip().lower()
     usable = _usable_reranked(reranked_context)
     min_chunks = _env_int("RAG_WEB_FALLBACK_MIN_CHUNKS", 3)
+
+    if has_usable_bq is None:
+        has_usable_bq = any(_context_kind(i) == "bigquery" for i in usable)
+    if mode in ("fact_lookup", "data_export_only", "briefing") and has_usable_bq:
+        return False
+    if mode == "fact_lookup" and len(usable) >= min_chunks:
+        has_news = any(_context_kind(i) in ("news", "news_article") for i in usable)
+        if has_news or has_usable_bq:
+            return False
+
     if len(usable) < min_chunks:
         return True
 
@@ -270,7 +283,17 @@ def needs_web_fallback(
 
 def route_after_rerank(state: dict[str, Any]) -> str:
     """Graph routing: 'web_fallback' or 'generate'."""
-    if needs_web_fallback(state.get("reranked_context") or []):
+    reranked = state.get("reranked_context") or []
+    bq_results = state.get("bq_results") or []
+    has_bq = any(
+        _context_kind(r) == "bigquery" or str(r.get("source") or "").lower() == "bigquery"
+        for r in bq_results
+    )
+    if needs_web_fallback(
+        reranked,
+        task_mode=str(state.get("task_mode") or ""),
+        has_usable_bq=has_bq,
+    ):
         return "web_fallback"
     return "generate"
 

@@ -39,5 +39,8 @@ unstructured>=0.10.0
 # Streamlit (for local RAG testing UI)
 streamlit>=1.28.0
 
+# Language identification (CommonLingua byte-level model; torch already present)
+commonlid[commonlingua]
+
 # Already in repo requirements.txt; listed here for standalone install
 google-cloud-bigquery>=3.14.0

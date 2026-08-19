@@ -6,7 +6,7 @@ from typing import Any
 
 from ml.rag.chat_history import normalize_messages
 from ml.rag.chatbot.assistant_identity import is_meta_query
-from ml.rag.chatbot.product_knowledge import is_product_query
+from ml.rag.chatbot.product_knowledge import is_help_query, is_product_query
 from ml.rag.chatbot.query_gate import is_greeting_query
 
 _ANAPHORA_RE = re.compile(
@@ -58,7 +58,7 @@ def _looks_elliptical(query: str) -> bool:
     q = (query or "").strip()
     if not q:
         return False
-    if is_greeting_query(q) or is_meta_query(q) or is_product_query(q, None):
+    if is_greeting_query(q) or is_meta_query(q) or is_help_query(q) or is_product_query(q, None):
         return False
     if _ANAPHORA_RE.search(q):
         return True

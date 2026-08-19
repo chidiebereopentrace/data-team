@@ -6,10 +6,13 @@ from unittest.mock import patch
 
 from ml.rag.chatbot.assistant_identity import META_ANSWER_FOOTER
 from ml.rag.chatbot.product_knowledge import (
+    classify_product_subroute,
     format_product_kb_for_prompt,
     generate_product_answer,
+    is_help_query,
     is_product_query,
     load_product_kb,
+    static_capability_answer,
 )
 
 
@@ -45,6 +48,8 @@ def test_is_product_query_positive() -> None:
     assert is_product_query("c'est quoi OpenTrace")
     assert is_product_query("OpenTrace ni nini")
     assert is_product_query("wetin be OpenTrace")
+    assert is_product_query("what is Ask ADZA")
+    assert is_product_query("what is AskADZA")
 
 
 def test_is_product_query_negative_ag_data() -> None:
@@ -63,6 +68,55 @@ def test_is_product_query_negative_ag_data() -> None:
 def test_is_product_query_identity_not_product() -> None:
     # Identity queries are handled by is_meta_query, not product
     assert not is_product_query("Who are you?")
+
+
+_INCIDENT_QUERY = "what is your use, and what can i use AskADZA for"
+
+
+def test_is_help_query_incident() -> None:
+    assert is_help_query(_INCIDENT_QUERY)
+    assert is_product_query(_INCIDENT_QUERY)
+    assert classify_product_subroute(_INCIDENT_QUERY) == "help"
+
+
+def test_is_help_query_capability_phrases() -> None:
+    assert is_help_query("what can I use you for")
+    assert is_help_query("how do I use Ask ADZA")
+    assert is_help_query("what questions can I ask")
+    assert is_product_query("what can I use you for")
+    assert is_product_query("how do I use Ask ADZA")
+
+
+def test_askadza_one_word_brand_normalization() -> None:
+    assert is_help_query("what can i use AskADZA for")
+    assert is_product_query("what is AskADZA")
+
+
+def test_is_help_query_negative_methodology() -> None:
+    assert not is_help_query("how does IPC work")
+    assert not is_product_query("how does IPC work")
+
+
+def test_is_help_query_product_brand_mechanics() -> None:
+    assert is_help_query("how does Ask ADZA work")
+    assert is_product_query("how does Ask ADZA work")
+
+
+def test_static_capability_answer_content() -> None:
+    ans = static_capability_answer("what can I use you for")
+    assert "natural-language interface" in ans.lower()
+    assert "maize" in ans.lower()
+    assert "rice" in ans.lower()
+    assert "Citations" not in ans
+    assert META_ANSWER_FOOTER.strip() in ans or "opentrace.africa" in ans.lower()
+
+
+def test_generate_product_answer_help_uses_static() -> None:
+    with patch("ml.rag.chatbot.generator._call_llama") as llama:
+        ans = generate_product_answer("what can I use you for")
+    llama.assert_not_called()
+    assert "maize" in ans.lower()
+    assert "Citations" not in ans
 
 
 def test_generate_product_answer_uses_kb_and_footer() -> None:

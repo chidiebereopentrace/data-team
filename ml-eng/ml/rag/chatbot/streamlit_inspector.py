@@ -136,6 +136,8 @@ def infer_pipeline_route(result: dict[str, Any]) -> str:
     """Derive the terminal graph path from a run_rag() result dict."""
     if result.get("is_meta_query"):
         return "meta"
+    if result.get("is_help_query"):
+        return "help"
     if result.get("is_product_query"):
         return "product"
     if result.get("is_greeting_query"):
@@ -155,6 +157,8 @@ def _flow_narrative(route: str) -> str:
     if route == "meta":
         return "decompose → generate_meta → END"
     if route == "product":
+        return "decompose → generate_product → END"
+    if route == "help":
         return "decompose → generate_product → END"
     if route in ("greeting", "out_of_scope"):
         return "decompose → generate_social → END"

@@ -10,19 +10,25 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ml.rag.chatbot.assistant_identity import META_ANSWER_FOOTER, _append_footer
-from ml.rag.chatbot.answer_language import detect_answer_language, language_instruction
+from ml.rag.chatbot.answer_language import (
+    detect_answer_language,
+    is_english_answer_lang,
+    language_instruction,
+)
 
 _DEFAULT_KB_PATH = Path(__file__).resolve().parent / "data" / "opentrace_product.json"
 
-# Brand / product tokens
+# Brand / product tokens (applied after _normalize_for_product_gate)
 _BRAND_PATTERNS: tuple[str, ...] = (
     r"\bopentrace\b",
     r"\bask adza\b",
+    r"\baskadza\b",
     r"\badza\b",
     r"\bofia\b",
     r"\bacf\b",
@@ -61,8 +67,82 @@ _PRODUCT_INTENT_PATTERNS: tuple[str, ...] = (
     r"\bwetin\s+be\s+opentrace\b",
 )
 
+# Capability / help phrasing — assistant use, onboarding, question menu
+_CAPABILITY_PATTERNS: tuple[str, ...] = (
+    r"\bwhat(?:'s| is| are) your (?:use|purpose|role|function)\b",
+    r"\bwhat can i use (?:you|ask adza|adza|opentrace) for\b",
+    r"\bhow (?:can|do) i use (?:you|ask adza|adza|opentrace)\b",
+    r"\bwhat (?:can|do) you (?:do|help with|answer)\b",
+    r"\bwhat questions can i ask\b",
+    r"\bhelp me (?:get started|use) (?:ask adza|opentrace|you)\b",
+    r"\bwhat are you (?:good|useful) for\b",
+    r"\bhow does (?:ask adza|this|opentrace) work\b",
+    r"\bhow (?:can|do) i (?:get started|start)\b.*\b(?:you|ask adza|opentrace)\b",
+    r"\bwhat (?:can|should) i ask (?:you|ask adza)\b",
+    # French
+    r"\bà quoi (?:tu\s+)?sers\b",
+    r"\bà quoi sert ask adza\b",
+    r"\bcomment (?:t'|te )?utiliser\b",
+    # Swahili
+    r"\bnaweza kutumia ask adza vipi\b",
+    r"\bask adza inafanya nini\b",
+    # Nigerian Pidgin
+    r"\bwetin i fit use you for\b",
+    r"\bwetin ask adza dey do\b",
+)
+
+_ASSISTANT_REF_RE = re.compile(r"\b(?:you|your)\b", re.IGNORECASE)
+_METHODOLOGY_INDICATORS: frozenset[str] = frozenset({
+    "ipc", "ndvi", "fews", "gdd", "evi", "spi", "vci", "chirps", "era5",
+})
+_METHODOLOGY_WORK_RE = re.compile(r"\bhow does (\w+) work\b", re.IGNORECASE)
+
 _BRAND_RE = re.compile("|".join(_BRAND_PATTERNS), re.IGNORECASE)
 _PRODUCT_INTENT_RE = re.compile("|".join(_PRODUCT_INTENT_PATTERNS), re.IGNORECASE)
+_CAPABILITY_RE = re.compile("|".join(_CAPABILITY_PATTERNS), re.IGNORECASE)
+
+CAPABILITY_STATIC_ANSWER = (
+    "Ask ADZA is OpenTrace Africa's natural-language interface for African agricultural "
+    "intelligence. You can ask about crops, markets, climate, food security, policy and "
+    "trade impacts, and related topics across Africa. Answers are grounded in OpenTrace "
+    "structured data and curated evidence when available, with transparency about "
+    "confidence and limits.\n\n"
+    "Example questions:\n"
+    "- What were maize yields in Kenya in 2020?\n"
+    "- How have rice prices trended in West Africa recently?"
+)
+
+CAPABILITY_TEMPLATES: dict[str, str] = {
+    "en": CAPABILITY_STATIC_ANSWER,
+    "fr": (
+        "Ask ADZA est l'interface en langage naturel d'OpenTrace Africa pour "
+        "l'intelligence agricole africaine. Vous pouvez poser des questions sur les "
+        "cultures, les marchés, le climat, la sécurité alimentaire, les politiques et "
+        "les impacts commerciaux en Afrique. Les réponses s'appuient sur les données "
+        "structurées OpenTrace et des preuves sélectionnées lorsque disponibles.\n\n"
+        "Exemples :\n"
+        "- Quels étaient les rendements de maïs au Kenya en 2020 ?\n"
+        "- Comment évoluent les prix du riz en Afrique de l'Ouest ?"
+    ),
+    "sw": (
+        "Ask ADZA ni kiolesura cha lugha ya asili cha OpenTrace Africa kwa akili ya "
+        "kilimo cha Afrika. Unaweza kuuliza kuhusu mazao, masoko, hali ya hewa, "
+        "usalama wa chakula, sera na athari za biashara barani Afrika. Majibu "
+        "yanategemea data iliyopangwa ya OpenTrace na ushahidi uliochaguliwa inapopatikana.\n\n"
+        "Mifano:\n"
+        "- Mazao ya mahindi Kenya mwaka 2020 yalikuwa nini?\n"
+        "- Bei za mchele Magharibi mwa Afrika zimebadilika vipi hivi karibuni?"
+    ),
+    "pcm": (
+        "Ask ADZA na OpenTrace Africa natural-language interface for African "
+        "agricultural intelligence. You fit ask about crops, market, climate, food "
+        "security, policy and trade impact for Africa. Answers dey grounded for "
+        "OpenTrace structured data and curated evidence when e dey available.\n\n"
+        "Example questions:\n"
+        "- Wetin be maize yield for Kenya for 2020?\n"
+        "- How rice price dey trend for West Africa recently?"
+    ),
+}
 
 # Agricultural data signals — if present with geography, force RAG
 _AG_ENTITY_TOKENS: frozenset[str] = frozenset({
@@ -393,9 +473,81 @@ def _has_ag_entities_in_decomposition(decomposition: dict[str, Any] | None) -> b
     return False
 
 
+def _normalize_for_product_gate(query: str) -> str:
+    """Normalize query text for brand/capability pattern matching."""
+    text = unicodedata.normalize("NFC", (query or "").strip())
+    text = re.sub(r"\bask\s*adza\b", "ask adza", text, flags=re.IGNORECASE)
+    text = re.sub(r"\baskadza\b", "ask adza", text, flags=re.IGNORECASE)
+    return text.casefold()
+
+
+def _is_methodology_question(normalized: str, raw_query: str) -> bool:
+    """Return True when query asks how an ag indicator works (not product help)."""
+    m = _METHODOLOGY_WORK_RE.search(normalized)
+    if not m:
+        return False
+    indicator = m.group(1).casefold()
+    if indicator not in _METHODOLOGY_INDICATORS:
+        return False
+    if _BRAND_RE.search(normalized) or _ASSISTANT_REF_RE.search(raw_query):
+        return False
+    return True
+
+
+def _passes_product_negative_guards(
+    query: str,
+    decomposition: dict[str, Any] | None,
+) -> bool:
+    """Return False when agricultural data focus should force full RAG."""
+    if _has_geography(decomposition):
+        return False
+    if _has_ag_entities_in_decomposition(decomposition):
+        return False
+    if _has_ag_data_intent(query):
+        return False
+    return True
+
+
+def is_help_query(query: str, decomposition: dict[str, Any] | None = None) -> bool:
+    """
+    Return True for capability / onboarding / use questions about Ask ADZA.
+
+    Does not require a brand token when assistant-reference phrasing is present.
+    """
+    if not query or not query.strip():
+        return False
+    raw = query.strip()
+    normalized = _normalize_for_product_gate(raw)
+    if _is_methodology_question(normalized, raw):
+        return False
+    if not _CAPABILITY_RE.search(normalized):
+        return False
+    return _passes_product_negative_guards(raw, decomposition)
+
+
+def classify_product_subroute(query: str) -> Literal["help", "product"] | None:
+    """Classify product-path subroute for observability."""
+    if is_help_query(query):
+        return "help"
+    raw = query.strip()
+    normalized = _normalize_for_product_gate(raw)
+    has_brand = bool(_BRAND_RE.search(normalized))
+    has_product_intent = bool(_PRODUCT_INTENT_RE.search(normalized))
+    if (has_brand or has_product_intent) and _passes_product_negative_guards(raw, None):
+        return "product"
+    return None
+
+
+def static_capability_answer(query: str = "", answer_lang: str | None = None) -> str:
+    """Return static capability/onboarding answer for known languages."""
+    lang = (answer_lang or detect_answer_language(query)).strip().lower()
+    text = CAPABILITY_TEMPLATES.get(lang) or CAPABILITY_STATIC_ANSWER
+    return _append_footer(text.strip())
+
+
 def is_product_query(query: str, decomposition: dict[str, Any] | None = None) -> bool:
     """
-    Return True if the query is about OpenTrace product/mission (not agricultural data).
+    Return True if the query is about OpenTrace product/mission or assistant capability.
 
     Agricultural data queries that mention OpenTrace (e.g. 'OpenTrace data on Kenya maize')
     return False so they route to full RAG.
@@ -403,26 +555,27 @@ def is_product_query(query: str, decomposition: dict[str, Any] | None = None) ->
     if not query or not query.strip():
         return False
 
-    q = query.strip()
-    has_brand = bool(_BRAND_RE.search(q))
-    has_product_intent = bool(_PRODUCT_INTENT_RE.search(q))
+    if is_help_query(query, decomposition):
+        return True
+
+    raw = query.strip()
+    normalized = _normalize_for_product_gate(raw)
+    has_brand = bool(_BRAND_RE.search(normalized))
+    has_product_intent = bool(_PRODUCT_INTENT_RE.search(normalized))
 
     if not has_brand and not has_product_intent:
         return False
 
-    # Negative signals: geographic or agricultural data focus → RAG
-    if _has_geography(decomposition):
-        return False
-    if _has_ag_entities_in_decomposition(decomposition):
-        return False
-    if _has_ag_data_intent(q):
-        return False
-
-    return True
+    return _passes_product_negative_guards(raw, decomposition)
 
 
 def generate_product_answer(query: str, **kwargs: Any) -> str:
     """Produce an answer from product KB + LLM. No retrieval, no Citations block."""
+    lang = detect_answer_language(query)
+    if is_help_query(query):
+        if is_english_answer_lang(lang) or lang in CAPABILITY_TEMPLATES:
+            return static_capability_answer(query, answer_lang=lang)
+
     from ml.rag.chatbot.generator import _call_llama, _resolve_memory_block
 
     kb_block = format_product_kb_for_prompt()
@@ -462,7 +615,11 @@ def generate_product_answer(query: str, **kwargs: Any) -> str:
 __all__ = [
     "load_product_kb",
     "format_product_kb_for_prompt",
+    "is_help_query",
     "is_product_query",
+    "classify_product_subroute",
+    "static_capability_answer",
     "generate_product_answer",
+    "CAPABILITY_STATIC_ANSWER",
     "PRODUCT_SYSTEM_PROMPT",
 ]

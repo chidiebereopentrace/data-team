@@ -66,15 +66,32 @@ def _news_item() -> dict:
 def test_generate_max_tokens_default_and_env() -> None:
     with mock.patch.dict(os.environ, {}, clear=False):
         os.environ.pop("RAG_GENERATE_MAX_TOKENS", None)
-        assert _generate_max_tokens() == 2048
-    with mock.patch.dict(os.environ, {"RAG_GENERATE_MAX_TOKENS": "4096"}):
-        assert _generate_max_tokens() == 4096
+        assert _generate_max_tokens("fact_lookup") == 384
+        assert _generate_max_tokens("analytical") == 1280
+        assert _generate_max_tokens("fact_lookup") < _generate_max_tokens("analytical")
+    with mock.patch.dict(os.environ, {"RAG_GENERATE_MAX_TOKENS": "512"}):
+        assert _generate_max_tokens("analytical") == 512
 
 
 def test_context_max_chars_memory_reduces_budget() -> None:
-    with mock.patch.dict(os.environ, {"RAG_GENERATE_CONTEXT_MAX_CHARS": "12000"}):
-        assert _context_max_chars("") == 12000
-        assert _context_max_chars("x" * 2000) == 10000
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RAG_GENERATE_CONTEXT_MAX_CHARS", None)
+        assert _context_max_chars("", task_mode="analytical") == 12000
+        assert _context_max_chars("", task_mode="fact_lookup") == 6000
+        assert _context_max_chars("x" * 2000, task_mode="analytical") == 10000
+
+
+def test_build_prompt_export_intent_uses_caption_not_analytical_brief() -> None:
+    msgs = _build_prompt(
+        "export maize production Kenya as csv",
+        context_block="[Source 1] data",
+        task_mode="analytical",
+        analytical_mode=True,
+        export_intent="csv",
+    )
+    system = msgs[0]["content"]
+    assert "ARTIFACT EXPORT MODE" in system or "caption" in system.lower()
+    assert "ANALYTICAL BRIEF MODE" not in system
 
 
 def test_build_context_block_respects_budget() -> None:

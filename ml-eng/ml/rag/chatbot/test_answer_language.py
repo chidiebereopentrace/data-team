@@ -4,6 +4,9 @@ from __future__ import annotations
 from unittest import mock
 
 from ml.rag.chatbot.answer_language import (
+    SUPPORTED_ANSWER_LANGUAGES,
+    _COMMONLINGUA_TO_ADZA,
+    _commonlingua_detect,
     detect_answer_language,
     insufficient_context_answer,
     is_english_answer_lang,
@@ -134,6 +137,45 @@ def test_insufficient_fr_sw() -> None:
     assert "fiables" in fr.lower() or "informations" in fr.lower()
     assert "taarifa" in sw.lower() or "Sina" in sw
     assert fr != insufficient_context_answer("en")
+
+
+def test_commonlingua_fallback_triggers_on_en() -> None:
+    """When regex returns 'en' but CommonLingua detects an African language, use the model."""
+    with mock.patch(
+        "ml.rag.chatbot.answer_language._commonlingua_detect",
+        return_value="ha",
+    ):
+        assert detect_answer_language("Ina so in san farashin hatsi") == "ha"
+
+
+def test_commonlingua_fallback_triggers_on_unknown() -> None:
+    """When regex returns 'unknown' but CommonLingua identifies a language, use it."""
+    with mock.patch(
+        "ml.rag.chatbot.answer_language._commonlingua_detect",
+        return_value="yo",
+    ):
+        assert detect_answer_language("\xff\xf8\xfc \xff\xf8\xfc \xff\xf8\xfc") == "yo"
+
+
+def test_commonlingua_graceful_import_error() -> None:
+    """If commonlid is not installed, _commonlingua_detect returns None."""
+    with mock.patch(
+        "ml.rag.chatbot.answer_language._load_commonlingua",
+        side_effect=ImportError("No module named 'commonlid'"),
+    ):
+        assert _commonlingua_detect("some long enough text for detection") is None
+
+
+def test_commonlingua_skips_short_text() -> None:
+    assert _commonlingua_detect("hi") is None
+
+
+def test_commonlingua_mapping_covers_supported_codes() -> None:
+    """Every non-mixed supported ADZA code has at least one CommonLingua source."""
+    adza_codes = {code for code, _ in SUPPORTED_ANSWER_LANGUAGES if code != "mixed"}
+    mapped_codes = set(_COMMONLINGUA_TO_ADZA.values())
+    missing = adza_codes - mapped_codes
+    assert not missing, f"ADZA codes without CommonLingua mapping: {missing}"
 
 
 def test_insufficient_igbo_falls_back_english() -> None:

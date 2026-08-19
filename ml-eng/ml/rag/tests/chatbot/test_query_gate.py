@@ -48,6 +48,13 @@ def test_early_non_rag_route_priority() -> None:
     assert early_non_rag_route("maize yields in Kenya 2020") is None
 
 
+def test_early_non_rag_route_help_incident() -> None:
+    incident = "what is your use, and what can i use AskADZA for"
+    assert early_non_rag_route(incident) == "help"
+    assert early_non_rag_route("what can I use you for") == "help"
+    assert early_non_rag_route("what questions can I ask") == "help"
+
+
 def test_out_of_scope_joke_and_ok() -> None:
     empty = {"entities": [], "geography": [], "domains": []}
     assert is_out_of_scope_query("tell me a joke", empty)

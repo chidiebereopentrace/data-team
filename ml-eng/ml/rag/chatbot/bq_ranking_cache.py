@@ -53,7 +53,10 @@ def cache_entry_from_bq_results(
     for item in bq_results or []:
         if not isinstance(item, dict):
             continue
-        meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        meta_raw = item.get("metadata")
+        if not isinstance(meta_raw, dict):
+            meta_raw = {}
+        meta: dict[str, Any] = meta_raw
         if meta.get("bq_enrichment") != "ranked_table":
             continue
         ranked_rows = meta.get("ranked_rows")
@@ -114,11 +117,23 @@ def is_ranking_follow_up(
     item = cached.get("item")
     if not isinstance(item, dict):
         return False
-    meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-    fp = fingerprint_ranking(decomposition, _s(meta.get("sql")), _s(meta.get("template")))
+    meta_raw = item.get("metadata")
+    if not isinstance(meta_raw, dict):
+        meta_raw = {}
+    meta: dict[str, Any] = meta_raw
+    sql_raw = meta.get("sql")
+    if not isinstance(sql_raw, str):
+        sql_raw = ""
+    template_raw = meta.get("template")
+    if not isinstance(template_raw, str):
+        template_raw = ""
+    fp = fingerprint_ranking(decomposition, _s(sql_raw), _s(template_raw))
     if fp != _s(cached.get("fingerprint")):
         return False
-    if not _same_time_window(decomposition, cached.get("decomposition")):
+    cached_dec = cached.get("decomposition")
+    if not isinstance(cached_dec, dict):
+        cached_dec = {}
+    if not _same_time_window(decomposition, cached_dec):
         return False
 
     q = query or ""

@@ -228,8 +228,24 @@ def select_corpora(
         _boost(boosts, "news", 0.12)
         _boost(boosts, "ota", 0.10)
         reasons.append("task_briefing")
+        skip.update({"academic_papers", "policies", "formation"})
+        reasons.append("briefing_corpus_only")
+    elif mode == "research":
+        preferred.update({"academic_papers", "policies"})
+        skip.update({"news", "ota", "formation"})
+        reasons.append("research_corpus_only")
     elif mode in ("fact_lookup", "data_export_only"):
-        # Prefer structured narrative lightly; de-emphasize long-form policy/academic.
+        # Fast path: narrow to structured narrative unless explicit cues add corpora.
+        numeric_domain = any(
+            tok in tag_blob
+            for tok in ("production", "yield", "crop", "market", "price", "trade")
+        )
+        if numeric_domain or intent == "descriptive":
+            preferred.update({"public_reports", "news"})
+            skip.update({"academic_papers", "policies", "formation"})
+            if "market" not in tag_blob and "price" not in tag_blob:
+                skip.add("ota")
+            reasons.append(f"task_{mode}_numeric_fast")
         _boost(boosts, "news", -0.04)
         _boost(boosts, "academic_papers", -0.06)
         _boost(boosts, "policies", -0.04)
@@ -305,11 +321,12 @@ def select_corpora(
         if k not in active:
             active.append(k)
 
-    # Never skip more than 3 corpora.
+    # Mode-aware skip cap: fact/export may skip up to 4 (min 2 active); others min 3.
+    max_skip = 4 if mode in ("fact_lookup", "data_export_only", "briefing", "research") else 3
     skipped = [k for k in ALL_CORPUS_KEYS if k not in active]
-    if len(skipped) > 3:
+    if len(skipped) > max_skip:
         for k in reversed(skipped):
-            if len([x for x in ALL_CORPUS_KEYS if x not in active]) <= 3:
+            if len([x for x in ALL_CORPUS_KEYS if x not in active]) <= max_skip:
                 break
             if k not in active:
                 active.append(k)

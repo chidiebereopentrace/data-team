@@ -6,8 +6,10 @@ Named tags: en | sw | fr | pcm | ar | am | ig | yo | ha | pt | tw | efi | zu | x
 """
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
+from functools import lru_cache
 from typing import Final
 
 AnswerLang = str
@@ -324,6 +326,59 @@ _INSUFFICIENT: Final[dict[str, str]] = {
 }
 
 
+_log = logging.getLogger(__name__)
+
+_COMMONLINGUA_TO_ADZA: Final[dict[str, str]] = {
+    "eng": "en",
+    "swh": "sw", "swa": "sw",
+    "fra": "fr",
+    "pcm": "pcm",
+    "ara": "ar", "arb": "ar",
+    "amh": "am",
+    "ibo": "ig",
+    "yor": "yo",
+    "hau": "ha",
+    "por": "pt",
+    "twi": "tw", "aka": "tw",
+    "efi": "efi",
+    "zul": "zu",
+    "xho": "xh",
+    "som": "so",
+    "wol": "wo",
+    "kin": "rw",
+}
+
+_COMMONLINGUA_CONFIDENCE_THRESHOLD: Final[float] = 0.6
+_COMMONLINGUA_MIN_CHARS: Final[int] = 12
+
+
+@lru_cache(maxsize=1)
+def _load_commonlingua():
+    from commonlid import classify
+    classify("warmup")
+    return classify
+
+
+def _commonlingua_detect(text: str) -> str | None:
+    if len(text) < _COMMONLINGUA_MIN_CHARS:
+        return None
+    try:
+        classify = _load_commonlingua()
+        result = classify(text, model_id="commonlingua")
+        if not result:
+            return None
+        code, confidence = result[0]
+        if confidence < _COMMONLINGUA_CONFIDENCE_THRESHOLD:
+            return None
+        adza = _COMMONLINGUA_TO_ADZA.get(code)
+        if adza == "en":
+            return None
+        return adza
+    except Exception:
+        _log.debug("CommonLingua unavailable, falling back to regex-only", exc_info=True)
+        return None
+
+
 def _tokenize(text: str) -> list[str]:
     return [t.lower() for t in _TOKEN_RE.findall(text or "")]
 
@@ -418,8 +473,7 @@ def detect_answer_language(query: str) -> AnswerLang:
     non_en_signal = named is not None or hit_count >= 2 or accents >= 0.08
 
     if not non_en_signal:
-        # Default Latin / English agronomy questions to English.
-        return "en"
+        return _commonlingua_detect(text) or "en"
 
     if en_hits >= 2 and (hit_count >= 1 or phrase is not None):
         return "mixed"
@@ -427,8 +481,7 @@ def detect_answer_language(query: str) -> AnswerLang:
     if named:
         return named
 
-    # Non-English signal (e.g. accents) without a named language → ask client.
-    return "unknown"
+    return _commonlingua_detect(text) or "unknown"
 
 
 def detect_canned_insufficient_lang(query: str) -> str:

@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from typing import Any, TypedDict, cast
 
 from ml.rag.chatbot.acf_scoring import acf_result_to_state, curated_product_acf, no_evidence_acf
@@ -32,7 +32,7 @@ from ml.rag.chatbot.plan_policy import (
 from ml.rag.chatbot.task_mode import clarify_answer, resolve_task_mode
 from ml.rag.chatbot.query_enricher import enrich_query_with_memory
 from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_measure, resolve_recency_tier
-from ml.rag.chatbot.product_knowledge import is_product_query
+from ml.rag.chatbot.product_knowledge import is_help_query, is_product_query
 from ml.rag.chatbot.query_gate import (
     classify_social_query,
     early_non_rag_route,
@@ -53,6 +53,7 @@ from ml.rag.chatbot.corpus_catalog import select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
 from ml.rag.chatbot.generation_plan import build_generation_plan
 from ml.rag.chatbot.generator import (
+    _generate_max_tokens,
     filter_context_items,
     generate,
     is_comparative_bq_query,
@@ -95,6 +96,10 @@ _DEFAULT_OTA_TOP_K = 10
 _DEFAULT_BQ_TOP_K = 12
 _DEFAULT_RERANK_TOP_K = 18
 _DEFAULT_RERANK_POOL_SIZE = 24
+_FACT_LOOKUP_RERANK_TOP_K = 12
+_FACT_LOOKUP_RERANK_POOL = 14
+_BRIEFING_RERANK_TOP_K = 14
+_BRIEFING_RERANK_POOL = 18
 
 _BRIEFING_NEWS_TOP_K = 16
 _BRIEFING_OTA_TOP_K = 12
@@ -275,6 +280,7 @@ def _retrieve_vector_cascade(
     geo_fallback_env: str,
     time_fallback_env: str,
     allow_geo_fallback: bool = True,
+    max_levels: int | None = None,
 ) -> list[dict[str, Any]]:
     """Try full filters, widen time ±1y, then drop time/geo when fallbacks allow."""
     attempts: list[dict[str, Any]] = [dict(base_kwargs)]
@@ -311,7 +317,11 @@ def _retrieve_vector_cascade(
         attempts.append(relaxed)
 
     seen: set[str] = set()
+    levels_tried = 0
     for kwargs in attempts:
+        if max_levels is not None and levels_tried >= max_levels:
+            break
+        levels_tried += 1
         key = _kwargs_attempt_key(kwargs)
         if key in seen:
             continue
@@ -369,6 +379,8 @@ def _vector_retrieve_for_corpus(
         kwargs["published_at_to"] = te
 
     allow_geo_fb = not _strict_compare_filters(dec)
+    task_mode = str(state.get("task_mode") or "chat").strip().lower()
+    cascade_max = 1 if task_mode in ("fact_lookup", "data_export_only") else None
     raw = _retrieve_vector_cascade(
         vr,
         q,
@@ -378,6 +390,7 @@ def _vector_retrieve_for_corpus(
         geo_fallback_env=geo_fallback_env,
         time_fallback_env=time_fallback_env,
         allow_geo_fallback=allow_geo_fb,
+        max_levels=cascade_max,
     )
     if countries:
         return _post_filter_geography(raw, countries)
@@ -427,6 +440,7 @@ class RAGGraphState(TypedDict, total=False):
     chat_history: list[dict[str, Any]] | None  # legacy: verbatim-only, no summary
     is_meta_query: bool | None
     is_product_query: bool | None
+    is_help_query: bool | None
     is_greeting_query: bool | None
     is_out_of_scope_query: bool | None
     is_language_unknown: bool | None
@@ -462,6 +476,24 @@ class RAGGraphState(TypedDict, total=False):
     measure_id: str | None
     recency_tier: str | None
     generation_plan: dict[str, Any] | None
+    # Latency / cost observability (internal; not part of the public API schema)
+    route_candidate: str | None
+    early_short_circuit: bool | None
+    skipped_decompose_llm: bool | None
+    skipped_retrieval: bool | None
+    decompose_llm_ms: float | None
+    vector_ms: float | None
+    corpus_count: int | None
+    cascade_level: int | None
+    bq_nl2sql_ms: float | None
+    bq_execute_ms: float | None
+    sql_source: str | None
+    rerank_ms: float | None
+    rerank_pool_size: int | None
+    rerank_mode: str | None
+    generate_ms: float | None
+    generate_max_tokens: int | None
+    generate_input_chars: int | None
 
 
 def _early_route_decompose_state(raw_q: str, route: str) -> dict[str, Any]:
@@ -471,7 +503,8 @@ def _early_route_decompose_state(raw_q: str, route: str) -> dict[str, Any]:
     base: dict[str, Any] = {
         "decomposition": {},
         "is_meta_query": route == "meta",
-        "is_product_query": route == "product",
+        "is_product_query": route in ("product", "help"),
+        "is_help_query": route == "help",
         "is_greeting_query": route == "greeting",
         "is_out_of_scope_query": route == "out_of_scope",
         "is_language_unknown": False,
@@ -479,6 +512,11 @@ def _early_route_decompose_state(raw_q: str, route: str) -> dict[str, Any]:
         "export_intent": export_intent,
         "task_mode": "chat",
         "analytical_mode": False,
+        "route_candidate": route,
+        "early_short_circuit": True,
+        "skipped_decompose_llm": True,
+        "skipped_retrieval": True,
+        "decompose_llm_ms": 0.0,
     }
     return base
 
@@ -515,7 +553,10 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
     )
     q = str(enrich.get("enriched_query") or raw_q).strip()
     with observed_span("decompose", input_data={"query": q[:200], "enriched": bool(enrich.get("enriched"))}):
-        dec = decompose_query(q)
+        dec_raw = decompose_query(q)
+        decompose_llm_ms = float(dec_raw.pop("_decompose_llm_ms", 0.0) or 0.0)
+        skipped_decompose_llm = bool(dec_raw.pop("_skipped_decompose_llm", False))
+        dec = dec_raw
         profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
         country = str((profile or {}).get("country") or "").strip() or None
         measure_hit = resolve_measure(q, dec)
@@ -547,7 +588,8 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         analytical = task_mode == "analytical"
         recency = resolve_recency_tier(q, measure_hit)
         meta = is_meta_query(q)
-        product = (not meta) and is_product_query(q, dec)
+        help_q = (not meta) and is_help_query(q, dec)
+        product = (not meta) and (help_q or is_product_query(q, dec))
         greeting = (not meta) and (not product) and is_greeting_query(q)
         out_of_scope = (
             (not meta) and (not product) and (not greeting) and is_out_of_scope_query(q, dec)
@@ -562,6 +604,8 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         )
         if meta:
             route_candidate = "meta"
+        elif help_q:
+            route_candidate = "help"
         elif product:
             route_candidate = "product"
         elif greeting:
@@ -585,12 +629,15 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
                 "measure_id": measure_hit.measure.id if measure_hit else None,
                 "recency_tier": recency,
                 "query_enriched": bool(enrich.get("enriched")),
+                "decompose_llm_ms": decompose_llm_ms,
+                "skipped_decompose_llm": skipped_decompose_llm,
             }
         )
         out: dict[str, Any] = {
             "decomposition": dec,
             "is_meta_query": meta,
             "is_product_query": product,
+            "is_help_query": help_q,
             "is_greeting_query": greeting,
             "is_out_of_scope_query": out_of_scope,
             "is_language_unknown": lang_unknown,
@@ -601,6 +648,11 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             "enriched_query": q if enrich.get("enriched") else None,
             "measure_id": measure_hit.measure.id if measure_hit else None,
             "recency_tier": recency,
+            "route_candidate": route_candidate,
+            "early_short_circuit": False,
+            "skipped_decompose_llm": skipped_decompose_llm,
+            "skipped_retrieval": False,
+            "decompose_llm_ms": decompose_llm_ms,
         }
         # Downstream nodes read state["query"]; keep enriched text as the working query.
         if enrich.get("enriched"):
@@ -1018,6 +1070,11 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
 
     jobs: dict[Any, str] = {}
     workers = max(1, min(6, len(active) + (1 if _use_legacy_research_collection() else 0)))
+    try:
+        corpus_timeout = float(os.environ.get("RAG_CORPUS_RETRIEVE_TIMEOUT_S", "8") or 8)
+    except ValueError:
+        corpus_timeout = 8.0
+    vector_t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=workers) as ex:
         for key, fn in retrievers.items():
             if key in active:
@@ -1030,7 +1087,11 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
         for fut in as_completed(jobs):
             kind = jobs[fut]
             try:
-                res = fut.result()
+                res = fut.result(timeout=corpus_timeout)
+            except FuturesTimeoutError:
+                logger.warning("Parallel retrieval timed out for %s after %.1fs", kind, corpus_timeout)
+                corpus_errors.append(f"{kind}:timeout")
+                res = []
             except Exception as exc:
                 logger.exception("Parallel retrieval failed for %s; returning empty list", kind)
                 corpus_errors.append(f"{kind}:{type(exc).__name__}")
@@ -1057,6 +1118,8 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     meta_update: dict[str, Any] = {
         "corpus_active": ",".join(selection.active),
         "corpus_rationale": selection.rationale,
+        "corpus_count": len(selection.active),
+        "vector_ms": trace_elapsed_ms(vector_t0),
     }
     if corpus_errors:
         meta_update["corpus_error"] = ",".join(corpus_errors)
@@ -1086,6 +1149,9 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
         + list(legacy_out),
         "vector_results": combined,
         "corpus_selection": selection.to_dict(),
+        "vector_ms": meta_update["vector_ms"],
+        "corpus_count": len(selection.active),
+        "cascade_level": 1 if task_mode in ("fact_lookup", "data_export_only") else None,
     }
 
 
@@ -1192,7 +1258,14 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     raw_plan = state.get("bq_sql_plan")
     plan: dict[str, Any] = raw_plan if isinstance(raw_plan, dict) else {}
     if plan.get("skip_bq"):
-        return {"bq_results": [], "bq_sql_queries": [], "bq_sql_debug": []}
+        return {
+            "bq_results": [],
+            "bq_sql_queries": [],
+            "bq_sql_debug": [],
+            "sql_source": "skipped",
+            "bq_execute_ms": 0.0,
+            "bq_nl2sql_ms": 0.0,
+        }
 
     cached = state.get("structured_ranking_cache")
     if isinstance(cached, dict) and is_ranking_follow_up(q, dec, cached):
@@ -1205,6 +1278,9 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
             "bq_sql_debug": bq_sql_debug,
             "bq_cache_hit": True,
             "structured_ranking_cache": cached,
+            "sql_source": "cache",
+            "bq_execute_ms": 0.0,
+            "bq_nl2sql_ms": 0.0,
         }
 
     hints = [str(h).strip() for h in (plan.get("table_hints") or []) if str(h).strip()]
@@ -1242,21 +1318,42 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         prev_max_sql = os.environ.get("RAG_BQ_MAX_SQL_QUERIES")
         os.environ["RAG_BQ_MAX_SQL_QUERIES"] = str(floor)
         env_bumped = True
+    task_mode = str(state.get("task_mode") or "chat").strip().lower()
     try:
-        results = retriever.retrieve(
-            q,
-            top_k=top_k,
-            table_hints=hints,
-            selected_tables=list(plan.get("selected_tables") or []),
-            query_intents=intents,
-            time_start=ts or None,
-            time_end=te or None,
-            entities=entities,
-            domains=domains,
-            **bq_geo,
-            crop_required=bool(plan.get("crop_required", True)),
-            geography_required=bool(plan.get("geography_required", True)),
+        bq_timeout = float(
+            os.environ.get(
+                "RAG_BQ_RETRIEVE_TIMEOUT_S",
+                "6" if task_mode in ("fact_lookup", "data_export_only") else "15",
+            )
+            or (6 if task_mode in ("fact_lookup", "data_export_only") else 15)
         )
+    except ValueError:
+        bq_timeout = 6.0 if task_mode in ("fact_lookup", "data_export_only") else 15.0
+    try:
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(
+                retriever.retrieve,
+                q,
+                top_k=top_k,
+                table_hints=hints,
+                selected_tables=list(plan.get("selected_tables") or []),
+                query_intents=intents,
+                time_start=ts or None,
+                time_end=te or None,
+                entities=entities,
+                domains=domains,
+                task_mode=task_mode,
+                **bq_geo,
+                crop_required=bool(plan.get("crop_required", True)),
+                geography_required=bool(plan.get("geography_required", True)),
+            )
+            results = fut.result(timeout=bq_timeout)
+    except FuturesTimeoutError:
+        update_current_span_metadata({"bq_timeout": True, "status": "timeout"})
+        results = []
+    except Exception:
+        logger.exception("BQ retrieve failed")
+        results = []
     finally:
         if env_bumped:
             if prev_max_sql is None:
@@ -1274,11 +1371,21 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         update_current_span_metadata({"bq_context_truncated": True})
     bq_sql_queries, bq_sql_debug = aggregate_bq_sql_debug(results)
     cache_entry = cache_entry_from_bq_results(results, query=q, decomposition=dec)
+    sql_source = getattr(retriever, "last_sql_source", None)
+    if not sql_source:
+        for row in bq_sql_debug:
+            src = row.get("sql_source")
+            if src:
+                sql_source = str(src)
+                break
     out: dict[str, Any] = {
         "bq_results": results,
         "bq_sql_queries": bq_sql_queries,
         "bq_sql_debug": bq_sql_debug,
         "bq_cache_hit": False,
+        "sql_source": sql_source,
+        "bq_execute_ms": getattr(retriever, "last_bq_execute_ms", None),
+        "bq_nl2sql_ms": getattr(retriever, "last_bq_nl2sql_ms", None),
     }
     if cache_entry:
         out["structured_ranking_cache"] = cache_entry
@@ -1394,17 +1501,46 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
 def node_rerank(state: RAGGraphState) -> dict[str, Any]:
     query = state.get("query") or ""
     merged = state.get("merged_context") or []
-    top_k = int(state.get("rerank_top_k") or _DEFAULT_RERANK_TOP_K)
+    rerank_t0 = time.perf_counter()
     task_mode = str(state.get("task_mode") or "chat").strip().lower()
-    # Score a wider pool, then diversity-pack so domains reinforce each other
-    # instead of a flat news flood (or a blunt no-BQ top_k cut).
+    if task_mode == "fact_lookup":
+        top_k = int(state.get("rerank_top_k") or _FACT_LOOKUP_RERANK_TOP_K)
+        default_pool = _FACT_LOOKUP_RERANK_POOL
+    elif task_mode == "briefing":
+        top_k = int(state.get("rerank_top_k") or _BRIEFING_RERANK_TOP_K)
+        default_pool = _BRIEFING_RERANK_POOL
+    else:
+        top_k = int(state.get("rerank_top_k") or _DEFAULT_RERANK_TOP_K)
+        default_pool = _DEFAULT_RERANK_POOL_SIZE
+
+    corpus_sel = state.get("corpus_selection")
+    active_corpora = 6
+    if isinstance(corpus_sel, dict):
+        active_raw = corpus_sel.get("active")
+        if isinstance(active_raw, list):
+            active_corpora = len(active_raw)
+    if len(merged) <= 8 and active_corpora <= 1:
+        packed = diversify_context_pack(
+            list(merged),
+            top_k=top_k if top_k > 0 else None,
+            task_mode=task_mode,
+        )
+        if top_k > 0 and len(packed) > top_k:
+            packed = packed[:top_k]
+        return {
+            "reranked_context": packed,
+            "rerank_mode": "skipped_trivial",
+            "rerank_ms": trace_elapsed_ms(rerank_t0),
+            "rerank_pool_size": 0,
+        }
+
     try:
         pool = int(
-            os.environ.get("RAG_RERANK_POOL_SIZE", str(_DEFAULT_RERANK_POOL_SIZE))
-            or _DEFAULT_RERANK_POOL_SIZE
+            os.environ.get("RAG_RERANK_POOL_SIZE", str(default_pool))
+            or default_pool
         )
     except ValueError:
-        pool = _DEFAULT_RERANK_POOL_SIZE
+        pool = default_pool
     score_k = max(top_k, min(pool, max(len(merged), top_k)))
     dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
     numeric_query = is_numeric_data_query(str(query), dec)
@@ -1424,7 +1560,12 @@ def node_rerank(state: RAGGraphState) -> dict[str, Any]:
     # Honor explicit rerank_top_k as an upper bound after diversity packing.
     if top_k > 0 and len(packed) > top_k:
         packed = packed[:top_k]
-    return {"reranked_context": packed, "rerank_mode": last_rerank_mode()}
+    return {
+        "reranked_context": packed,
+        "rerank_mode": last_rerank_mode(),
+        "rerank_ms": trace_elapsed_ms(rerank_t0),
+        "rerank_pool_size": pool,
+    }
 
 
 def _has_usable_internal_context(reranked: list[dict[str, Any]]) -> bool:
@@ -1451,7 +1592,13 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
     """
     with observed_span("web_fallback"):
         reranked = list(state.get("reranked_context") or [])
-        if not needs_web_fallback(reranked):
+        bq_results = state.get("bq_results") or []
+        has_bq = bool(bq_results)
+        if not needs_web_fallback(
+            reranked,
+            task_mode=str(state.get("task_mode") or ""),
+            has_usable_bq=has_bq,
+        ):
             update_current_span_metadata({"web_fallback_status": "skipped"})
             return {}
 
@@ -1667,7 +1814,9 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         measure_id=str(mid) if mid else None,
     )
     gkw["generation_plan"] = gen_plan.to_dict()
+    gen_t0 = time.perf_counter()
     gen_result = generate(query, context, **gkw)
+    gen_max = _generate_max_tokens(task_mode)
 
     # ACF Path B is computed post-cite inside generate/_finalize_generation_result.
     acf = gen_result.acf or no_evidence_acf()
@@ -1678,6 +1827,9 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         "citations": gen_result.citations,
         "answer_lang": answer_lang,
         "generation_plan": gen_plan.to_dict(),
+        "generate_ms": trace_elapsed_ms(gen_t0),
+        "generate_max_tokens": gen_max,
+        "generate_input_chars": getattr(gen_result, "generate_input_chars", None),
         **acf_result_to_state(acf),
     }
 
@@ -1822,13 +1974,19 @@ def node_generate_product(state: RAGGraphState) -> dict[str, Any]:
     if state.get("category"):
         gkw["category"] = state.get("category")
     with observed_span("generate_product", input_data={"query": str(query)[:200]}):
-        update_current_span_metadata({"answer_lang": answer_lang, "route": "product"})
+        route = "help" if state.get("is_help_query") else "product"
+        update_current_span_metadata({"answer_lang": answer_lang, "route": route})
+        gen_t0 = time.perf_counter()
         answer = generate_product_answer(query, **gkw)
+        generate_ms = trace_elapsed_ms(gen_t0)
 
     return {
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
+        "generate_ms": generate_ms,
+        "generate_max_tokens": 0 if state.get("is_help_query") else _generate_max_tokens("chat"),
+        "generate_input_chars": len(answer),
         **acf_result_to_state(curated_product_acf()),
     }
 
