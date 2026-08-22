@@ -1,6 +1,7 @@
 {{ config(materialized='table') }}
 
 select
+    {{ dbt_utils.generate_surrogate_key(['person_id']) }} as openaire_persons_sk,
     person_id,
     given_name,
     family_name,

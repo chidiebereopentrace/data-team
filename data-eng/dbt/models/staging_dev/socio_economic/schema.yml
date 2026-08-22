@@ -4,6 +4,11 @@ models:
   - name: stg_africa_hdi
     description: "Africa Human Development Index"
     columns:
+      - name: africa_hdi_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: country
         tests:
           - not_null
@@ -37,6 +42,11 @@ models:
   - name: stg_africa_gdp_ppp
     description: "Africa GDP per capita PPP"
     columns:
+      - name: africa_gdp_ppp_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: country_code
         tests:
           - not_null
@@ -64,6 +74,11 @@ models:
   - name: stg_nakuru_air_quality
     description: "Nakuru Air Quality Archive"
     columns:
+      - name: nakuru_air_quality_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: sensor_id
         tests:
           - not_null
@@ -82,3 +97,23 @@ models:
           datepart: day
           field: loaded_at
           interval: 7
+
+  - name: stg_un_peace_security
+    description: "UN Peace and Security records"
+    columns:
+      - name: un_peace_security_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - not_null
+      - name: dataset_id
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'un_peace_security_records'
+      - name: loaded_at
+        tests:
+          - not_null

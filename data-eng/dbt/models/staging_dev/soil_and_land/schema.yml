@@ -4,6 +4,11 @@ models:
   - name: stg_isric_africa_soil
     description: "ISRIC Africa soil properties by depth (wide); drops fully-null soil rows"
     columns:
+      - name: isric_africa_soil_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: latitude
         tests:
           - not_null
@@ -26,6 +31,11 @@ models:
   - name: stg_isda_soil_enriched
     description: "Enriched iSDA soil properties (long: property + depth + value)"
     columns:
+      - name: isda_soil_enriched_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: longitude
         tests:
           - not_null
@@ -63,6 +73,11 @@ models:
   - name: stg_unccd_land_degradation
     description: "UNCCD land degradation indicators"
     columns:
+      - name: unccd_land_degradation_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: geo_area_code
         tests:
           - not_null
@@ -85,6 +100,10 @@ models:
   - name: stg_s4a_field_surveys
     description: "S4A field surveys – soil surface"
     columns:
+      - name: s4a_field_surveys_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - not_null
       - name: plot_code
         tests:
           - not_null
@@ -98,6 +117,11 @@ models:
   - name: stg_cifor_icraf
     description: "CIFOR-ICRAF plot soil nutrients"
     columns:
+      - name: cifor_icraf_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: plot_id
         tests:
           - not_null

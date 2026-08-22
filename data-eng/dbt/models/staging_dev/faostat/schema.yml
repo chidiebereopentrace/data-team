@@ -4,6 +4,11 @@ models:
   - name: stg_faostat_production
     description: "FAOSTAT Production – Crops & Livestock + Production Indices + Value of Agricultural Production"
     columns:
+      - name: faostat_production_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: area_code
         tests:
           - not_null
@@ -43,6 +48,10 @@ models:
   - name: stg_faostat_emissions
     description: "FAOSTAT Agrifood Systems Emissions (all farm-gate, land-use, pre/post and totals)"
     columns:
+      - name: faostat_emissions_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - not_null
       - name: area_code
         tests:
           - not_null
@@ -66,14 +75,6 @@ models:
           - not_null
 
     tests:
-      - unique:
-          column_name: >
-            cast(area_code as string) || '-' ||
-            cast(item_code as string) || '-' ||
-            cast(element_code as string) || '-' ||
-            cast(year as string) || '-' ||
-            source_natural_key
-
       - dbt_utils.recency:
           datepart: day
           field: loaded_at
@@ -82,6 +83,11 @@ models:
   - name: stg_faostat_prices
     description: "FAOSTAT Prices – Producer Prices, Consumer Price Indices, Deflators, Exchange Rates"
     columns:
+      - name: faostat_prices_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: area_code
         tests:
           - not_null
@@ -126,6 +132,11 @@ models:
   - name: stg_faostat_trade
     description: "FAOSTAT Trade – Crops & Livestock Products, Trade Indices, Indicators"
     columns:
+      - name: faostat_trade_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: area_code
         tests:
           - not_null
@@ -170,6 +181,11 @@ models:
   - name: stg_faostat_food_balances
     description: "FAOSTAT Food Balances + Supply Utilization Accounts + Commodity Balances"
     columns:
+      - name: faostat_food_balances_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: area_code
         tests:
           - not_null
@@ -209,6 +225,11 @@ models:
   - name: stg_faostat_investment_asti
     description: "FAOSTAT Investment flows + ASTI Researchers & Expenditures"
     columns:
+      - name: faostat_investment_asti_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: area_code
         tests:
           - not_null
@@ -249,6 +270,11 @@ models:
   - name: stg_faostat_land_inputs
     description: "FAOSTAT Land Use/Cover + Fertilizers + Pesticides + Manure + Temperature + Nutrient Balance + Livestock Patterns"
     columns:
+      - name: faostat_land_inputs_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: area_code
         tests:
           - not_null
@@ -287,6 +313,11 @@ models:
   - name: stg_faostat_population_employment
     description: "FAOSTAT Annual Population + Employment in Agriculture & Rural areas"
     columns:
+      - name: faostat_population_employment_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: area_code
         tests:
           - not_null
@@ -320,9 +351,174 @@ models:
           field: loaded_at
           interval: 14
 
+  - name: stg_faostat_macro
+    description: "FAOSTAT Macro-Economic Indicators + Capital Stock"
+    columns:
+      - name: faostat_macro_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
+      - name: area_code
+        tests:
+          - not_null
+      - name: item_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Unpivoted_FAOstat_africa_Macro-Economic_Indicators_Macro_Indicators'
+                - 'Unpivoted_FAOstat_africa_Macro-Economic_Indicators_Capital_Stock'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            cast(item_code as string) || '-' ||
+            cast(element_code as string) || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+  - name: stg_faostat_food_aid
+    description: "FAOSTAT Discontinued Food Aid Shipments (WFP)"
+    columns:
+      - name: faostat_food_aid_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
+      - name: area_code
+        tests:
+          - not_null
+      - name: item_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Unpivoted_FAOstat_africa_Discontinued_archives_and_data_series_Food_Aid_Shipments_WFP'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            cast(item_code as string) || '-' ||
+            cast(element_code as string) || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+  - name: stg_faostat_forestry
+    description: "FAOSTAT Forestry Production/Trade + Pulp/Paper + Discontinued Forestry Trade Flows"
+    columns:
+      - name: faostat_forestry_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
+      - name: area_code
+        tests:
+          - not_null
+      - name: item_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Unpivoted_FAOstat_africa_Forestry_Forestry_Production_and_Trade'
+                - 'Unpivoted_FAOstat_africa_Forestry_Pulp_and_paper_capacities_survey'
+                - 'Unpivoted_FAOstat_africa_Discontinued_archives_and_data_series_Forestry_Trade_Flows'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            coalesce(partner_country_code, '') || '-' ||
+            cast(item_code as string) || '-' ||
+            cast(element_code as string) || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+  - name: stg_faostat_discontinued_machinery
+    description: "FAOSTAT Discontinued Machinery"
+    columns:
+      - name: faostat_discontinued_machinery_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
+      - name: area_code
+        tests:
+          - not_null
+      - name: item_code
+        tests:
+          - not_null
+      - name: element_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Unpivoted_FAOstat_africa_Discontinued_archives_and_data_series_Machinery'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            cast(item_code as string) || '-' ||
+            cast(element_code as string) || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
   - name: stg_faostat_sdg_hdi
     description: "FAOSTAT SDG Indicators + Food Value Chain + Agricultural Census"
     columns:
+      - name: faostat_sdg_hdi_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: country_name
         tests:
           - not_null

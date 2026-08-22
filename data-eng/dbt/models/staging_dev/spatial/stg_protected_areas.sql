@@ -1,6 +1,7 @@
 {{ config(materialized='table') }}
 
 select
+    {{ dbt_utils.generate_surrogate_key(['objectid']) }} as protected_areas_sk,
     objectid,
     name as protected_area_name,
     count as feature_count,

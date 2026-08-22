@@ -1,6 +1,7 @@
 {{ config(materialized='table') }}
 
 select
+    {{ dbt_utils.generate_surrogate_key(['country_code', 'observation_year']) }} as africa_gdp_ppp_sk,
     country_name,
     country_code,
     observation_year,

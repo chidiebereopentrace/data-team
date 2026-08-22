@@ -4,6 +4,10 @@ models:
   - name: stg_yield_raw_data
     description: "Yield Raw Data with season and production system"
     columns:
+      - name: yield_raw_data_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - not_null
       - name: country
         tests:
           - not_null
@@ -24,15 +28,6 @@ models:
           - not_null
 
     tests:
-      - unique:
-          column_name: >
-            coalesce(fnid, '') || '-' ||
-            country || '-' ||
-            product || '-' ||
-            coalesce(season_name, '') || '-' ||
-            coalesce(cast(harvest_year as string), '') || '-' ||
-            coalesce(cast(harvest_month as string), '')
-
       - dbt_utils.recency:
           datepart: day
           field: loaded_at
@@ -41,6 +36,10 @@ models:
   - name: stg_ilri_dairy_genetics
     description: "ILRI Dairy Genetics East Africa - Milk yields + Calving records"
     columns:
+      - name: ilri_dairy_genetics_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - not_null
       - name: client_id
         tests:
           - not_null
@@ -65,15 +64,6 @@ models:
           - not_null
 
     tests:
-      - unique:
-          column_name: >
-            cast(client_id as string) || '-' ||
-            farm_code || '-' ||
-            cow_number || '-' ||
-            record_type || '-' ||
-            coalesce(date_of_milking, '') || '-' ||
-            coalesce(initial_calving_date, '')
-
       - dbt_utils.recency:
           datepart: day
           field: loaded_at

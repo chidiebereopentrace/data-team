@@ -4,6 +4,8 @@
 -- Trade matrix: Reporter → area_*; Partner retained for grain.
 -- Temperature: months_* instead of item_*.
 
+with base as (
+
 select
     Area_Code as area_code,
     Area_Code_M49 as area_code_m49,
@@ -277,3 +279,10 @@ select
     'Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Sustainability_Indicators_Livestock_Patterns' as source_natural_key,
     current_timestamp() as loaded_at
 from {{ source('raw_dev', 'Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Sustainability_Indicators_Livestock_Patterns') }}
+
+)
+
+select
+    {{ dbt_utils.generate_surrogate_key(['area_code', 'partner_country_code', 'item_code', 'months_code', 'element_code', 'year', 'source_natural_key']) }} as faostat_land_inputs_sk,
+    base.*
+from base

@@ -4,6 +4,11 @@ models:
   - name: stg_openaire_projects
     description: "OpenAIRE research projects"
     columns:
+      - name: openaire_projects_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: project_id
         tests:
           - not_null
@@ -25,6 +30,11 @@ models:
   - name: stg_openaire_organisations
     description: "OpenAIRE organisations"
     columns:
+      - name: openaire_organisations_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: organisation_id
         tests:
           - not_null
@@ -49,6 +59,11 @@ models:
   - name: stg_openaire_persons
     description: "OpenAIRE persons"
     columns:
+      - name: openaire_persons_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: person_id
         tests:
           - not_null
@@ -70,6 +85,11 @@ models:
   - name: stg_openaire_product_links
     description: "OpenAIRE product relationship links"
     columns:
+      - name: openaire_product_links_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: openaire_id
         tests:
           - not_null
@@ -89,6 +109,11 @@ models:
   - name: stg_openaire_data_sources
     description: "OpenAIRE data sources"
     columns:
+      - name: openaire_data_sources_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: openaire_id
         tests:
           - not_null

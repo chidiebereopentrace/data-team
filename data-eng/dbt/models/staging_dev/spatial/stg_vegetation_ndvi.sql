@@ -1,6 +1,7 @@
 {{ config(materialized='table') }}
 
 select
+    {{ dbt_utils.generate_surrogate_key(['grid_id']) }} as vegetation_ndvi_sk,
     objectid,
     grid_id,
     mean as ndvi_mean,

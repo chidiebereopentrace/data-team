@@ -4,6 +4,8 @@
 -- Investment rows: item/element; ASTI rows: indicator/institution (+ degree/sex or cost_category).
 -- Development Flows: Recipient → area_*; Donor/Purpose retained for grain.
 
+with base as (
+
 select
     Area_Code as area_code,
     Area_Code_M49 as area_code_m49,
@@ -225,3 +227,10 @@ select
     'Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Expenditures' as source_natural_key,
     current_timestamp() as loaded_at
 from {{ source('raw_dev', 'Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Expenditures') }}
+
+)
+
+select
+    {{ dbt_utils.generate_surrogate_key(['area_code', 'donor_code', 'purpose_code', 'item_code', 'element_code', 'indicator_code', 'institution', 'degree_code', 'sex_code', 'cost_category_code', 'year', 'source_natural_key']) }} as faostat_investment_asti_sk,
+    base.*
+from base
