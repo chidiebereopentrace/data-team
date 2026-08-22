@@ -1,6 +1,7 @@
 {{ config(materialized='table') }}
 
 select
+    {{ dbt_utils.generate_surrogate_key(['fnid', 'country', 'product', 'season_name', 'harvest_year', 'harvest_month']) }} as yield_raw_data_sk,
     fnid,
     country,
     country_code,

@@ -1,6 +1,7 @@
 {{ config(materialized='table') }}
 
 select
+    {{ dbt_utils.generate_surrogate_key(['openaire_id', 'rel_name', 'target_id']) }} as openaire_product_links_sk,
     openaire_id,
     title,
     entity_type,

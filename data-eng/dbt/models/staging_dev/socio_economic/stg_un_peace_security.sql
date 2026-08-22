@@ -1,11 +1,7 @@
-{{ config(
-    materialized='table',
-    enabled=false
-) }}
-
--- Payload-style records; low analytical value. Kept disabled for completeness.
+{{ config(materialized='table') }}
 
 select
+    {{ dbt_utils.generate_surrogate_key(['dataset_id']) }} as un_peace_security_sk,
     dataset_id,
     ingested_timestamp,
     record_payload,

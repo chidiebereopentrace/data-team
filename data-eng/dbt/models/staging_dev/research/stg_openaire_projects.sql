@@ -1,6 +1,7 @@
 {{ config(materialized='table') }}
 
 select
+    {{ dbt_utils.generate_surrogate_key(['project_id']) }} as openaire_projects_sk,
     ingestion_id,
     project_id,
     project_code,

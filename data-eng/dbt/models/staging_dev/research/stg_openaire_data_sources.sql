@@ -1,6 +1,7 @@
 {{ config(materialized='table') }}
 
 select
+    {{ dbt_utils.generate_surrogate_key(['openaire_id']) }} as openaire_data_sources_sk,
     ingestion_id,
     fetched_at,
     openaire_id,

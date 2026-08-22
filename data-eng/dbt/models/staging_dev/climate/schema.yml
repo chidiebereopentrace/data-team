@@ -4,6 +4,11 @@ models:
   - name: stg_nasa_power
     description: "NASA POWER Daily + Hourly climate data"
     columns:
+      - name: nasa_power_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - unique
+          - not_null
       - name: country_code
         tests:
           - not_null
@@ -27,6 +32,11 @@ models:
   - name: stg_copernicus_era5
     description: "Copernicus ERA5 climate reanalysis"
     columns:
+      - name: copernicus_era5_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: latitude
         tests:
           - not_null
@@ -52,6 +62,10 @@ models:
   - name: stg_climatewatch_health
     description: "ClimateWatch Climate-Health Impacts"
     columns:
+      - name: climatewatch_health_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - not_null
       - name: country_name
         tests:
           - not_null

@@ -3,6 +3,7 @@
 -- S4A field surveys: soil surface theme (other themes can be unioned later).
 
 select
+    {{ dbt_utils.generate_surrogate_key(['plot_code', 'survey_date', 'tsu_id']) }} as s4a_field_surveys_sk,
     plot_code,
     plot_id,
     country_code,

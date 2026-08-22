@@ -1,0 +1,32 @@
+{{ config(materialized='table') }}
+
+select
+    {{ dbt_utils.generate_surrogate_key(['objectid']) }} as arcgis_poi_sk,
+    objectid,
+    osm_id2 as osm_id,
+    name,
+    name_en,
+    addr_city as city,
+    addr_country as country,
+    addr_housenumber,
+    addr_postcode,
+    addr_street,
+    addr_unit,
+    amenity,
+    attraction,
+    bicycle,
+    board_type,
+    building,
+    building_levels,
+    description,
+    ele,
+    historic,
+    information,
+    opening_hours,
+    operator,
+    phone,
+    ref as reference,
+    source_transform,
+    'arcgis_infrastructure_tourism_poi' as source_natural_key,
+    current_timestamp() as loaded_at
+from {{ source('raw_dev', 'arcgis_infrastructure_tourism_poi') }}

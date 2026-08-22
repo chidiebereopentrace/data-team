@@ -4,6 +4,11 @@ models:
   - name: stg_protected_areas
     description: "ArcGIS land protected areas"
     columns:
+      - name: protected_areas_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: protected_area_name
         tests:
           - not_null
@@ -23,6 +28,11 @@ models:
   - name: stg_vegetation_ndvi
     description: "ArcGIS vegetation NDVI grids"
     columns:
+      - name: vegetation_ndvi_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: grid_id
         tests:
           - not_null
@@ -45,6 +55,11 @@ models:
   - name: stg_biodiversity
     description: "GBIF biodiversity occurrences + ArcGIS rarity-80 birds"
     columns:
+      - name: biodiversity_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - unique
+          - not_null
       - name: source_natural_key
         tests:
           - not_null
@@ -58,9 +73,64 @@ models:
           field: loaded_at
           interval: 30
 
+  - name: stg_arcgis_poi
+    description: "ArcGIS infrastructure tourism points of interest"
+    columns:
+      - name: arcgis_poi_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
+      - name: objectid
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'arcgis_infrastructure_tourism_poi'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
+  - name: stg_arcgis_sa_wards_demographics
+    description: "ArcGIS South Africa wards demographics"
+    columns:
+      - name: arcgis_sa_wards_demographics_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - unique
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'arcgis_south_africa_wards_demographics_2ce07'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 30
+
   - name: stg_germplasm
     description: "Crop germplasm Africa + ArcGIS rice germplasm"
     columns:
+      - name: germplasm_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - not_null
       - name: germplasm_id
         tests:
           - not_null

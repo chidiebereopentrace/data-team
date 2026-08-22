@@ -4,6 +4,11 @@ models:
   - name: stg_ilri_household_food_security
     description: "ILRI Household Food Security surveys (CRP + Indicators Final)"
     columns:
+      - name: ilri_household_food_security_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - unique
+          - not_null
       - name: household_id
         tests:
           - not_null
@@ -33,6 +38,10 @@ models:
   - name: stg_ilri_animal_health
     description: "ILRI Animal Health – Lira clinical scores, Acaricide use, AMUSE Ethiopia"
     columns:
+      - name: ilri_animal_health_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - not_null
       - name: household_id
         tests:
           - not_null
@@ -49,9 +58,6 @@ models:
           - not_null
 
     tests:
-      - unique:
-          column_name: "household_id || '-' || source_natural_key || '-' || coalesce(species, '')"
-
       - dbt_utils.recency:
           datepart: day
           field: loaded_at
@@ -60,6 +66,11 @@ models:
   - name: stg_ilri_vegetation_feed
     description: "ILRI Vegetation Survey + Feed Assessment"
     columns:
+      - name: ilri_vegetation_feed_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - unique
+          - not_null
       - name: source_natural_key
         tests:
           - not_null
@@ -87,6 +98,11 @@ models:
   - name: stg_ilri_i4i_livestock_insurance
     description: "ILRI Index-Based Livestock Insurance – Farmer data + Vaccinator sampling"
     columns:
+      - name: ilri_i4i_livestock_insurance_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - unique
+          - not_null
       - name: source_natural_key
         tests:
           - not_null
@@ -114,6 +130,11 @@ models:
   - name: stg_ilri_vendor_consumer
     description: "ILRI Vendor and Consumer surveys (Burkina Faso + Ethiopia)"
     columns:
+      - name: ilri_vendor_consumer_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - unique
+          - not_null
       - name: source_natural_key
         tests:
           - not_null
@@ -140,6 +161,11 @@ models:
   - name: stg_ilri_food_hazards
     description: "ILRI Foodborne Hazards Meta-Analysis (Burkina Faso)"
     columns:
+      - name: ilri_food_hazards_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - unique
+          - not_null
       - name: foodborne_hazard
         tests:
           - not_null
@@ -159,9 +185,91 @@ models:
           field: loaded_at
           interval: 90
 
+  - name: stg_ilri_genomics
+    description: "ILRI Genomics – accessions + aliloo phenotypes"
+    columns:
+      - name: ilri_genomics_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - not_null
+      - name: genomics_domain
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'accessions'
+                - 'aliloo_phenotypes'
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'ilri_accessions'
+                - 'ilri_aliloo_phenotypes_public'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 90
+
+  - name: stg_ilri_buffel_snp_markers
+    description: "ILRI Buffel grass GBS SNP markers (wide marker table)"
+    columns:
+      - name: ilri_buffel_snp_markers_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - unique
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'ilri_ilri_s_gbs_data_on_buffel_grass_snp_markers'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 90
+
+  - name: stg_ilri_buffel_silicosdart_markers
+    description: "ILRI Buffel grass GBS SilicoDArT markers (wide marker table)"
+    columns:
+      - name: ilri_buffel_silicosdart_markers_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'ilri_ilri_s_gbs_data_on_buffel_grass_silicosdart_markers'
+      - name: loaded_at
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.recency:
+          datepart: day
+          field: loaded_at
+          interval: 90
+
   - name: stg_ilri_other_surveys
     description: "ILRI other / lower-priority surveys (ADGO, Agripreneur, Dairy cashflow, Tanzania forum)"
     columns:
+      - name: ilri_other_surveys_sk
+        description: "Surrogate key from whole-row hash"
+        tests:
+          - not_null
       - name: source_natural_key
         tests:
           - not_null

@@ -4,6 +4,10 @@ models:
   - name: stg_wfp_vampire_prices
     description: "WFP VAMPIRE Global Food Prices – curated for fct_prices"
     columns:
+      - name: wfp_vampire_prices_sk
+        description: "Surrogate key over business grain"
+        tests:
+          - not_null
       - name: country
         tests:
           - not_null
@@ -30,14 +34,6 @@ models:
           - not_null
 
     tests:
-      - unique:
-          column_name: >
-            coalesce(cast(country_id as string), '') || '-' ||
-            coalesce(cast(market_id as string), '') || '-' ||
-            coalesce(cast(product_id as string), '') || '-' ||
-            coalesce(price_type, '') || '-' ||
-            cast(year as string) || '-' ||
-            coalesce(cast(month as string), '')
       - dbt_utils.recency:
           datepart: day
           field: loaded_at

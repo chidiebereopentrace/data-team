@@ -3,6 +3,8 @@
 -- FAOSTAT Agrifood Systems Emissions (farm-gate, land-use, pre/post, totals/indicators).
 -- Branches cast missing columns to null so heterogeneous raw schemas union cleanly.
 
+with base as (
+
 select
     Area_Code as area_code,
     Area_Code_M49 as area_code_m49,
@@ -200,3 +202,10 @@ select
     'Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_indicators' as source_natural_key,
     current_timestamp() as loaded_at
 from {{ source('raw_dev', 'Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_indicators') }}
+
+)
+
+select
+    {{ dbt_utils.generate_surrogate_key(['area_code', 'item_code', 'element_code', 'year', 'source_natural_key']) }} as faostat_emissions_sk,
+    base.*
+from base
