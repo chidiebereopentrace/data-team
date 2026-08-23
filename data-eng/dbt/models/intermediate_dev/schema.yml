@@ -1,0 +1,298 @@
+version: 2
+
+models:
+  - name: int_geography_conformed
+    description: "Conformed geography spine from cities, FEWS, yield, and FAOSTAT sources"
+    columns:
+      - name: geo_key
+        tests:
+          - not_null
+      - name: geo_level
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['country', 'admin1', 'admin2', 'city', 'fnid']
+    tests:
+      - unique:
+          column_name: "geo_key || '-' || source_natural_key || '-' || coalesce(native_id,'')"
+
+  - name: int_source_registry
+    description: "ACF Path B source registry keyed by source_natural_key"
+    columns:
+      - name: source_natural_key
+        tests:
+          - not_null
+          - unique
+      - name: source_id
+        tests:
+          - not_null
+          - unique
+      - name: organisation_name
+        tests:
+          - not_null
+      - name: tier
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3]
+              quote: false
+      - name: data_level
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['global', 'national', 'sub_national', 'community']
+
+  - name: int_faostat_production_pivoted
+    description: "FAOSTAT production long-to-wide pivot on element"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+    tests:
+      - unique:
+          column_name: >
+            cast(area_code as string) || '-' ||
+            coalesce(cast(item_code as string),'') || '-' ||
+            cast(year as string) || '-' ||
+            source_natural_key
+
+  - name: int_yield_raw_enriched
+    description: "Yield raw data with non-null country filter"
+    columns:
+      - name: country
+        tests:
+          - not_null
+      - name: product
+        tests:
+          - not_null
+
+  - name: int_fews_food_security_conformed
+    description: "FEWS food security conformed pass-through"
+    columns:
+      - name: measure_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['population', 'classification']
+
+  - name: int_prices_harmonised
+    description: "Harmonised market prices from FEWS, WFP VAMPIRE, and FAOSTAT"
+    columns:
+      - name: price_value
+        tests:
+          - not_null
+      - name: price_source
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['fews', 'wfp', 'faostat']
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_isric_soil_long
+    description: "ISRIC Africa soil wide-to-long unpivot with Africa bbox filter"
+    columns:
+      - name: soil_property
+        tests:
+          - not_null
+      - name: depth_band
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null
+
+  - name: int_season_mapped
+    description: "Yield seasons by country with median planting/harvest months and dual keys"
+    tests:
+      - unique:
+          column_name: "coalesce(country,'') || '-' || season_name_norm"
+    columns:
+      - name: season_name
+        tests:
+          - not_null
+      - name: season_key
+        tests:
+          - not_null
+      - name: season_country_key
+        tests:
+          - not_null
+
+  - name: int_yield_raw_with_geo
+    description: "Yield enriched with season_country_key and geo_key (fnid or country/admin fallback)"
+    columns:
+      - name: country
+        tests:
+          - not_null
+      - name: product
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_fews_food_security_with_geo
+    description: "FEWS food security with fnid geo_key attach"
+    columns:
+      - name: measure_type
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_isda_soil_with_geo
+    description: "iSDA soil points joined to city geo_key via rounded lat/lng"
+    columns:
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null
+      - name: soil_property
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_employment_conformed
+    description: "FAOSTAT population and employment with country geo_key via area_code"
+    columns:
+      - name: year
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_faostat_macro_conformed
+    description: "FAOSTAT macro indicators with measurement_form and country geo_key"
+    columns:
+      - name: measurement_form
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['share_of_gdp', 'annual_growth', 'constant_price', 'current_price']
+      - name: year
+        tests:
+          - not_null
+
+  - name: int_hdi_conformed
+    description: "Africa HDI with ISO3 geo_key map; null HDI rows excluded"
+    columns:
+      - name: year
+        tests:
+          - not_null
+      - name: hdi_value
+        tests:
+          - not_null
+
+  - name: int_gdp_ppp_conformed
+    description: "Africa GDP PPP with ISO3 geo_key map; null GDP rows excluded"
+    columns:
+      - name: year
+        tests:
+          - not_null
+      - name: gdp_per_capita_ppp
+        tests:
+          - not_null
+
+  - name: int_ilri_household_conformed
+    description: "ILRI household food security with country-level geo_key"
+    columns:
+      - name: household_id
+        tests:
+          - not_null
+      - name: country
+        tests:
+          - not_null
+
+  - name: int_nasa_power_conformed
+    description: "NASA POWER with city round-join and ISO2 country fallback"
+    columns:
+      - name: latitude
+        tests:
+          - not_null:
+              config:
+                where: "latitude is not null or longitude is not null"
+      - name: longitude
+        tests:
+          - not_null:
+              config:
+                where: "latitude is not null or longitude is not null"
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_era5_conformed
+    description: "Copernicus ERA5 with city geo_key and Africa bbox"
+    columns:
+      - name: temperature_2m
+        tests:
+          - not_null
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null
+
+  - name: int_climatewatch_conformed
+    description: "ClimateWatch climate-health impacts with country-name geo_key (iso_code2 often null in source)"
+    columns:
+      - name: country_name
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_ilri_animal_health_conformed
+    description: "ILRI animal health survey measures at household grain"
+    columns:
+      - name: household_id
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_land_inputs_split
+    description: "FAOSTAT land inputs tagged by trade/temperature/use_or_cover grain"
+    columns:
+      - name: input_grain
+        tests:
+          - accepted_values:
+              values: ['trade', 'temperature', 'use_or_cover']
+      - name: year
+        tests:
+          - not_null
+
+  - name: int_biodiversity_conformed
+    description: "Biodiversity occurrences and richness with Africa or country filter"
+    columns:
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_s4a_plots_geo
+    description: "S4A field survey plots filtered to Africa bbox"
+    columns:
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null

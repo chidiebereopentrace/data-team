@@ -1,6 +1,6 @@
-# dbt project: OpenTrace data team (landing → raw_dev → staging_dev → mart_dev).
+# dbt project: OpenTrace data team (landing → raw_dev → staging_dev → intermediate_dev → mart_dev).
 # BigQuery dataset IDs match folder names; override with BQ_DATASET_* env vars.
-# Run with: dbt run --target raw_dev | staging_dev | mart_dev
+# Run with: dbt run --target raw_dev | staging_dev | intermediate_dev | mart_dev
 
 name: open_trace
 version: "1.0.0"
@@ -24,6 +24,7 @@ vars:
   landing_dataset: "{{ env_var('BQ_DATASET_LANDING', 'landing') }}"
   raw_dev_dataset: "{{ env_var('BQ_DATASET_BRONZE', 'raw_dev') }}"
   staging_dev_dataset: "{{ env_var('BQ_DATASET_SILVER', 'staging_dev') }}"
+  intermediate_dev_dataset: "{{ env_var('BQ_DATASET_INTERMEDIATE', 'intermediate_dev') }}"
   mart_dev_dataset: "{{ env_var('BQ_DATASET_GOLD', 'mart_dev') }}"
 
 models:
@@ -36,6 +37,9 @@ models:
       +database: "{{ env_var('BQ_PROJECT', 'your-gcp-project-id') }}"
     staging_dev:
       +schema: "{{ env_var('BQ_DATASET_SILVER', 'staging_dev') }}"
+      +database: "{{ env_var('BQ_PROJECT', 'your-gcp-project-id') }}"
+    intermediate_dev:
+      +schema: "{{ env_var('BQ_DATASET_INTERMEDIATE', 'intermediate_dev') }}"
       +database: "{{ env_var('BQ_PROJECT', 'your-gcp-project-id') }}"
     mart_dev:
       +schema: "{{ env_var('BQ_DATASET_GOLD', 'mart_dev') }}"

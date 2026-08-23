@@ -20,6 +20,13 @@ open_trace:
       dataset: "{{ env_var('BQ_DATASET_SILVER', 'staging_dev') }}"
       location: "{{ env_var('DBT_BIGQUERY_LOCATION', 'europe-west3') }}"
       threads: 4
+    intermediate_dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('BQ_PROJECT', 'your-gcp-project-id') }}"
+      dataset: "{{ env_var('BQ_DATASET_INTERMEDIATE', 'intermediate_dev') }}"
+      location: "{{ env_var('DBT_BIGQUERY_LOCATION', 'europe-west3') }}"
+      threads: 4
     mart_dev:
       type: bigquery
       method: oauth
@@ -41,6 +48,14 @@ open_trace:
       method: service-account
       project: "{{ env_var('BQ_PROJECT', 'your-gcp-project-id') }}"
       dataset: "{{ env_var('BQ_DATASET_SILVER', 'staging_dev') }}"
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS', '') }}"
+      location: "{{ env_var('DBT_BIGQUERY_LOCATION', 'europe-west3') }}"
+      threads: 4
+    intermediate_dev_sa:
+      type: bigquery
+      method: service-account
+      project: "{{ env_var('BQ_PROJECT', 'your-gcp-project-id') }}"
+      dataset: "{{ env_var('BQ_DATASET_INTERMEDIATE', 'intermediate_dev') }}"
       keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS', '') }}"
       location: "{{ env_var('DBT_BIGQUERY_LOCATION', 'europe-west3') }}"
       threads: 4

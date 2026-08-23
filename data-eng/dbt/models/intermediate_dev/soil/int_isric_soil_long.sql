@@ -1,0 +1,38 @@
+{{ config(materialized='table') }}
+
+with unp as (
+    select
+        latitude,
+        longitude,
+        fetched_date,
+        property_depth,
+        value,
+        source_natural_key
+    from {{ ref('stg_isric_africa_soil') }}
+    unpivot (
+        value for property_depth in (
+            bdod_0_5cm, bdod_5_15cm, bdod_15_30cm, bdod_30_60cm, bdod_60_100cm,
+            cec_0_5cm, cec_5_15cm, cec_15_30cm, cec_30_60cm, cec_60_100cm,
+            clay_0_5cm, clay_5_15cm, clay_15_30cm, clay_30_60cm, clay_60_100cm,
+            nitrogen_0_5cm, nitrogen_5_15cm, nitrogen_15_30cm, nitrogen_30_60cm, nitrogen_60_100cm,
+            phh2o_0_5cm, phh2o_5_15cm, phh2o_15_30cm, phh2o_30_60cm, phh2o_60_100cm,
+            sand_0_5cm, sand_5_15cm, sand_15_30cm, sand_30_60cm, sand_60_100cm,
+            silt_0_5cm, silt_5_15cm, silt_15_30cm, silt_30_60cm, silt_60_100cm,
+            soc_0_5cm, soc_5_15cm, soc_15_30cm, soc_30_60cm, soc_60_100cm
+        )
+    )
+)
+
+select
+    latitude,
+    longitude,
+    fetched_date,
+    regexp_extract(property_depth, r'^([^_]+)') as soil_property,
+    regexp_replace(property_depth, r'^[^_]+_', '') as depth_band,
+    value,
+    source_natural_key,
+    current_timestamp() as loaded_at
+from unp
+where value is not null
+  and longitude between -25 and 60
+  and latitude between -35 and 38

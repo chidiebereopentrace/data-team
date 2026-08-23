@@ -1,0 +1,20 @@
+{{ config(materialized='table') }}
+
+select
+    area_code,
+    area_code_m49,
+    country_name,
+    item_code,
+    item_code_cpc,
+    item,
+    element_code,
+    element,
+    source_code,
+    source,
+    year,
+    unit,
+    safe_cast(value as float64) as value,
+    source_natural_key,
+    current_timestamp() as loaded_at
+from {{ ref('stg_faostat_emissions') }}
+where year is not null
