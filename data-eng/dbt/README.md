@@ -1,14 +1,14 @@
 # dbt — OpenTrace data team
 
-This dbt project runs against BigQuery. **Model folders and dbt targets match BigQuery dataset IDs** used in this project: `landing`, **`raw_dev`**, **`staging_dev`**, **`mart_dev`**. Env vars `BQ_DATASET_BRONZE`, `BQ_DATASET_SILVER`, and `BQ_DATASET_GOLD` still point at those physical datasets (names inherited from older “medallion” terminology).
+This dbt project runs against BigQuery. **Model folders and dbt targets match BigQuery dataset IDs** used in this project: `landing`, **`raw_dev`**, **`staging_dev`**, **`intermediate_dev`**, **`mart_dev`**. Env vars `BQ_DATASET_BRONZE`, `BQ_DATASET_SILVER`, `BQ_DATASET_INTERMEDIATE`, and `BQ_DATASET_GOLD` point at those physical datasets.
 
-Use **`--target raw_dev | staging_dev | mart_dev`** (or `*_sa` with a service account key).
+Use **`--target raw_dev | staging_dev | intermediate_dev | mart_dev`** (or `*_sa` with a service account key).
 
 ## Prerequisites
 
-- **BigQuery**: Datasets such as `landing`, `raw_dev`, `staging_dev`, `mart_dev` (your project may include additional datasets; see `BQ_DATASETS_INCLUDE` for cataloguing).
+- **BigQuery**: Datasets such as `landing`, `raw_dev`, `staging_dev`, `intermediate_dev`, `mart_dev` (see `BQ_DATASETS_INCLUDE` for cataloguing).
 - **Credentials (local, recommended):** OAuth — `gcloud auth application-default login`. Set `BQ_PROJECT` and optional `BQ_DATASET_*` in `data/local/.env`.
-- **Credentials (Docker/CI):** Service account key — set `GOOGLE_APPLICATION_CREDENTIALS` and targets `raw_dev_sa`, `staging_dev_sa`, `mart_dev_sa`.
+- **Credentials (Docker/CI):** Service account key — set `GOOGLE_APPLICATION_CREDENTIALS` and targets `raw_dev_sa`, `staging_dev_sa`, `intermediate_dev_sa`, `mart_dev_sa`.
 
 ## Environment variables
 
@@ -20,6 +20,7 @@ Set these in `data/local/.env` (or export in your shell).
 | `BQ_DATASET_LANDING` | No | Landing dataset (default `landing`). |
 | `BQ_DATASET_BRONZE` | No | Raw layer dataset (default **`raw_dev`**). |
 | `BQ_DATASET_SILVER` | No | Staging layer dataset (default **`staging_dev`**). |
+| `BQ_DATASET_INTERMEDIATE` | No | Intermediate layer dataset (default **`intermediate_dev`**). |
 | `BQ_DATASET_GOLD` | No | Mart dataset (default **`mart_dev`**). |
 | `GOOGLE_APPLICATION_CREDENTIALS` | No (OAuth) / Yes (Docker) | Path to service account JSON for `*_sa` targets. |
 | `DBT_TARGET` | No | Default target (default **`raw_dev`**). |
@@ -30,6 +31,7 @@ Set these in `data/local/.env` (or export in your shell).
 BQ_PROJECT=opentrace-prod-5ga4
 BQ_DATASET_BRONZE=raw_dev
 BQ_DATASET_SILVER=staging_dev
+BQ_DATASET_INTERMEDIATE=intermediate_dev
 BQ_DATASET_GOLD=mart_dev
 DBT_TARGET=raw_dev
 ```
@@ -42,6 +44,7 @@ From the `dbt` directory (with `DBT_PROFILES_DIR=.`):
 dbt deps
 dbt run --target raw_dev
 dbt run --target staging_dev
+dbt run --target intermediate_dev
 dbt test --target staging_dev
 dbt run --target mart_dev
 ```
@@ -54,19 +57,20 @@ docker compose --profile dbt run --rm dbt sh -c "dbt deps && dbt run --target ra
 
 ## Pipeline levels
 
-| Level     | dbt target      | Typical writes (env)   |
-|-----------|-----------------|-------------------------|
-| Landing   | (sources only)  | `BQ_DATASET_LANDING`    |
-| Raw       | `raw_dev`       | `BQ_DATASET_BRONZE`     |
-| Staging   | `staging_dev`   | `BQ_DATASET_SILVER`     |
-| Mart      | `mart_dev`      | `BQ_DATASET_GOLD`       |
+| Level        | dbt target        | Typical writes (env)        |
+|--------------|-------------------|-----------------------------|
+| Landing      | (sources only)    | `BQ_DATASET_LANDING`        |
+| Raw          | `raw_dev`         | `BQ_DATASET_BRONZE`         |
+| Staging      | `staging_dev`     | `BQ_DATASET_SILVER`         |
+| Intermediate | `intermediate_dev`| `BQ_DATASET_INTERMEDIATE`   |
+| Mart         | `mart_dev`        | `BQ_DATASET_GOLD`           |
 
 ## Project layout
 
 ```
 dbt/
 ├── dbt_project.yml
-├── profiles.yml       # raw_dev, staging_dev, mart_dev (+ _sa)
+├── profiles.yml       # raw_dev, staging_dev, intermediate_dev, mart_dev (+ _sa)
 ├── models/
 │   ├── sources.yml    # Generated from docs/bq_schema_catalog.json
 │   ├── landing/
@@ -82,6 +86,7 @@ dbt/
 │   │   ├── research/
 │   │   ├── socio_economic/
 │   │   └── market_prices/
+│   ├── intermediate_dev/  # Conformed spines (geography, source registry, pivots)
 │   └── mart_dev/
 ```
 
