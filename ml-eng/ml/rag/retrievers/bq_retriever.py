@@ -8,7 +8,7 @@ import logging
 import os
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +66,20 @@ def _get_datasets_config() -> dict[str, str]:
 def _nl2sql_model_id() -> str:
     """Dedicated NL2SQL model when set; otherwise the global chat model."""
     return (os.environ.get("RAG_BQ_NL2SQL_MODEL_ID") or "").strip() or llm_model_id()
+
+
+def _nl2sql_call_timeout_s() -> float:
+    """
+    Soft per-call budget (seconds) for a single NL2SQL generation inside a parallel
+    batch. Distinct from RAG_BQ_NL2SQL_TIMEOUT_S (the hard HTTP client timeout / last
+    resort safety net, default 300s) — this value bounds how long the *batch* waits
+    for any one table-hint call before moving on without it, so one unusually slow
+    reasoning-model call cannot drag the whole request past this ceiling.
+    """
+    try:
+        return max(2.0, float(os.environ.get("RAG_BQ_NL2SQL_CALL_TIMEOUT_S", "20") or 20))
+    except ValueError:
+        return 20.0
 
 
 def _call_llama_for_sql(messages: list[dict[str, str]], *, max_tokens: int | None = None) -> str:
@@ -800,15 +814,35 @@ class BQRetriever(BaseRetriever):
                     )
 
                 seen: set[str] = set()
+                timed_out_hints = 0
                 if parallel and len(hints_for_calls) > 1:
                     parallel_used = True
-                    with ThreadPoolExecutor(max_workers=min(workers, len(hints_for_calls))) as pool:
+                    call_budget = _nl2sql_call_timeout_s()
+                    # Do not block on the whole ThreadPoolExecutor lifecycle waiting for a
+                    # slow reasoning call: give the batch a soft per-call budget and move on
+                    # without that hint's SQL if it doesn't finish in time. The abandoned
+                    # thread keeps running in the background (Python cannot forcibly cancel
+                    # it) and its result is simply discarded when it eventually completes —
+                    # shutdown(wait=False) below avoids blocking process exit/GC on it.
+                    pool = ThreadPoolExecutor(max_workers=min(workers, len(hints_for_calls)))
+                    try:
                         futs = {
                             pool.submit(run_with_tracing_context(_gen_one, h)): h
                             for h in hints_for_calls
                         }
-                        for fut in as_completed(futs):
-                            sql = fut.result()
+                        # Single fixed budget from the moment the batch was submitted —
+                        # whatever hasn't finished by then is abandoned (not re-armed per
+                        # completion), so one slow hint can no longer drag the batch past
+                        # call_budget regardless of how many other hints finish first.
+                        done, not_done = wait(
+                            futs, timeout=call_budget, return_when=ALL_COMPLETED
+                        )
+                        timed_out_hints = len(not_done)
+                        for fut in done:
+                            try:
+                                sql = fut.result()
+                            except Exception:
+                                sql = ""
                             if not sql:
                                 continue
                             norm = " ".join(sql.split())
@@ -816,6 +850,8 @@ class BQRetriever(BaseRetriever):
                                 continue
                             seen.add(norm)
                             queries.append(sql)
+                    finally:
+                        pool.shutdown(wait=False)
                 else:
                     for hint in hints_for_calls:
                         sql = _gen_one(hint)
@@ -848,8 +884,17 @@ class BQRetriever(BaseRetriever):
                     "parallel": parallel_used,
                     "sql_hashes": sql_hashes[:10],
                     "latency_ms": trace_elapsed_ms(nl2sql_t0),
+                    "timed_out_hints": timed_out_hints,
                 }
             )
+            if timed_out_hints:
+                logger.warning(
+                    "NL-to-SQL: %d/%d table-hint call(s) exceeded the %.0fs per-call budget "
+                    "and were skipped (RAG_BQ_NL2SQL_CALL_TIMEOUT_S)",
+                    timed_out_hints,
+                    len(hints_for_calls),
+                    _nl2sql_call_timeout_s(),
+                )
             self.last_bq_nl2sql_ms = trace_elapsed_ms(nl2sql_t0)
             return queries[:max_queries]
 
@@ -1156,7 +1201,12 @@ class BQRetriever(BaseRetriever):
                     continue
                 prepared_ok = True
                 try:
-                    job = client.query(validated)
+                    from google.cloud.bigquery import QueryJobConfig as _QJC
+                    _max_b = int(
+                        os.environ.get("RAG_BQ_MAX_BYTES_BILLED", str(250 * 1024 * 1024)) or 0
+                    )
+                    _jcfg = _QJC(maximum_bytes_billed=_max_b) if _max_b > 0 else None
+                    job = client.query(validated, job_config=_jcfg)
                     rows = list(job.result())
                 except Exception as exc:
                     logger.warning(
