@@ -8,7 +8,7 @@ import logging
 import os
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any
 
@@ -17,9 +17,7 @@ from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, truncate_utf8
 from ml.rag.chatbot.bq_sql_patterns import try_sql_patterns
 from ml.rag.chatbot.bq_sql_templates import try_sql_template
 from ml.rag.chatbot.bq_sql_validate import (
-    broaden_empty_sql_once,
     dry_run_sql,
-    inject_missing_metric_filters,
     sql_retry_enabled,
     validate_required_metric_filters,
     validate_sql_column_allowlist,
@@ -66,6 +64,20 @@ def _get_datasets_config() -> dict[str, str]:
 def _nl2sql_model_id() -> str:
     """Dedicated NL2SQL model when set; otherwise the global chat model."""
     return (os.environ.get("RAG_BQ_NL2SQL_MODEL_ID") or "").strip() or llm_model_id()
+
+
+def _nl2sql_call_timeout_s() -> float:
+    """
+    Soft per-call budget (seconds) for a single NL2SQL generation inside a parallel
+    batch. Distinct from RAG_BQ_NL2SQL_TIMEOUT_S (the hard HTTP client timeout / last
+    resort safety net, default 300s) — this value bounds how long the *batch* waits
+    for any one table-hint call before moving on without it, so one unusually slow
+    reasoning-model call cannot drag the whole request past this ceiling.
+    """
+    try:
+        return max(2.0, float(os.environ.get("RAG_BQ_NL2SQL_CALL_TIMEOUT_S", "20") or 20))
+    except ValueError:
+        return 20.0
 
 
 def _call_llama_for_sql(messages: list[dict[str, str]], *, max_tokens: int | None = None) -> str:
@@ -126,20 +138,6 @@ _FORBIDDEN_SQL = re.compile(
 _QUERY_SPLIT_RE = re.compile(r"\n---+\s*(?:QUERY)?\s*---+\n", re.IGNORECASE)
 
 
-def _year_int_from_bound(value: str | None) -> int | None:
-    """Extract a calendar year from an ISO date or bare year string."""
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    match = re.search(r"\b((?:19|20)\d{2})\b", raw)
-    if not match:
-        return None
-    year = int(match.group(1))
-    if 1900 <= year <= 2100:
-        return year
-    return None
-
-
 def _continental_scope_hint(
     query: str | None,
     entities: list[str] | None,
@@ -160,8 +158,7 @@ def _continental_scope_hint(
     return (
         "- CONTINENTAL/REGIONAL scope (Africa or subregion): rank or aggregate across "
         "African countries using country_name (or equivalent) on the fact table only; "
-        "do NOT filter country_name = 'Africa' or a region label such as 'West Africa' "
-        "or 'Sahel'; do NOT invent dim_geography / dim_* "
+        "do NOT filter country_name = 'Africa'; do NOT invent dim_geography / dim_* "
         "or any country-list subquery; do NOT join GDP/HDI tables for a country list "
         "unless that table is in the selected table set"
     )
@@ -195,22 +192,11 @@ def _format_query_constraints(
             "(use the geography column from the Columns block — typically country_name)"
         )
     if time_start or time_end:
-        y_start = _year_int_from_bound(time_start)
-        y_end = _year_int_from_bound(time_end)
-        if y_start is not None or y_end is not None:
-            start_y = y_start if y_start is not None else y_end
-            end_y = y_end if y_end is not None else y_start
-            lines.append(
-                f"- REQUIRED year filter: year BETWEEN {start_y} AND {end_y} "
-                "(use INT64 year / planting_year / harvest_year / observation_year from Columns; "
-                "never compare year to ISO date strings — that is integer arithmetic)"
-            )
-        else:
-            lines.append(
-                f"- REQUIRED time range: start={time_start or 'any'}, end={time_end or 'any'} "
-                "(use the time column from Columns: year, planting_year, harvest_year, "
-                "observation_year, etc.)"
-            )
+        lines.append(
+            f"- REQUIRED time range: start={time_start or 'any'}, end={time_end or 'any'} "
+            "(use the time column from Columns: year, planting_year, harvest_year, "
+            "observation_year, etc.)"
+        )
     if entities:
         ent = [str(e).strip() for e in entities if str(e).strip()]
         if ent:
@@ -219,12 +205,9 @@ def _format_query_constraints(
         dom = [str(d).strip() for d in domains if str(d).strip()]
         if dom:
             lines.append(f"- Topic domains: {', '.join(dom)}")
-    # Expanded country lists already encode regional scope; the continental hint
-    # forbids IN-lists and would push the model toward country_name = 'West Africa'.
-    if len(countries) < 2:
-        continental = _continental_scope_hint(query, entities)
-        if continental:
-            lines.append(continental)
+    continental = _continental_scope_hint(query, entities)
+    if continental:
+        lines.append(continental)
     if not lines:
         return ""
     return "Query constraints from decomposition (MUST honor in WHERE / GROUP BY):\n" + "\n".join(lines)
@@ -366,9 +349,6 @@ class BQRetriever(BaseRetriever):
             self.nl2sql_enabled = os.environ.get("RAG_BQ_NL2SQL_ENABLED", "1").strip().lower() in ("1", "true", "on")
         self._client = None
         self._last_nl2sql_raws: list[str] = []
-        self.last_sql_source: str | None = None
-        self.last_bq_execute_ms: float | None = None
-        self.last_bq_nl2sql_ms: float | None = None
 
     def _record_nl2sql_raw(self, raw: str | None, *, parsed_ok: bool) -> None:
         """Keep short snippets of failed/empty NL2SQL generations for inspector debug."""
@@ -658,25 +638,6 @@ class BQRetriever(BaseRetriever):
                 return f"dry_run_failed: {dry_err[:300]}"
             return None
 
-        def _maybe_inject(sql: str) -> str:
-            metric_err = validate_required_metric_filters(sql, selected_tables or None)
-            if not metric_err:
-                return sql
-            cue = question or query or ""
-            fixed, notes = inject_missing_metric_filters(
-                sql,
-                selected_tables or None,
-                query=cue,
-            )
-            if not notes:
-                return sql
-            revalidated = _validate_sql(fixed, allowed_datasets, limit)
-            if revalidated is None:
-                return sql
-            logger.info("BQ discriminator auto-inject: %s", "; ".join(notes))
-            return revalidated
-
-        validated = _maybe_inject(validated)
         check_err = _post_checks(validated)
         if check_err and sql_retry_enabled():
             allowed_list = ", ".join(sorted(selected_tables)) or "(none)"
@@ -685,7 +646,7 @@ class BQRetriever(BaseRetriever):
                 f"Previous SQL failed validation:\n{check_err}\n\n"
                 "Fix the SQL. Use ONLY columns from the Columns blocks in the table hints. "
                 "Equality-filter every metric discriminator that has *_value_samples "
-                "(element, price_type, measure_type, indicator, treatment, …) using exact sample strings. "
+                "(element / price_type / measure_type / scenario_name / etc.) with exact sample strings. "
                 "Prefer grain columns + value + unit over SELECT *. "
                 f"Use ONLY these tables: {allowed_list}. "
                 "Never invent dim_geography, dim_*, bronze/raw column names, or any table outside that list. "
@@ -709,7 +670,7 @@ class BQRetriever(BaseRetriever):
                 retry_validated = _validate_sql(retry_sql, allowed_datasets, limit)
                 if retry_validated is None:
                     return None, f"retry_validation_failed: {check_err[:200]}"
-                validated = _maybe_inject(retry_validated)
+                validated = retry_validated
                 check_err = _post_checks(validated)
         if check_err:
             return None, check_err
@@ -800,15 +761,35 @@ class BQRetriever(BaseRetriever):
                     )
 
                 seen: set[str] = set()
+                timed_out_hints = 0
                 if parallel and len(hints_for_calls) > 1:
                     parallel_used = True
-                    with ThreadPoolExecutor(max_workers=min(workers, len(hints_for_calls))) as pool:
+                    call_budget = _nl2sql_call_timeout_s()
+                    # Do not block on the whole ThreadPoolExecutor lifecycle waiting for a
+                    # slow reasoning call: give the batch a soft per-call budget and move on
+                    # without that hint's SQL if it doesn't finish in time. The abandoned
+                    # thread keeps running in the background (Python cannot forcibly cancel
+                    # it) and its result is simply discarded when it eventually completes —
+                    # shutdown(wait=False) below avoids blocking process exit/GC on it.
+                    pool = ThreadPoolExecutor(max_workers=min(workers, len(hints_for_calls)))
+                    try:
                         futs = {
                             pool.submit(run_with_tracing_context(_gen_one, h)): h
                             for h in hints_for_calls
                         }
-                        for fut in as_completed(futs):
-                            sql = fut.result()
+                        # Single fixed budget from the moment the batch was submitted —
+                        # whatever hasn't finished by then is abandoned (not re-armed per
+                        # completion), so one slow hint can no longer drag the batch past
+                        # call_budget regardless of how many other hints finish first.
+                        done, not_done = wait(
+                            futs, timeout=call_budget, return_when=ALL_COMPLETED
+                        )
+                        timed_out_hints = len(not_done)
+                        for fut in done:
+                            try:
+                                sql = fut.result()
+                            except Exception:
+                                sql = ""
                             if not sql:
                                 continue
                             norm = " ".join(sql.split())
@@ -816,6 +797,8 @@ class BQRetriever(BaseRetriever):
                                 continue
                             seen.add(norm)
                             queries.append(sql)
+                    finally:
+                        pool.shutdown(wait=False)
                 else:
                     for hint in hints_for_calls:
                         sql = _gen_one(hint)
@@ -848,9 +831,17 @@ class BQRetriever(BaseRetriever):
                     "parallel": parallel_used,
                     "sql_hashes": sql_hashes[:10],
                     "latency_ms": trace_elapsed_ms(nl2sql_t0),
+                    "timed_out_hints": timed_out_hints,
                 }
             )
-            self.last_bq_nl2sql_ms = trace_elapsed_ms(nl2sql_t0)
+            if timed_out_hints:
+                logger.warning(
+                    "NL-to-SQL: %d/%d table-hint call(s) exceeded the %.0fs per-call budget "
+                    "and were skipped (RAG_BQ_NL2SQL_CALL_TIMEOUT_S)",
+                    timed_out_hints,
+                    len(hints_for_calls),
+                    _nl2sql_call_timeout_s(),
+                )
             return queries[:max_queries]
 
     @_observe_span(as_type="span", name="retrieval.bq", capture_input=False, capture_output=False)
@@ -867,9 +858,6 @@ class BQRetriever(BaseRetriever):
         ``bq_sql_queries`` / ``bq_sql_debug``.
         """
         t0 = time.perf_counter()
-        self.last_sql_source = None
-        self.last_bq_execute_ms = None
-        self.last_bq_nl2sql_ms = None
         if not self.project_id:
             update_current_span_metadata({"status": "no_project", "row_count": 0})
             return [
@@ -927,8 +915,6 @@ class BQRetriever(BaseRetriever):
 
         raw_intents = kwargs.get("query_intents")
         query_intents: list[Any] | None = raw_intents if isinstance(raw_intents, list) else None
-        crop_required = bool(kwargs.get("crop_required", True))
-        geography_required = bool(kwargs.get("geography_required", True))
 
         sql_input = kwargs.get("sql")
         sql_queries: list[str] = []
@@ -940,19 +926,53 @@ class BQRetriever(BaseRetriever):
             sql_queries = [str(s).strip() for s in sql_input if str(s).strip()]
             explicit_sql = bool(sql_queries)
 
-        task_mode = str(kwargs.get("task_mode") or "").strip().lower()
-        fast_fact = task_mode in ("fact_lookup", "data_export_only")
-
         template_meta: dict[str, Any] | None = None
         pattern_meta: dict[str, Any] | None = None
         ds_name = self.datasets_config.get("staging", "staging_dev")
         rows_per_query = max(1, int(os.environ.get("RAG_BQ_ROWS_PER_QUERY", "10") or 10))
         sql_source = "none"
-        pattern_sqls: list[str] = []
-        nl2sql_sqls: list[str] = []
-        leftover_intents: list[Any] = []
 
-        def _try_template_sql() -> list[str]:
+        if not sql_queries and not explicit_sql:
+            pattern_hit = try_sql_patterns(
+                query_intents,
+                project_id=self.project_id,
+                dataset=ds_name,
+                query=query,
+                entities=entities,
+                time_start=time_start,
+                time_end=time_end,
+                selected_tables=selected_tables,
+                limit=rows_per_query,
+            )
+            if pattern_hit:
+                pattern_meta = pattern_hit
+                sql_queries = [str(pattern_hit["sql"])]
+                sql_source = "pattern"
+
+        if not sql_queries and self.nl2sql_enabled:
+            sql_queries = self._nl_to_sql_queries(
+                query,
+                table_hints=hint_list,
+                geo_country=geo_country,
+                geo_countries=geo_countries,
+                time_start=time_start,
+                time_end=time_end,
+                entities=entities,
+                domains=domains,
+                selected_tables=sorted(selected_tables) if selected_tables else None,
+                query=query,
+            )
+
+        if explicit_sql:
+            sql_source = "explicit"
+        elif sql_source == "pattern":
+            pass
+        elif sql_queries:
+            sql_source = "nl2sql"
+        else:
+            sql_source = "none"
+
+        def _maybe_template() -> list[str]:
             nonlocal template_meta, sql_source
             hit = try_sql_template(
                 query=query,
@@ -972,97 +992,8 @@ class BQRetriever(BaseRetriever):
             sql_source = "template"
             return [str(hit["sql"])]
 
-        if not sql_queries and not explicit_sql:
-            template_sqls = _try_template_sql()
-            if template_sqls:
-                sql_queries = template_sqls
-            else:
-                pattern_hits = try_sql_patterns(
-                    query_intents,
-                    project_id=self.project_id,
-                    dataset=ds_name,
-                    query=query,
-                    entities=entities,
-                    time_start=time_start,
-                    time_end=time_end,
-                    selected_tables=selected_tables,
-                    limit=rows_per_query,
-                    geo_country=geo_country,
-                    geo_countries=geo_countries,
-                )
-                if pattern_hits:
-                    pattern_meta = {
-                        "hits": pattern_hits,
-                        "pattern": pattern_hits[0].get("pattern"),
-                    }
-                    pattern_sqls = [
-                        str(h["sql"]) for h in pattern_hits if str(h.get("sql") or "").strip()
-                    ]
-                    compiled_idx = {h.get("intent_index") for h in pattern_hits}
-                    if isinstance(query_intents, list):
-                        leftover_intents = [
-                            intent
-                            for idx, intent in enumerate(query_intents)
-                            if idx not in compiled_idx and isinstance(intent, dict)
-                        ]
-                    sql_source = "pattern"
-
-                leftover_tables: list[str] = []
-                for intent in leftover_intents:
-                    for raw in intent.get("tables") or []:
-                        tid = str(raw).strip().split(".")[-1].lower()
-                        if tid.startswith("stg_") and tid not in leftover_tables:
-                            leftover_tables.append(tid)
-                need_nl2sql = self.nl2sql_enabled and (
-                    not pattern_sqls
-                    or leftover_intents
-                    or not query_intents
-                )
-                if need_nl2sql:
-                    nl_tables = leftover_tables or (
-                        sorted(selected_tables) if selected_tables else None
-                    )
-                    prev_max = os.environ.get("RAG_BQ_MAX_SQL_QUERIES")
-                    if fast_fact:
-                        os.environ["RAG_BQ_MAX_SQL_QUERIES"] = "1"
-                    try:
-                        nl2sql_sqls = self._nl_to_sql_queries(
-                            query,
-                            table_hints=hint_list[:1] if fast_fact and hint_list else hint_list,
-                            geo_country=geo_country,
-                            geo_countries=geo_countries,
-                            time_start=time_start,
-                            time_end=time_end,
-                            entities=entities,
-                            domains=domains,
-                            selected_tables=nl_tables,
-                            query=query,
-                        )
-                    finally:
-                        if fast_fact:
-                            if prev_max is None:
-                                os.environ.pop("RAG_BQ_MAX_SQL_QUERIES", None)
-                            else:
-                                os.environ["RAG_BQ_MAX_SQL_QUERIES"] = prev_max
-                    if nl2sql_sqls and not pattern_sqls:
-                        sql_source = "nl2sql"
-                if not sql_queries:
-                    sql_queries = list(pattern_sqls) + list(nl2sql_sqls)
-
-        if explicit_sql:
-            sql_source = "explicit"
-        elif pattern_sqls and nl2sql_sqls:
-            sql_source = "pattern"
-        elif pattern_sqls:
-            sql_source = "pattern"
-        elif nl2sql_sqls:
-            sql_source = "nl2sql"
-        elif sql_queries and sql_source == "template":
-            sql_source = "template"
-        elif sql_queries:
-            sql_source = sql_source if sql_source != "none" else "nl2sql"
-        else:
-            sql_source = "none"
+        if not sql_queries:
+            sql_queries = _maybe_template()
 
         if not sql_queries:
             reason = (
@@ -1081,10 +1012,6 @@ class BQRetriever(BaseRetriever):
                     "sql_source": sql_source,
                 }
             )
-            self.last_sql_source = sql_source
-            self.last_bq_execute_ms = 0.0
-            if self.last_bq_nl2sql_ms is None:
-                self.last_bq_nl2sql_ms = 0.0
             return [
                 _bq_diagnostic_item(
                     status="no_valid_sql",
@@ -1100,15 +1027,12 @@ class BQRetriever(BaseRetriever):
         items: list[dict[str, Any]] = []
         any_usable_rows = False
         prepared_ok = False
-        queries_left = max_queries
-        execute_t0 = time.perf_counter()
 
         def _run_sql_batch(batch: list[str], *, source: str) -> None:
-            nonlocal budget, any_usable_rows, prepared_ok, queries_left
-            for idx, raw_sql in enumerate(batch):
-                if budget <= 0 or queries_left <= 0:
+            nonlocal budget, any_usable_rows, prepared_ok
+            for idx, raw_sql in enumerate(batch[:max_queries]):
+                if budget <= 0:
                     break
-                queries_left -= 1
                 limit = min(rows_per_query, budget)
                 validated, prep_err = self._prepare_sql(
                     raw_sql,
@@ -1183,40 +1107,6 @@ class BQRetriever(BaseRetriever):
                     })
                     continue
 
-                if not rows:
-                    broadened = broaden_empty_sql_once(
-                        validated,
-                        crop_required=crop_required,
-                        geography_required=geography_required,
-                    )
-                    if broadened:
-                        revalidated, _prep_err = self._prepare_sql(
-                            broadened,
-                            question=query,
-                            table_hints=hint_list,
-                            selected_tables=selected_tables,
-                            allowed_datasets=allowed,
-                            limit=limit,
-                            client=client,
-                            geo_country=geo_country,
-                            geo_countries=geo_countries,
-                            time_start=time_start,
-                            time_end=time_end,
-                            entities=entities,
-                            domains=domains,
-                            query=query,
-                        )
-                        if revalidated:
-                            try:
-                                job = client.query(revalidated)
-                                rows = list(job.result())
-                                validated = revalidated
-                            except Exception as exc:
-                                logger.warning(
-                                    "BQ broaden-once execute failed: %s",
-                                    str(exc)[:200],
-                                )
-
                 for row in rows[:limit]:
                     d = dict(row)
                     meta = project_bq_row_acf(
@@ -1243,72 +1133,29 @@ class BQRetriever(BaseRetriever):
                     if budget <= 0:
                         break
 
-        if explicit_sql:
-            _run_sql_batch(sql_queries, source="explicit")
-        elif pattern_sqls or nl2sql_sqls:
-            if pattern_sqls:
-                _run_sql_batch(pattern_sqls, source="pattern")
-            if nl2sql_sqls:
-                _run_sql_batch(nl2sql_sqls, source="nl2sql")
-        else:
-            _run_sql_batch(sql_queries, source=sql_source)
+        _run_sql_batch(sql_queries, source=sql_source)
 
-        # After NL2SQL/pattern prepare failures or 0-row success, try deterministic SQL.
+        # After NL2SQL/pattern prepare/execute failures, try ranking template once.
         if (
             sql_source in {"nl2sql", "pattern"}
             and not any_usable_rows
+            and not prepared_ok
             and selected_tables
         ):
-            if not pattern_sqls:
-                rescue_hits = try_sql_patterns(
-                    query_intents,
-                    project_id=self.project_id,
-                    dataset=ds_name,
-                    query=query,
-                    entities=entities,
-                    time_start=time_start,
-                    time_end=time_end,
-                    selected_tables=selected_tables,
-                    limit=rows_per_query,
-                    geo_country=geo_country,
-                    geo_countries=geo_countries,
-                )
-                if rescue_hits:
-                    pattern_meta = {
-                        "hits": rescue_hits,
-                        "pattern": rescue_hits[0].get("pattern"),
-                    }
-                    rescue_sqls = [
-                        str(h["sql"]) for h in rescue_hits if str(h.get("sql") or "").strip()
-                    ]
-                    if rescue_sqls:
-                        _run_sql_batch(rescue_sqls, source="pattern")
-            if sql_source != "template":
-                tmpl_batch = _try_template_sql()
-                if tmpl_batch:
-                    _run_sql_batch(tmpl_batch, source="template")
+            tmpl_batch = _maybe_template()
+            if tmpl_batch:
+                _run_sql_batch(tmpl_batch, source="template")
 
         if not items:
-            if prepared_ok:
-                reason = "SQL executed successfully but returned no rows"
-                items.append(
-                    _bq_diagnostic_item(
-                        status="empty_result",
-                        message=reason,
-                        prep_error=f"{reason}; model={_nl2sql_model_id()}",
-                        nl2sql_raw="; ".join(self._last_nl2sql_raws) if self._last_nl2sql_raws else None,
-                    )
+            reason = "All SQL attempts failed validation or execution"
+            items.append(
+                _bq_diagnostic_item(
+                    status="no_valid_sql",
+                    message=reason,
+                    prep_error=f"{reason}; model={_nl2sql_model_id()}",
+                    nl2sql_raw="; ".join(self._last_nl2sql_raws) if self._last_nl2sql_raws else None,
                 )
-            else:
-                reason = "All SQL attempts failed validation or execution"
-                items.append(
-                    _bq_diagnostic_item(
-                        status="no_valid_sql",
-                        message=reason,
-                        prep_error=f"{reason}; model={_nl2sql_model_id()}",
-                        nl2sql_raw="; ".join(self._last_nl2sql_raws) if self._last_nl2sql_raws else None,
-                    )
-                )
+            )
 
         sql_hashes = list(
             dict.fromkeys(
@@ -1324,14 +1171,8 @@ class BQRetriever(BaseRetriever):
                 "row_count": len(items),
                 "sql_hashes": sql_hashes[:10],
                 "latency_ms": trace_elapsed_ms(t0),
-                "bq_execute_ms": trace_elapsed_ms(execute_t0),
                 "sql_source": sql_source,
                 "nl2sql_model": _nl2sql_model_id(),
-                "task_mode": task_mode or None,
             }
         )
-        self.last_sql_source = sql_source
-        self.last_bq_execute_ms = trace_elapsed_ms(execute_t0)
-        if self.last_bq_nl2sql_ms is None:
-            self.last_bq_nl2sql_ms = 0.0
         return items
