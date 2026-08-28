@@ -1201,7 +1201,12 @@ class BQRetriever(BaseRetriever):
                     continue
                 prepared_ok = True
                 try:
-                    job = client.query(validated)
+                    from google.cloud.bigquery import QueryJobConfig as _QJC
+                    _max_b = int(
+                        os.environ.get("RAG_BQ_MAX_BYTES_BILLED", str(250 * 1024 * 1024)) or 0
+                    )
+                    _jcfg = _QJC(maximum_bytes_billed=_max_b) if _max_b > 0 else None
+                    job = client.query(validated, job_config=_jcfg)
                     rows = list(job.result())
                 except Exception as exc:
                     logger.warning(

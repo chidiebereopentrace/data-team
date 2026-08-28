@@ -1602,6 +1602,11 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
             update_current_span_metadata({"web_fallback_status": "skipped"})
             return {}
 
+        _pt = str(state.get("plan_type") or "").strip()
+        if _pt.lower() == "free":
+            update_current_span_metadata({"web_fallback_status": "disabled"})
+            return {"web_fallback_status": "disabled", "web_fallback_reason": "Free plan - web fallback not available"}
+
         q = (state.get("query") or "").strip()
         dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
         ts = (state.get("time_start_override") or (dec or {}).get("time_start") or "").strip()[:10]
