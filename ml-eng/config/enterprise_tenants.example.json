@@ -1,0 +1,15 @@
+{
+  "tenants": [
+    {
+      "tenant_id": "olam-agri-sandbox",
+      "name": "Olam AGRI (Sandbox)",
+      "api_key": "askadza_olam_sandbox_change_me",
+      "plan_slug": "agribusinesses",
+      "environment": "sandbox",
+      "monthly_query_quota": 5000,
+      "monthly_token_quota": 2000000,
+      "rate_limit_rpm": 30,
+      "active": true
+    }
+  ]
+}

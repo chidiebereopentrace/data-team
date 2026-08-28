@@ -20,6 +20,7 @@ select
     y.production,
     y.yield,
     coalesce(g_fnid.geo_key, g_admin.geo_key) as geo_key,
+    coalesce(g_fnid.country_iso3, g_admin.country_iso3) as country_iso3,
     y.source_natural_key,
     current_timestamp() as loaded_at
 from {{ ref('int_yield_raw_enriched') }} y

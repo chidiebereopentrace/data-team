@@ -1,26 +1,59 @@
 {{ config(materialized='table') }}
 
--- Gold: product/crop dimension extended from staging_dev dim_crop.
--- Covers crops and food products; livestock handled separately in dim_livestock.
-
 select
-    to_hex(md5(coalesce(crop_name, '')))           as product_key,
-    to_hex(md5(coalesce(crop_name, '')))           as product_natural_key,
-    crop_name                                      as product_name,
-    cast(null as string)                           as cpcv2,
-    cast(null as string)                           as cpcv2_description,
-    cast(null as string)                           as scientific_name,
-    cast(null as string)                           as aliases,
-    cast(null as bool)                             as is_staple_food,
-    'crop'                                         as product_source,
-    cast(null as string)                           as food_group_code,
-    cast(null as string)                           as food_group,
-    cast(null as string)                           as nutrient_type,
-    cast(null as numeric)                          as dry_matter_pct,
-    cast(null as numeric)                          as crude_protein_pct,
-    cast(null as numeric)                          as gross_energy_mj_kg,
-    date('2000-01-01')                             as valid_from,
-    cast(null as date)                             as valid_to,
-    true                                           as is_current
-
-from {{ ref('dim_crop') }}
+    to_hex(md5(coalesce(src.item_code, '') || '|' || src.product_name_norm)) as product_key,
+    src.item_code,
+    any_value(src.product_name) as product_name,
+    any_value(src.cpcv2) as cpcv2,
+    current_timestamp() as loaded_at
+from (
+    select
+        cast(item_code as string) as item_code,
+        product_name,
+        lower(trim(product_name)) as product_name_norm,
+        cast(item_code_cpc as string) as cpcv2
+    from {{ ref('int_faostat_production_conformed') }}
+    union all
+    select
+        cast(null as string) as item_code,
+        product as product_name,
+        lower(trim(product)) as product_name_norm,
+        cast(null as string) as cpcv2
+    from {{ ref('int_yield_raw_enriched') }}
+    union all
+    select
+        cpcv2 as item_code,
+        product_name,
+        lower(trim(product_name)) as product_name_norm,
+        cpcv2
+    from {{ ref('int_prices_harmonised') }}
+    where product_name is not null
+    union all
+    select
+        cast(item_code as string) as item_code,
+        product_name,
+        lower(trim(product_name)) as product_name_norm,
+        cast(item_code_cpc as string) as cpcv2
+    from {{ ref('int_faostat_food_balances_conformed') }}
+    where product_name is not null
+    union all
+    select
+        cast(item_code as string) as item_code,
+        product_name,
+        lower(trim(product_name)) as product_name_norm,
+        cast(item_code_cpc as string) as cpcv2
+    from {{ ref('int_faostat_trade_conformed') }}
+    where product_name is not null
+    union all
+    select
+        cast(cpcv2 as string) as item_code,
+        product_name,
+        lower(trim(product_name)) as product_name_norm,
+        cast(cpcv2 as string) as cpcv2
+    from {{ ref('int_fews_cross_border_trade_conformed') }}
+    where product_name is not null
+) src
+where src.product_name is not null
+group by
+    src.item_code,
+    src.product_name_norm

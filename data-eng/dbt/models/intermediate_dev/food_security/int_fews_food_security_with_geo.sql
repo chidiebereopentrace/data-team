@@ -2,7 +2,8 @@
 
 select
     f.*,
-    g.geo_key
+    g.geo_key,
+    g.country_iso3
 from {{ ref('int_fews_food_security_conformed') }} f
 left join {{ ref('int_geography_conformed') }} g
     on g.geo_level = 'fnid'

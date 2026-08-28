@@ -34,6 +34,7 @@ LAYER_DESCRIPTIONS = {
     "landing": "Raw landing data (ingestion writes here)",
     "raw_dev": "Raw layer (BigQuery dataset raw_dev; env BQ_DATASET_BRONZE)",
     "staging_dev": "Staging layer (BigQuery dataset staging_dev; env BQ_DATASET_SILVER)",
+    "intermediate_dev": "Intermediate layer (BigQuery dataset intermediate_dev; env BQ_DATASET_INTERMEDIATE)",
     "mart_dev": "Mart layer (BigQuery dataset mart_dev; env BQ_DATASET_GOLD)",
     # Legacy catalog keys (older refreshes)
     "bronze": "Raw layer (legacy source name; prefer raw_dev)",
@@ -46,6 +47,7 @@ _LAYER_SCHEMA_ENV: dict[str, tuple[str, str]] = {
     "landing": ("BQ_DATASET_LANDING", "landing"),
     "raw_dev": ("BQ_DATASET_BRONZE", "raw_dev"),
     "staging_dev": ("BQ_DATASET_SILVER", "staging_dev"),
+    "intermediate_dev": ("BQ_DATASET_INTERMEDIATE", "intermediate_dev"),
     "mart_dev": ("BQ_DATASET_GOLD", "mart_dev"),
     "bronze": ("BQ_DATASET_BRONZE", "raw_dev"),
     "silver": ("BQ_DATASET_SILVER", "staging_dev"),
@@ -56,6 +58,7 @@ KNOWN_SOURCE_ORDER = (
     "landing",
     "raw_dev",
     "staging_dev",
+    "intermediate_dev",
     "mart_dev",
     "bronze",
     "silver",

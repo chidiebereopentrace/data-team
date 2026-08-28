@@ -4,527 +4,1052 @@
 version: 2
 
 models:
-
-  - name: gold_example
-    description: "Placeholder mart model."
-
-  # CORE DIMENSIONS
-  - name: gold_dim_geography
-    description: "Conformed geography dimension."
+  - name: dim_geography
     columns:
       - name: geography_key
-        tests: [not_null, unique]
-      - name: country_code
-        description: "ISO 3-letter country code"
+        tests:
+          - not_null
+          - unique
+      - name: data_level
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['national', 'sub_national', 'community', 'point']
 
-  - name: dim_time
-    description: "Full calendar time dimension."
+  - name: dim_ref_country
+    description: "Reference country dimension with in_africa_scope policy"
     columns:
-      - name: time_key
-        tests: [not_null, unique]
+      - name: country_iso3
+        tests:
+          - not_null
+          - unique
+      - name: in_africa_scope
+        tests:
+          - not_null
 
-  - name: gold_dim_season
-    description: "Season dimension."
+  - name: dim_faostat_area
+    description: "FAOSTAT area_code reference dimension"
+    columns:
+      - name: faostat_area_key
+        tests:
+          - not_null
+          - unique
+      - name: area_code
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_date
+    columns:
+      - name: date_key
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_season
     columns:
       - name: season_key
-        tests: [not_null, unique]
-      - name: season_name
-        tests: [not_null]
+        tests:
+          - not_null
+          - unique
 
-  - name: gold_dim_source
-    description: "Data source with tier and data_level."
+  - name: dim_source
     columns:
       - name: source_key
-        tests: [not_null, unique]
+        tests:
+          - not_null
+          - unique
+      - name: source_natural_key
+        tests:
+          - not_null
+          - unique
       - name: tier
-        description: "1=global 2=national 3=sub-national"
-      - name: data_level
-        description: "global national sub_national or community"
-
-  - name: gold_dim_unit
-    description: "Unit of measure dimension."
-    columns:
-      - name: unit_key
-        tests: [not_null, unique]
-
-  - name: dim_organisation
-    description: "Organisation dimension from OpenAire."
-    columns:
-      - name: organisation_key
-        tests: [not_null, unique]
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3]
+              quote: false
+      - name: default_data_level
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['global', 'national', 'sub_national', 'community', 'point']
+      - name: producer_scale
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['global', 'regional', 'national', 'subnational']
 
   - name: dim_product
-    description: "Product/crop dimension."
     columns:
       - name: product_key
-        tests: [not_null, unique]
-      - name: product_name
-        tests: [not_null]
+        tests:
+          - not_null
+          - unique
 
-  - name: dim_livestock
-    description: "Livestock species from FAOSTAT."
+  - name: dim_unit
     columns:
-      - name: livestock_key
-        tests: [not_null, unique]
-      - name: species
-        tests: [not_null]
-
-  - name: dim_audit
-    description: "Audit dimension."
-    columns:
-      - name: audit_key
-        tests: [not_null]
-
-  # SECONDARY DIMENSIONS
-  - name: dim_disease
-    description: "Animal disease dimension."
-    columns:
-      - name: disease_key
-        tests: [not_null, unique]
-      - name: disease_name
-        tests: [not_null]
-
-  - name: dim_pest
-    description: "Crop and livestock pest dimension."
-    columns:
-      - name: pest_key
-        tests: [not_null, unique]
-
-  - name: gold_dim_technology
-    description: "Technology dimension."
-    columns:
-      - name: technology_key
-        tests: [not_null, unique]
-      - name: technology_name
-        tests: [not_null]
-
-  - name: dim_person
-    description: "Person dimension from OpenAire."
-    columns:
-      - name: person_key
-        tests: [not_null, unique]
-
-  - name: dim_market
-    description: "Market dimension from FEWS prices."
-    columns:
-      - name: market_key
-        tests: [not_null, unique]
-      - name: market_name
-        tests: [not_null]
-
-  - name: dim_scenario
-    description: "IPC/FEWS scenario codes."
-    columns:
-      - name: scenario_key
-        tests: [not_null, unique]
+      - name: unit_key
+        tests:
+          - not_null
+          - unique
 
   - name: dim_classification
-    description: "IPC classification phases 1-5."
     columns:
       - name: classification_key
-        tests: [not_null, unique]
-      - name: phase_name
-        tests: [not_null]
+        tests:
+          - not_null
+          - unique
 
-  - name: dim_production_system
-    description: "Production system types."
+  - name: dim_market
     columns:
-      - name: production_system_key
-        tests: [not_null, unique]
+      - name: market_key
+        tests:
+          - not_null
+          - unique
 
-  - name: gold_dim_farm_practice
-    description: "Farm practice dimension."
+  - name: dim_household
     columns:
-      - name: farm_practice_key
-        tests: [not_null, unique]
+      - name: household_key
+        tests:
+          - not_null
+          - unique
 
-  - name: dim_soil
-    description: "Soil depth-layer reference."
+  - name: dim_soil_property
     columns:
-      - name: soil_key
-        tests: [not_null, unique]
+      - name: soil_property_key
+        tests:
+          - not_null
+          - unique
 
-  - name: dim_emission_category
-    description: "GHG emission category."
+  - name: dim_item
     columns:
-      - name: emission_category_key
-        tests: [not_null, unique]
+      - name: item_key
+        tests:
+          - not_null
+          - unique
 
-  - name: dim_land_use
-    description: "Land use classification."
+  - name: dim_element
     columns:
-      - name: land_use_key
-        tests: [not_null, unique]
+      - name: element_key
+        tests:
+          - not_null
+          - unique
 
-  - name: gold_dim_indicator
-    description: "Indicator dimension."
+  - name: dim_livestock
     columns:
-      - name: indicator_key
-        tests: [not_null, unique]
-      - name: indicator_name
-        tests: [not_null]
-
-  - name: dim_status
-    description: "Collection and quality status."
-    columns:
-      - name: status_key
-        tests: [not_null, unique]
-
-  - name: dim_trade_flow
-    description: "Trade flow direction."
-    columns:
-      - name: trade_flow_key
-        tests: [not_null, unique]
-
-  - name: dim_breed_variety
-    description: "Crop variety and livestock breed."
-    columns:
-      - name: breed_variety_key
-        tests: [not_null, unique]
-
-  - name: dim_sensor
-    description: "IoT/environmental sensor."
-    columns:
-      - name: sensor_key
-        tests: [not_null, unique]
+      - name: livestock_key
+        tests:
+          - not_null
+          - unique
 
   - name: dim_research_project
-    description: "Research project from OpenAire."
     columns:
       - name: research_project_key
-        tests: [not_null, unique]
+        tests:
+          - not_null
+          - unique
 
-  - name: dim_water
-    description: "Water source and access type."
+  - name: dim_organisation
     columns:
-      - name: water_key
-        tests: [not_null, unique]
+      - name: organisation_key
+        tests:
+          - not_null
+          - unique
 
-  - name: dim_currency
-    description: "Currency dimension from FEWS prices."
+  - name: dim_indicator
     columns:
-      - name: currency_key
-        tests: [not_null, unique]
-      - name: currency_code
-        tests: [not_null]
+      - name: indicator_key
+        tests:
+          - not_null
+          - unique
 
-  # BRIDGE TABLES
-  - name: bridge_season_calendar
-    description: "Maps seasons to time keys."
+  - name: dim_disease
     columns:
-      - name: season_key
-        tests: [not_null]
-      - name: time_key
-        tests: [not_null]
+      - name: disease_key
+        tests:
+          - not_null
+          - unique
 
-  - name: bridge_geography_aez
-    description: "Links geography to AEZ codes."
+  - name: dim_aez
     columns:
-      - name: geo_key
-        tests: [not_null]
+      - name: aez_key
+        tests:
+          - not_null
+          - unique
 
-  - name: bridge_household_crop
-    description: "Households to crops grown (pending ILRI staging)."
-
-  - name: bridge_household_livestock
-    description: "Households to livestock kept (pending ILRI staging)."
-
-  - name: bridge_household_disease
-    description: "Households to diseases reported (pending ILRI staging)."
-
-  - name: bridge_project_organisation
-    description: "Research projects to organisations."
-
-  # FACT TABLES
-  - name: fct_food_security
-    description: "IPC population estimates."
+  - name: dim_sex
     columns:
-      - name: food_security_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
+      - name: sex_key
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_person
+    columns:
+      - name: person_key
+        tests:
+          - not_null
+          - unique
 
   - name: fct_production
-    description: "Agricultural production quantities."
     columns:
       - name: production_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - unique
+      - name: grain_flag
+        tests:
+          - accepted_values:
+              values: ['country_year']
+      - name: production_grain
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['physical', 'index', 'gross_value']
+      - name: value
+        tests:
+          - not_null
+      - name: element_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_element')
+              field: element_key
+      - name: source_natural_key
+        tests:
+          - not_null
       - name: source_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
+      - name: product_key
+        tests:
+          - relationships:
+              to: ref('dim_product')
+              field: product_key
+              config:
+                where: "product_key is not null"
+      - name: production_unit_key
+        tests:
+          - relationships:
+              to: ref('dim_unit')
+              field: unit_key
+              config:
+                where: "production_unit_key is not null"
 
-  - name: fct_prices
-    description: "Commodity market prices from FEWS."
+  - name: fct_yield
     columns:
-      - name: price_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
+      - name: yield_key
+        tests:
+          - not_null
+          - unique
+      - name: grain_flag
+        tests:
+          - accepted_values:
+              values: ['fnid_season']
+      - name: source_natural_key
+        tests:
+          - not_null
       - name: source_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
+      - name: product_key
+        tests:
+          - relationships:
+              to: ref('dim_product')
+              field: product_key
+              config:
+                where: "product_key is not null"
+      - name: production_unit_key
+        tests:
+          - relationships:
+              to: ref('dim_unit')
+              field: unit_key
+              config:
+                where: "production_unit_key is not null"
 
-  - name: fct_trade
-    description: "Cross-border trade flows from FEWS."
+  - name: fct_food_security
     columns:
-      - name: trade_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
+      - name: food_security_key
+        tests:
+          - not_null
+          - unique
+      - name: measure_type
+        tests:
+          - not_null
       - name: source_key
-        tests: [not_null]
-
-  - name: fct_animal_health
-    description: "Animal health metrics (pending ILRI staging)."
-
-  - name: fct_household
-    description: "Household survey metrics (pending ILRI staging)."
-
-  - name: fct_gender_inclusion
-    description: "Gender control shares (pending ILRI staging)."
-
-  - name: fct_emissions
-    description: "GHG emission pathways from ClimateWatch."
-    columns:
-      - name: emission_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_climate
-    description: "Climate metrics from fact_climate."
-    columns:
-      - name: climate_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_soil_health
-    description: "Soil health from ISRIC and ISDA."
-    columns:
-      - name: soil_health_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
 
   - name: fct_hdi
-    description: "Human Development Index."
     columns:
       - name: hdi_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - unique
+      - name: date_key
+        tests:
+          - not_null
+      - name: as_of_date
+        tests:
+          - not_null
       - name: source_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
 
-  - name: fct_technology
-    description: "Technology adoption."
+  - name: agg_production_country_year
     columns:
-      - name: technology_fact_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
+      - name: agg_production_country_year_key
+        tests:
+          - not_null
+          - unique
 
-  - name: fct_vegetation
-    description: "NDVI from ARCGIS satellite data."
+  - name: agg_production_country_season
     columns:
-      - name: vegetation_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
+      - name: agg_production_country_season_key
+        tests:
+          - not_null
+          - unique
 
-  - name: fct_market_access
-    description: "Market access."
+  - name: agg_food_security_country_month
     columns:
-      - name: market_access_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
+      - name: agg_food_security_country_month_key
+        tests:
+          - not_null
+          - unique
 
-  - name: fct_economics
-    description: "Household economics (pending ILRI staging)."
-
-  - name: fct_investment
-    description: "Enterprise investment."
+  - name: agg_hdi_latest
     columns:
-      - name: investment_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
+      - name: agg_hdi_latest_key
+        tests:
+          - not_null
+          - unique
 
-  - name: fct_researchers
-    description: "Researcher counts from OpenAire."
+  - name: fct_prices
     columns:
-      - name: researcher_fact_key
-        tests: [not_null, unique]
+      - name: price_key
+        tests:
+          - not_null
+          - unique
+      - name: month
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 12
+              inclusive: true
+              config:
+                where: "month is not null"
       - name: source_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: market_key
+        tests:
+          - relationships:
+              to: ref('dim_market')
+              field: market_key
+              config:
+                where: "market_key is not null"
+      - name: product_key
+        tests:
+          - relationships:
+              to: ref('dim_product')
+              field: product_key
+              config:
+                where: "product_key is not null"
+      - name: unit_key
+        tests:
+          - relationships:
+              to: ref('dim_unit')
+              field: unit_key
+              config:
+                where: "unit_key is not null"
 
-  - name: fct_research_expenditure
-    description: "R and D expenditure from OECD Africa."
+  - name: fct_soil_health
     columns:
-      - name: research_exp_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
+      - name: soil_key
+        tests:
+          - not_null
+          - unique
       - name: source_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
 
-  - name: fct_land_use
-    description: "Land use areas."
+  - name: fct_household
     columns:
-      - name: land_use_fact_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
+      - name: household_fact_key
+        tests:
+          - not_null
+          - unique
       - name: source_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: household_key
+        tests:
+          - relationships:
+              to: ref('dim_household')
+              field: household_key
+              config:
+                where: "household_key is not null"
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
 
-  - name: fct_land_degradation
-    description: "Land degradation (pending dedicated source)."
-
-  - name: fct_fertilizer
-    description: "Fertilizer use from FAOSTAT."
+  - name: agg_prices_country_month
     columns:
-      - name: fertilizer_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
+      - name: agg_prices_country_month_key
+        tests:
+          - not_null
+          - unique
 
-  - name: fct_pesticide
-    description: "Pesticide use from FAOSTAT."
+  - name: agg_soil_admin
     columns:
-      - name: pesticide_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_air_quality
-    description: "Air quality from Nakuru sensor archive."
-    columns:
-      - name: air_quality_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_biodiversity
-    description: "Species occurrence from GBIF Africa."
-    columns:
-      - name: biodiversity_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_protected_areas
-    description: "Protected areas from ARCGIS."
-    columns:
-      - name: protected_area_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_germplasm
-    description: "Germplasm accessions."
-    columns:
-      - name: germplasm_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_food_balance
-    description: "Food balance from FAOSTAT."
-    columns:
-      - name: food_balance_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_value_chain
-    description: "Value chain shares."
-    columns:
-      - name: value_chain_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_forestry
-    description: "Forestry from FAOSTAT fao_rl."
-    columns:
-      - name: forestry_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
-
-  - name: fct_machinery
-    description: "Machinery stock from FAOSTAT fao_ti."
-    columns:
-      - name: machinery_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
-      - name: source_key
-        tests: [not_null]
+      - name: agg_soil_admin_key
+        tests:
+          - not_null
+          - unique
 
   - name: fct_employment
-    description: "Employment counts (pending labour source)."
-
-  - name: fct_population_dynamics
-    description: "Population from ArcGIS ward demographics."
     columns:
-      - name: population_fact_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
+      - name: employment_key
+        tests:
+          - not_null
+          - unique
       - name: source_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
+      - name: item_key
+        tests:
+          - relationships:
+              to: ref('dim_item')
+              field: item_key
+              config:
+                where: "item_key is not null"
+      - name: element_key
+        tests:
+          - relationships:
+              to: ref('dim_element')
+              field: element_key
+              config:
+                where: "element_key is not null"
+      - name: indicator_key
+        tests:
+          - relationships:
+              to: ref('dim_indicator')
+              field: indicator_key
+              config:
+                where: "indicator_key is not null"
+      - name: sex_key
+        tests:
+          - relationships:
+              to: ref('dim_sex')
+              field: sex_key
+              config:
+                where: "sex_key is not null"
+
+  - name: fct_economics
+    columns:
+      - name: economics_key
+        tests:
+          - not_null
+          - unique
+      - name: measurement_form
+        tests:
+          - not_null
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
+      - name: item_key
+        tests:
+          - relationships:
+              to: ref('dim_item')
+              field: item_key
+              config:
+                where: "item_key is not null"
+      - name: element_key
+        tests:
+          - relationships:
+              to: ref('dim_element')
+              field: element_key
+              config:
+                where: "element_key is not null"
+
+  - name: fct_climate
+    columns:
+      - name: climate_key
+        tests:
+          - not_null
+          - unique
+      - name: climate_grain
+        tests:
+          - accepted_values:
+              values: ['point_obs', 'country_model']
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
+      - name: indicator_key
+        tests:
+          - relationships:
+              to: ref('dim_indicator')
+              field: indicator_key
+              config:
+                where: "indicator_key is not null"
+
+  - name: fct_land_inputs
+    columns:
+      - name: land_input_key
+        tests:
+          - not_null
+          - unique
+      - name: input_grain
+        tests:
+          - accepted_values:
+              values: ['trade', 'temperature', 'use_or_cover']
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
+      - name: item_key
+        tests:
+          - relationships:
+              to: ref('dim_item')
+              field: item_key
+              config:
+                where: "item_key is not null"
+      - name: element_key
+        tests:
+          - relationships:
+              to: ref('dim_element')
+              field: element_key
+              config:
+                where: "element_key is not null"
+
+  - name: agg_employment_country_year
+    columns:
+      - name: agg_employment_country_year_key
+        tests:
+          - not_null
+          - unique
+
+  - name: agg_economics_country_year
+    columns:
+      - name: agg_economics_country_year_key
+        tests:
+          - not_null
+          - unique
+
+  - name: fct_emissions
+    columns:
+      - name: emissions_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+
+  - name: fct_food_balance
+    columns:
+      - name: food_balance_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+
+  - name: fct_animal_health
+    columns:
+      - name: animal_health_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+
+  - name: fct_food_hazards
+    columns:
+      - name: food_hazard_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: disease_key
+        tests:
+          - relationships:
+              to: ref('dim_disease')
+              field: disease_key
+              config:
+                where: "disease_key is not null"
+
+  - name: fct_forestry
+    columns:
+      - name: forestry_key
+        tests:
+          - not_null
+          - unique
+      - name: forestry_grain
+        tests:
+          - accepted_values:
+              values: ['trade_flow', 'production_or_capacity']
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
 
   - name: fct_humanitarian
-    description: "Humanitarian values from fact_humanitarian."
     columns:
       - name: humanitarian_key
-        tests: [not_null, unique]
-      - name: geo_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - unique
       - name: source_key
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
 
-  # AGGREGATES
-  - name: agg_food_security_monthly
-    description: "Pre-aggregated food security for dashboards."
+  - name: fct_vegetation
+    columns:
+      - name: vegetation_key
+        tests:
+          - not_null
+          - unique
+      - name: vegetation_grain
+        tests:
+          - accepted_values:
+              values: ['ndvi_grid', 'ilri_site']
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
 
-  - name: agg_production_annual
-    description: "Pre-aggregated annual production for dashboards."
+  - name: fct_gender_inclusion
+    columns:
+      - name: gender_inclusion_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+
+  - name: fct_investment
+    columns:
+      - name: investment_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: indicator_key
+        tests:
+          - relationships:
+              to: ref('dim_indicator')
+              field: indicator_key
+              config:
+                where: "indicator_key is not null"
+      - name: sex_key
+        tests:
+          - relationships:
+              to: ref('dim_sex')
+              field: sex_key
+              config:
+                where: "sex_key is not null"
+      - name: organisation_key
+        tests:
+          - relationships:
+              to: ref('dim_organisation')
+              field: organisation_key
+              config:
+                where: "organisation_key is not null"
+
+  - name: agg_emissions_country_year
+    columns:
+      - name: agg_emissions_country_year_key
+        tests:
+          - not_null
+          - unique
+
+  - name: agg_food_balance_country_year
+    columns:
+      - name: agg_food_balance_country_year_key
+        tests:
+          - not_null
+          - unique
+
+  - name: agg_forestry_country_year
+    columns:
+      - name: agg_forestry_country_year_key
+        tests:
+          - not_null
+          - unique
+
+  - name: bridge_geography_aez
+    columns:
+      - name: geography_aez_bridge_key
+        tests:
+          - not_null
+          - unique
+      - name: aez_key
+        tests:
+          - relationships:
+              to: ref('dim_aez')
+              field: aez_key
+              config:
+                where: "aez_key is not null"
+
+  - name: fct_air_quality
+    columns:
+      - name: air_quality_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+
+  - name: fct_biodiversity
+    columns:
+      - name: biodiversity_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+
+  - name: fct_protected_areas
+    columns:
+      - name: protected_area_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+
+  - name: fct_germplasm
+    columns:
+      - name: germplasm_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+
+  - name: fct_machinery
+    columns:
+      - name: machinery_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+
+  - name: fct_insurance
+    columns:
+      - name: insurance_key
+        tests:
+          - not_null
+          - unique
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+
+  - name: bridge_research_org
+    columns:
+      - name: research_org_bridge_key
+        tests:
+          - not_null
+          - unique
+
+  - name: bridge_research_person
+    columns:
+      - name: research_person_bridge_key
+        tests:
+          - not_null
+          - unique
+
+  - name: fct_trade
+    columns:
+      - name: trade_key
+        tests:
+          - not_null
+          - unique
+      - name: trade_grain
+        tests:
+          - accepted_values:
+              values: ['faostat_country_year', 'fews_border_month']
+      - name: source_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_source')
+              field: source_key
+              config:
+                where: "source_key is not null"
+      - name: as_of_date
+        tests:
+          - not_null
+      - name: geography_key
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+              config:
+                where: "geography_key is not null"
+      - name: product_key
+        tests:
+          - relationships:
+              to: ref('dim_product')
+              field: product_key
+              config:
+                where: "product_key is not null"

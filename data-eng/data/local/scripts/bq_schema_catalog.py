@@ -74,6 +74,7 @@ def get_datasets_config() -> dict[str, str]:
         "landing": os.environ.get("BQ_DATASET_LANDING", "landing"),
         "raw_dev": os.environ.get("BQ_DATASET_BRONZE", "raw_dev"),
         "staging_dev": os.environ.get("BQ_DATASET_SILVER", "staging_dev"),
+        "intermediate_dev": os.environ.get("BQ_DATASET_INTERMEDIATE", "intermediate_dev"),
         "mart_dev": os.environ.get("BQ_DATASET_GOLD", "mart_dev"),
     }
     return {k: v for k, v in default.items() if v and v not in exclude}

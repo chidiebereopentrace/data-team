@@ -1,20 +1,48 @@
 {{ config(materialized='table') }}
 
--- Gold: organisation dimension sourced from OpenAire organisations (raw_dev).
--- Covers research institutions, donors, and implementing partners.
+with openaire as (
+    select
+        to_hex(md5(cast(organisation_id as string))) as organisation_key,
+        organisation_id,
+        legal_name,
+        short_name,
+        website_url,
+        country_code,
+        country_name,
+        'openaire' as org_source,
+        source_natural_key,
+        current_timestamp() as loaded_at
+    from {{ ref('int_openaire_organisations') }}
+    where organisation_id is not null
+    qualify row_number() over (
+        partition by organisation_id
+        order by fetched_at desc nulls last
+    ) = 1
+),
 
-select
-    to_hex(md5(coalesce(org_id, legal_name, ''))) as organisation_key,
-    coalesce(org_id, '')                           as organisation_natural_key,
-    legal_name,
-    short_name,
-    cast(null as string)                           as organisation_type,
-    country_code,
-    website_url,
-    false                                          as is_donor,
-    date('2000-01-01')                             as valid_from,
-    cast(null as date)                             as valid_to,
-    true                                           as is_current
+asti as (
+    select
+        to_hex(md5('asti|' || src.institution_norm)) as organisation_key,
+        cast(null as string) as organisation_id,
+        any_value(src.institution) as legal_name,
+        cast(null as string) as short_name,
+        cast(null as string) as website_url,
+        cast(null as string) as country_code,
+        cast(null as string) as country_name,
+        'asti' as org_source,
+        any_value(src.source_natural_key) as source_natural_key,
+        current_timestamp() as loaded_at
+    from (
+        select
+            institution,
+            lower(trim(institution)) as institution_norm,
+            source_natural_key
+        from {{ ref('int_investment_asti_conformed') }}
+        where institution is not null
+    ) src
+    group by src.institution_norm
+)
 
-from {{ source('raw_dev', 'openaire_agriculture_and_environment_Research_publications_Organizations_bronze') }}
-where coalesce(org_id, legal_name, short_name) is not null
+select * from openaire
+union all
+select * from asti

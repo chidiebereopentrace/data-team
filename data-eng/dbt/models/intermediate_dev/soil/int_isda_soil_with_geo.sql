@@ -1,22 +1,137 @@
 {{ config(materialized='table') }}
 
-select
-    s.longitude,
-    s.latitude,
-    coalesce(s.country, g.country_name) as country_name,
-    g.country_iso2,
-    coalesce(s.city, g.city_name) as city_name,
-    g.geo_key,
-    s.soil_property,
-    s.depth,
-    s.value,
-    s.source_natural_key,
-    current_timestamp() as loaded_at
-from {{ ref('stg_isda_soil_enriched') }} s
-left join {{ ref('int_geography_conformed') }} g
-    on g.geo_level = 'city'
-   and round(s.latitude, 2) = round(g.latitude, 2)
-   and round(s.longitude, 2) = round(g.longitude, 2)
-where s.longitude between -25 and 60
-  and s.latitude between -35 and 38
-  and not (s.longitude = 0 and s.latitude = 0)
+with {{ geo_africa_cities_cte('africa_cities') }},
+{{ geo_city_by_latlon_cte('city_by_latlon') }},
+{{ geo_latlon_grid_cte('latlon_grid') }},
+{{ geo_country_by_iso2_cte('iso2_geo') }},
+{{ geo_country_by_name_cte('country_by_name') }},
+
+src as (
+    select *
+    from {{ ref('stg_isda_soil_enriched') }}
+    where {{ geo_africa_bbox_filter('latitude', 'longitude') }}
+      and {{ geo_africa_soil_fringe_exclude('latitude', 'longitude') }}
+      and not (longitude = 0 and latitude = 0)
+),
+
+with_exact as (
+    select
+        s.longitude,
+        s.latitude,
+        s.country,
+        s.city,
+        s.soil_property,
+        s.depth,
+        s.value,
+        s.source_natural_key,
+        g_exact.geo_key as exact_geo_key,
+        g_exact.country_iso2 as exact_iso2,
+        g_exact.country_iso3 as exact_iso3,
+        g_exact.country_name as exact_country_name,
+        g_exact.city_name as exact_city_name
+    from src s
+    left join city_by_latlon g_exact
+        on {{ geo_city_latlon_join('s', 'g_exact') }}
+),
+
+with_grid as (
+    select
+        e.*,
+        g_grid.country_iso2 as grid_iso2,
+        g_grid.country_iso3 as grid_iso3,
+        g_grid.country_name as grid_country_name
+    from with_exact e
+    left join latlon_grid g_grid
+        on {{ geo_latlon_grid_join('e', 'g_grid') }}
+),
+
+with_nearest as (
+    select
+        e.*,
+        c.geo_key as nearest_geo_key,
+        c.country_iso2 as nearest_iso2,
+        c.country_iso3 as nearest_iso3,
+        c.country_name as nearest_country_name,
+        c.city_name as nearest_city_name,
+        {{ geo_st_distance_m('e', 'c') }} as nearest_dist_m
+    from with_grid e
+    left join africa_cities c
+        on e.exact_geo_key is null
+       and {{ geo_nearest_city_bbox_join('e', 'c', 5) }}
+    qualify e.exact_geo_key is not null
+        or row_number() over (
+            partition by
+                cast(e.latitude as string),
+                cast(e.longitude as string),
+                coalesce(e.soil_property, ''),
+                coalesce(cast(e.depth as string), ''),
+                coalesce(e.source_natural_key, '')
+            order by {{ geo_st_distance_m('e', 'c') }} nulls last, c.geo_key
+        ) = 1
+)
+
+select *
+from (
+    select
+        n.longitude,
+        n.latitude,
+        coalesce(
+            n.country,
+            n.exact_country_name,
+            case when n.nearest_dist_m <= 100000 then n.nearest_country_name end,
+            n.grid_country_name,
+            g_name.country_name,
+            g_country.country_name,
+            n.nearest_country_name
+        ) as country_name,
+        coalesce(
+            n.city,
+            n.exact_city_name,
+            case when n.nearest_dist_m <= 100000 then n.nearest_city_name end
+        ) as city_name,
+        coalesce(
+            {{ geo_resolve_point_geo_key(
+                'n.exact_geo_key',
+                'n.nearest_geo_key',
+                'n.nearest_dist_m',
+                'g_country.geo_key'
+            ) }},
+            g_name.geo_key
+        ) as geo_key,
+        coalesce(
+            n.exact_iso2,
+            case when n.nearest_dist_m <= 100000 then n.nearest_iso2 end,
+            n.grid_iso2,
+            g_country.country_iso2,
+            g_name.country_iso2,
+            n.nearest_iso2
+        ) as country_iso2,
+        coalesce(
+            n.exact_iso3,
+            case when n.nearest_dist_m <= 100000 then n.nearest_iso3 end,
+            n.grid_iso3,
+            g_country.country_iso3,
+            g_name.country_iso3,
+            n.nearest_iso3
+        ) as country_iso3,
+        n.soil_property,
+        n.depth,
+        n.value,
+        n.source_natural_key,
+        current_timestamp() as loaded_at
+    from with_nearest n
+    left join country_by_name g_name
+        on n.exact_geo_key is null
+       and (n.nearest_dist_m is null or n.nearest_dist_m > 100000)
+       and n.country is not null
+       and g_name.country_name_norm = lower(trim(n.country))
+    left join iso2_geo g_country
+        on g_country.country_iso2 = coalesce(
+            n.exact_iso2,
+            case when n.nearest_dist_m <= 100000 then n.nearest_iso2 end,
+            n.grid_iso2,
+            n.nearest_iso2
+        )
+) resolved
+where country_iso2 is null
+   or {{ geo_africa_iso2_in('country_iso2') }}

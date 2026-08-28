@@ -38,6 +38,9 @@ from ml.rag.observability import flush_langfuse
 from ml.rag.rate_limiter import check_plan_rate_limit, get_rate_limit_status
 from ml.rag.request_context import bootstrap_category, resolve_request_context
 from ml.rag.session_store import delete_session, get_session_blob, session_ttl_seconds
+from ml.serving.enterprise.auth import EnterpriseAuthMiddleware, get_request_tenant
+from ml.serving.enterprise.metering import get_usage, record_usage, usage_to_dict
+from ml.serving.enterprise.tenant_registry import enterprise_auth_mode
 from ml.serving.chat.schemas import (
     CategoryType,
     ChatRequest,
@@ -68,6 +71,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+if enterprise_auth_mode() != "off":
+    app.add_middleware(EnterpriseAuthMiddleware)
 
 router = APIRouter(prefix="/v1")
 
@@ -87,7 +92,17 @@ async def v1_meta():
         "categories": list(CATEGORIES),
         "plan_routes": {slug: f"/v1/chat/{slug}" for slug in PLAN_ROUTE_SLUGS},
         "rate_limits_rpm": get_rate_limit_status(),
+        "enterprise_auth": enterprise_auth_mode(),
     }
+
+
+@router.get("/usage")
+async def v1_usage(request: Request):
+    tenant = get_request_tenant(request)
+    if tenant is None:
+        raise HTTPException(status_code=401, detail="Missing or invalid API key")
+    usage = get_usage(tenant.tenant_id)
+    return usage_to_dict(usage, tenant)
 
 
 @router.post("/sessions", response_model=SessionCreateResponse)
@@ -174,6 +189,7 @@ async def _plan_chat(
     plan_type: str,
     body: ChatRequest,
     request_id: str,
+    request: Request | None = None,
     *,
     export_enabled: bool = False,
 ):
@@ -242,6 +258,15 @@ async def _plan_chat(
         artifacts = [ArtifactItem.model_validate(a) for a in raw_artifacts if isinstance(a, dict)]
         usage = UsageStats.from_usage_dict(turn.usage)
         acf = acf_signal_from_result(turn.raw_result)
+        tenant = get_request_tenant(request) if request is not None else None
+        if tenant is not None:
+            record_usage(
+                tenant,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                total_tokens=usage.total_tokens,
+                export_count=len(artifacts),
+            )
         return ChatSuccessResponse(
             assistant_message=turn.answer,
             citations=citations,
@@ -276,42 +301,54 @@ async def _plan_chat(
 async def v1_chat_free(body: ChatRequest, request: Request):
     """POST /v1/chat/free — Free tier (single country, top-line answers only)."""
     check_plan_rate_limit("free", request)
-    return await _plan_chat("Free", body, uuid.uuid4().hex)
+    return await _plan_chat("Free", body, uuid.uuid4().hex, request)
 
 
 @router.post("/chat/farmers")
 async def v1_chat_farmers(body: ChatRequest, request: Request):
     """POST /v1/chat/farmers — Farmers tier (localized crop/rainfall/market)."""
     check_plan_rate_limit("farmers", request)
-    return await _plan_chat("Farmers", body, uuid.uuid4().hex)
+    return await _plan_chat("Farmers", body, uuid.uuid4().hex, request)
 
 
 @router.post("/chat/government")
 async def v1_chat_government(body: ChatRequest, request: Request):
     """POST /v1/chat/government — Government tier (national/sub-national, food security)."""
     check_plan_rate_limit("government", request)
-    return await _plan_chat("Government", body, uuid.uuid4().hex)
+    return await _plan_chat("Government", body, uuid.uuid4().hex, request)
 
 
 @router.post("/chat/ngos")
 async def v1_chat_ngos(body: ChatRequest, request: Request):
     """POST /v1/chat/ngos — NGOs tier (multi-region risk, program angles)."""
     check_plan_rate_limit("ngos", request)
-    return await _plan_chat("NGOs", body, uuid.uuid4().hex)
+    return await _plan_chat("NGOs", body, uuid.uuid4().hex, request)
 
 
 @router.post("/chat/agribusinesses")
 async def v1_chat_agribusinesses(body: ChatRequest, request: Request):
     """POST /v1/chat/agribusinesses — Agribusinesses tier (cross-country, market volatility)."""
     check_plan_rate_limit("agribusinesses", request)
-    return await _plan_chat("Agribusinesses", body, uuid.uuid4().hex)
+    return await _plan_chat(
+        "Agribusinesses",
+        body,
+        uuid.uuid4().hex,
+        request,
+        export_enabled=True,
+    )
 
 
 @router.post("/chat/integrated")
 async def v1_chat_integrated(body: ChatRequest, request: Request):
     """POST /v1/chat/integrated — Integrated tier (full access, category lens per message)."""
     check_plan_rate_limit("integrated", request)
-    return await _plan_chat("Integrated", body, uuid.uuid4().hex)
+    return await _plan_chat(
+        "Integrated",
+        body,
+        uuid.uuid4().hex,
+        request,
+        export_enabled=True,
+    )
 
 
 @router.post("/chat")
@@ -442,6 +479,7 @@ async def root():
         "sessions_plan": "POST /v1/sessions/{plan_type_slug}",
         "session_status": "GET /v1/sessions/{session_id}",
         "session_delete": "DELETE /v1/sessions/{session_id}",
+        "usage": "GET /v1/usage",
         "chat": "POST /v1/chat",
         "chat_plan": {slug: f"POST /v1/chat/{slug}" for slug in PLAN_ROUTE_SLUGS},
     }

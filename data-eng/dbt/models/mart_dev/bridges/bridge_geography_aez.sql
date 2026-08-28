@@ -1,31 +1,29 @@
 {{ config(materialized='table') }}
 
--- Gold: links geography keys to AEZ (Agro-Ecological Zone) codes.
--- AEZ attributes are embedded in FAOSTAT and IFPRI spatial references.
-
-with aez_ref as (
-    select distinct
-        to_hex(md5(concat(
-            coalesce(cast(area_code_m49 as string), ''), '|',
-            coalesce(area, ''), '|', ''
-        )))                                        as geo_key,
-        cast(null as string)                       as aez_code,
-        cast(null as string)                       as aez_name,
-        '2022'                                     as aez_version,
-        'IFPRI'                                    as aez_source,
-        cast(null as numeric)                      as aez_share
-    from {{ source('landing', 'FAOstat_africa_Food_Security_and_Nutrition_Suite_of_Food_Security_Indicators') }}
-    where area_code_m49 is not null
-      and area is not null
-)
-
 select
-    geo_key,
-    aez_code,
-    aez_name,
-    aez_version,
-    aez_source,
-    aez_share
-
-from aez_ref
-where aez_code is not null
+    to_hex(md5(
+        coalesce(a.geo_key, '') || '|' ||
+        coalesce(a.aez_code, '') || '|' ||
+        coalesce(cast(a.aez_version as string), '')
+    )) as geography_aez_bridge_key,
+    a.geo_key as geography_key,
+    d.aez_key,
+    a.aez_code,
+    a.aez_name,
+    a.aez_version,
+    a.aez_source,
+    a.source_natural_key,
+    current_timestamp() as loaded_at
+from {{ ref('int_aez_bridge') }} a
+left join {{ ref('dim_aez') }} d
+    on d.aez_code = a.aez_code
+   and (
+        d.aez_version = a.aez_version
+        or (d.aez_version is null and a.aez_version is null)
+   )
+where a.geo_key is not null
+  and a.aez_code is not null
+qualify row_number() over (
+    partition by a.geo_key, a.aez_code, a.aez_version
+    order by a.aez_name
+) = 1

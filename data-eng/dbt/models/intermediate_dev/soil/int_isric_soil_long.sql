@@ -34,5 +34,5 @@ select
     current_timestamp() as loaded_at
 from unp
 where value is not null
-  and longitude between -25 and 60
-  and latitude between -35 and 38
+  and {{ geo_africa_bbox_filter('latitude', 'longitude') }}
+  and {{ geo_africa_soil_fringe_exclude('latitude', 'longitude') }}

@@ -1,57 +1,74 @@
-{{ config(materialized='incremental', unique_key='food_security_key') }}
+{{ config(
+    materialized='table',
+    partition_by={'field': 'as_of_date', 'data_type': 'date', 'granularity': 'month'},
+    cluster_by=['measure_type', 'data_level', 'country_iso3', 'source_key']
+) }}
 
--- Gold: food security fact from FEWS population estimates (IPC phases, values, projections).
+with base as (
+    select
+        to_hex(md5(
+            coalesce(f.fnid, '') || '|' ||
+            coalesce(f.measure_type, '') || '|' ||
+            coalesce(f.phase_code, '') || '|' ||
+            coalesce(f.phase_name, '') || '|' ||
+            coalesce(f.classification_scale, '') || '|' ||
+            coalesce(f.scenario_name, '') || '|' ||
+            cast(f.year as string) || '|' ||
+            cast(f.month as string) || '|' ||
+            coalesce(cast(f.is_allowing_for_assistance as string), '') || '|' ||
+            coalesce(cast(f.value as string), '') || '|' ||
+            coalesce(cast(f.low_value as string), '') || '|' ||
+            coalesce(cast(f.high_value as string), '') || '|' ||
+            f.source_natural_key
+        )) as food_security_key,
+        g.geography_key,
+        g.geo_level,
+        {{ acf_country_iso3('g.country_iso3', 'f.country_iso3') }} as country_iso3,
+        c.classification_key,
+        s.source_key,
+        s.tier,
+        {{ acf_row_data_level('g.geo_level', 's.default_data_level') }} as data_level,
+        {{ acf_geo_scope('g.geo_level', 's.default_data_level') }} as geo_scope,
+        {{ acf_place_scope('g') }} as place_scope,
+        concat(lower(f.measure_type), '_', lower(coalesce(f.phase_code, ''))) as metric,
+        s.source_key as source_id,
+        f.measure_type,
+        f.scenario_name,
+        f.year,
+        f.month,
+        case
+            when f.year is not null and f.month is not null
+                then format_date('%Y%m%d', date(f.year, f.month, 1))
+        end as date_key,
+        {{ acf_as_of_date('cast(null as date)', 'f.year', 'f.month', 'f.loaded_at') }} as as_of_date,
+        {{ acf_as_of_date_basis('cast(null as date)', 'f.year', 'f.month') }} as as_of_date_basis,
+        f.value,
+        case
+            when f.measure_type = 'classification' then 'IPC phase'
+            when f.measure_type = 'population' then 'persons'
+        end as unit,
+        f.low_value,
+        f.high_value,
+        f.pct_phase3,
+        f.pct_phase4,
+        f.pct_phase5,
+        f.source_natural_key,
+        current_timestamp() as loaded_at
+    from {{ ref('int_fews_food_security_with_geo') }} f
+    left join {{ ref('dim_geography') }} g
+        on g.geography_key = f.geo_key
+    left join {{ ref('dim_classification') }} c
+        on c.phase_code = f.phase_code
+       and coalesce(c.phase_name, '') = coalesce(f.phase_name, '')
+    left join {{ ref('dim_source') }} s
+        on s.source_natural_key = f.source_natural_key
+    where f.year is not null
+      and f.month between 1 and 12
+)
 
-select
-    to_hex(md5(concat(
-        coalesce(fnid, country_code, ''), '|',
-        coalesce(scenario_name, ''), '|',
-        coalesce(phase_name, ''), '|',
-        coalesce(projection_start, '')
-    )))                                            as food_security_key,
-
-    to_hex(md5(concat(
-        coalesce(country_code, ''), '|',
-        coalesce(country, ''), '|',
-        coalesce(admin_1, '')
-    )))                                            as geo_key,
-
-    cast(
-        left(coalesce(projection_start, '2000'), 4) as int64
-    )                                              as time_key,
-
-    to_hex(md5(concat(
-        coalesce(indicator_name, ''), '|',
-        coalesce(indicator_abbreviation, '')
-    )))                                            as season_key,
-
-    to_hex(md5('FEWS_NET_Food_insecure_population_estimates_time_series_data'))
-                                                   as source_key,
-
-    to_hex(md5(coalesce(scenario_name, '')))       as scenario_key,
-
-    to_hex(md5(concat(
-        coalesce(phase_name, ''), '|',
-        coalesce(phase, '')
-    )))                                            as classification_key,
-
-    cast(null as string)                           as unit_key,
-    cast(null as string)                           as audit_key,
-
-    cast(value as numeric)                         as value,
-    cast(low_value as numeric)                     as low_value,
-    cast(high_value as numeric)                    as high_value,
-    cast(pct_phase3 as numeric)                    as pct_phase3,
-    cast(pct_phase4 as numeric)                    as pct_phase4,
-    cast(pct_phase5 as numeric)                    as pct_phase5,
-    cast(null as int64)                            as forecast_horizon,
-    coalesce(fnid, country_code)                   as source_record_id
-
-from {{ source('landing', 'FEWS_NET_Food_insecure_population_estimates_time_series_data') }}
-where value is not null
-  or low_value is not null
-  or high_value is not null
-
-{% if is_incremental() %}
-  and projection_start > (select max(left(cast(time_key as string), 4)) from {{ this }})
-{% endif %}
+select *
+from base
+qualify row_number() over (
+    partition by food_security_key
+    order by value desc nulls last
+) = 1

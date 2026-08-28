@@ -109,4 +109,7 @@ data-eng/dbt/target/
 data-eng/dbt/dbt_packages/
 data-eng/dbt/logs/
 
+# Enterprise API tenant secrets (use enterprise_tenants.example.json as template)
+ml-eng/config/enterprise_tenants.json
 ml-eng/docs/
+ml-eng/ml/rag/docs/ 
