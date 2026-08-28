@@ -289,6 +289,86 @@ def enrich_acf_payload_fields(meta: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _normalize_place_scope(raw: Any) -> list[str]:
+    """Normalize warehouse ``place_scope`` (ARRAY<STRING> or JSON list) to place labels."""
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple, set, frozenset)):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    return _split_countries(raw)
+
+
+def _is_warehouse_contract(meta: dict[str, Any]) -> bool:
+    """True when the row carries mart contract columns (not vector coverage heuristics)."""
+    return meta.get("tier") is not None and meta.get("place_scope") is not None
+
+
+def warehouse_row_to_acf_record(row: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Map a mart_dev fact row to an ACF record using contract columns only.
+
+    Requires ``as_of_date``, ``tier``, ``data_level``, ``metric``, ``source_id``
+    (or ``source_key``), and ``place_scope``. Does not call ``derive_tier_and_data_level``.
+    """
+    meta = dict(row)
+    as_of = derive_as_of_date(meta)
+    if not as_of:
+        return None
+
+    try:
+        tier = int(meta["tier"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if tier not in (1, 2, 3):
+        return None
+
+    data_level = _s(meta.get("data_level")).lower()
+    if data_level not in ("global", "national", "sub_national", "community", "point"):
+        return None
+
+    metric = _s(meta.get("metric"))
+    if not metric:
+        return None
+
+    source_id = _s(meta.get("source_id")) or _s(meta.get("source_key"))
+    if not source_id:
+        return None
+
+    places = _normalize_place_scope(meta.get("place_scope"))
+
+    record: dict[str, Any] = {
+        "tier": tier,
+        "data_level": data_level,
+        "as_of_date": as_of,
+        "metric": metric,
+        "source_id": source_id,
+        "place_scope": places,
+        # ACF overlap field (place labels, not coverage keyword)
+        "geo_scope": places,
+    }
+
+    unit = _s(meta.get("unit"))
+    if unit:
+        record["unit"] = unit
+
+    ingested_direction = _s(meta.get("direction") or meta.get("trend")).lower()
+    if ingested_direction in ("increasing", "decreasing", "stable", "unknown"):
+        record["direction"] = ingested_direction
+        if meta.get("magnitude") is not None:
+            try:
+                record["magnitude"] = float(meta["magnitude"])
+            except (TypeError, ValueError):
+                pass
+    elif meta.get("value") is not None:
+        record["value"] = meta["value"]
+        if meta.get("prior_value") is not None:
+            record["prior_value"] = meta["prior_value"]
+    else:
+        record["direction"] = "unknown"
+
+    return record
+
+
 def context_item_to_acf_record(item: dict[str, Any]) -> dict[str, Any] | None:
     """
     Build a dict suitable for ``acf.from_payload`` / ``from_row``.
@@ -315,9 +395,14 @@ def context_item_to_acf_record(item: dict[str, Any]) -> dict[str, Any] | None:
         "prior_value",
         "coverage_strength",
         "finding",
+        "place_scope",
+        "source_key",
     ):
         if item.get(key) is not None and meta.get(key) is None:
             meta[key] = item[key]
+
+    if _is_warehouse_contract(meta):
+        return warehouse_row_to_acf_record(meta)
 
     as_of = derive_as_of_date(meta)
     if not as_of:

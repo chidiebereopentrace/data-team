@@ -42,8 +42,17 @@ classifications as (
         cast(null as string) as admin_4,
         geographic_unit_name,
         fewsnet_region,
-        cast(null as string) as phase_code,
-        cast(null as string) as phase_name,
+        case
+            when safe_cast(value as int64) between 1 and 5
+                then cast(safe_cast(value as int64) as string)
+        end as phase_code,
+        case safe_cast(value as int64)
+            when 1 then 'Minimal'
+            when 2 then 'Stressed'
+            when 3 then 'Crisis'
+            when 4 then 'Emergency'
+            when 5 then 'Famine'
+        end as phase_name,
         classification_scale,
         scenario_name,
         value,

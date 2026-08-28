@@ -169,6 +169,20 @@ def set_json(key: str, value: Any, *, ttl_s: int | None = None) -> None:
         _fallback[key] = (value, exp)
 
 
+def incr_json_fields(key: str, increments: dict[str, int], *, ttl_s: int | None = None) -> dict[str, int]:
+    """Atomically increment numeric fields in a JSON object and return the updated dict."""
+    current = get_json(key) or {}
+    if not isinstance(current, dict):
+        current = {}
+    updated: dict[str, int] = {}
+    for field, delta in increments.items():
+        updated[field] = int(current.get(field, 0) or 0) + int(delta)
+    current.update(updated)
+    eff_ttl = ttl_s if ttl_s is not None else 60 * 60 * 24 * 40
+    set_json(key, current, ttl_s=eff_ttl)
+    return {k: int(current.get(k, 0) or 0) for k in increments}
+
+
 def delete_key(key: str) -> None:
     """Delete a key from whichever backend is active."""
     client = _get_client()

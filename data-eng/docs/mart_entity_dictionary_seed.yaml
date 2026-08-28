@@ -1,0 +1,1046 @@
+version: '2026.8'
+dataset: mart_dev
+entity_count: 63
+acf_contract:
+- column: tier
+  meaning: Producer scale (1=global, 2=national ministry, 3=community survey)
+  example: '1'
+- column: data_level
+  meaning: Resolution of the number (warehouse row resolution)
+  example: sub_national
+- column: place_scope
+  meaning: ARRAY of comparable place labels for ACF geo overlap
+  example: '[''ETH'',''ETR103'',''Oromia'']'
+- column: metric
+  meaning: Stable slug for the measure
+  example: price_retail_maize
+- column: source_id
+  meaning: Lineage key (= dim_source.source_key)
+  example: faostat_prices_eth
+- column: value
+  meaning: Numeric measure
+  example: '42.5'
+- column: unit
+  meaning: Unit of measure
+  example: ETB/kg
+- column: as_of_date
+  meaning: Observation date when known; else DATE(loaded_at)
+  example: '2024-06-30'
+- column: as_of_date_basis
+  meaning: observation or loaded_at
+  example: observation
+- column: geo_scope
+  meaning: national / sub_national / community / point (null when geography_key null)
+  example: national
+- column: geography_key
+  meaning: FK to dim_geography (null if unmatched)
+  example: geo_eth_country
+- column: country_iso3
+  meaning: ISO3 from dim or extractable geo even if key null
+  example: ETH
+- column: source_key
+  meaning: FK to dim_source
+  example: src_faostat_prod
+analytical_recipes:
+- recipe_id: sourcing_production
+  question: Compare maize production across West African origins over 5 years
+  tables: agg_production_country_year, dim_geography, dim_product, dim_source
+  filters: production from physical grain via agg; product_name like maize; country_iso3
+    in (...); group by source_key
+  join_sketch: agg → dim_geography on geography_key → dim_product on product_key →
+    dim_source on source_key
+  grain_warning: Use agg_production_country_year (FAOSTAT country-year). Do NOT mix
+    with fct_yield FNID-season.
+  ota_lane: metric + insight
+- recipe_id: price_volatility
+  question: Retail maize price trends in Ethiopia and Kenya this season
+  tables: agg_prices_country_month or fct_prices, dim_geography, dim_product, dim_market
+  filters: year/month window; price_type; country_iso3; product; always keep source_key
+  join_sketch: prices → geography_key → product_key → market_key (fact only)
+  grain_warning: Month must be calendar 1-12. Prefer agg for country rollup; fct_prices
+    for market detail.
+  ota_lane: metric + recommendation
+- recipe_id: climate_vs_yield
+  question: Climate stress vs seasonal yield in East Africa
+  tables: fct_climate, fct_yield or agg_production_country_season, dim_geography,
+    dim_season
+  filters: climate_grain; vegetation/climate as_of_date window; yield by harvest_year/season_key
+  join_sketch: Align on country_iso3 + year; never average fct_yield with fct_production
+  grain_warning: fct_climate has point_obs vs country_model grains. Filter climate_grain
+    before charts.
+  ota_lane: insight + metric
+- recipe_id: food_security_ew
+  question: Districts with elevated IPC phase / population in phase 3+
+  tables: fct_food_security or agg_food_security_country_month, dim_classification,
+    dim_geography
+  filters: measure_type=classification|population; scenario; year/month
+  join_sketch: food_security → classification_key → geography_key
+  grain_warning: pct_phase3/4/5 typically on population product only — null on classification
+    is expected.
+  ota_lane: insight + recommendation
+- recipe_id: trade_flows
+  question: Cross-border rice trade flows in West Africa
+  tables: fct_trade, dim_geography, dim_product or dim_item, dim_source
+  filters: trade_grain = fews_border_month or faostat_country_year; product/item filter
+  join_sketch: fct_trade → geography_key; use source/destination country cols for
+    FEWS borders
+  grain_warning: Filter trade_grain before analysis. Do not blend FEWS border with
+    FAOSTAT country-year silently.
+  ota_lane: metric + insight
+entities:
+- table_name: dim_geography
+  layer: dim
+  domain: geography
+  grain: One row per place (country, admin, city, FNID, point)
+  primary_key: geography_key
+  purpose: Conformed place spine for all geo-aware facts.
+  analytical_use: Join every fact on geography_key; filter geo_level / data_level
+    / country_iso3.
+  join_keys: geography_key; country_key; parent_geography_key
+  grain_filters: geo_level, data_level
+  source_lineage: int_geography_conformed ← stg_geo + FAOSTAT/FEWS spines
+  ota_report_use: Always attribute place in insight/metric text; prefer country_iso3
+    + place_scope.
+  caveats: Country grain may lack country_iso3 on some spines (see MART_QA_NOTES HDI
+    history).
+- table_name: dim_ref_country
+  layer: dim
+  domain: geography
+  grain: One row per ISO3 country
+  primary_key: country_iso3
+  purpose: Reference country attributes including Africa scope policy.
+  analytical_use: Filter in_africa_scope for continental OTA briefs.
+  join_keys: country_iso3
+  grain_filters: in_africa_scope
+  source_lineage: ref_m49 / country reference seeds
+  ota_report_use: Scope Africa-only vs global partner lists.
+  caveats: Not a substitute for dim_geography joins on facts.
+- table_name: dim_faostat_area
+  layer: dim
+  domain: geography
+  grain: One row per FAOSTAT area_code
+  primary_key: faostat_area_key
+  purpose: FAOSTAT area code reference mapped toward ISO/M49.
+  analytical_use: Debug FAOSTAT geo matching; map area_code ↔ country.
+  join_keys: faostat_area_key, area_code
+  grain_filters: ''
+  source_lineage: int_faostat_area_iso / area reference
+  ota_report_use: Rarely cited directly; use for lineage footnotes.
+  caveats: Some area codes remain unmapped to ISO3.
+- table_name: dim_date
+  layer: dim
+  domain: calendar
+  grain: One row per calendar day
+  primary_key: date_key
+  purpose: Calendar spine (year/month/quarter helpers).
+  analytical_use: Join facts on date_key for time series charts.
+  join_keys: date_key
+  grain_filters: year, month, quarter
+  source_lineage: generated spine
+  ota_report_use: Standardise as-of language in metrics.
+  caveats: Prefer filtering fact as_of_date for partition pruning.
+- table_name: dim_season
+  layer: dim
+  domain: production
+  grain: Country × season_name
+  primary_key: season_key
+  purpose: Agricultural seasons by country (start/end months).
+  analytical_use: Join fct_yield / seasonal aggs; never mix with FAOSTAT year alone.
+  join_keys: season_key
+  grain_filters: ''
+  source_lineage: season reference / yield intermediates
+  ota_report_use: Seasonal sourcing and planting window narratives.
+  caveats: Season grain ≠ FAOSTAT calendar year.
+- table_name: dim_source
+  layer: dim
+  domain: lineage
+  grain: One row per source_natural_key
+  primary_key: source_key
+  purpose: Source registry for ACF tier and producer scale.
+  analytical_use: Always group/filter by source_key — no silent source blend.
+  join_keys: source_key, source_natural_key
+  grain_filters: tier, producer_scale
+  source_lineage: int_source_registry
+  ota_report_use: Cite source in every OTA metric footnote.
+  caveats: Aggregates must retain source_key.
+- table_name: dim_product
+  layer: dim
+  domain: production
+  grain: Crop/commodity product identity
+  primary_key: product_key
+  purpose: Product dimension for production, prices, food balance, trade.
+  analytical_use: Prefer over dim_item for crop/commodity charts.
+  join_keys: product_key
+  grain_filters: ''
+  source_lineage: production/prices/food balance unions
+  ota_report_use: Name commodities consistently in OTA titles.
+  caveats: dim_item is for FAOSTAT long-form item codes on other facts.
+- table_name: dim_item
+  layer: dim
+  domain: reference
+  grain: FAOSTAT-style item name/code
+  primary_key: item_key
+  purpose: Items for emissions, employment, land inputs, investment, etc.
+  analytical_use: Join long FAOSTAT facts that use item_key.
+  join_keys: item_key
+  grain_filters: ''
+  source_lineage: multi-domain FAOSTAT intermediates
+  ota_report_use: Label non-crop FAOSTAT series.
+  caveats: Do not confuse with dim_product.
+- table_name: dim_element
+  layer: dim
+  domain: reference
+  grain: FAOSTAT-style element
+  primary_key: element_key
+  purpose: Element labels (production qty, area harvested, imports, …).
+  analytical_use: Filter long-form facts by element before pivoting.
+  join_keys: element_key
+  grain_filters: ''
+  source_lineage: multi-domain FAOSTAT intermediates
+  ota_report_use: Clarify which measure an OTA metric uses.
+  caveats: Food balance convenience columns map by element_code, not English labels
+    alone.
+- table_name: dim_unit
+  layer: dim
+  domain: reference
+  grain: Unit code × type
+  primary_key: unit_key
+  purpose: Quantity and currency units.
+  analytical_use: Join prices/production unit keys; never invent units.
+  join_keys: unit_key
+  grain_filters: unit_type
+  source_lineage: prices/production + standard ha/t/ha
+  ota_report_use: Always publish units beside metric values.
+  caveats: WFP common_unit_price may be null — expected.
+- table_name: dim_classification
+  layer: dim
+  domain: food_security
+  grain: IPC phase code/name
+  primary_key: classification_key
+  purpose: FEWS IPC phase classification dimension.
+  analytical_use: Join fct_food_security for phase labels.
+  join_keys: classification_key
+  grain_filters: ''
+  source_lineage: FEWS food security staging
+  ota_report_use: Use phase_name in early-warning insights.
+  caveats: ''
+- table_name: dim_market
+  layer: dim
+  domain: prices
+  grain: Country × market_name
+  primary_key: market_key
+  purpose: Market identities for price facts.
+  analytical_use: Market-level price briefs; join fct_prices.
+  join_keys: market_key
+  grain_filters: ''
+  source_lineage: int_prices_harmonised
+  ota_report_use: Name markets in price volatility OTAs.
+  caveats: ''
+- table_name: dim_household
+  layer: dim
+  domain: household
+  grain: Survey household identity
+  primary_key: household_key
+  purpose: ILRI household identities.
+  analytical_use: Join household/animal_health/insurance facts.
+  join_keys: household_key
+  grain_filters: ''
+  source_lineage: ILRI household staging
+  ota_report_use: Community-level OTA with anonymised household counts.
+  caveats: Community grain — do not union with national SDG gender.
+- table_name: dim_soil_property
+  layer: dim
+  domain: soil
+  grain: soil_property × depth
+  primary_key: soil_property_key
+  purpose: Soil property catalogue from ISRIC/iSDA.
+  analytical_use: Filter soil facts/aggs by property and depth.
+  join_keys: soil_property_key
+  grain_filters: depth
+  source_lineage: ISRIC/iSDA long tables
+  ota_report_use: Soil health OTA metrics.
+  caveats: ''
+- table_name: dim_livestock
+  layer: dim
+  domain: animal_health
+  grain: Species
+  primary_key: livestock_key
+  purpose: Livestock species for animal health.
+  analytical_use: Join fct_animal_health.
+  join_keys: livestock_key
+  grain_filters: ''
+  source_lineage: ILRI animal health
+  ota_report_use: Species-specific disease OTAs.
+  caveats: ILRI dairy cow-day metrics stay out of production facts.
+- table_name: dim_disease
+  layer: dim
+  domain: food_security
+  grain: Hazard/disease name
+  primary_key: disease_key
+  purpose: Foodborne hazard / disease labels.
+  analytical_use: Join fct_food_hazards.
+  join_keys: disease_key
+  grain_filters: ''
+  source_lineage: food hazard studies
+  ota_report_use: Food safety OTAs.
+  caveats: ''
+- table_name: dim_indicator
+  layer: dim
+  domain: socio_economic
+  grain: Indicator name
+  primary_key: indicator_key
+  purpose: Indicator catalogue (employment, Climate Watch, ASTI, …).
+  analytical_use: Join climate/employment/investment facts.
+  join_keys: indicator_key
+  grain_filters: ''
+  source_lineage: multi-source intermediates
+  ota_report_use: Name indicators clearly in metrics.
+  caveats: ''
+- table_name: dim_organisation
+  layer: dim
+  domain: research
+  grain: Organisation identity (OpenAIRE/ASTI)
+  primary_key: organisation_key
+  purpose: Research and ASTI organisations.
+  analytical_use: Join investment and research bridges.
+  join_keys: organisation_key
+  grain_filters: org_source
+  source_lineage: OpenAIRE + ASTI
+  ota_report_use: Attribute institutional partners.
+  caveats: Filter org_source before blending OpenAIRE and ASTI.
+- table_name: dim_person
+  layer: dim
+  domain: research
+  grain: Person/author id
+  primary_key: person_key
+  purpose: OpenAIRE persons/authors.
+  analytical_use: Join bridge_research_person.
+  join_keys: person_key
+  grain_filters: ''
+  source_lineage: OpenAIRE
+  ota_report_use: Rare for commodity OTAs; useful for research landscape OTAs.
+  caveats: ''
+- table_name: dim_research_project
+  layer: dim
+  domain: research
+  grain: Project id
+  primary_key: research_project_key
+  purpose: OpenAIRE research projects.
+  analytical_use: Join research bridges; investment context.
+  join_keys: research_project_key
+  grain_filters: ''
+  source_lineage: OpenAIRE
+  ota_report_use: R&D funding landscape OTAs.
+  caveats: ''
+- table_name: dim_aez
+  layer: dim
+  domain: geography
+  grain: AEZ code × version
+  primary_key: aez_key
+  purpose: Agro-ecological zones.
+  analytical_use: Join via bridge_geography_aez for AEZ overlays.
+  join_keys: aez_key
+  grain_filters: ''
+  source_lineage: AEZ bridge intermediate
+  ota_report_use: Climate/AEZ framing in sourcing OTAs.
+  caveats: ''
+- table_name: dim_sex
+  layer: dim
+  domain: socio_economic
+  grain: Sex label
+  primary_key: sex_key
+  purpose: Sex categories for employment/investment.
+  analytical_use: Join employment and investment facts.
+  join_keys: sex_key
+  grain_filters: ''
+  source_lineage: static
+  ota_report_use: Gender-disaggregated metrics.
+  caveats: ''
+- table_name: fct_production
+  layer: fact
+  domain: production
+  grain: FAOSTAT country–year long-form (area/item/element/year/source)
+  primary_key: production_key
+  purpose: FAOSTAT agricultural production long-form (physical/index/gross_value grains).
+  analytical_use: Filter production_grain='physical' for area/qty; use agg_production_country_year
+    for rollups.
+  join_keys: geography_key, product_key, element_key, source_key, date_key, production_unit_key
+  grain_filters: production_grain, grain_flag
+  source_lineage: int_faostat_production_conformed
+  ota_report_use: Core sourcing / production trend metrics and insights.
+  caveats: Never average with fct_yield. Prefer partition filter on as_of_date.
+- table_name: fct_yield
+  layer: fact
+  domain: production
+  grain: FNID–season yield_raw (area/qty/yield)
+  primary_key: yield_key
+  purpose: Sub-national seasonal yield from yield_raw_data only.
+  analytical_use: Seasonal risk; use agg_production_country_season for country rollups.
+  join_keys: geography_key, season_key, product_key, source_key, production_unit_key,
+    date_key
+  grain_filters: grain_flag
+  source_lineage: int_yield_raw_with_geo
+  ota_report_use: Seasonal yield insights separate from FAOSTAT national production.
+  caveats: Units default ha/tonnes/t/ha. Citation SoT separate from fct_production.
+- table_name: fct_prices
+  layer: fact
+  domain: prices
+  grain: Market × product × month × source
+  primary_key: price_key
+  purpose: Harmonised market prices (FAOSTAT/FEWS/WFP).
+  analytical_use: Market detail; agg_prices_country_month for country averages.
+  join_keys: geography_key, market_key, product_key, unit_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: int_prices_with_geo / harmonised
+  ota_report_use: Price volatility and market brief OTAs.
+  caveats: High geo_null on WFP/FEWS; WFP common_unit_price null expected; month 1-12
+    only.
+- table_name: fct_trade
+  layer: fact
+  domain: trade
+  grain: faostat_country_year | fews_border_month
+  primary_key: trade_key
+  purpose: Crop/livestock trade and FEWS cross-border flows.
+  analytical_use: Filter trade_grain before charts; use partner/border columns for
+    FEWS.
+  join_keys: geography_key, product_key, item_key, element_key, source_key, date_key
+  grain_filters: trade_grain
+  source_lineage: FAOSTAT trade + FEWS cross-border intermediates
+  ota_report_use: Trade flow and border market OTAs.
+  caveats: Do not blend trade grains or forestry trade into this fact.
+- table_name: fct_food_security
+  layer: fact
+  domain: food_security
+  grain: FNID × measure_type × month (FEWS)
+  primary_key: food_security_key
+  purpose: FEWS NET IPC classification and population measures.
+  analytical_use: Filter measure_type; join dim_classification for phase labels.
+  join_keys: geography_key, classification_key, source_key, date_key
+  grain_filters: measure_type
+  source_lineage: int_fews_food_security_with_geo
+  ota_report_use: Early-warning OTAs (insight + recommendation).
+  caveats: pct_phase* usually empty on classification rows.
+- table_name: fct_food_balance
+  layer: fact
+  domain: food_security
+  grain: Country × item × element × year
+  primary_key: food_balance_key
+  purpose: FAOSTAT food balance long-form.
+  analytical_use: Filter by element_code for food/feed/losses; use agg for sums.
+  join_keys: geography_key, product_key, element_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: int_faostat_food_balances_conformed
+  ota_report_use: Supply utilisation and food availability OTAs.
+  caveats: Map food/feed/losses by element_code not English labels.
+- table_name: fct_climate
+  layer: fact
+  domain: climate
+  grain: point_obs | country_model
+  primary_key: climate_key
+  purpose: NASA POWER / ERA5 point climate and Climate Watch country indicators.
+  analytical_use: Filter climate_grain; join indicator_key for series names.
+  join_keys: geography_key, indicator_key, source_key, date_key
+  grain_filters: climate_grain
+  source_lineage: int_nasa_power / int_era5 / int_climatewatch
+  ota_report_use: Climate stress metrics paired with yield/production.
+  caveats: Geo coverage varies by source; check geo_null.
+- table_name: fct_emissions
+  layer: fact
+  domain: climate
+  grain: Country × item × element × year
+  primary_key: emissions_key
+  purpose: FAOSTAT agricultural emissions.
+  analytical_use: Country-year emission series; use agg_emissions_country_year.
+  join_keys: geography_key, item_key, element_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: FAOSTAT emissions intermediates
+  ota_report_use: Mitigation / GHG OTAs.
+  caveats: Always retain source_key when aggregating.
+- table_name: fct_vegetation
+  layer: fact
+  domain: vegetation
+  grain: ndvi_grid | ilri_site
+  primary_key: vegetation_key
+  purpose: NDVI and ILRI site vegetation/carrying capacity.
+  analytical_use: Filter vegetation_grain; point geo via nearest-city resolution.
+  join_keys: geography_key, source_key
+  grain_filters: vegetation_grain
+  source_lineage: int_ndvi_conformed / int_ilri_vegetation_conformed
+  ota_report_use: Rangeland / drought stress OTAs.
+  caveats: Cluster-only (weak as_of on some branches); check as_of_date_basis.
+- table_name: fct_air_quality
+  layer: fact
+  domain: climate
+  grain: Sensor observation timestamp
+  primary_key: air_quality_key
+  purpose: Local air quality (e.g. Nakuru PM2.5) point observations.
+  analytical_use: Hyperlocal environmental OTAs.
+  join_keys: geography_key, source_key
+  grain_filters: ''
+  source_lineage: int_nakuru_air_conformed
+  ota_report_use: Local pollution context OTAs.
+  caveats: Limited geography coverage.
+- table_name: fct_soil_health
+  layer: fact
+  domain: soil
+  grain: Point × property × depth × source
+  primary_key: soil_key
+  purpose: ISRIC + iSDA soil property values at points.
+  analytical_use: Prefer agg_soil_admin for admin rollups.
+  join_keys: geography_key, soil_property_key, source_key
+  grain_filters: ''
+  source_lineage: int_isric_soil_with_geo / int_isda_soil_with_geo
+  ota_report_use: Soil fertility OTAs.
+  caveats: Large table; iSDA as_of historically weak; cluster-only layout.
+- table_name: fct_land_inputs
+  layer: fact
+  domain: production
+  grain: Country × item × element × input_grain × year
+  primary_key: land_input_key
+  purpose: Land use, fertilizer, pesticide and related inputs (one fact, many grains).
+  analytical_use: Filter input_grain before analysis.
+  join_keys: geography_key, item_key, element_key, source_key, date_key
+  grain_filters: input_grain
+  source_lineage: FAOSTAT land/input intermediates
+  ota_report_use: Input intensity OTAs.
+  caveats: Not three separate tables — filter grain.
+- table_name: fct_forestry
+  layer: fact
+  domain: production
+  grain: Country × item × forestry_grain × year
+  primary_key: forestry_key
+  purpose: Forestry production/trade long-form.
+  analytical_use: Filter forestry_grain; use agg_forestry_country_year.
+  join_keys: geography_key, item_key, element_key, source_key, date_key
+  grain_filters: forestry_grain
+  source_lineage: FAOSTAT forestry
+  ota_report_use: Forestry supply OTAs.
+  caveats: Separate from fct_trade crop/livestock.
+- table_name: fct_machinery
+  layer: fact
+  domain: production
+  grain: Country × item × element × year
+  primary_key: machinery_key
+  purpose: Agricultural machinery stock/use.
+  analytical_use: Mechanisation context for production OTAs.
+  join_keys: geography_key, item_key, element_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: FAOSTAT machinery
+  ota_report_use: Mechanisation insights.
+  caveats: ''
+- table_name: fct_economics
+  layer: fact
+  domain: socio_economic
+  grain: Country × item × element × measurement_form × year
+  primary_key: economics_key
+  purpose: FAOSTAT macro/economics series.
+  analytical_use: Use agg_economics_country_year for averages.
+  join_keys: geography_key, item_key, element_key, source_key, date_key
+  grain_filters: measurement_form
+  source_lineage: int_faostat_macro_conformed / GDP PPP
+  ota_report_use: Macro context for agribusiness OTAs.
+  caveats: ''
+- table_name: fct_employment
+  layer: fact
+  domain: socio_economic
+  grain: Country × indicator × sex × year
+  primary_key: employment_key
+  purpose: Employment indicators with sex breakdown.
+  analytical_use: Join sex_key; use agg_employment_country_year.
+  join_keys: geography_key, item_key, element_key, indicator_key, sex_key, source_key,
+    date_key
+  grain_filters: ''
+  source_lineage: int_employment_conformed
+  ota_report_use: Labour and livelihoods OTAs.
+  caveats: ''
+- table_name: fct_hdi
+  layer: fact
+  domain: socio_economic
+  grain: Country × year
+  primary_key: hdi_key
+  purpose: Human Development Index.
+  analytical_use: Use agg_hdi_latest for latest-per-country.
+  join_keys: geography_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: int_hdi_conformed
+  ota_report_use: Development context OTAs.
+  caveats: Historical geo_null issues documented in MART_QA_NOTES — verify geography_key.
+- table_name: fct_gender_inclusion
+  layer: fact
+  domain: socio_economic
+  grain: Country × item × element × year (national SDG)
+  primary_key: gender_inclusion_key
+  purpose: National SDG gender inclusion indicators.
+  analytical_use: National gender OTAs — do not union with household gender scores.
+  join_keys: geography_key, item_key, element_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: FAOSTAT/SDG gender
+  ota_report_use: Gender inclusion national OTAs.
+  caveats: Keep separate from fct_household gender fields.
+- table_name: fct_investment
+  layer: fact
+  domain: research
+  grain: Country × donor/item/element/indicator/sex/institution × year
+  primary_key: investment_key
+  purpose: ASTI / agricultural research investment.
+  analytical_use: Join organisation_key and sex_key for R&D funding OTAs.
+  join_keys: geography_key, item_key, element_key, indicator_key, sex_key, organisation_key,
+    source_key, date_key
+  grain_filters: ''
+  source_lineage: ASTI intermediates
+  ota_report_use: Ag R&D investment OTAs.
+  caveats: ''
+- table_name: fct_humanitarian
+  layer: fact
+  domain: food_security
+  grain: Country × item × element × year
+  primary_key: humanitarian_key
+  purpose: Food aid / humanitarian assistance.
+  analytical_use: Aid volume context beside food security.
+  join_keys: geography_key, item_key, element_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: FAOSTAT humanitarian
+  ota_report_use: Response / aid OTAs.
+  caveats: ''
+- table_name: fct_food_hazards
+  layer: fact
+  domain: food_security
+  grain: Study × site × hazard × year
+  primary_key: food_hazard_key
+  purpose: Foodborne hazard study metrics.
+  analytical_use: Join disease_key; country geo when available.
+  join_keys: geography_key, disease_key, source_key
+  grain_filters: ''
+  source_lineage: food hazard literature extracts
+  ota_report_use: Food safety OTAs.
+  caveats: Sparse geo; study-level grain.
+- table_name: fct_household
+  layer: fact
+  domain: household
+  grain: Household survey snapshot
+  primary_key: household_fact_key
+  purpose: ILRI household metrics (FIES, income, gender control, …).
+  analytical_use: Community grain analysis; join dim_household.
+  join_keys: household_key, geography_key, source_key
+  grain_filters: ''
+  source_lineage: int_ilri_household_conformed
+  ota_report_use: Community livelihood OTAs.
+  caveats: Cluster-only; survey year may be weak; separate from national gender fact.
+- table_name: fct_animal_health
+  layer: fact
+  domain: animal_health
+  grain: Household × species
+  primary_key: animal_health_key
+  purpose: ILRI livestock health status.
+  analytical_use: Join livestock_key and household_key.
+  join_keys: geography_key, household_key, livestock_key, source_key
+  grain_filters: ''
+  source_lineage: int_ilri_animal_health_conformed
+  ota_report_use: Animal disease risk OTAs.
+  caveats: as_of historically weak; dairy cow-day production stays out of fct_production.
+- table_name: fct_insurance
+  layer: fact
+  domain: household
+  grain: Household insurance record
+  primary_key: insurance_key
+  purpose: Livestock insurance records.
+  analytical_use: Join household and geography.
+  join_keys: geography_key, household_key, source_key
+  grain_filters: ''
+  source_lineage: insurance staging
+  ota_report_use: Risk transfer OTAs.
+  caveats: Geo coverage may be weak.
+- table_name: fct_biodiversity
+  layer: fact
+  domain: spatial
+  grain: GBIF occurrence
+  primary_key: biodiversity_key
+  purpose: Species occurrence points.
+  analytical_use: Biodiversity context OTAs; point geo.
+  join_keys: geography_key, source_key
+  grain_filters: ''
+  source_lineage: int_biodiversity_conformed
+  ota_report_use: Biodiversity co-benefit OTAs.
+  caveats: Geo/asof coverage historically poor — verify before citing.
+- table_name: fct_protected_areas
+  layer: fact
+  domain: spatial
+  grain: Protected area feature
+  primary_key: protected_area_key
+  purpose: Protected area extents.
+  analytical_use: Land-use conflict / conservation OTAs.
+  join_keys: geography_key, source_key
+  grain_filters: ''
+  source_lineage: int_protected_areas
+  ota_report_use: Conservation overlay OTAs.
+  caveats: Cluster-only; limited observation dates.
+- table_name: fct_germplasm
+  layer: fact
+  domain: spatial
+  grain: Germplasm accession point
+  primary_key: germplasm_key
+  purpose: Germplasm accession locations.
+  analytical_use: Genetic resource OTAs.
+  join_keys: geography_key, source_key
+  grain_filters: ''
+  source_lineage: int_germplasm_conformed
+  ota_report_use: Seed system / genetic diversity OTAs.
+  caveats: Cluster-only; limited observation dates.
+- table_name: agg_production_country_year
+  layer: agg
+  domain: production
+  grain: Country × product × year × source (physical)
+  primary_key: agg_production_country_year_key
+  purpose: Country-year area harvested and production qty from physical production.
+  analytical_use: Default table for national production OTA metrics.
+  join_keys: geography_key, product_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: fct_production (physical grain)
+  ota_report_use: Primary sourcing comparison metrics.
+  caveats: Physical grain only; still group by source_key.
+- table_name: agg_production_country_season
+  layer: agg
+  domain: production
+  grain: Country × season × product × harvest_year × source
+  primary_key: agg_production_country_season_key
+  purpose: Country-season rollup of fct_yield with recomputed yield.
+  analytical_use: Seasonal production OTAs.
+  join_keys: geography_key, season_key, product_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: fct_yield
+  ota_report_use: Seasonal risk metrics.
+  caveats: Do not mix with agg_production_country_year without stating grain.
+- table_name: agg_prices_country_month
+  layer: agg
+  domain: prices
+  grain: Country × product × month × source
+  primary_key: agg_prices_country_month_key
+  purpose: Country-month average market prices.
+  analytical_use: Default for national price trend OTAs.
+  join_keys: geography_key, product_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: fct_prices
+  ota_report_use: Price volatility metrics.
+  caveats: Averages hide market dispersion — use fct_prices for market detail.
+- table_name: agg_food_security_country_month
+  layer: agg
+  domain: food_security
+  grain: Country × measure_type × month × source
+  primary_key: agg_food_security_country_month_key
+  purpose: Country-month population-in-phase aggregates.
+  analytical_use: National early-warning rollups (population measure).
+  join_keys: geography_key, source_key, date_key
+  grain_filters: measure_type='population'
+  source_lineage: fct_food_security
+  ota_report_use: National food security OTAs.
+  caveats: Built for population measure — check filter.
+- table_name: agg_food_balance_country_year
+  layer: agg
+  domain: food_security
+  grain: Country × product × year × source
+  primary_key: agg_food_balance_country_year_key
+  purpose: Sums of production/imports/exports/food/feed/losses.
+  analytical_use: National food balance OTAs.
+  join_keys: geography_key, product_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: fct_food_balance
+  ota_report_use: Supply utilisation metrics.
+  caveats: ''
+- table_name: agg_economics_country_year
+  layer: agg
+  domain: socio_economic
+  grain: Country × item × measurement_form × year × source
+  primary_key: agg_economics_country_year_key
+  purpose: Country-year averages of economics values.
+  analytical_use: Macro context OTAs.
+  join_keys: geography_key, item_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: fct_economics
+  ota_report_use: GDP/macro sidebars.
+  caveats: ''
+- table_name: agg_employment_country_year
+  layer: agg
+  domain: socio_economic
+  grain: Country × indicator × sex × year × source
+  primary_key: agg_employment_country_year_key
+  purpose: Country-year employment averages.
+  analytical_use: Labour OTAs.
+  join_keys: geography_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: fct_employment
+  ota_report_use: Employment metrics.
+  caveats: ''
+- table_name: agg_emissions_country_year
+  layer: agg
+  domain: climate
+  grain: Country × item × element × year × source
+  primary_key: agg_emissions_country_year_key
+  purpose: Country-year emission averages.
+  analytical_use: GHG OTAs.
+  join_keys: geography_key, item_key, element_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: fct_emissions
+  ota_report_use: Emissions metrics.
+  caveats: ''
+- table_name: agg_forestry_country_year
+  layer: agg
+  domain: production
+  grain: Country × item × forestry_grain × year × source
+  primary_key: agg_forestry_country_year_key
+  purpose: Country-year forestry averages by grain.
+  analytical_use: Forestry OTAs; filter forestry_grain.
+  join_keys: geography_key, item_key, source_key, date_key
+  grain_filters: forestry_grain
+  source_lineage: fct_forestry
+  ota_report_use: Forestry metrics.
+  caveats: ''
+- table_name: agg_hdi_latest
+  layer: agg
+  domain: socio_economic
+  grain: Latest year per country
+  primary_key: agg_hdi_latest_key
+  purpose: Latest HDI value per country.
+  analytical_use: Snapshot HDI for country briefs.
+  join_keys: geography_key, source_key, date_key
+  grain_filters: ''
+  source_lineage: fct_hdi
+  ota_report_use: Development context sidebar.
+  caveats: Not a time series — use fct_hdi for trends.
+- table_name: agg_soil_admin
+  layer: agg
+  domain: soil
+  grain: Admin geography × soil_property × depth × source
+  primary_key: agg_soil_admin_key
+  purpose: Admin-level average soil properties.
+  analytical_use: Prefer over raw point fct_soil_health for country/admin OTAs.
+  join_keys: geography_key, source_key
+  grain_filters: geography_key is not null
+  source_lineage: fct_soil_health
+  ota_report_use: Soil health summary metrics.
+  caveats: ''
+- table_name: bridge_geography_aez
+  layer: bridge
+  domain: geography
+  grain: geography_key × AEZ
+  primary_key: geography_aez_bridge_key
+  purpose: Many-to-many geography ↔ AEZ.
+  analytical_use: Overlay AEZ on country/admin analyses.
+  join_keys: geography_key, aez_key
+  grain_filters: ''
+  source_lineage: AEZ bridge intermediate
+  ota_report_use: AEZ framing in climate/production OTAs.
+  caveats: ''
+- table_name: bridge_research_org
+  layer: bridge
+  domain: research
+  grain: Project ↔ organisation edge
+  primary_key: research_org_bridge_key
+  purpose: OpenAIRE project–organisation relationships.
+  analytical_use: Map research networks.
+  join_keys: organisation_key (project via openaire_id)
+  grain_filters: ''
+  source_lineage: OpenAIRE relations
+  ota_report_use: Research ecosystem OTAs.
+  caveats: ''
+- table_name: bridge_research_person
+  layer: bridge
+  domain: research
+  grain: Project ↔ person edge
+  primary_key: research_person_bridge_key
+  purpose: OpenAIRE project–person/author relationships.
+  analytical_use: Author networks for research OTAs.
+  join_keys: person_key (project via openaire_id)
+  grain_filters: ''
+  source_lineage: OpenAIRE relations
+  ota_report_use: Research collaboration OTAs.
+  caveats: ''
+column_overrides:
+  fct_production:
+    production_key:
+      role: PK
+      description: Surrogate production fact key
+      data_type: STRING
+    production_grain:
+      role: dim
+      description: physical | index | gross_value
+      example: physical
+    area_harvested:
+      role: measure
+      description: Area harvested when element matches
+      data_type: FLOAT64
+    production_qty:
+      role: measure
+      description: Production quantity when element matches
+      data_type: FLOAT64
+    yield_value:
+      role: measure
+      description: Yield when element matches (FAOSTAT)
+      data_type: FLOAT64
+    product_key:
+      role: FK
+      description: FK → dim_product
+    element_key:
+      role: FK
+      description: FK → dim_element
+  fct_yield:
+    yield_key:
+      role: PK
+      description: Surrogate yield fact key
+    area_harvested:
+      role: measure
+      description: Area harvested (ha default unit)
+    production_qty:
+      role: measure
+      description: Production quantity (tonnes default)
+    yield_value:
+      role: measure
+      description: Yield (t/ha default)
+    season_key:
+      role: FK
+      description: FK → dim_season
+  fct_prices:
+    price_key:
+      role: PK
+      description: Surrogate price fact key
+    market_key:
+      role: FK
+      description: FK → dim_market
+    product_key:
+      role: FK
+      description: FK → dim_product
+    unit_key:
+      role: FK
+      description: FK → dim_unit
+    month:
+      role: dim
+      description: Calendar month 1-12 (null if unknown)
+  fct_trade:
+    trade_key:
+      role: PK
+      description: Surrogate trade fact key
+    trade_grain:
+      role: dim
+      description: faostat_country_year | fews_border_month
+    source_country:
+      role: dim
+      description: FEWS origin country label
+    destination_country:
+      role: dim
+      description: FEWS destination country label
+    border_point:
+      role: dim
+      description: FEWS border point
+    trade_flow:
+      role: dim
+      description: Trade flow direction/type
+  fct_food_security:
+    food_security_key:
+      role: PK
+      description: Surrogate food security key
+    measure_type:
+      role: dim
+      description: classification | population | …
+    classification_key:
+      role: FK
+      description: FK → dim_classification
+  fct_climate:
+    climate_key:
+      role: PK
+      description: Surrogate climate key
+    climate_grain:
+      role: dim
+      description: point_obs | country_model
+    indicator_key:
+      role: FK
+      description: FK → dim_indicator
+  dim_geography:
+    geography_key:
+      role: PK
+      description: Surrogate geography key
+    geo_level:
+      role: dim
+      description: country | admin | city | fnid | point | …
+    data_level:
+      role: dim
+      description: national | sub_national | community | point
+    country_iso3:
+      role: dim
+      description: ISO3 when known
+    parent_geography_key:
+      role: FK
+      description: One-hop parent place
+  dim_source:
+    source_key:
+      role: PK
+      description: Surrogate source key
+    source_natural_key:
+      role: dim
+      description: Stable natural lineage key
+    tier:
+      role: acf
+      description: Default ACF tier 1/2/3
+acf_column_defaults:
+  tier:
+    role: acf
+    description: ACF producer-scale tier 1/2/3
+    example: '1'
+  data_level:
+    role: acf
+    description: Warehouse data resolution
+    example: national
+  place_scope:
+    role: acf
+    description: Place labels for ACF overlap
+    example: '[''NGA'']'
+  metric:
+    role: acf
+    description: Stable metric slug
+    example: production_qty
+  source_id:
+    role: acf
+    description: ACF source id (= source_key)
+    example: faostat_prod
+  as_of_date:
+    role: acf
+    description: Observation or pipeline date
+    example: '2023-01-01'
+  as_of_date_basis:
+    role: acf
+    description: observation | loaded_at
+    example: observation
+  geo_scope:
+    role: acf
+    description: Geo scope band (null if no geography_key)
+    example: national
+  geography_key:
+    role: FK
+    description: FK → dim_geography
+    example: …
+  country_iso3:
+    role: dim
+    description: ISO3 country code
+    example: ETH
+  source_key:
+    role: FK
+    description: FK → dim_source
+    example: …
+  source_natural_key:
+    role: dim
+    description: Natural source lineage key
+    example: faostat_crops
+  loaded_at:
+    role: meta
+    description: Pipeline load timestamp
+    example: '2026-08-01'
+  date_key:
+    role: FK
+    description: FK → dim_date
+    example: '20230101'
+  value:
+    role: measure
+    description: Primary numeric measure
+    example: '1000'
+  unit:
+    role: measure
+    description: Unit of value
+    example: tonnes

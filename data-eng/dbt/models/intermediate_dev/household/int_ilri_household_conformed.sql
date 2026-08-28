@@ -3,13 +3,14 @@
 with country_geo as (
     select
         lower(trim(country_name)) as country_name_norm,
-        geo_key
+        geo_key,
+        country_iso3
     from {{ ref('int_geography_conformed') }}
     where geo_level = 'country'
       and country_name is not null
     qualify row_number() over (
         partition by lower(trim(country_name))
-        order by geo_key
+        order by population desc nulls last, geo_key
     ) = 1
 )
 
@@ -46,6 +47,7 @@ select
     h.crop_diversity,
     h.livestock_diversity,
     g.geo_key,
+    g.country_iso3,
     h.source_natural_key,
     current_timestamp() as loaded_at
 from {{ ref('stg_ilri_household_food_security') }} h

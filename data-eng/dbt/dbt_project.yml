@@ -27,6 +27,16 @@ vars:
   intermediate_dev_dataset: "{{ env_var('BQ_DATASET_INTERMEDIATE', 'intermediate_dev') }}"
   mart_dev_dataset: "{{ env_var('BQ_DATASET_GOLD', 'mart_dev') }}"
 
+seeds:
+  open_trace:
+    ref_m49_country:
+      +column_types:
+        m49_code: string
+        in_africa_scope: boolean
+    ref_faostat_aggregate_areas:
+      +column_types:
+        area_code: string
+
 models:
   open_trace:
     landing:

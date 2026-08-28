@@ -1,0 +1,7 @@
+version: 2
+
+sources:
+  - name: raw_dev
+    tables:
+      - name: geoboundaries_admin0_africa
+        description: geoBoundaries ADM0 country polygons for Africa-scoped ISO2/ISO3 (loaded by load_geoboundaries_admin0.py)

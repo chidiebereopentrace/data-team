@@ -24,6 +24,7 @@ arcgis_vegetation_ndvi
 cifor_icraf_raw
 climatewatch_climate_health_impacts
 copernicus_climate_raw_era5_stats_2023_06
+geoboundaries_admin0_africa
 crop_germplasm_africa
 fao_fertilizers_nutrient_bronze
 fao_land_use_bronze

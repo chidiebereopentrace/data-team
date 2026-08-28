@@ -18,6 +18,7 @@ from ml.rag.chatbot.acf_metadata import (
     derive_tier_and_data_level,
     enrich_acf_payload_fields,
     project_bq_row_acf,
+    warehouse_row_to_acf_record,
 )
 from ml.rag.chatbot.acf_question import classify_acf_question
 
@@ -165,6 +166,71 @@ def test_project_bq_row_acf() -> None:
     assert meta["metric"] == "maize"
     assert "yield_raw_data" in meta["source_id"]
     assert meta["direction"] == "unknown"
+
+
+def test_warehouse_row_to_acf_record_prices() -> None:
+    row = {
+        "tier": 1,
+        "data_level": "sub_national",
+        "place_scope": ["ETH", "ETR103", "Oromia"],
+        "metric": "price_retail_maize",
+        "source_id": "faostat_prices_eth",
+        "as_of_date": "2024-06-30",
+        "value": 42.5,
+        "unit": "ETB/kg",
+    }
+    record = warehouse_row_to_acf_record(row)
+    assert record is not None
+    assert record["tier"] == 1
+    assert record["data_level"] == "sub_national"
+    assert record["geo_scope"] == ["ETH", "ETR103", "Oromia"]
+    assert record["place_scope"] == ["ETH", "ETR103", "Oromia"]
+    assert record["metric"] == "price_retail_maize"
+    assert record["source_id"] == "faostat_prices_eth"
+    assert record["direction"] == "unknown"
+
+
+def test_warehouse_row_skips_null_as_of_date() -> None:
+    row = {
+        "tier": 3,
+        "data_level": "community",
+        "place_scope": ["KEN"],
+        "metric": "household_snapshot",
+        "source_id": "ilri_hh",
+        "as_of_date": None,
+        "value": 1.0,
+    }
+    assert warehouse_row_to_acf_record(row) is None
+
+
+def test_warehouse_cited_item_adapts_and_scores() -> None:
+    item = {
+        "content": "{...}",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "tier": 1,
+            "data_level": "national",
+            "place_scope": ["KEN", "Kenya"],
+            "metric": "ipc_phase_3",
+            "source_id": "fews_ipc_ken",
+            "as_of_date": "2025-05-01",
+            "value": 2.1,
+            "unit": "million",
+        },
+    }
+    record = context_item_to_acf_record(item)
+    assert record is not None
+    assert record["tier"] == 1
+    assert record["geo_scope"] == ["KEN", "Kenya"]
+    claims = adapt_cited_claims([item])
+    assert len(claims) == 1
+    acf = score_cited_evidence(
+        [item],
+        query="How is Kenya food security?",
+        reference_date=date(2025, 7, 1),
+    )
+    assert acf.band != "no_evidence"
 
 
 def test_context_prefers_ingested_direction_and_magnitude() -> None:

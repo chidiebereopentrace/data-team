@@ -8,7 +8,10 @@ with iso3_geo as (
     where country_iso3 is not null
     qualify row_number() over (
         partition by upper(trim(country_iso3))
-        order by case when capital_status is not null then 0 else 1 end, geo_key
+        order by
+            case geo_level when 'country' then 0 else 1 end,
+            case when capital_status is not null then 0 else 1 end,
+            geo_key
     ) = 1
 )
 

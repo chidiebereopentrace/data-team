@@ -1,6 +1,50 @@
 version: 2
 
 models:
+  - name: int_faostat_areas_distinct
+    description: "Distinct FAOSTAT area_code rows from all FAOSTAT staging sources"
+
+  - name: int_ref_country
+    description: "Canonical country reference with in_africa_scope (stg_geo + M49 seed)"
+    columns:
+      - name: country_iso3
+        tests:
+          - not_null
+          - unique
+      - name: in_africa_scope
+        tests:
+          - not_null
+
+  - name: int_faostat_area_reference
+    description: "FAOSTAT area_code → ISO via M49, ref country, and aliases"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+          - unique
+      - name: match_method
+        tests:
+          - accepted_values:
+              values: ['m49', 'ref_country_name', 'alias']
+              config:
+                where: "match_method is not null"
+
+  - name: int_admin0_africa
+    description: "Country ADM0 polygons from geoBoundaries (raw_dev.geoboundaries_admin0_africa)"
+
+  - name: int_latlon_country_grid
+    description: "0.1° grid → country via int_admin0_africa bbox; point facts use ST_CONTAINS on geog"
+    columns:
+      - name: lat_cell
+        tests:
+          - not_null
+      - name: lon_cell
+        tests:
+          - not_null
+      - name: country_iso2
+        tests:
+          - not_null
+
   - name: int_geography_conformed
     description: "Conformed geography spine from cities, FEWS, yield, and FAOSTAT sources"
     columns:
@@ -23,10 +67,6 @@ models:
         tests:
           - not_null
           - unique
-      - name: source_id
-        tests:
-          - not_null
-          - unique
       - name: organisation_name
         tests:
           - not_null
@@ -36,14 +76,29 @@ models:
           - accepted_values:
               values: [1, 2, 3]
               quote: false
-      - name: data_level
+      - name: default_data_level
         tests:
           - not_null
           - accepted_values:
-              values: ['global', 'national', 'sub_national', 'community']
+              values: ['global', 'national', 'sub_national', 'community', 'point']
+      - name: producer_scale
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['global', 'regional', 'national', 'subnational']
 
-  - name: int_faostat_production_pivoted
-    description: "FAOSTAT production long-to-wide pivot on element"
+  - name: int_faostat_area_iso
+    description: "Thin pass-through of int_faostat_area_reference (FAOSTAT area_code → ISO)"
+    columns:
+      - name: area_code
+        tests:
+          - not_null
+      - name: country_name
+        tests:
+          - not_null
+
+  - name: int_faostat_production_conformed
+    description: "Long-form FAOSTAT production — one row per area/item/element/year/source"
     columns:
       - name: area_code
         tests:
@@ -51,11 +106,20 @@ models:
       - name: year
         tests:
           - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: production_grain
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['physical', 'index', 'gross_value']
     tests:
       - unique:
           column_name: >
             cast(area_code as string) || '-' ||
             coalesce(cast(item_code as string),'') || '-' ||
+            coalesce(cast(element_code as string),'') || '-' ||
             cast(year as string) || '-' ||
             source_natural_key
 
@@ -89,6 +153,67 @@ models:
           - not_null
           - accepted_values:
               values: ['fews', 'wfp', 'faostat']
+      - name: source_natural_key
+        tests:
+          - not_null
+
+  - name: int_prices_with_geo
+    description: "Harmonised prices with geo_key from int_geography_conformed (admin hierarchy or FAOSTAT area_code)"
+    columns:
+      - name: geo_key
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: price_source
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "price_source != 'faostat' or area_code is not null"
+          config:
+            severity: warn
+
+  - name: int_isric_soil_with_geo
+    description: "ISRIC soil points with city lat/lon match and 1dp grid country fallback"
+    columns:
+      - name: geo_key
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: country_iso3
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null
+
+  - name: int_isda_soil_with_geo
+    description: "iSDA soil with city match, country name, and lat/lon grid fallback"
+    columns:
+      - name: geo_key
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: latitude
+        tests:
+          - not_null
+      - name: longitude
+        tests:
+          - not_null
+      - name: soil_property
+        tests:
+          - not_null
       - name: source_natural_key
         tests:
           - not_null
@@ -145,22 +270,6 @@ models:
     description: "FEWS food security with fnid geo_key attach"
     columns:
       - name: measure_type
-        tests:
-          - not_null
-      - name: source_natural_key
-        tests:
-          - not_null
-
-  - name: int_isda_soil_with_geo
-    description: "iSDA soil points joined to city geo_key via rounded lat/lng"
-    columns:
-      - name: latitude
-        tests:
-          - not_null
-      - name: longitude
-        tests:
-          - not_null
-      - name: soil_property
         tests:
           - not_null
       - name: source_natural_key
