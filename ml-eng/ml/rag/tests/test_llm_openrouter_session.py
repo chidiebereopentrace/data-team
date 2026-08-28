@@ -109,6 +109,25 @@ def test_call_llama_for_sql_passes_nl2sql_purpose(monkeypatch: pytest.MonkeyPatc
         assert mock_llm.call_args.kwargs.get("purpose") == "bq.nl2sql"
 
 
+def test_call_llama_for_sql_uses_dedicated_nl2sql_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_LLM_MODEL_ID", "qwen/qwen3-30b-a3b-instruct-2507")
+    monkeypatch.setenv("RAG_BQ_NL2SQL_MODEL_ID", "deepseek/deepseek-v4-flash-0731")
+    with mock.patch("ml.rag.retrievers.bq_retriever.llm_chat_complete") as mock_llm:
+        mock_llm.return_value = "SELECT 1"
+        from ml.rag.retrievers.bq_retriever import _call_llama_for_sql
+
+        _call_llama_for_sql([{"role": "user", "content": "q"}])
+        assert mock_llm.call_args.kwargs.get("model") == "deepseek/deepseek-v4-flash-0731"
+
+
+def test_nl2sql_model_id_falls_back_to_chat_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_LLM_MODEL_ID", "qwen/qwen3-30b-a3b-instruct-2507")
+    monkeypatch.delenv("RAG_BQ_NL2SQL_MODEL_ID", raising=False)
+    from ml.rag.retrievers import bq_retriever as br
+
+    assert br._nl2sql_model_id() == "qwen/qwen3-30b-a3b-instruct-2507"
+
+
 def test_nl2sql_span_metadata_on_empty_hints(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RAG_BQ_NL2SQL_ENABLED", "0")
     updates: list[dict] = []

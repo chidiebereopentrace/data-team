@@ -94,11 +94,31 @@ def test_summarize_rag_result_for_trace() -> None:
     assert summary["citation_count"] == 2
 
 
+def test_summarize_latency_keys_and_input_token_alias() -> None:
+    summary = summarize_rag_result_for_trace(
+        {
+            "is_help_query": True,
+            "is_product_query": True,
+            "early_short_circuit": True,
+            "skipped_retrieval": True,
+            "skipped_decompose_llm": True,
+            "route_candidate": "help",
+            "generate_input_chars": 400,
+            "answer": "Ask ADZA is OpenTrace Africa's interface.",
+        }
+    )
+    assert summary["route"] == "help"
+    assert summary["early_short_circuit"] is True
+    assert summary["skipped_retrieval"] is True
+    assert summary["generate_input_tokens"] == 100
+    assert summary["empty_retrieval"] is False
+
+
 def test_summarize_includes_acf_and_answer_lang() -> None:
     summary = summarize_rag_result_for_trace(
         {
             "answer": "ok",
-            "answer_lang": "non_en",
+            "answer_lang": "ig",
             "acf_band": "moderate",
             "acf_band_label": "Moderate confidence",
             "acf_score": 62,
@@ -110,7 +130,7 @@ def test_summarize_includes_acf_and_answer_lang() -> None:
             "citations": [{"id": 1}],
         }
     )
-    assert summary["answer_lang"] == "non_en"
+    assert summary["answer_lang"] == "ig"
     assert summary["acf_band"] == "moderate"
     assert summary["acf_score"] == 62
     assert summary["acf_claim_level"] == "claim"
@@ -124,7 +144,7 @@ def test_summarize_detects_answer_lang_from_query_when_missing() -> None:
             "query": "Habari, nipe taarifa za kilimo Kenya.",
         }
     )
-    assert summary.get("answer_lang") == "non_en"
+    assert summary.get("answer_lang") == "sw"
 
 
 def test_build_tags_include_answer_lang_and_acf_band() -> None:
@@ -202,6 +222,26 @@ def test_rag_trace_context_sets_openrouter_without_langfuse() -> None:
 
 def test_infer_rag_route_meta() -> None:
     assert infer_rag_route({"is_meta_query": True}) == "meta"
+
+
+def test_infer_rag_route_help() -> None:
+    assert infer_rag_route({"is_help_query": True, "is_product_query": True}) == "help"
+
+
+def test_infer_rag_route_product() -> None:
+    assert infer_rag_route({"is_product_query": True}) == "product"
+
+
+def test_infer_rag_route_greeting() -> None:
+    assert infer_rag_route({"is_greeting_query": True}) == "greeting"
+
+
+def test_infer_rag_route_out_of_scope() -> None:
+    assert infer_rag_route({"is_out_of_scope_query": True}) == "out_of_scope"
+
+
+def test_infer_rag_route_language_unknown() -> None:
+    assert infer_rag_route({"is_language_unknown": True}) == "language_unknown"
 
 
 def test_infer_rag_route_full_rag() -> None:

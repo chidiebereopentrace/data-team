@@ -1,5 +1,5 @@
-# mart_dev models: analytics-ready; write to mart_dev (BQ_DATASET_GOLD).
-# Run: dbt run --target mart_dev
+# mart_dev Gold layer (DPL-044)
+# dbt run --target mart_dev_sa --select mart_dev.*
 
 version: 2
 

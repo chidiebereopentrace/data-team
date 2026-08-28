@@ -53,7 +53,6 @@ EVAL_DIR = Path(__file__).resolve().parent / "questions"
 CORPUS_FILES: dict[CorpusKey, str] = {
     "news": "news.yaml",
     "research": "research.yaml",
-    "data_description": "bq_descriptions.yaml",
 }
 
 
@@ -132,13 +131,13 @@ def eval_corpus(*, corpus: CorpusKey, pool: int, k: int) -> dict[str, Any]:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--corpus", choices=["news", "research", "data_description", "all"], default="all")
+    p.add_argument("--corpus", choices=["news", "research", "all"], default="all")
     p.add_argument("--pool", type=int, default=30, help="Candidate pool retrieved before reranking.")
     p.add_argument("--k", type=int, default=10, help="Cutoff for recall@k.")
     args = p.parse_args()
 
     corpora: list[CorpusKey]
-    corpora = ["news", "research", "data_description"] if args.corpus == "all" else [args.corpus]  # type: ignore[list-item]
+    corpora = ["news", "research"] if args.corpus == "all" else [args.corpus]  # type: ignore[list-item]
 
     print(f"Reranker mode: {_reranker_mode()}  |  pool={args.pool}  k={args.k}\n")
 

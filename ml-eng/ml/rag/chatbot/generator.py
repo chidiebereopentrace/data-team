@@ -9,6 +9,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_configured, llm_default_timeout_s, llm_model_id
@@ -21,10 +22,25 @@ from ml.rag.chat_memory import (
     default_verbatim_max_chars,
 )
 from ml.rag.chatbot.acf_scoring import ACFResult, no_evidence_acf, score_cited_evidence
-from ml.rag.chatbot.answer_language import detect_answer_language, language_instruction
+from ml.rag.chatbot.answer_language import (
+    detect_answer_language,
+    is_english_answer_lang,
+    language_instruction,
+)
+from ml.rag.chatbot.context_diversity import dedupe_context_items, normalize_context_kind
+from ml.rag.chatbot.export_intent import want_inline_citations
+from ml.rag.chatbot.geo_regions import is_zone_label
+from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
+
+_DOC_TABLE_FIGURE_RE = re.compile(
+    r"\b(?:tables?|figures?|figs?\.?|appendices|appendix)\s+"
+    r"(?:[A-Z]?\d+(?:\.\d+)*|[IVXLC]+)\b",
+    re.IGNORECASE,
+)
+
 _BQ_TABLE_RE = re.compile(
     r"FROM\s+`?(?:[\w-]+\.)*([\w-]+)`?",
     re.IGNORECASE,
@@ -36,6 +52,23 @@ _SOURCE_REF_RE = re.compile(
     re.IGNORECASE,
 )
 _VERBOSE_INLINE_REF_RE = re.compile(r"\[Source\s+(\d+)\s*\|[^\]]*\]", re.IGNORECASE)
+_SOURCE_MULTI_REF_RE = re.compile(r"\[Sources?\s+([\d,\sand]+)\]", re.IGNORECASE)
+_PLAIN_MULTI_REF_RE = re.compile(r"\[(?!\s*Source\s)(\d+(?:\s*[,–-]\s*\d+)+)\]")
+_PIPE_LABEL_REF_RE = re.compile(
+    r"\[(?:Wikipedia|News|Academic|Policy/Public|Policy|Public|Web|Structured\s+data)\s*\|[^\]]*\]",
+    re.IGNORECASE,
+)
+_NON_PLAIN_BRACKET_RE = re.compile(r"\[(?!\d+\])[^\]]*\]")
+_SOCIAL_URL_HOSTS = ("linkedin.com", "twitter.com", "x.com", "facebook.com", "fb.com")
+_KNOWN_ANALYTICAL_HEADINGS = (
+    "Key Findings",
+    "Regional & Country Picture",
+    "Production, Trade & Markets",
+    "Drivers & Context",
+    "Data Notes",
+    "Executive summary",
+    "Regional overview",
+)
 _MODEL_SOURCES_APPENDIX_RE = re.compile(
     r"\n+(?:Sources|References|Bibliography)\s*:?\s*\n[\s\S]*\Z",
     re.IGNORECASE,
@@ -65,9 +98,143 @@ _MAX_PREAMBLE_UNWIND = 3
 _BQ_FAILURE_MARKERS = (
     "[bq execution error",
     "[bq validation failed",
+    "[bq no_project",
+    "[bq no_valid_sql",
+    "[bq empty_result",
 )
-_BQ_ROW_HINT_KEYS = ("country", "product", "fnid", "planting_year", "harvest_year", "year", "region")
+_BQ_ROW_HINT_KEYS = (
+    "country",
+    "country_name",
+    "product",
+    "product_name",
+    "element",
+    "fnid",
+    "planting_year",
+    "harvest_year",
+    "year",
+    "region",
+)
 _BQ_PUBLIC_LABEL = "OpenTrace agricultural data"
+
+
+def _public_source_label(table_id: str | None, meta: dict[str, Any] | None = None) -> str | None:
+    """Return a clean institutional source name, or None to use the structured-data fallback."""
+    tid = (table_id or "").lower().strip()
+    payload = meta or {}
+    domain = str(payload.get("source_domain") or "").strip().lower()
+    if domain:
+        if "faostat" in domain or domain == "fao":
+            return "FAOSTAT"
+        if "fews" in domain:
+            return "FEWS NET"
+        if "ilri" in domain:
+            return "ILRI"
+        if "wfp" in domain:
+            return "WFP"
+        if "nasa" in domain:
+            return "NASA POWER"
+        if "copernicus" in domain or "era5" in domain:
+            return "Copernicus ERA5"
+        if "isric" in domain:
+            return "ISRIC"
+        if "isda" in domain:
+            return "iSDA"
+
+    if "faostat" in tid:
+        return "FAOSTAT"
+    if "fews" in tid:
+        return "FEWS NET"
+    if "ilri" in tid:
+        return "ILRI"
+    if "wfp" in tid or "vampire" in tid:
+        return "WFP"
+    if "nasa_power" in tid or "nasa" in tid:
+        return "NASA POWER"
+    if "copernicus" in tid or "era5" in tid:
+        return "Copernicus ERA5"
+    if "isric" in tid:
+        return "ISRIC"
+    if "isda" in tid:
+        return "iSDA"
+    if "hdi" in tid:
+        return "UNDP / HDI"
+    if "gdp" in tid:
+        return "World Bank / GDP"
+    return None
+
+_RANKING_QUERY_RE = re.compile(
+    r"\b("
+    r"highest|lowest|top\s+\d+|bottom\s+\d+|"
+    r"which\s+(?:\w+\s+){0,3}countr(?:y|ies)|"
+    r"rank(?:ing|ed)?|most\s+(?:produced|production)|"
+    r"produces?\s+the\s+most|the\s+most\s+\w+|"
+    r"least\s+(?:produced|production)|"
+    r"largest|smallest|biggest"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_NUMERIC_QUANTITY_RE = re.compile(
+    r"\b("
+    r"how\s+much|how\s+many|what\s+is\s+the|what\s+was\s+the|"
+    r"total|amount|volume|tonnes?|tons?|"
+    r"yield|production|output|price|prices|gdp|hdi|"
+    r"percent|percentage|\%|rate|rates|average|avg|mean|"
+    r"trend|changed\s+by|increase|decrease|growth|decline|"
+    r"population\s+count|people\s+in|phase\s+3"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_QUALITATIVE_ONLY_RE = re.compile(
+    r"\b("
+    r"why|explain|what\s+does\s+the\s+policy|impact\s+of|"
+    r"what\s+drove|overview|background|describe\s+the\s+policy"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_NUMERIC_ENTITY_TERMS = frozenset(
+    {
+        "production",
+        "yield",
+        "price",
+        "prices",
+        "gdp",
+        "hdi",
+        "tonnes",
+        "volume",
+        "food security",
+        "market price",
+        "population",
+        "ipc",
+        "fews",
+        "maize",
+        "rice",
+        "wheat",
+        "millet",
+        "sorghum",
+        "cassava",
+    }
+)
+
+_COMPARATIVE_BQ_RE = re.compile(
+    r"\b("
+    r"what\s+drove|drivers?|factors?\s+behind|compared\s+to|relative\s+to|"
+    r"benchmark|backdrop|context\s+for|versus|\bvs\.?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_PURE_NARRATIVE_RE = re.compile(
+    r"\b("
+    r"what\s+does\s+the\s+policy\s+say|summarize\s+the\s+brief|"
+    r"summarise\s+the\s+brief|policy\s+brief\s+say"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPARATIVE_BQ_INTENTS = frozenset({"compare", "diagnostic", "decision_support"})
 
 _BQ_MIN_CHARS = 800
 
@@ -88,14 +255,69 @@ class GenerationResult:
     answer: str
     citations: list[dict[str, Any]]
     acf: ACFResult | None = None
+    generate_input_chars: int | None = None
 
 
-def _generate_max_tokens() -> int:
-    return int(os.environ.get("RAG_GENERATE_MAX_TOKENS", "2048") or 2048)
+_TASK_MODE_MAX_TOKENS: dict[str, int] = {
+    "fact_lookup": 384,
+    "chat": 384,
+    "briefing": 640,
+    "data_export_only": 256,
+    "analytical": 1280,
+    "research": 1024,
+    "clarify": 512,
+}
+
+_TASK_MODE_CONTEXT_CHARS: dict[str, int] = {
+    "fact_lookup": 6000,
+    "chat": 6000,
+    "briefing": 9000,
+    "data_export_only": 5000,
+    "analytical": 12000,
+    "research": 10000,
+    "clarify": 4000,
+}
+
+_EXPORT_CAPTION_BLOCK = (
+    "\n\nARTIFACT EXPORT MODE: Write only a 2–5 sentence caption summarizing the "
+    "table/chart/report the user will download. No multi-section brief, no essay, "
+    "no Key Findings or other report headings in the chat answer."
+)
 
 
-def _context_max_chars(memory_block: str = "") -> int:
-    base = int(os.environ.get("RAG_GENERATE_CONTEXT_MAX_CHARS", "12000") or 12000)
+def _generate_max_tokens(task_mode: str | None = None) -> int:
+    env_ceiling = int(os.environ.get("RAG_GENERATE_MAX_TOKENS", "2048") or 2048)
+    mode = (task_mode or "chat").strip().lower()
+    default = _TASK_MODE_MAX_TOKENS.get(mode, 512)
+    return min(env_ceiling, default)
+
+
+def _context_max_chars(
+    memory_block: str = "",
+    *,
+    task_mode: str | None = None,
+    soft_cap: bool = False,
+) -> int:
+    mode = (task_mode or "chat").strip().lower()
+    base = _TASK_MODE_CONTEXT_CHARS.get(mode, 12000)
+    env_override = os.environ.get("RAG_GENERATE_CONTEXT_MAX_CHARS", "").strip()
+    if env_override:
+        try:
+            base = min(base, int(env_override))
+        except ValueError:
+            pass
+    if soft_cap:
+        try:
+            halved = int(
+                os.environ.get(
+                    "RAG_GENERATE_CONTEXT_MAX_CHARS_NO_BQ",
+                    str(max(4000, base // 2)),
+                )
+                or base // 2
+            )
+        except ValueError:
+            halved = max(4000, base // 2)
+        base = min(base, max(4000, halved))
     if memory_block.strip():
         return max(4000, base - len(memory_block))
     return base
@@ -159,8 +381,159 @@ def is_usable_context_item(item: dict[str, Any]) -> bool:
     meta = _item_metadata(item)
     if meta.get("validation_failed") or meta.get("execution_error"):
         return False
+    status = str(meta.get("status") or "").strip().lower()
+    if status in {
+        "no_project",
+        "no_valid_sql",
+        "validation_failed",
+        "execution_error",
+        "empty_result",
+    }:
+        return False
     raw = str(item.get("content") or item.get("text") or "").strip().lower()
     return not any(marker in raw for marker in _BQ_FAILURE_MARKERS)
+
+
+def is_ranking_numeric_query(query: str) -> bool:
+    """True for highest/lowest/which-country style ranking questions."""
+    return bool(_RANKING_QUERY_RE.search(query or ""))
+
+
+def is_numeric_data_query(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+) -> bool:
+    """True when the question asks for quantitative/numeric facts (superset of ranking)."""
+    if is_ranking_numeric_query(query):
+        return True
+    q = query or ""
+    if _QUALITATIVE_ONLY_RE.search(q) and not _NUMERIC_QUANTITY_RE.search(q):
+        return False
+    if _NUMERIC_QUANTITY_RE.search(q):
+        return True
+    if isinstance(decomposition, dict):
+        entities = decomposition.get("entities")
+        if isinstance(entities, list):
+            for entity in entities:
+                text = str(entity or "").strip().lower()
+                if not text:
+                    continue
+                if any(term in text for term in _NUMERIC_ENTITY_TERMS):
+                    return True
+    return False
+
+
+def is_comparative_bq_query(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+) -> bool:
+    """True when BQ should support comparative/diagnostic synthesis (not authoritative numeric)."""
+    if is_numeric_data_query(query, decomposition):
+        return False
+    q = query or ""
+    if _PURE_NARRATIVE_RE.search(q):
+        return False
+    if _COMPARATIVE_BQ_RE.search(q):
+        return True
+    if not isinstance(decomposition, dict):
+        return False
+    intent = str(decomposition.get("intent") or "").strip().lower()
+    if intent in _COMPARATIVE_BQ_INTENTS:
+        return True
+    if intent in ("diagnostic", "decision_support"):
+        entities = decomposition.get("entities")
+        geography = decomposition.get("geography")
+        entity_text = " ".join(str(e) for e in entities).lower() if isinstance(entities, list) else ""
+        geo_text = " ".join(str(g) for g in geography).lower() if isinstance(geography, list) else ""
+        has_topic = bool(entity_text.strip())
+        has_geo = bool(geo_text.strip())
+        if has_topic and has_geo:
+            return True
+    return False
+
+
+def should_elevate_bq_context(
+    query: str,
+    decomposition: dict[str, Any] | None,
+    *,
+    usable_bq: bool,
+) -> bool:
+    """Pin/boost BQ when numeric or comparative analysis can use structured rows."""
+    if not usable_bq:
+        return False
+    return is_numeric_data_query(query, decomposition) or is_comparative_bq_query(
+        query, decomposition
+    )
+
+
+def pin_bq_context_first(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Place BigQuery structured items before narrative sources (order preserved within groups)."""
+    bq_items = [item for item in items if _source_kind(item) == "bigquery"]
+    other_items = [item for item in items if _source_kind(item) != "bigquery"]
+    return bq_items + other_items
+
+
+def _item_published_year(item: dict[str, Any]) -> int | None:
+    meta = _item_metadata(item)
+    for key in ("published_at", "date", "year"):
+        raw = str(meta.get(key) or "").strip()
+        if len(raw) >= 4 and raw[:4].isdigit():
+            year = int(raw[:4])
+            if 1900 <= year <= 2100:
+                return year
+    return None
+
+
+def _historical_year_window(
+    decomposition: dict[str, Any] | None,
+) -> tuple[int, int] | None:
+    if not isinstance(decomposition, dict):
+        return None
+    ts = str(decomposition.get("time_start") or "").strip()[:4]
+    te = str(decomposition.get("time_end") or "").strip()[:4]
+    start = int(ts) if ts.isdigit() else None
+    end = int(te) if te.isdigit() else None
+    if start is None and end is None:
+        return None
+    if start is None:
+        start = end
+    if end is None:
+        end = start
+    if start is None or end is None:
+        return None
+    if start > end:
+        start, end = end, start
+    if end >= date.today().year:
+        return None
+    return start, end
+
+
+def prefer_in_window_narrative(
+    items: list[dict[str, Any]],
+    decomposition: dict[str, Any] | None,
+    *,
+    analytical: bool,
+) -> list[dict[str, Any]]:
+    """For historical analytical queries, pack in-window narrative ahead of later news."""
+    if not analytical or not items:
+        return items
+    window = _historical_year_window(decomposition)
+    if window is None:
+        return items
+    y0, y1 = window
+    bq: list[dict[str, Any]] = []
+    in_window: list[dict[str, Any]] = []
+    out_window: list[dict[str, Any]] = []
+    for item in items:
+        if _source_kind(item) == "bigquery":
+            bq.append(item)
+            continue
+        year = _item_published_year(item)
+        if year is not None and y0 <= year <= y1:
+            in_window.append(item)
+        else:
+            out_window.append(item)
+    return bq + in_window + out_window
 
 
 def filter_context_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -176,18 +549,42 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
     if kind == "bigquery":
         if not is_usable_context_item(item):
             return None
+        table_id = str(meta.get("table_id") or _bq_table_from_meta(meta) or "").strip()
+        source_name = _public_source_label(table_id, meta)
         hint = _bq_row_hint(meta)
+        if source_name:
+            return f"[{source_name}] {hint}" if hint else f"[{source_name}]"
         if hint:
             return f"[Structured data] {_BQ_PUBLIC_LABEL} ({hint})"
         return f"[Structured data] {_BQ_PUBLIC_LABEL}"
 
     if kind in ("academic_article", "academic"):
+        raw_title = str(meta.get("article_title") or meta.get("title") or "")
+        raw_authors = str(meta.get("authors") or "")
+        if (
+            len(raw_title) > 300
+            or len(raw_authors) > 300
+            or "\n" in raw_title
+            or "\n" in raw_authors
+        ):
+            return None
         cite = format_academic_citation(meta)
-        return f"[Academic] {cite}" if cite else None
+        line = f"[Academic] {cite}" if cite else None
+        return None if line and _looks_like_body_prose(line) else line
 
     if kind in ("policy_document", "public_report", "policy", "public_report"):
+        raw_title = str(meta.get("article_title") or meta.get("title") or "")
+        raw_authors = str(meta.get("authors") or "")
+        if (
+            len(raw_title) > 300
+            or len(raw_authors) > 300
+            or "\n" in raw_title
+            or "\n" in raw_authors
+        ):
+            return None
         cite = format_academic_citation(meta)
-        return f"[Policy/Public] {cite}" if cite else None
+        line = f"[Policy/Public] {cite}" if cite else None
+        return None if line and _looks_like_body_prose(line) else line
 
     if kind in ("news_article", "news"):
         title = str(meta.get("title") or meta.get("source_file") or "").strip()
@@ -197,7 +594,8 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
             entry = f"{title} — {src}" if src else title
             if date:
                 entry += f" ({date})"
-            return f"[News] {entry}"
+            line = f"[News] {entry}"
+            return None if _looks_like_body_prose(line) else line
         return None
 
     if kind in ("ota_insight", "ota_metric"):
@@ -251,6 +649,38 @@ def _source_header_label(
     return header
 
 
+def dedupe_bq_context_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse duplicate BigQuery rows (same metadata ``source_id``) before packing."""
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for item in items:
+        if _source_kind(item) != "bigquery":
+            out.append(item)
+            continue
+        meta = _item_metadata(item)
+        key = str(meta.get("source_id") or "").strip()
+        if not key:
+            out.append(item)
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
+def _registry_from_context_items(items: list[dict[str, Any]]) -> list[SourceRef]:
+    """Build a citation registry from citable context items (packing-independent)."""
+    registry: list[SourceRef] = []
+    for idx, item in enumerate(items):
+        cite_line = _format_source_citation(item)
+        if cite_line:
+            registry.append(
+                SourceRef(source_id=idx + 1, item=item, citation_line=cite_line)
+            )
+    return registry
+
+
 def _chunk_allocations(
     items: list[dict[str, Any]],
     budget: int,
@@ -270,9 +700,11 @@ def _chunk_allocations(
             alloc[i] = max(alloc[i], min(_BQ_MIN_CHARS, chunk_cap))
 
     while sum(alloc) > budget:
-        idx = max(range(n), key=lambda j: alloc[j])
-        if alloc[idx] <= 1:
+        shrinkable = [j for j in range(n) if alloc[j] > 1]
+        if not shrinkable:
             break
+        non_bq = [j for j in shrinkable if _source_kind(items[j]) != "bigquery"]
+        idx = max(non_bq if non_bq else shrinkable, key=lambda j: alloc[j])
         alloc[idx] -= 1
 
     return alloc
@@ -297,9 +729,14 @@ def _build_context_block(
     used = 0
 
     for idx, (item, limit) in enumerate(zip(context_items, allocations, strict=False)):
-        if used >= budget:
-            break
         source_id = idx + 1
+        cite_line = _format_source_citation(item)
+        if cite_line:
+            registry.append(SourceRef(source_id=source_id, item=item, citation_line=cite_line))
+
+        if used >= budget:
+            continue
+
         raw = str(item.get(content_key) or item.get("text") or "")
         body = raw.strip()
 
@@ -308,7 +745,6 @@ def _build_context_block(
         if take <= 0:
             continue
 
-        cite_line = _format_source_citation(item)
         header = _source_header_label(item, source_id, cite_line=cite_line)
         body_trunc = body[: max(0, take - len(header) - 2)]
         if not body_trunc.strip():
@@ -318,10 +754,87 @@ def _build_context_block(
         parts.append(block)
         used += len(block) + 2
 
-        if cite_line:
-            registry.append(SourceRef(source_id=source_id, item=item, citation_line=cite_line))
-
     return "\n\n".join(parts), registry
+
+
+def _expand_id_bracket_content(inner: str) -> str:
+    """Expand comma/range id lists into sequential plain [N] markers."""
+    text = (inner or "").strip()
+    if not text:
+        return ""
+    range_m = re.fullmatch(r"(\d+)\s*[–-]\s*(\d+)", text)
+    if range_m:
+        start, end = int(range_m.group(1)), int(range_m.group(2))
+        if start <= end and end <= 30 and (end - start) <= 20:
+            return "".join(f"[{i}]" for i in range(start, end + 1))
+        return ""
+    ids = re.findall(r"\d+", text)
+    return "".join(f"[{i}]" for i in ids)
+
+
+def _strip_non_plain_brackets(text: str) -> str:
+    """Remove bracket labels that are not plain numeric footnotes."""
+    return _NON_PLAIN_BRACKET_RE.sub("", text or "")
+
+
+def _collapse_duplicate_citation_markers(text: str) -> str:
+    """Collapse immediate duplicate footnote markers such as [3][3] or ([3]) [3]."""
+    if not text:
+        return text
+    out = text
+    out = re.sub(r"\(\[(\d+)\]\)\s*\[\1\]", r"[\1]", out)
+    out = re.sub(r"\[(\d+)\]\s*\(\[\1\]\)", r"[\1]", out)
+    prev = None
+    while prev != out:
+        prev = out
+        out = re.sub(r"\[(\d+)\]\s*\[\1\]", r"[\1]", out)
+    return out
+
+
+def _cleanup_citation_spacing(text: str) -> str:
+    """Tidy spacing after marker removal without collapsing newlines."""
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"[ \t]+([,.;])", r"\1", text)
+    text = re.sub(r"\s+\.", ".", text)
+    return text.strip()
+
+
+def _looks_like_body_prose(line: str) -> bool:
+    """True when a citation line looks like dumped body text rather than a one-liner."""
+    if not line:
+        return True
+    if "\n" in line:
+        return True
+    if len(line) > 300:
+        return True
+    stripped = line.strip()
+    return stripped.startswith("In ,") or stripped.startswith(", ")
+
+
+def _normalize_markdown_headings(text: str) -> str:
+    """Ensure ATX headings start on their own line and split known headings from body."""
+    if not text:
+        return text
+    out = re.sub(r"(\S)\s+(#{2,3}\s)", r"\1\n\n\2", text)
+    for heading in _KNOWN_ANALYTICAL_HEADINGS:
+        pattern = rf"(#{{2,3}}\s+{re.escape(heading)})\s+(\S.+)"
+        out = re.sub(pattern, r"\1\n\n\2", out, flags=re.IGNORECASE)
+    return out
+
+
+def _is_social_url(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    host = urlparse(url).netloc.lower()
+    return any(s in host for s in _SOCIAL_URL_HOSTS)
+
+
+def _pick_best_http_url(candidates: list[str]) -> str | None:
+    http = [u.strip() for u in candidates if str(u or "").strip().startswith("http")]
+    if not http:
+        return None
+    non_social = [u for u in http if not _is_social_url(u)]
+    return non_social[0] if non_social else http[0]
 
 
 def _strip_model_sources_appendix(text: str) -> str:
@@ -341,9 +854,49 @@ def _normalize_inline_citations(text: str) -> str:
     if not text:
         return text
     text = _VERBOSE_INLINE_REF_RE.sub(lambda m: f"[{m.group(1)}]", text)
+    text = _SOURCE_MULTI_REF_RE.sub(lambda m: _expand_id_bracket_content(m.group(1)), text)
     text = re.sub(r"\[Source\s+(\d+)\]", r"[\1]", text, flags=re.IGNORECASE)
+    text = _PLAIN_MULTI_REF_RE.sub(lambda m: _expand_id_bracket_content(m.group(1)), text)
+    text = _PIPE_LABEL_REF_RE.sub("", text)
     text = re.sub(r"(?<!\[)\bSource\s+(\d+)\b(?!\])", r"[\1]", text, flags=re.IGNORECASE)
+    text = _collapse_duplicate_citation_markers(text)
+    text = _strip_non_plain_brackets(text)
     return text
+
+
+def _strip_invalid_citation_markers(answer: str, source_registry: list[SourceRef]) -> str:
+    """Remove [N] / [Source N] footnotes that reference missing registry IDs."""
+    if not answer:
+        return answer
+    text = _normalize_inline_citations(answer)
+    if not source_registry:
+        return _cleanup_citation_spacing(_strip_non_plain_brackets(text))
+    valid = {ref.source_id for ref in source_registry}
+
+    def _keep_bracket(m: re.Match[str]) -> str:
+        try:
+            n = int(m.group(1))
+        except (TypeError, ValueError):
+            return ""
+        return m.group(0) if n in valid else ""
+
+    text = re.sub(r"\[(?!\s*Source\s)(\d+)\]", _keep_bracket, text)
+    text = re.sub(r"\[Source\s+(\d+)\]", _keep_bracket, text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<!\[)\bSource\s+(\d+)\b(?!\])", _keep_bracket, text, flags=re.IGNORECASE)
+    text = _strip_non_plain_brackets(text)
+    return _cleanup_citation_spacing(text)
+
+
+def _strip_all_inline_citation_markers(answer: str) -> str:
+    """Remove every [N] / [Source N] marker when inline footnotes are disabled."""
+    if not answer:
+        return answer
+    text = _normalize_inline_citations(answer)
+    text = re.sub(r"\[(?!\s*Source\s)\d+\]", "", text)
+    text = re.sub(r"\[Source\s+\d+\]", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<!\[)\bSource\s+\d+\b(?!\])", "", text, flags=re.IGNORECASE)
+    text = _strip_non_plain_brackets(text)
+    return _cleanup_citation_spacing(text)
 
 
 def extract_referenced_source_ids(answer: str) -> set[int]:
@@ -365,56 +918,141 @@ def _build_prompt(
     memory_block: str = "",
     category: str = "",
     plan_type: str = "",
+    answer_lang: str | None = None,
+    structured_bq_unavailable: bool = False,
+    structured_bq_numeric_available: bool = False,
+    structured_bq_comparative_available: bool = False,
+    analytical_mode: bool = False,
+    task_mode: str = "chat",
+    measure_id: str | None = None,
+    recency_tier: str | None = None,
+    context_source_kinds: list[str] | None = None,
+    inline_citations: bool = False,
+    generation_plan: dict[str, Any] | None = None,
+    export_intent: str | None = None,
 ) -> list[dict[str, str]]:
-    system = (
-        "You are an agricultural business-intelligence assistant for OpenTrace stakeholders "
-        "(government, NGOs, agribusiness, finance, farmers). "
-        # Lead with the answer. This instruction must come first because LLMs weight
-        # early-prompt content most heavily; burying it lower causes the model to
-        # default to thesis-style preambles (testing R8: 'lead with a clear answer').
-        "Your first sentence is the direct answer to the user's question — no preamble, "
-        "no 'According to the context...', no 'It is important to note...', no scene-setting. "
-        "After the direct answer, support it with the relevant evidence in plain prose. "
-        "Write clear, decisive prose for decision-makers — not a database console, not an academic paper. "
-        "Answer ONLY using facts in the Context below from numbered OpenTrace sources "
-        "(each chunk is labeled [Source N] with Type and Citation lines when available). "
-        "Synthesize evidence across all numbered sources — do not rely on a single snippet. "
-        "When stating a specific fact, number, or claim from the context, name the source in readable "
-        "prose using the Citation line (author or organization, title or outlet, and year when present), "
-        "then add the matching footnote number [N] — the same N as [Source N]. "
-        "Never cite with a bare number alone (wrong: 'According to [6]'; right: 'According to Branca et al. "
-        "(2012), agriculture's GDP share rose.[6]'). "
-        "Do not paste raw context headers, Type lines, Citation lines, or pipe-delimited "
-        "[Source N | ...] strings into the answer. "
-        "Do not output a Sources, References, or Bibliography section; the system appends one. "
-        "Sources labeled Type: Wikipedia or Type: Web search are supplemental external context — "
-        "prefer OpenTrace news, research, and structured data when available; treat web sources as "
-        "partial background and state limits when relying on them. "
-        # Length matches the question. The previous fixed '4–8 paragraphs' floor was the
-        # single biggest cause of thesis-style answers — the model padded with hedges
-        # and restatements to hit the target even on simple lookups. Drop the floor;
-        # let the question determine the length.
+    lang = (answer_lang or "").strip() or detect_answer_language(query)
+    mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
+    if analytical_mode and mode == "chat":
+        mode = "analytical"
+    if inline_citations:
+        cite_rules = (
+            "When stating a specific fact, number, or claim from the context, name the source in readable "
+            "prose using the Citation line (author or organization, title or outlet, and year when present), "
+            "then add the matching footnote number [N] — the same N as [Source N]. "
+            "Never cite with a bare number alone (wrong: 'According to [6]'; right: 'According to Branca et al. "
+            "(2012), agriculture's GDP share rose.[6]'). "
+            "Never refer to in-document labels from the context such as 'Table 6.1', 'Figure 2', "
+            "'Fig. 3', or 'Appendix A' — paraphrase the finding and cite with the Citation line + [N] only. "
+            "Only cite sources that appear in Context with a Citation line / [Source N]. "
+            "Inline markers must be plain [N] only — never [Source N], [Source 1, 3], or [Wikipedia | …]. "
+            "Do not invent author-year references that are not on a Context Citation line. "
+            "Do not repeat the same [N] twice in a row. "
+            "Each ## heading must be on its own line with a blank line before it. "
+        )
+    else:
+        cite_rules = (
+            "When stating a specific fact, number, or claim from the context, you may name the source in "
+            "readable prose using the Citation line (author or organization, title or outlet, and year when "
+            "present). Do NOT insert [N], [Source N], or bare Source N footnote markers — the system returns "
+            "structured citations separately for the client. "
+            "Never refer to in-document labels from the context such as 'Table 6.1', 'Figure 2', "
+            "'Fig. 3', or 'Appendix A' — paraphrase the finding instead. "
+            "Only cite sources that appear in Context with a Citation line. "
+            "Do not invent author-year references that are not on a Context Citation line. "
+            "Each ## heading must be on its own line with a blank line before it. "
+        )
+    mode_replaces_length = mode in {"analytical", "fact_lookup", "briefing", "data_export_only"}
+    length_rules = (
+        "Never pad with filler, restatements of the question, or hedges. "
+        "Include specific numbers, dates, and regions when present in the context. "
+        "Match length to the question: 2–4 sentences for simple lookups; a structured brief "
+        "for complex multi-country or trend questions. "
+        if mode_replaces_length
+        else
         "Length matches the question: 2–4 sentences for a simple lookup, 2–4 short paragraphs "
         "for a complex synthesis. Never pad with filler, restatements of the question, or hedges to fill space. "
         "For complex questions structure the answer as: (1) direct answer first, "
         "(2) supporting evidence by theme, region, or time period, (3) brief limits or gaps. "
         "For compare or trend questions, organize by region or time period when the context provides that breakdown. "
         "Include specific numbers, dates, and regions when present in the context. "
-        # Anti-thesis openings. Listed explicitly because the model otherwise reaches
-        # for these by default (the corpus is heavily academic). Tested phrases from
-        # internal R6/R8 reports.
-        "Forbidden openings — never start with: 'The context provided', 'Based on the context', "
+    )
+    system = (
+        "You are an agricultural business-intelligence assistant for OpenTrace stakeholders "
+        "(government, NGOs, agribusiness, finance, farmers, and policy actors). "
+        "Your role is to produce clear, decisive, decision-ready analysis on African agriculture, "
+        "food systems, climate, markets, production, trade, prices, and related policy. "
+        "Write as an external intelligence analyst, not as a system explaining its own internal "
+        "data coverage. "
+        "OpenTrace / Ask ADZA is scoped to African agriculture, food systems, climate, "
+        "markets, and related policy — unless the user explicitly names a non-African place. "
+        "For unscoped which-country or continental rankings, answer from African OpenTrace "
+        "evidence (especially structured data). Do not crown a non-African country from "
+        "Wikipedia or general knowledge when Africa-scoped evidence is missing. "
+        "Your first sentence is the direct answer to the user's question — no preamble, "
+        "no 'According to the context...', no 'According to the available sources...', "
+        "no 'It is important to note...', no scene-setting. "
+        "After the direct answer, support it with the relevant evidence in plain prose. "
+        "Write clear, decisive prose for decision-makers — not a database console, not an academic paper. "
+        "Answer ONLY using facts in the Context below from numbered OpenTrace sources "
+        "(each chunk is labeled [Source N] with Type and Citation lines when available). "
+        "Synthesize evidence across all numbered sources — do not rely on a single snippet. "
+        "Do not invent figures, rankings, or year values that are not present in the Context. "
+        + cite_rules
+        + "When a structured data source has a clear institutional origin, attribute it by that "
+        "institution's name (FAOSTAT, FEWS NET, ILRI, WFP, NASA POWER, Copernicus ERA5, ISRIC, "
+        "iSDA, UNDP/HDI, World Bank/GDP). When the institutional source is not definitive, use "
+        "the neutral label: Structured data — OpenTrace agricultural data. "
+        "Do not paste raw context headers, Type lines, Citation lines, or pipe-delimited "
+        "[Source N | ...] strings into the answer. "
+        "Do not output a Sources, References, or Bibliography section; the system appends one. "
+        "Never echo BigQuery or SQL table identifiers (e.g. stg_*, bronze table names) in the prose. "
+        "Never mention staging, SQL, pipeline status, or tell the user that a query was attempted "
+        "and failed. Never claim that structured data is missing or unavailable as a product status. "
+        "Sources labeled Type: Wikipedia or Type: Web search are supplemental external context — "
+        "prefer OpenTrace news, research, and structured data when available; treat web sources as "
+        "partial background and state limits when relying on them. "
+        + length_rules
+        + "Forbidden openings — never start with: 'The context provided', 'Based on the context', "
         "'Unfortunately', 'It is important to note', 'It is worth noting', 'This study examines', "
-        "'The evidence suggests', 'In recent years', 'Across the literature', or any similar academic / "
+        "'The evidence suggests', 'In recent years', 'Across the literature', "
+        "'According to the available sources', or any similar academic / "
         "meta-commentary opener. Start with the substantive answer instead. "
-        + language_instruction(detect_answer_language(query))
+        + language_instruction(lang, inline_citations=inline_citations)
         + " "
-        "If evidence is partial, state limits briefly after the substantive answer. "
+        "Produce the strongest possible analysis from the evidence that is present. "
+        "Place any coverage limitations only at the end, in short neutral language. "
+        "Never turn missing data into the main subject of the answer. Never write multi-paragraph "
+        "discussions of data gaps in the body. "
+        "Never mention internal system status, BigQuery availability, structured-data gaps, "
+        "or product data limitations in the main body of the answer. "
+        "When writing analytical or multi-country answers, prioritise a clean intelligence product "
+        "over exhaustive transparency about missing series. "
         "Do not invent sources, cite Source IDs not in the Context, or invent statistics. "
         "Never output SQL, query code, table DDL, pipeline steps, or instructions to run BigQuery. "
         "Never mention bigquery-public-data or other external warehouses. "
-        "Do not suggest example queries the user should run."
+        "Do not suggest example queries the user should run. "
+        "Keep all country, region, and year claims aligned with what appears in the Context. "
+        "Never mention BigQuery, staging, SQL, or internal system status in the answer body. "
+        "Never write that a structured query returned no rows, that no reliable trend can be made, "
+        "or that the answer is a data gap. "
+        "When coverage is limited, use only neutral professional wording such as: "
+        "'Coverage for [year / region / commodity] remains limited in available sources.'"
     )
+    kinds = [str(k).strip().lower() for k in (context_source_kinds or []) if str(k).strip()]
+    unique_kinds = list(dict.fromkeys(kinds))
+    if len(unique_kinds) >= 2:
+        system = (
+            system
+            + "\n\nCROSS-DOMAIN SYNTHESIS: Context includes multiple source Types ("
+            + ", ".join(unique_kinds)
+            + "). Domains reinforce each other — weave them together. "
+            "Use OpenTrace figures for levels, trends, and comparisons when present; "
+            "use news, policy, public reports, and research for mechanisms, events, and "
+            "stakeholder context. Do not answer from only one Type when others are relevant. "
+            "If structured figures are missing, still synthesize across the narrative corpora "
+            "that are present; do not invent yields, IPC phases, or exact production totals."
+        )
     intent_tone = ""
     if decomposition:
         intent = str(decomposition.get("intent") or "").strip().lower()
@@ -436,12 +1074,126 @@ def _build_prompt(
     if intent_tone:
         system = system + intent_tone
 
-    cat_tone = instruction_for_category(category) if category else ""
+    cat_tone = instruction_for_category(
+        category or None,
+        measure_id=measure_id,
+        recency_tier=recency_tier,
+    ) if (category or measure_id or recency_tier) else ""
     if cat_tone:
         system = system + "\n\n" + cat_tone
     plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
     if plan_addendum:
         system = system + "\n\n" + plan_addendum
+    if generation_plan:
+        from ml.rag.chatbot.generation_plan import generation_plan_addendum
+
+        gen_plan_addendum = generation_plan_addendum(generation_plan)
+        if gen_plan_addendum:
+            system = system + "\n\n" + gen_plan_addendum
+    if analytical_mode or mode == "analytical":
+        if not export_intent:
+            system = (
+                system
+                + "\n\nANALYTICAL BRIEF MODE (mandatory structure and voice):\n"
+                "You are writing a short professional agricultural intelligence brief for decision-makers "
+                "(government, agribusiness, finance, policy). Write as an external analyst, not as a system "
+                "explaining its own limitations.\n\n"
+                "Required structure (use exactly these markdown headings, in this order, and nothing else):\n"
+                "## Key Findings\n"
+                "## Regional & Country Picture\n"
+                "## Production, Trade & Markets\n"
+                "## Drivers & Context\n"
+                "## Data Notes\n\n"
+                "Section guidance:\n"
+                "## Key Findings — Open with the strongest, most decision-relevant conclusions supported "
+                "by the Context. Lead with substance. Never open with gaps or caveats. Be specific "
+                "(numbers, years, countries, crops) whenever the Context supports it.\n"
+                "## Regional & Country Picture — Synthesise geographic patterns. Compare or contrast "
+                "countries/regions only when the Context provides the necessary material.\n"
+                "## Production, Trade & Markets — Focus on production volumes, yields, trade flows, "
+                "prices, or market conditions as supported by the Context. Prefer institutional sources "
+                "(FAOSTAT, FEWS NET, and similar) when they are present and definitive. When the source "
+                "is not definitive, treat the figures as Structured data — OpenTrace agricultural data.\n"
+                "## Drivers & Context — Explain mechanisms, policy actions, climate or pest pressures, "
+                "or other drivers only to the extent the Context supports them. Distinguish correlation "
+                "from causation. Do not invent causal claims.\n"
+                "## Data Notes — This is the only place where limitations may appear. Keep it to 2–5 "
+                "short bullets. Use neutral professional language only. Never expand gaps into narrative "
+                "discussion. Never mention internal system behaviour or BigQuery.\n"
+                "Rules:\n"
+                "- Lead the entire answer with the strongest available findings. Never open with gaps, "
+                "missing data, or statements about what OpenTrace does or does not have.\n"
+                "- In Key Findings, Regional & Country Picture, Production/Trade/Markets, and Drivers: "
+                "write only positive synthesis from the Context.\n"
+                "- Put ALL limitations, missing series, incomplete coverage, or thin evidence exclusively "
+                "in the final ## Data Notes section.\n"
+                "- Never write that structured data is unavailable, that a query returned no rows, "
+                "that OpenTrace lacks the data, that no reliable trend can be made, or that this is a "
+                "data gap. In Data Notes use: "
+                "\"Coverage for [year/region/commodity] remains limited in available sources.\"\n"
+                "- Do not invent production totals, rankings, yields, or year values that are not in Context.\n"
+                "- Keep country and regional claims aligned with geography present in Context.\n"
+                "- Tone: clear, decisive, concise. No academic padding, no thesis-style openings, "
+                "no restating the question."
+            )
+    elif mode == "fact_lookup":
+        system = (
+            system
+            + "\n\nFACT LOOKUP MODE: Give a short direct answer (1–3 sentences) using structured "
+            "data first when present. Lead with the number, country, crop, and year. "
+            "Do not write a multi-section report."
+        )
+    elif mode == "briefing":
+        system = (
+            system
+            + "\n\nBRIEFING MODE: Write a short situational briefing with 3–6 bullet points. "
+            "Prefer the most recent news and OTA insights. End with one line on confidence limits."
+        )
+    elif mode == "research":
+        system = (
+            system
+            + "\n\nRESEARCH SYNTHESIS MODE: Synthesize academic/policy evidence in plain "
+            "stakeholder language. Prefer peer-reviewed and policy corpora; use statistical "
+            "series only for bibliographic/project facts. Do not invent citations."
+        )
+    elif mode == "data_export_only":
+        system = system + _EXPORT_CAPTION_BLOCK.replace("ARTIFACT EXPORT MODE", "DATA EXPORT MODE")
+    if export_intent and mode != "data_export_only":
+        system = system + _EXPORT_CAPTION_BLOCK
+    # Keep category plainness/precision when answering in a named non-English language
+    # (avoids English academic bleed on e.g. Igbo + Farmers).
+    if category and cat_tone and not is_english_answer_lang(lang) and lang not in ("unknown", ""):
+        system = (
+            system
+            + "\n\nAnswer in the user's language while keeping the category audience rules "
+            "(plainness, framing, and jargon limits) — do not switch to English academic prose."
+        )
+    if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
+        system = (
+            "Note for this turn: no structured numeric rows are available in Context for the "
+            "requested measure. Do not invent specific production totals, precise yields, prices, "
+            "GDP figures, or ranked country answers. Synthesise the strongest available narrative "
+            "evidence (news, policy, research, reports). Place any coverage limits only in a short "
+            "final Data Notes section if writing an analytical brief; otherwise state limits briefly "
+            "at the end. Never mention BigQuery, structured-data availability, or internal system "
+            "status in the answer prose.\n\n"
+        ) + system
+    if structured_bq_numeric_available:
+        system = (
+            "CRITICAL: Context includes OpenTrace statistical figures with explicit "
+            "measure labels and units. For numeric answers (totals, yields, prices, GDP, "
+            "population counts, rankings), use those figures as the authoritative "
+            "source. Do not override them with policy, news, or web narrative that cites "
+            "a different number, unit, or country.\n\n"
+        ) + system
+    elif structured_bq_comparative_available:
+        system = (
+            "Context includes OpenTrace structured data with measure labels and units. "
+            "Use it for comparative statistics (production levels, yields, prices, trends, "
+            "regional benchmarks). Use policy, research, and news sources for causal "
+            "explanations and policy drivers. Do not invent numbers; cite structured data "
+            "when stating quantitative comparisons.\n\n"
+        ) + system
 
     mb = (memory_block.strip() + "\n\n") if memory_block.strip() else ""
     user = f"{mb}Context:\n{context_block}\n\nQuestion: {query}"
@@ -452,6 +1204,8 @@ def _build_prompt(
 
 
 def _resolve_memory_block(**kwargs: Any) -> str:
+    query = str(kwargs.get("query") or kwargs.get("_query") or "")
+    dec = kwargs.get("decomposition") if isinstance(kwargs.get("decomposition"), dict) else None
     conv_summary = kwargs.get("conversation_summary")
     recent_turns = kwargs.get("recent_turns")
     raw_history = kwargs.get("chat_history")
@@ -459,14 +1213,30 @@ def _resolve_memory_block(**kwargs: Any) -> str:
     if isinstance(recent_turns, list) or isinstance(conv_summary, str):
         s = (conv_summary if isinstance(conv_summary, str) else "").strip()
         rt = normalize_messages(recent_turns if isinstance(recent_turns, list) else None)
+        if not memory_relevant_for_query(query, s, rt, dec):
+            return ""
         block = build_memory_prompt_block(s, rt)
     elif isinstance(raw_history, list) and raw_history:
         rt = truncate_chat_history(raw_history)
+        hist_text = "\n".join(m.get("content") or "" for m in rt)
+        if not memory_relevant_for_query(query, hist_text, rt, dec):
+            return ""
         block = build_memory_prompt_block("", rt)
     cap = default_verbatim_max_chars() + default_summary_max_chars()
     if len(block) > cap:
         block = block[-cap:]
     return block
+
+
+def _strip_doc_table_figure_labels(text: str) -> str:
+    """Remove leftover Table/Figure/Appendix labels from model prose."""
+    if not text:
+        return text
+    cleaned = _DOC_TABLE_FIGURE_RE.sub("", text)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([,.;:])", r"\1", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip() or text.strip()
 
 
 def _strip_sql_from_answer(text: str) -> str:
@@ -524,8 +1294,10 @@ def _clean_answer(text: str) -> str:
     if "[/INST]" in text:
         text = text.split("[/INST]")[-1].strip()
     text = re.sub(r"^(Context:|Question:).*$", "", text, flags=re.MULTILINE | re.IGNORECASE).strip()
+    text = _normalize_markdown_headings(text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = _strip_sql_from_answer(text) or text.strip()
+    text = _strip_doc_table_figure_labels(text) or text.strip()
     text = _strip_model_sources_appendix(text)
     return _strip_preamble_openers(text)
 
@@ -546,45 +1318,26 @@ def _citation_kind_normalized(kind: str) -> str:
 
 
 def _citation_url(kind: str, meta: dict[str, Any]) -> str | None:
-    """Extract a clickable URL for a citation, trying multiple metadata fields.
-
-    Sprint 1, Week 3: improved to check url/link/source_url for ALL source types
-    (not just news), so academic papers with a direct URL also get clickable links
-    even when DOI is missing.
-    """
+    """Extract a clickable URL for a citation, trying multiple metadata fields."""
     k = kind.lower()
+    url_keys = ("canonical_url", "url", "link", "source_url")
 
-    # Web sources — url is always present
     if k in ("web_wikipedia", "web_search"):
-        url = str(meta.get("url") or "").strip()
-        return url or None
+        return _pick_best_http_url([str(meta.get(key) or "") for key in url_keys])
 
-    # News — check multiple URL field names
     if k in ("news_article", "news"):
-        for key in ("url", "link", "source_url"):
-            url = str(meta.get(key) or "").strip()
-            if url.startswith("http"):
-                return url
-        return None
+        return _pick_best_http_url([str(meta.get(key) or "") for key in url_keys])
 
-    # Academic / policy / public report — DOI preferred, then direct URL fallback
     if k in ("academic_article", "academic", "policy_document", "policy", "public_report"):
         doi = str(meta.get("doi") or "").strip()
         if doi.startswith("http"):
             return doi
         if doi:
             return f"https://doi.org/{doi.lstrip('doi:').strip()}"
-        # Fallback: check for direct url/link fields (some ingested records have these)
-        for key in ("url", "link", "source_url"):
-            url = str(meta.get(key) or "").strip()
-            if url.startswith("http"):
-                return url
-        return None
+        return _pick_best_http_url([str(meta.get(key) or "") for key in url_keys])
 
-    # OTA insights — check for url field
     if k in ("ota_insight", "ota_metric"):
-        url = str(meta.get("url") or meta.get("source_url") or "").strip()
-        return url if url.startswith("http") else None
+        return _pick_best_http_url([str(meta.get(key) or "") for key in url_keys])
 
     return None
 
@@ -600,22 +1353,36 @@ def _source_ref_to_citation_dict(ref: SourceRef) -> dict[str, Any]:
     }
 
 
-def _referenced_source_refs(answer: str, source_registry: list[SourceRef]) -> list[SourceRef]:
+def _referenced_source_refs(
+    answer: str,
+    source_registry: list[SourceRef],
+    *,
+    inline_citations: bool = True,
+) -> list[SourceRef]:
     if not source_registry:
         return []
+    if not inline_citations:
+        # No inline markers expected — return all packed sources for the citation block.
+        return list(source_registry)
     mode = _citations_mode()
     if mode == "referenced":
         cited_ids = extract_referenced_source_ids(answer)
-        if not cited_ids:
-            return []
-        return [r for r in source_registry if r.source_id in cited_ids]
+        if cited_ids:
+            return [r for r in source_registry if r.source_id in cited_ids]
+        # Author-year-only prose with inline on: attach packed registry rather than [].
+        return list(source_registry)
     return list(source_registry)
 
 
-def referenced_citations(answer: str, source_registry: list[SourceRef]) -> list[dict[str, Any]]:
+def referenced_citations(
+    answer: str,
+    source_registry: list[SourceRef],
+    *,
+    inline_citations: bool = True,
+) -> list[dict[str, Any]]:
     """Build structured citation objects for referenced (or all) sources."""
     prose = _strip_model_sources_appendix(answer)
-    refs = _referenced_source_refs(prose, source_registry)
+    refs = _referenced_source_refs(prose, source_registry, inline_citations=inline_citations)
     return [_source_ref_to_citation_dict(r) for r in refs]
 
 
@@ -698,7 +1465,7 @@ def _no_data_fallback_message(
 
 
 def _query_target_countries(decomposition: dict[str, Any] | None) -> list[str]:
-    """Normalized list of countries/regions the query is scoped to, if any."""
+    """Normalized list of countries the query is scoped to (zone labels excluded)."""
     if not isinstance(decomposition, dict):
         return []
     out: list[str] = []
@@ -711,11 +1478,22 @@ def _query_target_countries(decomposition: dict[str, Any] | None) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
     for c in out:
+        if is_zone_label(c):
+            continue
         cl = c.lower()
         if cl not in seen:
             seen.add(cl)
             result.append(c)
     return result
+
+
+def usable_context_after_geo_purity(
+    items: list[dict[str, Any]] | None,
+    decomposition: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Filter unusable items then drop geo-conflicting chunks (inspector / generate)."""
+    usable = filter_context_items(list(items or []))
+    return _drop_geo_conflicting(usable, decomposition)
 
 
 def _geo_conflicts(item: dict[str, Any], allowed_lower: set[str]) -> bool:
@@ -785,12 +1563,20 @@ def _finalize_generation_result(
     *,
     query: str = "",
     decomposition: dict[str, Any] | None = None,
+    inline_citations: bool = False,
+    generate_input_chars: int | None = None,
 ) -> GenerationResult:
     """Attach structured citations and score ACF Path B on cited sources only."""
     t0 = time.perf_counter()
     with observed_span("citations", input_data={"registry_size": len(source_registry)}):
         prose = _strip_model_sources_appendix(answer)
-        citations = referenced_citations(prose, source_registry)
+        if inline_citations:
+            prose = _strip_invalid_citation_markers(prose, source_registry)
+        else:
+            prose = _strip_all_inline_citation_markers(prose)
+        citations = referenced_citations(
+            prose, source_registry, inline_citations=inline_citations
+        )
         if _append_sources_to_answer() and citations:
             lines = [f"{c['id']}. {c['text']}" for c in citations]
             prose = (prose.rstrip() + "\n\nSources\n" + "\n".join(lines)).strip()
@@ -806,7 +1592,9 @@ def _finalize_generation_result(
             except (KeyError, TypeError, ValueError):
                 continue
 
-        cited_refs = _referenced_source_refs(prose, source_registry)
+        cited_refs = _referenced_source_refs(
+            prose, source_registry, inline_citations=inline_citations
+        )
         if cited_refs:
             acf = score_cited_evidence(
                 cited_refs,
@@ -823,9 +1611,11 @@ def _finalize_generation_result(
                 "citation_count": len(citations),
                 "registry_size": len(source_registry),
                 "citations_mode": _citations_mode(),
+                "inline_citations": inline_citations,
                 "cited_ids": cited_ids,
                 "kind_counts": kind_counts,
                 "latency_ms": trace_elapsed_ms(t0),
+                "generate_ms": trace_elapsed_ms(t0),
                 "acf_status": acf_status,
                 "acf_band": acf.band,
                 "acf_band_label": acf.band_label,
@@ -837,7 +1627,12 @@ def _finalize_generation_result(
                 "acf_config_version": acf.config_version,
             }
         )
-        return GenerationResult(answer=prose, citations=citations, acf=acf)
+        return GenerationResult(
+            answer=prose,
+            citations=citations,
+            acf=acf,
+            generate_input_chars=generate_input_chars,
+        )
 
 
 def _call_llama(
@@ -845,6 +1640,7 @@ def _call_llama(
     *,
     purpose: str = "generate",
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Call configured LLM backend; never raises on HTTP errors.
 
@@ -852,7 +1648,7 @@ def _call_llama(
     When None, falls back to llm_model_id() which reads RAG_LLM_MODEL_ID from env.
     """
     gen_timeout = float(os.environ.get("RAG_GENERATE_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
-    max_toks = _generate_max_tokens()
+    max_toks = max_tokens if max_tokens is not None else _generate_max_tokens()
     # Sprint 1 (Jul 2026): set to 0.7 so responses have natural variety across similar
     # queries. The "no synthesis on gaps" test-1 concern is handled by code-level
     # guardrails (empty context → `_no_data_fallback_message` without an LLM call;
@@ -884,10 +1680,45 @@ def generate(
     if not isinstance(decomposition, dict):
         decomposition = None
 
-    memory_block = _resolve_memory_block(**kwargs)
+    mem_kwargs = dict(kwargs)
+    mem_kwargs["query"] = query
+    mem_kwargs["decomposition"] = decomposition
+    memory_block = _resolve_memory_block(**mem_kwargs)
 
     category = str(kwargs.get("category") or "").strip()
     plan_type = str(kwargs.get("plan_type") or "").strip()
+    answer_lang = str(kwargs.get("answer_lang") or "").strip() or None
+    structured_bq_unavailable = bool(kwargs.get("structured_bq_unavailable"))
+    structured_bq_numeric_available = bool(kwargs.get("structured_bq_numeric_available"))
+    structured_bq_comparative_available = bool(kwargs.get("structured_bq_comparative_available"))
+    analytical_mode = bool(kwargs.get("analytical_mode"))
+    task_mode = str(kwargs.get("task_mode") or ("analytical" if analytical_mode else "chat")).strip()
+    measure_id = str(kwargs.get("measure_id") or "").strip() or None
+    recency_tier = str(kwargs.get("recency_tier") or "").strip() or None
+    export_intent = kwargs.get("export_intent")
+    export_intent_s = str(export_intent).strip() if export_intent else None
+    generation_plan = kwargs.get("generation_plan")
+    if generation_plan is not None and not isinstance(generation_plan, dict):
+        generation_plan = None
+    inline_citations = want_inline_citations(
+        query,
+        task_mode=task_mode,
+        export_intent=export_intent_s,
+    )
+
+    if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
+        usable_preview = filter_context_items(context_items or [])
+        has_narrative = any(is_usable_context_item(item) for item in usable_preview)
+        if not has_narrative:
+            return GenerationResult(
+                answer=_no_data_fallback_message(query, decomposition),
+                citations=[],
+                acf=no_evidence_acf(
+                    explanation=(
+                        "No OpenTrace sources matched this numeric question."
+                    )
+                ),
+            )
 
     if not context_items:
         allow_ungrounded = os.environ.get("RAG_ALLOW_UNGROUNDED", "").strip().lower() in (
@@ -907,6 +1738,17 @@ def generate(
                 memory_block=memory_block,
                 category=category,
                 plan_type=plan_type,
+                answer_lang=answer_lang,
+                structured_bq_unavailable=structured_bq_unavailable,
+                structured_bq_numeric_available=structured_bq_numeric_available,
+                structured_bq_comparative_available=structured_bq_comparative_available,
+                analytical_mode=analytical_mode,
+                task_mode=task_mode,
+                measure_id=measure_id,
+                recency_tier=recency_tier,
+                inline_citations=inline_citations,
+                generation_plan=generation_plan,
+                export_intent=export_intent_s,
             )
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = (
@@ -919,11 +1761,23 @@ def generate(
                     "  Then a final line: 'ACF: no evidence.'\n"
                     "No other prose. No hedging. No caveats beyond the ACF line.\n\n"
                 ) + messages[0]["content"]
-            llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
+            gen_max = _generate_max_tokens(task_mode)
+            input_chars = sum(len(str(m.get("content") or "")) for m in messages)
+            llama_answer = _call_llama(
+                messages,
+                purpose="generate",
+                model=model_for_plan(plan_type),
+                max_tokens=gen_max,
+            )
             if llama_answer:
                 cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
                 return _finalize_generation_result(
-                    cleaned, [], query=query, decomposition=decomposition
+                    cleaned,
+                    [],
+                    query=query,
+                    decomposition=decomposition,
+                    inline_citations=inline_citations,
+                    generate_input_chars=input_chars,
                 )
         # Default (RAG_ALLOW_UNGROUNDED off or LLM returned nothing): structured
         # gap message so testers can distinguish "no data" from "low confidence".
@@ -933,12 +1787,15 @@ def generate(
             acf=no_evidence_acf(),
         )
 
-    usable_context = filter_context_items(context_items)
-
-    # Sprint 1 (Jul 2026): source purity — drop chunks whose geo metadata names
-    # other countries than the query asked for (e.g. Africa-general / Kenya chunks
-    # on a Senegal query). Conservative: chunks without geo metadata are kept.
-    usable_context = _drop_geo_conflicting(usable_context, decomposition)
+    usable_context = dedupe_bq_context_items(
+        usable_context_after_geo_purity(context_items, decomposition)
+    )
+    usable_context = dedupe_context_items(usable_context)
+    usable_context = prefer_in_window_narrative(
+        usable_context,
+        decomposition,
+        analytical=analytical_mode or task_mode == "analytical",
+    )
 
     # Sprint 1 (Jul 2026): if geo/error filtering leaves too little usable context,
     # return the structured gap message instead of letting the model pad thin or
@@ -951,9 +1808,18 @@ def generate(
             acf=no_evidence_acf(),
         )
 
-    ctx_budget = _context_max_chars(memory_block)
+    ctx_budget = _context_max_chars(
+        memory_block,
+        task_mode=task_mode,
+        soft_cap=bool(
+            structured_bq_unavailable and task_mode in ("chat", "briefing")
+        ),
+    )
     chunk_cap = _chunk_max_chars()
     context_block, source_registry = _build_context_block(usable_context, ctx_budget, chunk_cap)
+    if not source_registry and usable_context:
+        source_registry = _registry_from_context_items(usable_context)
+    source_kinds = [normalize_context_kind(item) for item in usable_context]
 
     messages = _build_prompt(
         query,
@@ -962,8 +1828,34 @@ def generate(
         memory_block=memory_block,
         category=category,
         plan_type=plan_type,
+        answer_lang=answer_lang,
+        structured_bq_unavailable=structured_bq_unavailable,
+        structured_bq_numeric_available=structured_bq_numeric_available,
+        structured_bq_comparative_available=structured_bq_comparative_available,
+        analytical_mode=analytical_mode,
+        task_mode=task_mode,
+        measure_id=measure_id,
+        recency_tier=recency_tier,
+        context_source_kinds=source_kinds,
+        inline_citations=inline_citations,
+        generation_plan=generation_plan,
+        export_intent=export_intent_s,
     )
-    llama_answer = _call_llama(messages, purpose="generate", model=model_for_plan(plan_type))
+    gen_max = _generate_max_tokens(task_mode)
+    input_chars = sum(len(str(m.get("content") or "")) for m in messages)
+    update_current_span_metadata(
+        {
+            "generate_max_tokens": gen_max,
+            "generate_input_chars": input_chars,
+            "task_mode": task_mode,
+        }
+    )
+    llama_answer = _call_llama(
+        messages,
+        purpose="generate",
+        model=model_for_plan(plan_type),
+        max_tokens=gen_max,
+    )
     if llama_answer:
         cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
         return _finalize_generation_result(
@@ -971,6 +1863,8 @@ def generate(
             source_registry,
             query=query,
             decomposition=decomposition,
+            inline_citations=inline_citations,
+            generate_input_chars=input_chars,
         )
 
     if llm_configured():
@@ -990,4 +1884,5 @@ def generate(
         acf=no_evidence_acf(
             explanation="Generation failed before citations could be scored."
         ),
+        generate_input_chars=input_chars,
     )

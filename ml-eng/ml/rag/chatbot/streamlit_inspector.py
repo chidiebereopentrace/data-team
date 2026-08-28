@@ -7,12 +7,23 @@ functions for full retrieval / flow observability after each query.
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Literal
 
 import requests
 import streamlit as st
 
+from ml.rag.chatbot.generator import usable_context_after_geo_purity
+
 BackendMode = Literal["in_process", "http_api"]
+
+_INSPECTOR_META_SKIP = frozenset({"tier", "as_of_date"})
+_RERANK_PREVIEW_PREFIX_RE = re.compile(r"^\[[^\]]+\]\n?", re.MULTILINE)
+
+
+def _strip_rerank_preview_prefix(content: str) -> str:
+    """Remove a leading rerank metadata line like ``[geo=Ghana; year=2020]``."""
+    return _RERANK_PREVIEW_PREFIX_RE.sub("", content, count=1).lstrip()
 
 INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "is_meta_query",
@@ -24,11 +35,17 @@ INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "user_profile",
     "geo_override",
     "bq_table_candidates",
+    "bq_sql_plan",
     "vector_news_results",
+    "vector_academic_papers_results",
+    "vector_policies_results",
+    "vector_public_reports_results",
+    "vector_formation_results",
     "vector_academic_results",
     "vector_ota_results",
     "bq_results",
     "bq_sql_queries",
+    "bq_sql_debug",
     "merged_context",
     "reranked_context",
     "web_results",
@@ -46,6 +63,12 @@ INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "acf_explanation",
     "acf_claim_level",
     "acf_question_type",
+    "export_intent",
+    "task_mode",
+    "analytical_mode",
+    "generation_plan",
+    "artifacts",
+    "langfuse_trace_id",
     "_backend_mode",
     "_http_trace",
 )
@@ -67,6 +90,37 @@ PRESET_QUERIES: list[tuple[str, str, dict[str, Any]]] = [
             },
         },
     ),
+    (
+        "Swahili lang",
+        "Habari, nipe taarifa za kilimo Kenya.",
+        {
+            "plan_type": "Farmers",
+            "category": "Farmers",
+            "user_profile": {
+                "country": "Kenya",
+                "plan_type": "Farmers",
+                "category": "Farmers",
+            },
+        },
+    ),
+    (
+        "Pidgin lang",
+        "Wetin be the maize price for Abuja?",
+        {},
+    ),
+    (
+        "Agri export CSV",
+        "Export maize production data for Nigeria as a CSV",
+        {
+            "plan_type": "Agribusinesses",
+            "category": "Agribusinesses",
+            "user_profile": {
+                "country": "Nigeria",
+                "plan_type": "Agribusinesses",
+                "category": "Agribusinesses",
+            },
+        },
+    ),
 ]
 
 
@@ -82,8 +136,16 @@ def infer_pipeline_route(result: dict[str, Any]) -> str:
     """Derive the terminal graph path from a run_rag() result dict."""
     if result.get("is_meta_query"):
         return "meta"
+    if result.get("is_help_query"):
+        return "help"
     if result.get("is_product_query"):
         return "product"
+    if result.get("is_greeting_query"):
+        return "greeting"
+    if result.get("is_out_of_scope_query"):
+        return "out_of_scope"
+    if result.get("is_language_unknown"):
+        return "language_unknown"
     if result.get("insufficient_context"):
         return "insufficient"
     if result.get("web_results"):
@@ -96,18 +158,24 @@ def _flow_narrative(route: str) -> str:
         return "decompose → generate_meta → END"
     if route == "product":
         return "decompose → generate_product → END"
+    if route == "help":
+        return "decompose → generate_product → END"
+    if route in ("greeting", "out_of_scope"):
+        return "decompose → generate_social → END"
+    if route == "language_unknown":
+        return "decompose → generate_language_help → END"
     if route == "insufficient":
         return (
-            "decompose → parallel_retrieve → bq_retrieve → merge → rerank "
+            "decompose → parallel_retrieve → bq_reason → bq_retrieve → merge → rerank "
             "→ web_fallback → insufficient_context → END"
         )
     if route == "full_rag + web_fallback":
         return (
-            "decompose → parallel_retrieve → bq_retrieve → merge → rerank "
+            "decompose → parallel_retrieve → bq_reason → bq_retrieve → merge → rerank "
             "→ web_fallback → generate → END"
         )
     return (
-        "decompose → parallel_retrieve → bq_retrieve → merge → rerank → generate → END"
+        "decompose → parallel_retrieve → bq_reason → bq_retrieve → merge → rerank → generate → END"
     )
 
 
@@ -132,8 +200,12 @@ def normalize_http_response(
     query: str,
     kwargs: dict[str, Any],
 ) -> dict[str, Any]:
-    """Map POST /query JSON into a shape the inspector can render (counts only)."""
-    trace = _as_dict(payload.get("trace"))
+    """Map POST /v1/chat/{plan} JSON (ChatSuccessResponse) into inspector shape.
+
+    Production response fields: assistant_message, citations, acf (nested ACFSignal),
+    session_id, usage, request_id, created_at, plan_type, langfuse_trace_id, artifacts.
+    There is no 'trace' field in production — retrieval counts are unavailable in HTTP mode.
+    """
     usage_raw = payload.get("usage")
     usage: dict[str, int] = {}
     if isinstance(usage_raw, dict):
@@ -143,31 +215,47 @@ def normalize_http_response(
             "total_tokens": int(usage_raw.get("total_tokens") or 0),
         }
 
-    plan_type = kwargs.get("plan_type")
-    category = kwargs.get("category")
+    # ACF is a nested ACFSignal object in production; flatten to the keys
+    # render_metrics_row already reads (acf_band, acf_score, acf_explanation, …).
+    acf = _as_dict(payload.get("acf"))
+    # plan_type echoed back by the API; fall back to kwargs when absent.
+    plan_type = payload.get("plan_type") or kwargs.get("plan_type")
     user_profile = kwargs.get("user_profile")
 
     return {
-        "answer": payload.get("answer") or "",
+        "answer": payload.get("assistant_message") or "",
         "citations": payload.get("citations") or [],
         "error": payload.get("error"),
         "session_id": payload.get("session_id"),
         "usage": usage,
-        "decomposition": trace.get("decomposition") or {},
-        "bq_table_candidates": [None] * int(trace.get("bq_table_candidates_count") or 0),
-        "vector_news_results": [None] * int(trace.get("vector_news_count") or 0),
-        "vector_academic_results": [None] * int(trace.get("vector_academic_count") or 0),
-        "bq_results": [],
-        "vector_ota_results": [],
-        "merged_context": [None] * int(trace.get("merged_context_count") or 0),
-        "reranked_context": [None] * int(trace.get("reranked_context_count") or 0),
-        "web_results": [],
         "latency_ms": latency_ms,
         "plan_type": plan_type,
-        "category": category,
+        "category": _as_dict(user_profile).get("category"),
         "user_profile": user_profile,
+        "langfuse_trace_id": payload.get("langfuse_trace_id"),
+        "artifacts": payload.get("artifacts") or [],
+        # ACF flattened — mirrors the flat keys consumed by render_metrics_row.
+        "acf_band": acf.get("band") or "",
+        "acf_band_label": acf.get("band_label") or "",
+        "acf_score": acf.get("score"),
+        "acf_explanation": acf.get("explanation") or acf.get("note") or "",
+        "acf_claim_level": acf.get("claim_level"),
+        "acf_question_type": acf.get("question_type"),
+        # HTTP mode: no decomposition or retrieval counts from this endpoint.
+        "decomposition": {},
+        "bq_table_candidates": [],
+        "vector_news_results": [],
+        "vector_academic_papers_results": [],
+        "vector_policies_results": [],
+        "vector_public_reports_results": [],
+        "vector_formation_results": [],
+        "vector_academic_results": [],
+        "bq_results": [],
+        "vector_ota_results": [],
+        "merged_context": [],
+        "reranked_context": [],
+        "web_results": [],
         "_backend_mode": "http_api",
-        "_http_trace": trace,
         "_query": query,
     }
 
@@ -181,30 +269,26 @@ def query_via_http_api(
     trace_id: str | None = None,
     timeout_s: float = 300.0,
 ) -> dict[str, Any]:
-    """POST /query and return a normalized inspector result dict."""
+    """POST /v1/chat/{plan} and return a normalized inspector result dict.
+
+    Targets the plan-scoped production routes (ML-034) which return ChatSuccessResponse.
+    Plan slug is derived from kwargs['plan_type']; defaults to 'integrated' when unset.
+    ChatRequest has extra='forbid' — only message, session_id, user_profile are sent.
+    """
     import time
 
-    url = base_url.rstrip("/") + "/query"
-    body: dict[str, Any] = {
-        "query": query,
-        "include_trace": True,
-    }
+    # Derive plan slug from kwargs['plan_type']; lowercase maps all plan IDs to slugs.
+    plan_type = str(kwargs.get("plan_type") or "").strip()
+    plan_slug = plan_type.lower() if plan_type else "integrated"
+    url = base_url.rstrip("/") + f"/v1/chat/{plan_slug}"
+
+    # ChatRequest fields only — no include_trace, no internal top_k params.
+    body: dict[str, Any] = {"message": query}
     if session_id:
         body["session_id"] = session_id
     profile = kwargs.get("user_profile")
     if isinstance(profile, dict) and profile.get("plan_type") and profile.get("category"):
         body["user_profile"] = profile
-    for key in (
-        "time_start_override",
-        "time_end_override",
-        "news_top_k",
-        "academic_top_k",
-        "bq_top_k",
-        "rerank_top_k",
-        "ota_top_k",
-    ):
-        if key in kwargs and kwargs[key] is not None:
-            body[key] = kwargs[key]
 
     t0 = time.perf_counter()
     headers: dict[str, str] = {}
@@ -215,7 +299,7 @@ def query_via_http_api(
     resp.raise_for_status()
     payload = resp.json()
     if not isinstance(payload, dict):
-        raise ValueError(f"Unexpected /query response type: {type(payload)!r}")
+        raise ValueError(f"Unexpected /v1/chat response type: {type(payload)!r}")
     result = normalize_http_response(payload, latency_ms=latency_ms, query=query, kwargs=kwargs)
     return result
 
@@ -273,10 +357,19 @@ def render_chunk_rows(items: list[dict[str, Any]], *, preview_chars: int = 600) 
                 st.caption(" · ".join(score_parts) + f"  ·  source: {source}")
             if meta:
                 st.json(
-                    {k: v for k, v in meta.items() if v is not None and v != ""},
+                    {
+                        k: v
+                        for k, v in meta.items()
+                        if k not in _INSPECTOR_META_SKIP and v is not None and v != ""
+                    },
                     expanded=False,
                 )
-            preview = content if len(content) <= preview_chars else content[:preview_chars] + "…"
+            preview_raw = _strip_rerank_preview_prefix(content)
+            preview = (
+                preview_raw
+                if len(preview_raw) <= preview_chars
+                else preview_raw[:preview_chars] + "…"
+            )
             st.markdown(preview if preview else "_(empty content)_")
 
 
@@ -287,6 +380,9 @@ def render_flow_strip(route: str, result: dict[str, Any]) -> None:
         st.warning(
             "HTTP API mode: chunk lists are counts only. Use **In-process** backend for full retrieval detail."
         )
+    trace_id = str(result.get("langfuse_trace_id") or "").strip()
+    if trace_id:
+        st.caption(f"Langfuse trace: `{trace_id}`")
 
 
 def render_request_context(
@@ -310,6 +406,45 @@ def render_request_context(
     with cols[3]:
         st.metric("geo override", str(result.get("geo_override") or "—"))
 
+    if result.get("task_mode"):
+        plan = _as_dict(result.get("bq_sql_plan"))
+        intents = _as_list(plan.get("query_intents"))
+        mode = str(result.get("task_mode"))
+        if mode == "analytical" or result.get("analytical_mode"):
+            st.info(
+                f"**task_mode=analytical** — BQ intents: {len(intents)} · "
+                f"skip_bq={plan.get('skip_bq')} · rationale={plan.get('rationale') or '—'}"
+            )
+            expanded = _as_list(dec.get("expanded_regions"))
+            if expanded:
+                st.caption(f"Expanded regions: {', '.join(str(x) for x in expanded)}")
+        else:
+            st.caption(
+                f"task_mode={mode}"
+                + (f" · BQ intents={len(intents)}" if intents else "")
+                + (f" · rationale={plan.get('rationale')}" if plan.get("rationale") else "")
+            )
+    elif result.get("analytical_mode"):
+        plan = _as_dict(result.get("bq_sql_plan"))
+        intents = _as_list(plan.get("query_intents"))
+        st.info(
+            f"**Analytical mode** — BQ intents: {len(intents)} · "
+            f"skip_bq={plan.get('skip_bq')} · rationale={plan.get('rationale') or '—'}"
+        )
+        expanded = _as_list(dec.get("expanded_regions"))
+        if expanded:
+            st.caption(f"Expanded regions: {', '.join(str(x) for x in expanded)}")
+
+    gen_plan = _as_dict(result.get("generation_plan"))
+    if gen_plan:
+        shape = str(gen_plan.get("answer_shape") or "—")
+        priority = gen_plan.get("evidence_priority") or []
+        priority_head = priority[0] if isinstance(priority, list) and priority else "—"
+        st.caption(
+            f"generation_plan: shape={shape} · evidence_priority={priority_head}"
+            + (f" · rationale={gen_plan.get('rationale')}" if gen_plan.get("rationale") else "")
+        )
+
     if query:
         st.caption(f"Query: {query}")
     if geo:
@@ -323,7 +458,7 @@ def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = Non
     usage = _as_dict(result.get("usage"))
     lat = latency_ms if latency_ms is not None else result.get("latency_ms")
 
-    r1 = st.columns(7)
+    r1 = st.columns(8)
     with r1[0]:
         st.metric("BQ table matches", len(result.get("bq_table_candidates") or []))
     with r1[1]:
@@ -331,13 +466,23 @@ def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = Non
     with r1[2]:
         st.metric("News", len(result.get("vector_news_results") or []))
     with r1[3]:
-        st.metric("Research", len(result.get("vector_academic_results") or []))
+        st.metric("Academic", len(result.get("vector_academic_papers_results") or []))
     with r1[4]:
-        st.metric("OTA", len(result.get("vector_ota_results") or []))
+        st.metric("Policy", len(result.get("vector_policies_results") or []))
     with r1[5]:
-        st.metric("Web", len(result.get("web_results") or []))
+        st.metric("Public", len(result.get("vector_public_reports_results") or []))
     with r1[6]:
-        st.metric("→ generator", len(result.get("reranked_context") or []))
+        st.metric("Formation", len(result.get("vector_formation_results") or []))
+    with r1[7]:
+        st.metric("OTA", len(result.get("vector_ota_results") or []))
+
+    r1b = st.columns(3)
+    with r1b[0]:
+        st.metric("Web", len(result.get("web_results") or []))
+    with r1b[1]:
+        st.metric("→ reranked", len(result.get("reranked_context") or []))
+    with r1b[2]:
+        st.metric("→ cited", len(result.get("citations") or []))
 
     r2 = st.columns(4)
     with r2[0]:
@@ -381,56 +526,144 @@ def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = Non
             st.caption(f"ACF explanation: {expl[:200]}")
 
 
+def _bq_was_attempted(result: dict[str, Any]) -> bool:
+    """True when the BQ path ran (candidates, plan, SQL debug, or results)."""
+    if result.get("bq_sql_debug") or result.get("bq_sql_queries") or result.get("bq_results"):
+        return True
+    if result.get("bq_table_candidates"):
+        return True
+    plan = result.get("bq_sql_plan")
+    if isinstance(plan, dict) and plan and not plan.get("skip_bq"):
+        return True
+    return False
+
+
 def render_sql_panel(result: dict[str, Any]) -> None:
-    if not show_sql_debug():
+    """Always show BQ SQL / failure diagnostics in the pipeline inspector when BQ ran."""
+    if not _bq_was_attempted(result):
         return
+
+    debug_rows = [d for d in (result.get("bq_sql_debug") or []) if isinstance(d, dict)]
     bq_sql_list = list(result.get("bq_sql_queries") or [])
     if not bq_sql_list:
-        bq_rows = result.get("bq_results") or []
         seen_sql: set[str] = set()
-        for row in bq_rows:
+        for row in result.get("bq_results") or []:
             if not isinstance(row, dict):
                 continue
             s = str((row.get("metadata") or {}).get("sql") or "").strip()
             if s and s not in seen_sql:
                 seen_sql.add(s)
                 bq_sql_list.append(s)
-    if not bq_sql_list:
-        return
-    with st.expander(f"Generated SQL ({len(bq_sql_list)})", expanded=False):
-        st.caption("Internal only. Set RAG_SHOW_SQL_DEBUG=0 to hide.")
-        for i, sql in enumerate(bq_sql_list, start=1):
-            st.caption(f"Query {i}")
-            st.code(sql, language="sql")
+        for d in debug_rows:
+            s = str(d.get("sql") or "").strip()
+            if s and s not in seen_sql:
+                seen_sql.add(s)
+                bq_sql_list.append(s)
 
+    title = "BQ SQL"
+    if debug_rows:
+        title = f"BQ SQL ({len(debug_rows)} attempt(s))"
+    elif bq_sql_list:
+        title = f"BQ SQL ({len(bq_sql_list)})"
+    else:
+        title = "BQ SQL (none generated)"
+
+    with st.expander(title, expanded=True):
+        if show_sql_debug():
+            st.caption("Inspector always shows BQ SQL attempts. RAG_SHOW_SQL_DEBUG also gates public answer SQL.")
+        if debug_rows:
+            for i, entry in enumerate(debug_rows, start=1):
+                status = str(entry.get("status") or "unknown")
+                st.caption(f"Attempt {i} — status={status}")
+                sql = str(entry.get("sql") or "").strip()
+                if sql:
+                    st.code(sql, language="sql")
+                else:
+                    st.warning("No SQL generated for this attempt.")
+                prep = entry.get("prep_error")
+                if prep:
+                    st.error(f"prep_error: {prep}")
+                exec_err = entry.get("execution_error")
+                if exec_err:
+                    st.error(f"execution_error: {exec_err}")
+        elif bq_sql_list:
+            for i, sql in enumerate(bq_sql_list, start=1):
+                st.caption(f"Query {i}")
+                st.code(sql, language="sql")
+        else:
+            raw_plan = result.get("bq_sql_plan")
+            if isinstance(raw_plan, dict):
+                plan = dict(raw_plan)
+            else:
+                plan = {}
+            if plan.get("skip_bq"):
+                st.info(f"BQ skipped by reasoner: {plan.get('rationale') or 'skip_bq'}")
+            else:
+                st.warning(
+                    "BQ was attempted but no SQL was recorded. "
+                    "Check BQ_PROJECT, NL2SQL LLM, and bq_sql_plan in raw JSON."
+                )
+            if plan:
+                st.caption("Reasoner plan (selected_tables)")
+                st.json(
+                    {
+                        "selected_tables": plan.get("selected_tables"),
+                        "skip_bq": plan.get("skip_bq"),
+                        "rationale": plan.get("rationale"),
+                    }
+                )
 
 def render_retrieval_tabs(result: dict[str, Any]) -> None:
+    reranked = list(result.get("reranked_context") or [])
+    usable_for_gen = usable_context_after_geo_purity(
+        reranked,
+        result.get("decomposition") if isinstance(result.get("decomposition"), dict) else None,
+    )
+    citations = list(result.get("citations") or [])
     tabs = st.tabs([
         f"News ({len(result.get('vector_news_results') or [])})",
-        f"Research ({len(result.get('vector_academic_results') or [])})",
+        f"Academic ({len(result.get('vector_academic_papers_results') or [])})",
+        f"Policy ({len(result.get('vector_policies_results') or [])})",
+        f"Public reports ({len(result.get('vector_public_reports_results') or [])})",
+        f"Formation ({len(result.get('vector_formation_results') or [])})",
         f"OTA ({len(result.get('vector_ota_results') or [])})",
-        f"BQ descriptions ({len(result.get('bq_table_candidates') or [])})",
+        f"BQ tables ({len(result.get('bq_table_candidates') or [])})",
         f"BQ rows ({len(result.get('bq_results') or [])})",
         f"Merged ({len(result.get('merged_context') or [])})",
-        f"Generator input ({len(result.get('reranked_context') or [])})",
+        f"Reranked ({len(reranked)})",
         f"Web ({len(result.get('web_results') or [])})",
     ])
     with tabs[0]:
         render_chunk_rows(list(result.get("vector_news_results") or []))
     with tabs[1]:
-        render_chunk_rows(list(result.get("vector_academic_results") or []))
+        render_chunk_rows(list(result.get("vector_academic_papers_results") or []))
     with tabs[2]:
-        render_chunk_rows(list(result.get("vector_ota_results") or []))
+        render_chunk_rows(list(result.get("vector_policies_results") or []))
     with tabs[3]:
-        render_chunk_rows(list(result.get("bq_table_candidates") or []))
+        render_chunk_rows(list(result.get("vector_public_reports_results") or []))
     with tabs[4]:
-        render_chunk_rows(list(result.get("bq_results") or []))
+        render_chunk_rows(list(result.get("vector_formation_results") or []))
     with tabs[5]:
-        render_chunk_rows(list(result.get("merged_context") or []))
+        render_chunk_rows(list(result.get("vector_ota_results") or []))
     with tabs[6]:
-        st.caption("Exact context block passed to the generator, in order.")
-        render_chunk_rows(list(result.get("reranked_context") or []))
+        render_chunk_rows(list(result.get("bq_table_candidates") or []))
     with tabs[7]:
+        render_chunk_rows(list(result.get("bq_results") or []))
+    with tabs[8]:
+        render_chunk_rows(list(result.get("merged_context") or []))
+    with tabs[9]:
+        st.caption(
+            f"Reranked toward generator: {len(reranked)} · "
+            f"Usable after filters: {len(usable_for_gen)} · "
+            f"Cited in answer: {len(citations)}"
+        )
+        if len(usable_for_gen) < len(reranked):
+            st.warning(
+                "Geo purity or unusable-item filters removed chunks before the LLM. "
+                "Gap answers with ACF no-evidence often mean this count hit zero."
+            )
+        render_chunk_rows(reranked)
+    with tabs[10]:
         status = result.get("web_fallback_status")
         if status:
             st.caption(f"Status: {status} · {result.get('web_fallback_reason') or ''}")
@@ -448,6 +681,44 @@ def render_raw_json(result: dict[str, Any]) -> None:
                 slim[key] = val
     with st.expander("Raw inspector JSON", expanded=False):
         st.json(slim)
+
+
+def render_artifacts(result: dict[str, Any]) -> None:
+    """Render export artifacts (CSV / chart / DOCX / PDF) with download links.
+
+    Artifacts are only present on Agribusinesses and Integrated plan responses
+    (ML-030). Each ArtifactItem has: id, kind, filename, mime_type, url,
+    summary, citation_ids, byte_size.
+
+    URL handling (Option A):
+      - https:// URLs  → st.link_button (clickable download)
+      - file://  URLs  → st.code (dev-only; can't open cross-origin in browser)
+    """
+    artifacts = _as_list(result.get("artifacts"))
+    real = [a for a in artifacts if isinstance(a, dict)]
+    if not real:
+        return
+
+    st.subheader(f"Export artifacts ({len(real)})")
+    for art in real:
+        kind = str(art.get("kind") or "file").upper()
+        fname = str(art.get("filename") or "export")
+        url = str(art.get("url") or "").strip()
+        summary = str(art.get("summary") or "")
+        byte_size = art.get("byte_size")
+        size_str = f"{byte_size:,} bytes" if isinstance(byte_size, int) else ""
+
+        header = f"**[{kind}]** {fname}" + (f"  ·  {size_str}" if size_str else "")
+        with st.expander(header, expanded=True):
+            if summary:
+                st.caption(summary)
+            if url.startswith("https://"):
+                st.link_button(f"Download {fname}", url)
+            elif url.startswith("file://"):
+                st.caption("Local dev artifact — copy path to access:")
+                st.code(url)
+            else:
+                st.caption(f"URL: {url or '(none)'}")
 
 
 def render_pipeline_inspector(
@@ -481,6 +752,8 @@ def render_pipeline_inspector(
 
         st.subheader("Retrieved data by source")
         render_retrieval_tabs(result)
+
+        render_artifacts(result)
 
         if backend_mode == "http_api" and result.get("_http_trace"):
             st.subheader("HTTP trace (counts)")

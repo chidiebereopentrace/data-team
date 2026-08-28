@@ -142,22 +142,61 @@ def apply_plan_decomposition_gates(
     Clamp decomposition for plan-tier retrieval limits.
 
     When cross-country is disallowed: geography → one country; compare → descriptive.
+    Preserve africa_default / africa_panel / expanded regional panels (do not amputate
+    West Africa → Benin).
     """
     if not plan_type or not isinstance(decomposition, dict):
         return decomposition
 
     out = copy.deepcopy(decomposition)
-    if not allows_cross_country(plan_type):
+    preserve_multi = bool(
+        out.get("africa_default")
+        or out.get("africa_panel")
+        or out.get("expanded_regions")
+    )
+    if not allows_cross_country(plan_type) and not preserve_multi:
         geo = out.get("geography")
         geo_list = geo if isinstance(geo, list) else []
         out["geography"] = _pick_single_country(geo_list, profile_country)
         if str(out.get("intent") or "").strip().lower() == "compare":
             out["intent"] = "descriptive"
 
-    if plan_type.strip() == "Free":
+    if plan_type.strip() == "Free" and not preserve_multi:
         if str(out.get("intent") or "").strip().lower() == "compare":
             out["intent"] = "descriptive"
 
+    return out
+
+
+# Soft retrieval bias when the decomposer left domains empty.
+_CATEGORY_DOMAIN_HINTS: dict[str, list[str]] = {
+    "Farmers": ["rainfall", "markets", "yield"],
+    "Agribusinesses": ["prices", "trade"],
+    "Government": ["food security", "policy"],
+    "NGOs": ["climate", "nutrition", "markets"],
+}
+
+
+def apply_category_domain_hints(
+    decomposition: dict[str, Any],
+    category: str | None,
+) -> dict[str, Any]:
+    """
+    Soft-fill empty domains from category hints.
+
+    Explicit query domains always win; only fill when domains are missing or blank.
+    """
+    if not category or not isinstance(decomposition, dict):
+        return decomposition
+    hints = _CATEGORY_DOMAIN_HINTS.get(category.strip())
+    if not hints:
+        return decomposition
+
+    out = copy.deepcopy(decomposition)
+    domains = out.get("domains")
+    if isinstance(domains, list) and any(str(d).strip() for d in domains):
+        return out
+    out["domains"] = list(hints)
     return out
 
 
@@ -178,19 +217,17 @@ def default_category_for_plan(plan_type: str | None) -> str | None:
     return _defaults.get((plan_type or "").strip())
 
 
+_DEFAULT_CHAT_MODEL = "qwen/qwen3-30b-a3b-instruct-2507"
+
+
 def model_for_plan(plan_type: str | None) -> str | None:
     """Return the configured OpenRouter model ID for a plan tier (ML-041).
 
-    Reads per-plan env vars; falls back to the tier default when unset.
+    Reads per-plan env vars; falls back to the shared 8B default when unset.
     Returns None when plan_type is unknown — callers fall back to RAG_LLM_MODEL_ID.
 
-    Default model assignment:
-        Free           → meta-llama/llama-3.1-8b-instruct   (RAG_LLM_MODEL_FREE)
-        Farmers        → meta-llama/llama-3.1-70b-instruct  (RAG_LLM_MODEL_FARMERS)
-        Government     → meta-llama/llama-3.1-70b-instruct  (RAG_LLM_MODEL_GOVERNMENT)
-        NGOs           → qwen/qwen-2.5-72b-instruct         (RAG_LLM_MODEL_NGOS)
-        Agribusinesses → qwen/qwen-2.5-72b-instruct         (RAG_LLM_MODEL_AGRIBUSINESSES)
-        Integrated     → thudm/glm-4-plus                   (RAG_LLM_MODEL_INTEGRATED)
+    All plan tiers default to the same chat model (``qwen/qwen3-30b-a3b-instruct-2507``).
+    Per-plan env overrides still work when explicitly set.
     """
     pt = (plan_type or "").strip()
     _env_keys: dict[str, str] = {
@@ -201,19 +238,10 @@ def model_for_plan(plan_type: str | None) -> str | None:
         "Agribusinesses": "RAG_LLM_MODEL_AGRIBUSINESSES",
         "Integrated": "RAG_LLM_MODEL_INTEGRATED",
     }
-    _defaults: dict[str, str] = {
-        "Free": "meta-llama/llama-3.1-8b-instruct",
-        "Farmers": "meta-llama/llama-3.1-70b-instruct",
-        "Government": "meta-llama/llama-3.1-70b-instruct",
-        "NGOs": "qwen/qwen-2.5-72b-instruct",
-        "Agribusinesses": "qwen/qwen-2.5-72b-instruct",
-        "Integrated": "thudm/glm-4-plus",
-    }
     if not pt or pt not in _env_keys:
         return None  # unknown plan — caller falls back to RAG_LLM_MODEL_ID
     env_key = _env_keys[pt]
-    default = _defaults[pt]
-    return os.environ.get(env_key, default).strip() or default
+    return os.environ.get(env_key, _DEFAULT_CHAT_MODEL).strip() or _DEFAULT_CHAT_MODEL
 
 
 __all__ = [
@@ -221,6 +249,7 @@ __all__ = [
     "PLAN_TYPES",
     "allows_cross_country",
     "allows_export",
+    "apply_category_domain_hints",
     "apply_plan_decomposition_gates",
     "default_category_for_plan",
     "instruction_for_category",

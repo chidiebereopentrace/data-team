@@ -1,0 +1,17 @@
+﻿flowchart TB
+  subgraph entry [Entry points]
+    CLI["CLI<br/>ml/rag/run.py"]
+    API["FastAPI<br/>POST /query"]
+    CHAT["Chatbot v1<br/>POST /v1/chat"]
+    ST[Streamlit QA]
+  end
+
+  RUN["run_rag(query, **kwargs)"]
+  TURN["execute_chat_turn(...)"]
+  GRAPH["LangGraph compiled graph<br/>chatbot/graph.py"]
+
+  CLI --> RUN
+  API --> RUN
+  CHAT --> TURN --> RUN
+  ST --> RUN
+  RUN --> GRAPH

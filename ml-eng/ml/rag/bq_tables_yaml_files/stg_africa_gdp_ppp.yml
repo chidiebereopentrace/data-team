@@ -1,0 +1,79 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_africa_gdp_ppp
+description: Africa GDP per capita PPP by country and year.
+grain: country × observation_year
+entity_type: socio_economic
+source:
+  layer: staging_dev
+  domain: socio_economic
+relationships:
+  primary_key:
+    type: logical
+    fields: country × observation_year
+semantic_role:
+  primary_domain: socio_economic
+  supports: &id001
+  - gdp
+  - economics
+business_questions_supported:
+- What is GDP per capita PPP?
+filtering_guidance:
+- Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa'
+- Use only when the question asks for GDP/macro context; do not join as an Africa country list for production rankings
+sql_generation_hints:
+- Filter country_code or country_name and observation_year
+- Never invent warehouse dimension tables (dim_*)
+columns:
+- name: country_name
+  type: STRING
+  description: Country name only. Never 'Africa' or a region label.
+- name: country_code
+  type: STRING
+  description: country code
+- name: observation_year
+  type: INT64
+  description: observation year
+- name: gdp_per_capita_ppp
+  type: FLOAT64
+  description: gdp per capita ppp
+  sql_aggregation: avg
+- name: ingested_at
+  type: STRING
+  description: ingested at
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: socio_economic
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_africa_hdi
+    'on':
+    - country_code
+    - observation_year≈year
+    how: enrich
+    note: Income with HDI
+  - table: stg_faostat_production
+    'on':
+    - country_code/name
+    - year
+    how: enrich
+    note: Macro context for ag production
+  - table: stg_wfp_vampire_prices
+    'on':
+    - country_code≈country
+    - year
+    how: enrich
+    note: Affordability backdrop
+  companions:
+  - table: stg_faostat_prices
+    when: price level context
+    role: enrich_context
+  do_not_join:
+  - table: stg_germplasm
+    reason: accession geography
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims / country lists for unrelated rankings

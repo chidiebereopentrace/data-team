@@ -1,0 +1,109 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_ilri_animal_health
+description: ILRI animal health surveys (disease, acaricide, AMUSE).
+grain: household × species
+entity_type: ilri
+source:
+  layer: staging_dev
+  domain: ilri
+relationships:
+  primary_key:
+    type: logical
+    fields: household × species
+semantic_role:
+  primary_domain: ilri
+  supports: &id001
+  - animal health
+  - livestock
+  - ilri
+business_questions_supported:
+- What is disease incidence by species?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_ilri_animal_health`
+- Always include LIMIT
+columns:
+- name: household_id
+  type: STRING
+  description: household id
+- name: sub_county
+  type: STRING
+  description: sub county
+- name: village_name
+  type: STRING
+  description: village name
+- name: village_code
+  type: STRING
+  description: village code
+- name: farmer_sex
+  type: STRING
+  description: farmer sex
+- name: education_level
+  type: STRING
+  description: education level
+- name: housing_type
+  type: STRING
+  description: housing type
+- name: breed_type
+  type: STRING
+  description: breed type
+- name: animals_sold
+  type: STRING
+  description: animals sold
+- name: cash_received
+  type: STRING
+  description: cash received
+- name: clinical_disease_score
+  type: STRING
+  description: clinical disease score
+- name: positive_cases
+  type: STRING
+  description: positive cases
+- name: incidence_rate
+  type: STRING
+  description: incidence rate
+- name: treatment_cost
+  type: STRING
+  description: treatment cost
+- name: average_herd_size
+  type: STRING
+  description: average herd size
+- name: mortality_count
+  type: STRING
+  description: mortality count
+- name: species
+  type: STRING
+  description: species
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: ilri
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_ilri_dairy_genetics
+    'on':
+    - household_id
+    how: enrich
+    note: Health with milk/calving records
+  - table: stg_ilri_i4i_livestock_insurance
+    'on':
+    - household_id
+    - country
+    how: enrich
+    note: Health risk with insurance uptake
+  - table: stg_ilri_vegetation_feed
+    'on':
+    - household_id
+    how: enrich
+    note: Health with feed/vegetation
+  companions:
+  - table: stg_ilri_household_food_security
+    when: livelihood outcomes
+    role: enrich_context
+  do_not_join:
+  - table: stg_faostat_emissions
+    reason: national emissions; not clinical scores

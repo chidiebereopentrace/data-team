@@ -76,8 +76,6 @@ ml-eng/ml/rag/data/
 **/local/processed_chunks/
 **/local/web_news_rss/
 ml/models/
-../../ml-eng/docs/
-../../ml-eng/ml/rag/docs/OpenTrace-RAG-Pipeline-Architecture.docx
 ml/rag/Text Documents/
 test/*
 *.pkl
@@ -113,3 +111,5 @@ data-eng/dbt/logs/
 
 # Enterprise API tenant secrets (use enterprise_tenants.example.json as template)
 ml-eng/config/enterprise_tenants.json
+ml-eng/docs/
+ml-eng/ml/rag/docs/ 

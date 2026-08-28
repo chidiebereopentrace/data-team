@@ -1,0 +1,45 @@
+﻿flowchart TB
+  START([START]) --> decompose
+
+  subgraph decomposeInternals [decompose includes]
+    enricher[query_enricher]
+    ontology[resolve_measure]
+    taskMode[resolve_task_mode]
+    enricher --> ontology --> taskMode
+  end
+
+  decompose -.-> decomposeInternals
+
+  decompose -->|is_meta_query| generate_meta
+  decompose -->|is_product_query| generate_product
+  decompose -->|greeting or out_of_scope| generate_social
+  decompose -->|is_language_unknown| generate_language_help
+  decompose -->|clarify| generate_clarify
+  decompose -->|full_rag| parallel_retrieve
+
+  generate_meta --> ENDNODE([END])
+  generate_product --> ENDNODE
+  generate_social --> ENDNODE
+  generate_language_help --> ENDNODE
+  generate_clarify --> ENDNODE
+
+  subgraph vectorLeg [vector leg]
+    parallel_retrieve
+  end
+
+  subgraph bqLeg [BQ leg]
+    bq_reason --> bq_retrieve
+  end
+
+  parallel_retrieve --> bq_reason
+  bq_retrieve --> merge
+  merge --> rerank
+
+  rerank -->|weak context and web fallback on| web_fallback
+  rerank -->|enough context or web off| generate
+
+  web_fallback -->|insufficient_context| insufficient_context
+  web_fallback -->|ok| generate
+
+  insufficient_context --> ENDNODE
+  generate --> export --> ENDNODE

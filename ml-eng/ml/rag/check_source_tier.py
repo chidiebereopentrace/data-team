@@ -20,7 +20,14 @@ from qdrant_client import QdrantClient
 client = QdrantClient(url=os.environ["QDRANT_URL"], api_key=os.environ.get("QDRANT_API_KEY", ""), timeout=20)
 
 TIER_FIELDS = ("source_tier", "tier", "data_tier", "source_level", "source_type", "doc_tier", "data_source_tier")
-COLLECTIONS = ("academic_papers", "policies", "public_reports", "formation", "news_data")
+COLLECTIONS = (
+    "news_data",
+    "academic_papers",
+    "policies",
+    "public_reports",
+    "formation",
+    "OTA_insights",
+)
 
 for coll in COLLECTIONS:
     try:

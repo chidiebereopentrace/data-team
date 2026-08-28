@@ -37,7 +37,7 @@ from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats
 from ml.rag.observability import flush_langfuse
 from ml.rag.rate_limiter import check_plan_rate_limit, get_rate_limit_status
 from ml.rag.request_context import bootstrap_category, resolve_request_context
-from ml.rag.session_store import delete_session, get_session_blob
+from ml.rag.session_store import delete_session, get_session_blob, session_ttl_seconds
 from ml.serving.enterprise.auth import EnterpriseAuthMiddleware, get_request_tenant
 from ml.serving.enterprise.metering import get_usage, record_usage, usage_to_dict
 from ml.serving.enterprise.tenant_registry import enterprise_auth_mode
@@ -175,7 +175,7 @@ async def v1_create_plan_session(plan_type_slug: str):
         default_cat = CATEGORIES[0]["id"] if CATEGORIES else "Government"
     category = cast(CategoryType, default_cat)
     try:
-        sid = create_session(category)
+        sid = create_session(category, plan_type=plan_type)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return SessionCreateResponse(
@@ -218,13 +218,16 @@ async def _plan_chat(
     sid = (body.session_id or "").strip() or None
 
     try:
+        country = None
+        if isinstance(ctx.user_profile, dict):
+            country = str(ctx.user_profile.get("country") or "").strip() or None
         if hist is None:
             if not sid:
                 if bootstrap_cat is None:
                     bootstrap_cat = CATEGORIES[0]["id"] if CATEGORIES else "Government"
-                sid = create_session(bootstrap_cat)
+                sid = create_session(bootstrap_cat, plan_type=plan_type, country=country)
         elif not sid and bootstrap_cat is not None:
-            sid = create_session(bootstrap_cat)
+            sid = create_session(bootstrap_cat, plan_type=plan_type, country=country)
 
         turn = execute_chat_turn(
             body.user_text(),
@@ -269,6 +272,8 @@ async def _plan_chat(
             citations=citations,
             acf=acf,
             session_id=turn.session_id,
+            session_found=turn.session_found,
+            session_ttl_seconds=session_ttl_seconds(),
             usage=usage,
             request_id=request_id,
             created_at=created_at,
@@ -390,9 +395,23 @@ async def v1_chat(body: ChatRequest):
                             "user_profile with plan_type and category to bootstrap"
                         ),
                     )
-                sid = create_session(bootstrap_cat)
+                country = None
+                if isinstance(ctx.user_profile, dict):
+                    country = str(ctx.user_profile.get("country") or "").strip() or None
+                sid = create_session(
+                    bootstrap_cat,
+                    plan_type=ctx.plan_type,
+                    country=country,
+                )
         elif not sid and bootstrap_cat is not None:
-            sid = create_session(bootstrap_cat)
+            country = None
+            if isinstance(ctx.user_profile, dict):
+                country = str(ctx.user_profile.get("country") or "").strip() or None
+            sid = create_session(
+                bootstrap_cat,
+                plan_type=ctx.plan_type,
+                country=country,
+            )
 
         turn = execute_chat_turn(
             body.user_text(),
@@ -427,6 +446,8 @@ async def v1_chat(body: ChatRequest):
             citations=citations,
             acf=acf,
             session_id=turn.session_id,
+            session_found=turn.session_found,
+            session_ttl_seconds=session_ttl_seconds(),
             usage=usage,
             request_id=request_id,
             created_at=created_at,

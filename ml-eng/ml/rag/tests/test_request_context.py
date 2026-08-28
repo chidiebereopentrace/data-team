@@ -85,6 +85,30 @@ def test_query_request_accepts_canonical_shape() -> None:
     assert ctx.category == "Government"
 
 
+def test_injected_plan_type_overrides_body() -> None:
+    ctx = resolve_request_context(
+        user_profile=UserProfile(
+            country="Ghana",
+            plan_type="Free",
+            category="Farmers",
+        ),
+        injected_plan_type="Farmers",
+    )
+    assert ctx.plan_type == "Farmers"
+    assert ctx.user_profile is not None
+    assert ctx.user_profile["plan_type"] == "Farmers"
+    assert ctx.category == "Farmers"
+
+
+def test_plan_scoped_query_routes_registered() -> None:
+    from ml.rag.app.api import app
+
+    paths = {getattr(r, "path", None) for r in app.routes}
+    for slug in ("free", "farmers", "government", "ngos", "agribusinesses", "integrated"):
+        assert f"/query/{slug}" in paths
+    assert "/query" in paths
+
+
 def test_resolve_prior_memory_accepts_history_messages() -> None:
     sid, summary, recent = _resolve_prior_memory(
         "sess-1",

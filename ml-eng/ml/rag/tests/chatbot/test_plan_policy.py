@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from ml.rag.chatbot.bq_sql_reasoner import _reasoner_model
 from ml.rag.chatbot.plan_policy import (
     allows_cross_country,
+    apply_category_domain_hints,
     apply_plan_decomposition_gates,
     instruction_for_category,
     is_valid_category,
     is_valid_plan_type,
+    model_for_plan,
     plan_generation_addendum,
 )
+from ml.rag.llm_chat import llm_model_id
 
 
 def test_valid_enums() -> None:
@@ -66,6 +70,34 @@ def test_category_instruction_nonempty() -> None:
     assert "plain" in instruction_for_category("Farmers").lower()
 
 
+def test_category_domain_soft_fill() -> None:
+    filled = apply_category_domain_hints({"domains": []}, "NGOs")
+    assert "climate" in filled["domains"]
+    kept = apply_category_domain_hints({"domains": ["prices"]}, "NGOs")
+    assert kept["domains"] == ["prices"]
+
+
 def test_plan_addendum_free_is_brief() -> None:
     text = plan_generation_addendum("Free")
     assert "concise" in text.lower() or "top-line" in text.lower()
+
+
+def test_all_plan_models_default_to_8b(monkeypatch) -> None:
+    for key in (
+        "RAG_LLM_MODEL_FREE",
+        "RAG_LLM_MODEL_FARMERS",
+        "RAG_LLM_MODEL_GOVERNMENT",
+        "RAG_LLM_MODEL_NGOS",
+        "RAG_LLM_MODEL_AGRIBUSINESSES",
+        "RAG_LLM_MODEL_INTEGRATED",
+        "RAG_BQ_REASONER_MODEL_ID",
+        "RAG_BQ_REASONER_FALLBACK_MODEL_ID",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.delenv("RAG_LLM_MODEL_ID", raising=False)
+    expected = "qwen/qwen3-30b-a3b-instruct-2507"
+    assert llm_model_id() == expected
+    for plan in ("Free", "Farmers", "Government", "NGOs", "Agribusinesses", "Integrated"):
+        assert model_for_plan(plan) == expected
+        assert "70b" not in (model_for_plan(plan) or "").lower()
+        assert _reasoner_model(plan) == expected

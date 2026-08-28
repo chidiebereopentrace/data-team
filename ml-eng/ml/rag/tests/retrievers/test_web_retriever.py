@@ -10,6 +10,8 @@ from ml.rag.retrievers.web_retriever import (
     _build_wiki_search_query,
     _retrieve_tavily,
     _retrieve_wikipedia,
+    _shape_wiki_queries,
+    _wiki_title_passes,
     needs_web_fallback,
     reset_tavily_quota,
     retrieve_web_fallback,
@@ -73,6 +75,41 @@ def test_route_after_rerank() -> None:
         assert route_after_rerank(strong) == "generate"
 
 
+def test_shape_wiki_queries_entity_country_primary() -> None:
+    shaped = _shape_wiki_queries(
+        "How does maize production compare across regions and what policies matter most?",
+        {"geography": ["Kenya"], "entities": ["Maize"]},
+    )
+    assert shaped[0] == "Maize Kenya"
+    # Long question is not used as the sole primary query.
+    assert "compare across" not in shaped[0].lower()
+
+
+def test_shape_wiki_africa_default_appends_africa() -> None:
+    shaped = _shape_wiki_queries(
+        "which country has the best agricultural activity in 2020",
+        {"entities": ["agricultural activity"], "geography": [], "africa_default": True},
+    )
+    assert any("africa" in s.lower() for s in shaped)
+
+
+def test_wiki_title_passes_drops_switzerland_on_africa_default() -> None:
+    from ml.rag.retrievers.web_retriever import _wiki_title_passes
+
+    assert not _wiki_title_passes(
+        "Agriculture in Switzerland",
+        countries=[],
+        entity_tokens=["agriculture"],
+        africa_default=True,
+    )
+    assert _wiki_title_passes(
+        "Agriculture in Africa",
+        countries=[],
+        entity_tokens=["agriculture"],
+        africa_default=True,
+    )
+
+
 def test_build_wiki_search_query_includes_geography() -> None:
     q = _build_wiki_search_query(
         "rice production policies",
@@ -82,7 +119,65 @@ def test_build_wiki_search_query_includes_geography() -> None:
     assert "rice" in q
 
 
-def test_retrieve_wikipedia_parses_search_and_summary() -> None:
+def test_wiki_title_passes_drops_conflicting_country() -> None:
+    assert not _wiki_title_passes(
+        "Agriculture in Nigeria",
+        countries=["Kenya"],
+        entity_tokens=["maize"],
+    )
+    assert _wiki_title_passes(
+        "Agriculture in Kenya",
+        countries=["Kenya"],
+        entity_tokens=["maize"],
+    )
+    # Universal topical title kept when it does not name a conflicting country.
+    assert _wiki_title_passes(
+        "Maize",
+        countries=["Kenya"],
+        entity_tokens=["maize"],
+    )
+
+
+def test_retrieve_wikipedia_prefers_opensearch() -> None:
+    opensearch_resp = mock.Mock()
+    opensearch_resp.raise_for_status = mock.Mock()
+    opensearch_resp.json.return_value = [
+        "rice Senegal",
+        ["Agriculture in Senegal"],
+        [""],
+        ["https://en.wikipedia.org/wiki/Agriculture_in_Senegal"],
+    ]
+    summary_resp = mock.Mock()
+    summary_resp.status_code = 200
+    summary_resp.raise_for_status = mock.Mock()
+    summary_resp.json.return_value = {
+        "title": "Agriculture in Senegal",
+        "extract": "Agriculture is a major sector in Senegal with rice as a staple crop.",
+        "content_urls": {"desktop": {"page": "https://en.wikipedia.org/wiki/Agriculture_in_Senegal"}},
+    }
+    get = mock.Mock(side_effect=[opensearch_resp, summary_resp])
+
+    with mock.patch("ml.rag.retrievers.web_retriever.requests.get", get):
+        items = _retrieve_wikipedia(
+            "rice Senegal",
+            top_k=1,
+            timeout_s=5.0,
+            countries=["Senegal"],
+            entity_tokens=["rice"],
+        )
+
+    assert len(items) == 1
+    assert items[0]["_context_kind"] == "web_wikipedia"
+    assert "Senegal" in items[0]["content"]
+    assert "wikipedia.org" in items[0]["metadata"]["url"]
+    first_params = get.call_args_list[0].kwargs.get("params") or get.call_args_list[0][1].get("params")
+    assert first_params["action"] == "opensearch"
+
+
+def test_retrieve_wikipedia_falls_back_to_list_search() -> None:
+    empty_open = mock.Mock()
+    empty_open.raise_for_status = mock.Mock()
+    empty_open.json.return_value = ["q", [], [], []]
     search_resp = mock.Mock()
     search_resp.raise_for_status = mock.Mock()
     search_resp.json.return_value = {
@@ -97,13 +192,57 @@ def test_retrieve_wikipedia_parses_search_and_summary() -> None:
         "content_urls": {"desktop": {"page": "https://en.wikipedia.org/wiki/Agriculture_in_Senegal"}},
     }
 
-    with mock.patch("ml.rag.retrievers.web_retriever.requests.get", side_effect=[search_resp, summary_resp]):
-        items = _retrieve_wikipedia("rice Senegal", top_k=1, timeout_s=5.0)
+    with mock.patch(
+        "ml.rag.retrievers.web_retriever.requests.get",
+        side_effect=[empty_open, search_resp, summary_resp],
+    ):
+        items = _retrieve_wikipedia("rice Senegal", top_k=1, timeout_s=5.0, countries=["Senegal"])
 
     assert len(items) == 1
-    assert items[0]["_context_kind"] == "web_wikipedia"
-    assert "Senegal" in items[0]["content"]
-    assert "wikipedia.org" in items[0]["metadata"]["url"]
+
+
+def test_retrieve_wikipedia_section_when_summary_thin() -> None:
+    opensearch_resp = mock.Mock()
+    opensearch_resp.raise_for_status = mock.Mock()
+    opensearch_resp.json.return_value = ["Maize", ["Maize"], [""], ["https://en.wikipedia.org/wiki/Maize"]]
+    summary_resp = mock.Mock()
+    summary_resp.status_code = 200
+    summary_resp.raise_for_status = mock.Mock()
+    summary_resp.json.return_value = {
+        "title": "Maize",
+        "extract": "Short stub.",
+        "content_urls": {"desktop": {"page": "https://en.wikipedia.org/wiki/Maize"}},
+    }
+    sections_resp = mock.Mock()
+    sections_resp.raise_for_status = mock.Mock()
+    sections_resp.json.return_value = {
+        "parse": {"sections": [{"toclevel": 1, "index": "1", "line": "Description"}]},
+    }
+    section_text_resp = mock.Mock()
+    section_text_resp.raise_for_status = mock.Mock()
+    section_text_resp.json.return_value = {
+        "parse": {
+            "text": {
+                "*": "<p>Maize is a cereal grain first domesticated by indigenous peoples in southern Mexico.</p>"
+            }
+        },
+    }
+
+    with mock.patch(
+        "ml.rag.retrievers.web_retriever.requests.get",
+        side_effect=[opensearch_resp, summary_resp, sections_resp, section_text_resp],
+    ):
+        items = _retrieve_wikipedia(
+            "Maize Kenya",
+            top_k=1,
+            timeout_s=5.0,
+            countries=["Kenya"],
+            entity_tokens=["maize"],
+        )
+
+    assert len(items) == 1
+    assert "cereal grain" in items[0]["content"]
+    assert items[0]["metadata"]["wiki_section_used"] is True
 
 
 def test_retrieve_web_fallback_wiki_then_tavily() -> None:
@@ -115,7 +254,10 @@ def test_retrieve_web_fallback_wiki_then_tavily() -> None:
             "metadata": {"title": "Rice", "url": "https://en.wikipedia.org/wiki/Rice"},
         }
     ]
-    with mock.patch.dict(os.environ, {"RAG_WEB_FALLBACK_ENABLED": "1"}):
+    with mock.patch.dict(
+        os.environ,
+        {"RAG_WEB_FALLBACK_ENABLED": "1", "RAG_WEB_WIKI_TOP_K": "1"},
+    ):
         with mock.patch(
             "ml.rag.retrievers.web_retriever._retrieve_wikipedia",
             return_value=wiki_items,
@@ -123,10 +265,14 @@ def test_retrieve_web_fallback_wiki_then_tavily() -> None:
             with mock.patch(
                 "ml.rag.retrievers.web_retriever._retrieve_tavily",
             ) as tavily_mock:
-                out = retrieve_web_fallback("rice in Senegal", {"geography": ["Senegal"]})
+                out = retrieve_web_fallback(
+                    "rice in Senegal",
+                    {"geography": ["Senegal"], "entities": ["rice"]},
+                )
 
     assert len(out) == 1
     wiki_mock.assert_called_once()
+    assert wiki_mock.call_args.args[0] == "rice Senegal"
     tavily_mock.assert_not_called()
 
 
@@ -148,11 +294,16 @@ def test_retrieve_web_fallback_tavily_when_wiki_empty() -> None:
                 "ml.rag.retrievers.web_retriever._retrieve_tavily",
                 return_value=(tavily_items, "ok", ""),
             ) as tavily_mock:
-                out = retrieve_web_fallback("rice policy Senegal", None)
+                out = retrieve_web_fallback(
+                    "What rice policy matters in Senegal?",
+                    {"geography": ["Senegal"], "entities": ["rice"]},
+                )
 
     assert len(out) == 1
     assert out[0]["_context_kind"] == "web_search"
     tavily_mock.assert_called_once()
+    # Tavily uses the primary shaped query (entity + country), not the long question.
+    assert tavily_mock.call_args.args[0] == "rice Senegal"
 
 
 # --- Guardrail tests (rate limit, quota, structured result) ---

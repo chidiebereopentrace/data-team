@@ -3,7 +3,7 @@ Redis-backed (or in-memory fallback) store for chat sessions and shared caches.
 
 This enables the RAG FastAPI service to scale horizontally across workers/replicas
 while keeping multi-turn conversation state durable and allowing cross-process reuse
-of expensive lookups (BQ schema text, bronze catalog).
+of expensive lookups (BQ schema text).
 
 Design:
 - Opaque JSON blobs keyed by namespaced strings (e.g. rag:session:<sid>).
@@ -15,7 +15,7 @@ Design:
 
 Intended use:
 - api.py and chat_turn.py for sessions.
-- BQRetriever and bronze_dataset_catalog for their caches.
+- BQRetriever for its schema cache.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # --- Config (read at import; callers ensure load_rag_dotenv has run) ---
 _REDIS_URL: str = (os.environ.get("RAG_REDIS_URL") or os.environ.get("REDIS_URL") or "").strip()
 _REDIS_CONNECT_TIMEOUT_S: float = float(os.environ.get("RAG_REDIS_CONNECT_TIMEOUT_S", "2") or 2)
-_SESSION_TTL_S: int = int(os.environ.get("RAG_SESSION_TTL_SECONDS", "86400") or 86400)
+_SESSION_TTL_S: int = int(os.environ.get("RAG_SESSION_TTL_SECONDS", "604800") or 604800)
 _CACHE_TTL_S: int = int(os.environ.get("RAG_CACHE_TTL_SECONDS", "3600") or 3600)
 
 # Redis client (lazy, thread-safe init)
@@ -235,17 +235,6 @@ def set_bq_schema_cache(cache_key: str, schema_text: str, ttl_s: int | None = No
     set_json(_make_key("bq", f"schema:{cache_key}"), schema_text, ttl_s=eff)
 
 
-def get_bronze_catalog_cache(cache_key: str) -> dict[str, str] | None:
-    """Retrieve cached bronze table->columns mapping."""
-    val = get_json(_make_key("catalog", f"bronze:{cache_key}"))
-    return val if isinstance(val, dict) else None
-
-
-def set_bronze_catalog_cache(cache_key: str, mapping: dict[str, str], ttl_s: int | None = None) -> None:
-    eff = ttl_s if ttl_s is not None else _CACHE_TTL_S
-    set_json(_make_key("catalog", f"bronze:{cache_key}"), mapping, ttl_s=eff)
-
-
 # --- Diagnostics for /ready and ops ---
 
 def redis_status() -> dict[str, Any]:
@@ -258,6 +247,11 @@ def redis_status() -> dict[str, Any]:
         except Exception as exc:
             return {"backend": "redis", "connected": False, "error": str(exc)}
     return {"backend": "memory-fallback", "connected": False, "reason": "RAG_REDIS_URL not set or connect failed"}
+
+
+def session_ttl_seconds() -> int:
+    """Configured session blob TTL (RAG_SESSION_TTL_SECONDS, default 604800 = 7 days)."""
+    return _SESSION_TTL_S
 
 
 def clear_fallback_for_tests() -> None:

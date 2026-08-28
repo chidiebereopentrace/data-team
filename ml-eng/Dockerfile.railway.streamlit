@@ -11,6 +11,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -19,6 +20,8 @@ COPY requirements.railway.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ml ./ml
+COPY scripts/railway-entrypoint.sh /app/scripts/railway-entrypoint.sh
+RUN chmod +x /app/scripts/railway-entrypoint.sh
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
@@ -31,7 +34,7 @@ ENV RAG_SPARSE_MODEL=Qdrant/bm25
 ENV RAG_EMBEDDING_MODEL_ID=intfloat/multilingual-e5-small
 
 RUN mkdir -p /app/models/fastembed \
-    && python -c "from ml.rag.dense_embeddings import warmup_dense_model; from ml.rag.sparse_embeddings import warmup_sparse_model; warmup_dense_model('intfloat/multilingual-e5-small'); warmup_sparse_model(); print('Embedding models cached in image')"
+    && python -c "from ml.rag.dense_embeddings import warmup_dense_model; from ml.rag.sparse_embeddings import warmup_sparse_model; from ml.rag.chatbot.reranker import _load_cross_encoder; warmup_dense_model('intfloat/multilingual-e5-small'); warmup_sparse_model(); _load_cross_encoder('BAAI/bge-reranker-base'); print('Embedding and rerank models cached in image')"
 
 ENV PORT=8501
 EXPOSE $PORT
@@ -39,4 +42,5 @@ EXPOSE $PORT
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8501}/_stcore/health || exit 1
 
-CMD ["sh", "-c", "if [ -n \"$GOOGLE_APPLICATION_CREDENTIALS_BASE64\" ]; then echo \"$GOOGLE_APPLICATION_CREDENTIALS_BASE64\" | base64 -d > /tmp/gcp-sa-key.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa-key.json && echo 'GCP credentials configured'; fi && echo '=== Starting Streamlit pipeline inspector ===' && streamlit run ml/rag/chatbot/streamlit_app.py --server.port=${PORT:-8501} --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false"]
+ENTRYPOINT ["/app/scripts/railway-entrypoint.sh"]
+CMD ["sh", "-c", "echo '=== Starting Streamlit pipeline inspector ===' && streamlit run ml/rag/chatbot/streamlit_app.py --server.port=${PORT:-8501} --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false"]

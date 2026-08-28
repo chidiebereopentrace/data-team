@@ -1,0 +1,126 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_wfp_vampire_prices
+description: WFP VAMPIRE global food prices curated for market analytics.
+grain: country × market × product × year × month × price_type
+entity_type: market_prices
+source:
+  layer: staging_dev
+  domain: market_prices
+relationships:
+  primary_key:
+    type: logical
+    fields: country × market × product × year × month × price_type
+semantic_role:
+  primary_domain: market_prices
+  supports: &id001
+  - prices
+  - markets
+  - wfp
+business_questions_supported:
+- What are food prices in a market?
+- How did prices change over months?
+filtering_guidance:
+- Do not average across currencies or units without care
+sql_generation_hints:
+- Filter country, product_name, year/month
+- GROUP BY market or month for trends
+columns:
+- name: country_id
+  type: STRING
+  description: country id
+- name: country
+  type: STRING
+  description: country
+- name: admin1_id
+  type: STRING
+  description: admin1 id
+- name: admin1_name
+  type: STRING
+  description: admin1 name
+- name: market_id
+  type: STRING
+  description: market id
+- name: market_name
+  type: STRING
+  description: market name
+- name: product_id
+  type: STRING
+  description: product id
+- name: product_name
+  type: STRING
+  description: product name
+- name: currency_id
+  type: STRING
+  description: currency id
+- name: currency
+  type: STRING
+  description: currency
+- name: price_type_id
+  type: STRING
+  description: price type id
+- name: price_type
+  type: STRING
+  description: price type
+- name: unit_id
+  type: STRING
+  description: unit id
+- name: unit
+  type: STRING
+  description: unit
+- name: year
+  type: INT64
+  description: year
+- name: month
+  type: INT64
+  description: month
+- name: value
+  type: FLOAT64
+  description: value
+- name: commodity_source
+  type: STRING
+  description: commodity source
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: market_prices
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_fews_market_prices
+    'on':
+    - country
+    - product_name
+    - year
+    - month
+    how: compare
+    note: Align currency and unit
+  - table: stg_faostat_prices
+    'on':
+    - country≈country_name
+    - product_name
+    - year
+    how: compare
+    note: Retail/market vs FAOSTAT prices
+  - table: stg_yield_raw_data
+    'on':
+    - country
+    - product≈product_name
+    - year
+    how: enrich
+    note: Prices with production
+  - table: stg_fews_food_security
+    'on':
+    - country
+    - year
+    - month
+    how: enrich
+    note: Prices with IPC
+  companions:
+  - table: stg_africa_gdp_ppp
+    when: purchasing power context
+    role: enrich_context
+  do_not_join:
+  - table: stg_isric_africa_soil
+    reason: soil grids

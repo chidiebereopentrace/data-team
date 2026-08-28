@@ -4,11 +4,19 @@ from __future__ import annotations
 import io
 from typing import Any, Literal
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd
+
+
+def _get_plt():
+    """Lazy matplotlib import. Keeps the module importable in minimal images
+    (e.g. Free/Farmers routes that never build charts) and defers the heavy
+    matplotlib import until an export actually runs."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt  # noqa: E402
+
+    return plt
 
 ChartType = Literal["line", "bar", "stacked_bar", "area", "scatter", "heatmap"]
 
@@ -42,6 +50,7 @@ def build_chart(
     if y_col is None:
         raise ValueError("No numeric column found for chart")
 
+    plt = _get_plt()
     fig, ax = plt.subplots(figsize=(8, 4.5))
     fig.patch.set_facecolor("white")
     colors = _AGRI_COLORS

@@ -3,10 +3,16 @@ from __future__ import annotations
 
 import pytest
 
-from ml.rag.chatbot.artifact_storage import upload_artifact
+from ml.rag.chatbot.artifact_storage import (
+    _signed_url_ttl_seconds,
+    refresh_artifact_url,
+    upload_artifact,
+)
 from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.exports.chart_builder import build_chart
 from ml.rag.chatbot.exports.csv_builder import build_csv
+from ml.rag.chatbot.exports.docx_builder import build_docx
+from ml.rag.chatbot.exports.markdown_flow import iter_markdown_blocks, to_reportlab_html
 from ml.rag.chatbot.exports.tabular import rows_from_bq_results
 
 
@@ -46,16 +52,84 @@ def test_rows_from_bq_results() -> None:
 def test_upload_artifact_local(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RAG_ARTIFACT_LOCAL_DIR", str(tmp_path))
     monkeypatch.delenv("RAG_ARTIFACT_GCS_BUCKET", raising=False)
+    monkeypatch.delenv("AWS_S3_BUCKET_NAME", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
     meta = upload_artifact(b"hello,csv", "test.csv")
     assert meta["filename"] == "test.csv"
     assert meta["mime_type"] == "text/csv"
     assert meta["byte_size"] == 9
     assert meta["url"].startswith("file://")
 
+    refreshed = refresh_artifact_url(meta["id"], meta["filename"])
+    assert refreshed["id"] == meta["id"]
+    assert refreshed["filename"] == "test.csv"
+    assert refreshed["url"] == meta["url"]
+    assert refreshed["expires_in_seconds"] == 86400
+
+
+def test_signed_url_ttl_defaults_to_24h(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS", raising=False)
+    assert _signed_url_ttl_seconds() == 86400
+
+
+def test_refresh_artifact_url_missing(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_ARTIFACT_LOCAL_DIR", str(tmp_path))
+    monkeypatch.delenv("RAG_ARTIFACT_GCS_BUCKET", raising=False)
+    monkeypatch.delenv("AWS_S3_BUCKET_NAME", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    with pytest.raises(FileNotFoundError):
+        refresh_artifact_url("art_missing000", "gone.csv")
+
+
+def test_upload_artifact_s3(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    from unittest import mock
+
+    monkeypatch.setenv("AWS_S3_BUCKET_NAME", "neat-icebox")
+    monkeypatch.setenv("AWS_ENDPOINT_URL", "https://storage.example.railway.app")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIATEST")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "auto")
+    monkeypatch.delenv("RAG_ARTIFACT_GCS_BUCKET", raising=False)
+
+    fake_client = mock.Mock()
+    fake_client.generate_presigned_url.return_value = (
+        "https://storage.example.railway.app/neat-icebox/rag-exports/art_abc/test.csv?X-Amz-Signature=1"
+    )
+    fake_boto3 = mock.Mock()
+    fake_boto3.client.return_value = fake_client
+
+    with mock.patch.dict(sys.modules, {"boto3": fake_boto3}):
+        meta = upload_artifact(b"hello,csv", "test.csv")
+
+    fake_boto3.client.assert_called_once()
+    kwargs = fake_boto3.client.call_args.kwargs
+    assert kwargs["endpoint_url"] == "https://storage.example.railway.app"
+    fake_client.put_object.assert_called_once()
+    put_kwargs = fake_client.put_object.call_args.kwargs
+    assert put_kwargs["Bucket"] == "neat-icebox"
+    assert put_kwargs["Body"] == b"hello,csv"
+    assert put_kwargs["ContentType"] == "text/csv"
+    assert "rag-exports/" in put_kwargs["Key"]
+    assert put_kwargs["Key"].endswith("/test.csv")
+    fake_client.generate_presigned_url.assert_called_once()
+    assert meta["url"].startswith("https://")
+    assert meta["s3_uri"] is not None
+    assert meta["s3_uri"].startswith("s3://neat-icebox/")
+    assert meta["gcs_uri"] is None
+
 
 def test_run_exports_csv(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setenv("RAG_ARTIFACT_LOCAL_DIR", str(tmp_path))
     monkeypatch.delenv("RAG_ARTIFACT_GCS_BUCKET", raising=False)
+    monkeypatch.delenv("AWS_S3_BUCKET_NAME", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
     bq = [{"source": "bigquery", "content": str(_SAMPLE_ROWS[0]), "metadata": {}}]
     for i, row in enumerate(_SAMPLE_ROWS[1:], start=1):
         bq.append({"source": "bigquery", "content": str(row), "metadata": {}})
@@ -75,6 +149,33 @@ def test_run_exports_csv(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     assert artifacts[0]["citation_ids"] == [1]
 
 
+def test_run_exports_skips_csv_when_no_valid_sql(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setenv("RAG_ARTIFACT_LOCAL_DIR", str(tmp_path))
+    monkeypatch.delenv("RAG_ARTIFACT_GCS_BUCKET", raising=False)
+    monkeypatch.delenv("AWS_S3_BUCKET_NAME", raising=False)
+    artifacts = run_exports(
+        export_kind="csv",
+        query="Compare maize production in Kenya and Nigeria CSV",
+        answer="no accurate CSV export can be generated from OpenTrace sources",
+        bq_results=[
+            {
+                "source": "bigquery",
+                "content": "[BQ no_valid_sql: All SQL attempts failed validation or execution]",
+                "metadata": {
+                    "status": "no_valid_sql",
+                    "prep_error": "All SQL attempts failed validation or execution",
+                    "validation_failed": True,
+                },
+            }
+        ],
+        citations=[],
+        state={},
+        export_enabled=True,
+        plan_type="Agribusinesses",
+    )
+    assert artifacts == []
+
+
 def test_run_exports_blocked_without_route_flag() -> None:
     with pytest.raises(ValueError, match="export not enabled"):
         run_exports(
@@ -87,3 +188,87 @@ def test_run_exports_blocked_without_route_flag() -> None:
             export_enabled=False,
             plan_type="Agribusinesses",
         )
+
+
+def test_rows_from_bq_results_skips_no_valid_sql_diagnostic() -> None:
+    bq = [
+        {
+            "source": "bigquery",
+            "content": "[BQ no_valid_sql: All SQL attempts failed validation or execution]",
+            "metadata": {
+                "status": "no_valid_sql",
+                "prep_error": "All SQL attempts failed validation or execution; model=deepseek/x",
+                "nl2sql_raw": "SELECT 1",
+                "nl2sql_model": "deepseek/x",
+                "sql_source": "nl2sql",
+                "validation_failed": True,
+            },
+        }
+    ]
+    assert rows_from_bq_results(bq) == []
+
+
+def test_build_docx_renders_markdown_bold_and_lists() -> None:
+    import io
+
+    from docx import Document
+
+    data, _name = build_docx(
+        title="Maize brief",
+        sections=[
+            {
+                "heading": "Key Findings",
+                "body": (
+                    "Nigeria led **maize** output in 2022.\n\n"
+                    "- Coverage for 2022 remains limited in available sources.\n"
+                    "- Trade figures are thinner than production."
+                ),
+            }
+        ],
+        table_rows=None,
+        filename="brief.docx",
+    )
+    doc = Document(io.BytesIO(data))
+    texts = [p.text for p in doc.paragraphs]
+    assert "Key Findings" in texts
+    assert any("Nigeria led maize output in 2022." in t for t in texts)
+    assert any("**" not in t and "maize" in t for t in texts)
+    bold_found = False
+    for p in doc.paragraphs:
+        for run in p.runs:
+            if run.bold and "maize" in (run.text or ""):
+                bold_found = True
+    assert bold_found
+    styles = {p.style.name for p in doc.paragraphs if p.style is not None}
+    assert "List Bullet" in styles
+
+
+def test_iter_markdown_blocks_and_html() -> None:
+    blocks = iter_markdown_blocks(
+        "Lead with **maize**.\n\n- First limit\n- Second limit\n\n## Extra heading\nBody."
+    )
+    kinds = [k for k, _ in blocks]
+    assert kinds == ["paragraph", "bullet", "bullet", "heading", "paragraph"]
+    html = to_reportlab_html("Nigeria led **maize** output.")
+    assert html == "Nigeria led <b>maize</b> output."
+
+
+def test_build_docx_empty_table_note_not_prep_error() -> None:
+    import io
+
+    from docx import Document
+
+    data, name = build_docx(
+        title="Maize and rice in West Africa, 2022",
+        sections=[{"heading": "Executive summary", "body": "No figures available."}],
+        table_rows=None,
+        filename="report.docx",
+    )
+    assert name == "report.docx"
+    doc = Document(io.BytesIO(data))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "No structured data was available for this query." not in text
+    assert "Data table" not in text
+    assert "prep_error" not in text
+    assert "All SQL attempts failed" not in text
+    assert "no_valid_sql" not in text

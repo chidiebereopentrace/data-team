@@ -1,0 +1,95 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_ilri_dairy_genetics
+description: ILRI dairy genetics East Africa milk and calving records.
+grain: farm/cow × record_type × date
+entity_type: production
+source:
+  layer: staging_dev
+  domain: production
+relationships:
+  primary_key:
+    type: logical
+    fields: farm/cow × record_type × date
+semantic_role:
+  primary_domain: production
+  supports: &id001
+  - dairy
+  - livestock
+  - ilri
+business_questions_supported:
+- What are milk yields by breed?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter record_type milk vs calving
+columns:
+- name: client_id
+  type: STRING
+  description: client id
+- name: client_name
+  type: STRING
+  description: client name
+- name: country
+  type: STRING
+  description: country
+- name: farm_code
+  type: STRING
+  description: farm code
+- name: cow_number
+  type: STRING
+  description: cow number
+- name: breed
+  type: STRING
+  description: breed
+- name: number_of_lactations
+  type: STRING
+  description: number of lactations
+- name: date_of_milking
+  type: STRING
+  description: date of milking
+- name: test_date
+  type: STRING
+  description: test date
+- name: yield_afternoon
+  type: STRING
+  description: yield afternoon
+- name: yield_morning
+  type: STRING
+  description: yield morning
+- name: parity_number
+  type: STRING
+  description: parity number
+- name: initial_calving_date
+  type: STRING
+  description: initial calving date
+- name: record_type
+  type: STRING
+  description: record type
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: production
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_ilri_household_food_security
+    'on':
+    - country
+    - household_id
+    how: enrich
+    note: Dairy outcomes with HH food security when IDs align
+  - table: stg_ilri_animal_health
+    'on':
+    - household_id
+    - species
+    how: enrich
+    note: Genetics with health stress
+  companions:
+  - table: stg_ilri_vegetation_feed
+    when: feed availability context
+    role: enrich_context
+  do_not_join:
+  - table: stg_faostat_trade
+    reason: national trade; not farm genetics

@@ -263,17 +263,36 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
     """Retrieval/rerank counts and soft-fail flags for root trace output metadata."""
     route = infer_rag_route(result)
     news_n = len(result.get("vector_news_results") or [])
-    academic_n = len(result.get("vector_academic_results") or [])
+    academic_papers_n = len(result.get("vector_academic_papers_results") or [])
+    policies_n = len(result.get("vector_policies_results") or [])
+    public_reports_n = len(result.get("vector_public_reports_results") or [])
+    formation_n = len(result.get("vector_formation_results") or [])
+    academic_n = len(result.get("vector_academic_results") or []) or (
+        academic_papers_n + policies_n + public_reports_n + formation_n
+    )
     ota_n = len(result.get("vector_ota_results") or [])
     bq_n = len(result.get("bq_results") or [])
     web_n = len(result.get("web_results") or [])
     answer = str(result.get("answer") or "").strip()
-    is_shortcut = bool(result.get("is_meta_query") or result.get("is_product_query"))
-    empty_retrieval = (not is_shortcut) and (news_n + academic_n + ota_n + bq_n + web_n == 0)
+    is_shortcut = bool(
+        result.get("is_meta_query")
+        or result.get("is_product_query")
+        or result.get("is_help_query")
+        or result.get("is_greeting_query")
+        or result.get("is_out_of_scope_query")
+        or result.get("is_language_unknown")
+    )
+    empty_retrieval = (not is_shortcut) and (
+        news_n + academic_papers_n + policies_n + public_reports_n + formation_n + ota_n + bq_n + web_n == 0
+    )
     web_status = result.get("web_fallback_status")
     summary: dict[str, Any] = {
         "route": route,
         "vector_news_count": news_n,
+        "vector_academic_papers_count": academic_papers_n,
+        "vector_policies_count": policies_n,
+        "vector_public_reports_count": public_reports_n,
+        "vector_formation_count": formation_n,
         "vector_academic_count": academic_n,
         "vector_ota_count": ota_n,
         "bq_table_candidates_count": len(result.get("bq_table_candidates") or []),
@@ -297,6 +316,40 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
         summary["error"] = str(result.get("error"))[:200]
     if result.get("latency_ms") is not None:
         summary["latency_ms"] = float(result["latency_ms"])
+    task_mode = result.get("task_mode")
+    if task_mode:
+        summary["task_mode"] = str(task_mode)
+    for key in (
+        "early_short_circuit",
+        "skipped_decompose_llm",
+        "skipped_retrieval",
+        "decompose_llm_ms",
+        "vector_ms",
+        "corpus_count",
+        "cascade_level",
+        "bq_nl2sql_ms",
+        "bq_execute_ms",
+        "sql_source",
+        "rerank_ms",
+        "rerank_pool_size",
+        "generate_ms",
+        "generate_max_tokens",
+        "generate_input_chars",
+        "generate_input_tokens",
+        "bq_timeout",
+        "route_candidate",
+    ):
+        if result.get(key) is not None:
+            summary[key] = result.get(key)
+    corpus_sel = result.get("corpus_selection")
+    if isinstance(corpus_sel, dict) and corpus_sel.get("active"):
+        summary["corpus_count"] = summary.get("corpus_count") or len(corpus_sel.get("active") or [])
+    chars = summary.get("generate_input_chars")
+    if summary.get("generate_input_tokens") is None and chars is not None:
+        try:
+            summary["generate_input_tokens"] = int((int(chars) + 3) // 4)
+        except (TypeError, ValueError):
+            pass
     return summary
 
 
@@ -335,8 +388,16 @@ def infer_rag_route(result: dict[str, Any]) -> str:
     """Derive pipeline route label from a ``run_rag()`` result dict."""
     if result.get("is_meta_query"):
         return "meta"
+    if result.get("is_help_query"):
+        return "help"
     if result.get("is_product_query"):
         return "product"
+    if result.get("is_greeting_query"):
+        return "greeting"
+    if result.get("is_out_of_scope_query"):
+        return "out_of_scope"
+    if result.get("is_language_unknown"):
+        return "language_unknown"
     if result.get("insufficient_context"):
         return "insufficient"
     if result.get("web_results"):

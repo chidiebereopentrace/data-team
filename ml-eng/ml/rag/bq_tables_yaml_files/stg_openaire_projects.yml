@@ -1,0 +1,95 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_openaire_projects
+description: OpenAIRE research projects (agriculture and environment).
+grain: entity row
+entity_type: research
+source:
+  layer: staging_dev
+  domain: research
+relationships:
+  primary_key:
+    type: logical
+    fields: entity row
+semantic_role:
+  primary_domain: research
+  supports: &id001
+  - research
+  - openaire
+business_questions_supported:
+- What insights does stg_openaire_projects provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_openaire_projects`
+- Always include LIMIT
+columns:
+- name: ingestion_id
+  type: STRING
+  description: ingestion id
+- name: project_id
+  type: STRING
+  description: project id
+- name: project_code
+  type: STRING
+  description: project code
+- name: acronym
+  type: STRING
+  description: acronym
+- name: project_title
+  type: STRING
+  description: project title
+- name: start_date
+  type: STRING
+  description: start date
+- name: currency
+  type: STRING
+  description: currency
+- name: total_cost
+  type: STRING
+  description: total cost
+- name: funded_amount
+  type: STRING
+  description: funded amount
+- name: primary_funder_name
+  type: STRING
+  description: primary funder name
+- name: jurisdiction
+  type: STRING
+  description: jurisdiction
+- name: funding_stream_desc
+  type: STRING
+  description: funding stream desc
+- name: fetched_at
+  type: STRING
+  description: fetched at
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: research
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_openaire_organisations
+    'on':
+    - via product links / funder
+    how: enrich
+    note: Projects with organisations
+  - table: stg_openaire_product_links
+    'on':
+    - project_id≈target/source
+    how: enrich
+    note: Projects with linked products
+  - table: stg_openaire_data_sources
+    'on':
+    - shared research graph
+    how: enrich
+    note: Projects with data sources
+  companions:
+  - table: stg_openaire_persons
+    when: contributors via links
+    role: enrich_context
+  do_not_join:
+  - table: stg_yield_raw_data
+    reason: agronomic observations; not research graph

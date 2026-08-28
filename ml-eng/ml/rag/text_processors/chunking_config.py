@@ -9,14 +9,12 @@ import os
 from dataclasses import dataclass
 from typing import Literal
 
-CorpusKey = Literal["news", "research", "ota", "data_description"]
+CorpusKey = Literal["news", "research", "ota"]
 
 ChunkingStrategy = Literal[
     "recursive_semantic",  # news_data: paragraphs + semantic fallback
     "hierarchical_semantic",  # research: section blocks + semantic boundaries
     "lane_semantic",  # OTA_insights: semantic within each lane
-    "schema_only",  # legacy BQ: sentence + token cap
-    "bq_structured",  # BQ_table_descriptions: section/schema-aware splits
 ]
 
 INGEST_VERSION = "2026.08-acf-claim-v2"
@@ -42,9 +40,8 @@ class ChunkingProfile:
         "sentence_named",
         "research_dual",
         "ota_triple",
-        "bq_triple",
     ]
-    chunking_strategy: ChunkingStrategy = "schema_only"
+    chunking_strategy: ChunkingStrategy = "recursive_semantic"
 
     @property
     def overlap_tokens(self) -> int:
@@ -86,19 +83,17 @@ _CORPUS_VECTOR_DIM_DEFAULTS: dict[CorpusKey, int] = {
     "news": 384,
     "research": 384,
     "ota": 384,
-    "data_description": 384,
 }
 
 _CORPUS_VECTOR_DIM_ENV: dict[CorpusKey, str] = {
     "news": "RAG_QDRANT_VECTOR_SIZE_NEWS",
     "research": "RAG_QDRANT_VECTOR_SIZE_RESEARCH",
     "ota": "RAG_QDRANT_VECTOR_SIZE_OTA",
-    "data_description": "RAG_QDRANT_VECTOR_SIZE_DATA_DESCRIPTIONS",
 }
 
 
 def _vector_dim_for(corpus: CorpusKey) -> int:
-    """Per-corpus dense dimension (384 news/research/BQ, 768 OTA by default)."""
+    """Per-corpus dense dimension (defaults 384 unless RAG_QDRANT_VECTOR_SIZE_* set)."""
     env_key = _CORPUS_VECTOR_DIM_ENV[corpus]
     if os.environ.get(env_key, "").strip():
         return max(32, _env_int(env_key, _CORPUS_VECTOR_DIM_DEFAULTS[corpus]))
@@ -158,40 +153,25 @@ def _ota_profile() -> ChunkingProfile:
     )
 
 
-def _data_description_profile() -> ChunkingProfile:
-    return ChunkingProfile(
-        corpus="data_description",
-        qdrant_collection=os.environ.get("QDRANT_COLLECTION_DATA_DESCRIPTIONS", "BQ_table_descriptions").strip()
-        or "BQ_table_descriptions",
-        target_tokens=_env_int("RAG_CHUNK_TARGET_TOKENS_DATA_DESCRIPTIONS", 480),
-        overlap_pct=_env_float("RAG_CHUNK_OVERLAP_PCT_DATA_DESCRIPTIONS", 0.05),
-        max_chunks_per_doc=_env_int("RAG_CHUNK_MAX_CHUNKS_DATA_DESCRIPTIONS", 3),
-        min_tokens=_env_int("RAG_CHUNK_MIN_TOKENS_DATA_DESCRIPTIONS", 80),
-        embedding_model=_env_model("data_description", "intfloat/multilingual-e5-small"),
-        vector_dim=_vector_dim_for("data_description"),
-        e5_prefix_passage=True,
-        qdrant_vector_mode="bq_triple",
-        chunking_strategy="bq_structured",
-    )
-
-
 PROFILES: dict[CorpusKey, ChunkingProfile] = {
     "news": _news_profile(),
     "research": _research_profile(),
     "ota": _ota_profile(),
-    "data_description": _data_description_profile(),
 }
 
 # Map Qdrant collection names (and legacy aliases) → corpus key
 COLLECTION_ALIASES: dict[str, CorpusKey] = {
     "news_data": "news",
     "opentrace_news": "news",
+    "academic_papers": "research",
+    "policies": "research",
+    "public_reports": "research",
+    "formation": "research",
     "research_other_papers": "research",
     "opentrace_research_papers": "research",
+    "news_public_reports": "research",  # legacy alias only
     "OTA_insights": "ota",
     "opentrace_ota": "ota",
-    "BQ_table_descriptions": "data_description",
-    "opentrace_data_descriptions": "data_description",
 }
 
 

@@ -1,0 +1,130 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_yield_raw_data
+description: Crop yield, area, and production with season and production system.
+grain: fnid/admin × product × season × harvest_year
+entity_type: production
+source:
+  layer: staging_dev
+  domain: production
+relationships:
+  primary_key:
+    type: logical
+    fields: fnid/admin × product × season × harvest_year
+semantic_role:
+  primary_domain: production
+  supports: &id001
+  - yield
+  - production
+  - crops
+business_questions_supported:
+- Which districts have highest maize yield?
+- How did yields change over the past decade?
+filtering_guidance:
+- Prefer clean qc_flag rows when available
+- country holds country labels only — never filter country = 'Africa' or a region
+- Subnational grain; for continental country ranks prefer stg_faostat_production
+sql_generation_hints:
+- Prefer harvest_year for time filters
+- Recompute yield as production/area when aggregating
+- GROUP BY product + geography + year
+- Never invent warehouse dimension tables (dim_*)
+columns:
+- name: fnid
+  type: STRING
+  description: fnid
+- name: country
+  type: STRING
+  description: Country name only. Never 'Africa' or a region label.
+- name: country_code
+  type: STRING
+  description: country code
+- name: admin_1
+  type: STRING
+  description: admin 1
+- name: admin_2
+  type: STRING
+  description: admin 2
+- name: product
+  type: STRING
+  description: product
+- name: season_name
+  type: STRING
+  description: season name
+- name: planting_year
+  type: INT64
+  description: planting year
+- name: planting_month
+  type: INT64
+  description: planting month
+- name: harvest_year
+  type: INT64
+  description: harvest year
+- name: harvest_month
+  type: INT64
+  description: harvest month
+- name: crop_production_system
+  type: STRING
+  description: crop production system
+- name: qc_flag
+  type: INT64
+  description: qc flag
+- name: area
+  type: FLOAT64
+  description: area
+- name: production
+  type: FLOAT64
+  description: production
+- name: yield
+  type: FLOAT64
+  description: yield
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: production
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_faostat_production
+    'on':
+    - country
+    - product
+    - year≈harvest_year
+    how: compare
+    note: National FAOSTAT production vs subnational yields
+  - table: stg_fews_food_security
+    'on':
+    - country
+    - fnid
+    - year
+    how: enrich
+    note: Link productivity stress to IPC phases
+  - table: stg_fews_market_prices
+    'on':
+    - country
+    - product≈product_name
+    - year
+    how: enrich
+    note: Yield outcomes vs local staple prices
+  - table: stg_wfp_vampire_prices
+    'on':
+    - country
+    - product≈product_name
+    - year
+    how: enrich
+    note: Yield vs retail/market prices
+  companions:
+  - table: stg_nasa_power
+    when: climate drivers of yield anomalies
+    role: enrich_context
+  - table: stg_isric_africa_soil
+    when: soil constraints near yield geographies
+    role: enrich_context
+  do_not_join:
+  - table: stg_openaire_projects
+    reason: research metadata; no shared agronomic grain
+  - table: stg_nakuru_air_quality
+    reason: local air quality; not crop yield grain
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims for Africa country lists

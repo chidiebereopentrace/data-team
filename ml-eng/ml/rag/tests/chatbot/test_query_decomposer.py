@@ -7,6 +7,7 @@ from ml.rag.chatbot.query_decomposer import (
     _extract_countries,
     _extract_year_range,
     decompose_query,
+    should_use_llm_decompose,
 )
 
 
@@ -35,6 +36,14 @@ def test_in_year_stays_calendar_year() -> None:
     ts, te = _extract_year_range("crop yields in kenya in 2019")
     assert ts == "2019-01-01"
     assert te == "2019-12-31"
+
+
+def test_should_skip_llm_for_simple_fact_lookup() -> None:
+    assert should_use_llm_decompose("maize production in Kenya 2020") is False
+
+
+def test_should_use_llm_for_compare() -> None:
+    assert should_use_llm_decompose("compare maize yields Kenya vs Nigeria 2020") is True
 
 
 def test_two_explicit_years() -> None:

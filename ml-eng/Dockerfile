@@ -10,8 +10,8 @@
 # - Model caches (fastembed, HF) are expected to be on a persistent volume or
 #   downloaded on first start (they are large and versioned separately).
 #
-# Build (from the data-team root):
-#   docker build -f ml-eng/Dockerfile -t opentrace-rag-api:latest .
+# Build (from ml-eng/):
+#   docker build -f Dockerfile -t opentrace-rag-api:latest .
 #
 # Run locally (prod-like, with env vars):
 #   docker run --rm -p 8080:8080 \
@@ -51,16 +51,14 @@ RUN pip install --no-cache-dir "uvicorn[standard]" gunicorn
 # Copy only the Python package tree needed at runtime
 # (the 'ml' package lives under PYTHONPATH=/app)
 COPY ml/ ./ml/
+COPY scripts/railway-entrypoint.sh /app/scripts/railway-entrypoint.sh
+RUN chmod +x /app/scripts/railway-entrypoint.sh
 
 # Make 'ml.rag...' importable exactly like the local PYTHONPATH=. usage
 ENV PYTHONPATH=/app
 
 EXPOSE 8080
 
-# Default production command.
-# Use gunicorn + uvicorn workers for real deployments (better multi-core).
-# Single uvicorn for the simplest Cloud Run / small GCE setups.
+# Validate GCP SA when configured, then start API (same entrypoint as Railway).
+ENTRYPOINT ["/app/scripts/railway-entrypoint.sh"]
 CMD ["sh", "-c", "uvicorn ml.rag.app.api:app --host 0.0.0.0 --port ${PORT:-8080} --workers ${UVICORN_WORKERS:-1} --log-level ${LOG_LEVEL:-info}"]
-
-# Alternative (recommended for production):
-# CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8080", "ml.rag.app.api:app"]

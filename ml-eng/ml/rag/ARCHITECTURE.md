@@ -6,22 +6,23 @@ This document explains **how the RAG package is structured**, how data flows at 
 
 ## 1. Purpose and design principles
 
-The RAG stack answers natural-language questions about African agriculture and food security by combining:
+The RAG stack answers natural-language questions about African agriculture and food security by combining **two co-equal retrieval legs**:
 
 | Source | Technology | Role |
 |--------|------------|------|
-| **Structured tables** | BigQuery (`BQ_DATASET_BRONZE`) | NL-to-SQL → row-level facts (yields, GDP, trade, etc.) |
-| **Unstructured text** | Qdrant Cloud (4 corpora) | News, research/policy reports, BQ table descriptions, OTA insights |
-| **Orchestration** | LangGraph in [`chatbot/graph.py`](chatbot/graph.py) | Linear pipeline with one parallel retrieval stage |
-| **Generation** | [`llm_chat.py`](llm_chat.py) | LM Studio (`RAG_LLM_BASE_URL`) or Hugging Face router (`HF_API_TOKEN`) |
+| **Unstructured text (VECTOR LEG)** | Qdrant Cloud (six corpora) | News, academic papers, policies, public reports, formation, OTA insights — via corpus router + E5/hybrid cascade |
+| **Structured tables (BQ LEG)** | BigQuery (`BQ_DATASET_SILVER` / `staging_dev`) | Measure ontology + staging YAML reasoner + NL-to-SQL → row-level facts |
+| **Orchestration** | LangGraph in [`chatbot/graph.py`](chatbot/graph.py) | Control plane → **vector leg** (six Qdrant corpora) + **BQ leg** (YAML reasoner + NL2SQL) → merge → rerank → **generation strategy** → generate |
+| **Generation** | [`llm_chat.py`](llm_chat.py) + [`generation_plan.py`](chatbot/generation_plan.py) | OpenAI-compatible backend; post-retrieval strategy shapes answer/evidence before the LLM call |
 
 **Design choices:**
 
-- **Bronze-only SQL** — live queries never target silver/gold; vector chunks may still *describe* other layers.
-- **Retrieval uses only the latest user message** — prior turns affect generation via chat memory, not Qdrant/BQ filters.
-- **Decomposition drives news geo/time** — academic/BQ table matching use the raw question (plus matcher-specific logic).
-- **Table-aware BQ** — vector search over `bq_table_description` chunks → fused hints (YAML + catalog) → NL-to-SQL.
-- **Fail-soft LLM** — empty LLM responses trigger fallbacks or “context only” answers; errors are logged, not raised through the graph.
+- **Vector and BQ are peers** — unstructured corpora are not an afterthought. The graph runs `parallel_retrieve` (six Qdrant corpora in a thread pool) then the BQ leg; both outputs fuse at `merge`. Neither leg waits on the other's *results* — only graph node ordering is sequential.
+- **Three-layer reasoner stack** — (1) **pre-retrieval**: enricher → decompose → ontology → `task_mode` → [`retrieval_contract`](chatbot/retrieval_contract.py); (2) **retrieval**: [`select_corpora`](chatbot/corpus_catalog.py) + [`bq_sql_reasoner`](chatbot/bq_sql_reasoner.py) + rerank; (3) **post-retrieval**: [`build_generation_plan`](chatbot/generation_plan.py) decides answer shape and evidence priority before `generate`.
+- **Ontology aids the BQ reasoner** (scoped tables/filters); does not replace the LLM; fallback only after retries.
+- **Staging-only SQL** — live queries never target silver/gold; vector chunks may still *describe* other layers.
+- **Retrieval uses the working query** (optionally enriched from memory); prior turns affect enricher + generation.
+- **Fail-soft LLM** — empty LLM responses trigger ontology/heuristic fallbacks or “context only” answers.
 
 ---
 
@@ -32,49 +33,115 @@ The RAG stack answers natural-language questions about African agriculture and f
 ```mermaid
 flowchart TB
   subgraph entry [Entry points]
-    CLI[run.py CLI]
+    CLI[run.py]
+    API[app/api.py]
     ST[streamlit_app.py]
-    API[app/api.py FastAPI]
   end
 
-  subgraph graph [LangGraph — chatbot/graph.py]
+  subgraph control [Control plane — decompose]
+    EN[query_enricher]
+    DEC[decompose_query]
+    FE[facet_enrich]
+    RC[retrieval_contract]
+    ONT[resolve_measure]
+    TM[resolve_task_mode]
+    EN --> DEC --> ONT --> TM --> FE --> RC
+  end
+
+  subgraph graph [LangGraph full_rag path]
     D[decompose]
     PR[parallel_retrieve]
+    BQR[bq_reason]
     BQ[bq_retrieve]
     M[merge]
-    R[rerank]
-    G[generate]
-    D --> PR --> BQ --> M --> R --> G
+    R[rerank plus diversify]
+    WF[web_fallback]
+    NG[node_generate]
+    X[export]
+    D --> PR --> BQR --> BQ --> M --> R
+    R -->|weak and web on| WF --> NG
+    R -->|enough| NG --> X
   end
 
-  subgraph par [parallel_retrieve threads]
-    MT[match_bq_tables_from_descriptions]
-    VN[VectorRetriever news]
-    VA[VectorRetriever research]
+  entry --> D
+  D -.-> control
+
+  subgraph vectorLeg [VECTOR LEG — six Qdrant corpora]
+    SC[select_corpora]
+    TP[ThreadPoolExecutor]
+    RN[_retrieve_news]
+    RA[_retrieve_academic]
+    RP[_retrieve_policies]
+    RPR[_retrieve_public_reports]
+    RF[_retrieve_formation]
+    RO[_retrieve_ota]
+    VR[VectorRetriever per corpus]
+    SC --> TP
+    TP --> RN & RA & RP & RPR & RF & RO
+    RN & RA & RP & RPR & RF & RO --> VR
   end
 
-  PR --> MT
-  PR --> VN
-  PR --> VA
+  PR --> vectorLeg
 
-  BQ --> BR[BQRetriever NL-to-SQL + execute]
+  subgraph bqLeg [BQ LEG — staging_dev]
+    YAML[bq_sql_reasoner plus ontology scope]
+    BR[BQRetriever NL2SQL execute]
+    BQR --> YAML --> BR
+  end
+
+  subgraph perCorpus [Per-corpus search cascade]
+    EMB[E5 embed]
+    FIL[payload filters doc_kind geo time]
+    HYB[dense plus sparse RRF]
+    CAS[widen time drop filters]
+    EMB --> FIL --> HYB --> CAS
+  end
+
+  VR --> perCorpus
+
+  subgraph generateInternals [Inside node_generate]
+    PIN[pin_bq_context_first]
+    GP[build_generation_plan]
+    PROMPT[_build_prompt plus addendum]
+    LLM[llm_chat_complete]
+    ACF[ACF plus citations]
+    PIN --> GP --> PROMPT --> LLM --> ACF
+  end
+
+  NG --> generateInternals
 
   subgraph external [External services]
     QD[(Qdrant Cloud)]
     BQDB[(BigQuery)]
-    LLM[LM Studio or HF router]
+    LLMsvc[OpenAI-compatible LLM]
   end
 
-  MT --> QD
-  VN --> QD
-  VA --> QD
+  perCorpus --> QD
   BR --> BQDB
-  D --> LLM
-  BR --> LLM
-  G --> LLM
-
-  entry --> graph
+  D --> LLMsvc
+  BQR --> LLMsvc
+  BR --> LLMsvc
+  LLM --> LLMsvc
 ```
+
+**Dual-leg model:** Vector hits land in `vector_*_results` state fields; BQ rows land in `bq_results`. **`merge`** is the first node that combines both legs into `merged_context`. **`rerank`** scores the fused pool (default pool 24, output ~18) and **`diversify_context_pack`** prevents a news-only flood. **`build_generation_plan`** (inside `node_generate`, after rerank) reads the reranked fingerprint plus `task_mode`/ontology — it shapes the prompt but does **not** filter chunks in v1.
+
+`select_corpora` (heuristic gate, max soft-skip 3) chooses which of the six collections to query in a thread pool. Each selected corpus runs the shared `VectorRetriever` path: E5 embed → payload filters → optional hybrid dense+sparse RRF → filter cascade (widen time ±1y, drop time, drop geo). Soft-fail empty corpora continue the graph.
+
+| Key | Env | Default collection | `doc_kind` | State field |
+|-----|-----|--------------------|------------|-------------|
+| news | `QDRANT_COLLECTION_NEWS` | `news_data` | `news_article` | `vector_news_results` |
+| academic_papers | `QDRANT_COLLECTION_ACADEMIC_PAPERS` | `academic_papers` | `academic_article` | `vector_academic_papers_results` |
+| policies | `QDRANT_COLLECTION_POLICIES` | `policies` | `policy_document` | `vector_policies_results` |
+| public_reports | `QDRANT_COLLECTION_PUBLIC_REPORTS` | `public_reports` | `public_report` | `vector_public_reports_results` |
+| formation | `QDRANT_COLLECTION_FORMATION` | `formation` | `agricultural_practise` | `vector_formation_results` |
+| ota | `QDRANT_COLLECTION_OTA_INSIGHTS` | `OTA_insights` | `ota_insight` | `vector_ota_results` |
+
+Optional legacy mixed research collection (`QDRANT_COLLECTION_RESEARCH_PAPERS` / `research_other_papers`) runs only when `RAG_USE_LEGACY_RESEARCH_COLLECTION=on`.
+
+**Task modes** (`chatbot/task_mode.py`): after enricher/decompose/ontology, `full_rag` sets `task_mode` with precedence **clarify → analytical → data_export_only → fact_lookup → research → briefing → chat**. Clarify is terminal `generate_clarify` (measure-aware slots). Other modes share vector → BQ → generate → export with mode-specific BQ plans and generation prompts.
+
+Regenerate visual PDF/DOCX: `python scripts/generate_rag_architecture_pdf.py` and `python scripts/generate_rag_architecture_docx.py` from `ml-eng/` (diagrams under `docs/diagrams/`).
 
 ### 2.2 Ingest-time (offline)
 
@@ -133,32 +200,45 @@ Implemented in [`chatbot/graph.py`](chatbot/graph.py). Entry: `run_rag(query, **
 
 | Node | Function | Reads state | Writes state |
 |------|----------|-------------|--------------|
-| **decompose** | `decompose_query` | `query` | `decomposition` |
-| **parallel_retrieve** | 3× thread pool | `query`, `decomposition`, overrides | `bq_table_candidates`, `vector_news_results`, `vector_academic_results`, `vector_results` |
+| **decompose** | enricher + `decompose_query` + ontology + contract | `query`, memory | `decomposition`, `task_mode`, `measure_id`, route flags |
+| **parallel_retrieve** | `select_corpora` + thread pool + six `_retrieve_*` | `query`, `decomposition`, `task_mode`, overrides | `vector_news_results`, `vector_academic_papers_results`, `vector_policies_results`, `vector_public_reports_results`, `vector_formation_results`, `vector_ota_results`, `corpus_selection` |
+| **bq_reason** | staging YAML SQL reasoner | `query`, `decomposition`, `task_mode` | `bq_sql_plan`, `bq_table_candidates` |
 | **bq_retrieve** | `BQRetriever.retrieve` | `query`, `decomposition`, hints | `bq_results`, (SQL in row metadata) |
-| **merge** | concat + labels | BQ + vector lists | `merged_context` |
-| **rerank** | `rerank` | `query`, `merged_context` | `reranked_context` |
-| **generate** | `generate` | `query`, `reranked_context`, memory | `answer` |
+| **merge** | concat + corpus labels + OFIA tier | all `vector_*_results` + `bq_results` | `merged_context` |
+| **rerank** | `rerank` + `diversify_context_pack` | `query`, `merged_context`, `task_mode` | `reranked_context` |
+| **web_fallback** | Wikipedia / Tavily (optional) | `reranked_context` | `web_results`, may append to `reranked_context` |
+| **generate** | `build_generation_plan` → `generate` | `query`, `reranked_context`, memory, `task_mode` | `answer`, `citations`, `generation_plan`, ACF fields |
+| **export** | artifact builder | `answer`, `export_intent` | `artifacts` |
 
 After `bq_retrieve`, the graph aggregates distinct executed SQL strings into **`bq_sql_queries`** (for Streamlit/debug).
+
+Short-circuit nodes (`generate_meta`, `generate_product`, `generate_social`, `generate_clarify`, `insufficient_context`) skip retrieval and generation strategy.
 
 ### 4.2 `RAGGraphState` fields
 
 | Field | Description |
 |-------|-------------|
 | `query` | Latest user question |
-| `decomposition` | `intent`, `entities`, `geography`, `domains`, `time_start`, `time_end` |
-| `bq_table_candidates` | One fused hint dict per matched BQ table (from Qdrant) |
-| `vector_news_results` | News chunks |
-| `vector_academic_results` | Research corpus chunks |
-| `vector_results` | `news + academic` (convenience) |
+| `decomposition` | `intent`, `entities`, `geography`, `domains`, `time_start`, `time_end`, `primary_measures`, `corpus_domain_tags` |
+| `task_mode` | `clarify`, `analytical`, `fact_lookup`, `briefing`, `data_export_only`, `research`, `chat` |
+| `measure_id`, `recency_tier` | From [`agri_measure_ontology`](chatbot/agri_measure_ontology.py) |
+| `bq_table_candidates` | One hint dict per staging table selected by the YAML reasoner (`source: staging_yaml`) |
+| `vector_news_results` | News chunks from Qdrant |
+| `vector_academic_papers_results` | Academic paper chunks |
+| `vector_policies_results` | Policy document chunks |
+| `vector_public_reports_results` | Public report chunks |
+| `vector_formation_results` | Formation / extension chunks |
+| `vector_ota_results` | OTA insight chunks |
+| `vector_academic_results` | Deprecated alias; prefer per-corpus keys above |
 | `bq_results` | BigQuery rows as context dicts (`metadata.sql`, row fields) |
 | `bq_sql_queries` | Unique SQL strings executed |
-| `merged_context` | All sources before rerank |
-| `reranked_context` | Subset passed to generator |
+| `merged_context` | BQ + all vector corpora before rerank |
+| `reranked_context` | Diversity-packed subset passed to generator |
+| `generation_plan` | Post-retrieval strategy dict (`answer_shape`, `evidence_priority`, `must_ground_in`, `rationale`) — debug/inspector |
 | `answer` | Final text |
-| `geo_override`, `time_*_override` | UI/API overrides for news (and BQ decomposition kwargs) |
-| `news_top_k`, `academic_top_k`, `bq_top_k`, `rerank_top_k` | Retrieval limits |
+| `citations` | Structured source refs resolved from packed context |
+| `geo_override`, `time_*_override` | UI/API overrides for vector + BQ |
+| `news_top_k`, `academic_top_k`, `ota_top_k`, `bq_top_k`, `rerank_top_k` | Retrieval limits (code defaults in `graph.py`; optional env override for rerank pool only) |
 | `conversation_summary`, `recent_turns` | Multi-turn generator memory |
 | `chat_history` | Legacy verbatim-only history |
 
@@ -196,15 +276,9 @@ Passed from Streamlit, API, or CLI wrappers: `geo_override`, `time_start_overrid
 
 **Not used for:** academic vector filters today (academic also gets geo/time in `graph._retrieve_academic`).
 
-### 5.2 [`chatbot/bq_table_matcher.py`](chatbot/bq_table_matcher.py)
+### 5.2 Staging YAML reasoner — [`chatbot/bq_sql_reasoner.py`](chatbot/bq_sql_reasoner.py)
 
-1. Vector search on collection `QDRANT_COLLECTION_DATA_DESCRIPTIONS` with `doc_kind=bq_table_description`.
-2. Group hits by `table_name` (from metadata or content).
-3. Fuse top narrative snippets with:
-   - Rich schema from [`chatbot/bq_table_schema_yaml.py`](chatbot/bq_table_schema_yaml.py) (`ml/rag/bq_tables_yaml_files/*.yml`)
-   - Fallback column list from [`chatbot/bronze_dataset_catalog.py`](chatbot/bronze_dataset_catalog.py)
-
-Returns one candidate per table with `content` suitable for `BQRetriever` `table_hints`.
+`node_bq_reason` selects staging tables using [`agri_measure_ontology`](chatbot/agri_measure_ontology.py) scope + the YAML index under [`bq_tables_yaml_files/`](bq_tables_yaml_files/) (via [`chatbot/bq_table_schema_yaml.py`](chatbot/bq_table_schema_yaml.py)). Forced plans for analytical / fact / export modes; otherwise LLM with retries; ontology `fallback_plan` last resort when a measure is known. Writes `bq_sql_plan` and `bq_table_candidates` for `bq_retrieve`.
 
 ---
 
@@ -212,9 +286,11 @@ Returns one candidate per table with `content` suitable for `BQRetriever` `table
 
 ### 6.1 Vector retrieval — [`retrievers/vector_retriever.py`](retrievers/vector_retriever.py)
 
-**Embeddings:** `sentence_transformers` locally (`RAG_EMBEDDINGS_MODE=local`) or HF feature API.
+**This is a first-class peer of BigQuery**, not a side path. `parallel_retrieve` runs **before** `bq_reason` / `bq_retrieve`; both legs fuse at `merge`.
 
-**E5 prefixing:** news/research use `query:` at search time and `passage:` at index time (see `chunking_config`).
+**Embeddings:** `sentence_transformers` locally (`RAG_EMBEDDINGS_MODE=local`) or fastembed / HF feature API.
+
+**E5 prefixing:** corpora use `query:` at search time and `passage:` at index time (see `chunking_config`).
 
 **Hybrid search** (when `RAG_QDRANT_HYBRID_SEARCH=on` and `fastembed` installed):
 
@@ -226,10 +302,22 @@ Returns one candidate per table with `content` suitable for `BQRetriever` `table
 | Mode | Typical collection | Behavior |
 |------|-------------------|----------|
 | `dense_named` | news, research | Single dense vector name |
-| `bq_triple` | BQ_table_descriptions | table / schema / business vectors |
 | `ota_triple` | OTA_insights | insight / metric / recommendation |
 
-**Filters** (payload + post-filter): `doc_kind`, `geo_country_primary`, `published_at` range, optional `domains_substring` (news, opt-in via `RAG_NEWS_DOMAIN_FILTER`).
+**Filters** (payload + client post-filter + soft rescore): `doc_kind`, geo (`geo_country_primary` / `country` / `geo_countries`, word-boundary), `published_at` / `publication_year`, `domains_substring` for news (**on by default** via `RAG_NEWS_DOMAIN_FILTER`).
+
+**Cascade** (`graph._retrieve_vector_cascade`): full filters → time ±1 year → drop time → drop geo → drop both (when `RAG_*_GEO_FALLBACK` / `RAG_*_TIME_FALLBACK` allow). Surviving hits stamp `constraint_relaxed`. Geo post-filter runs on **all** corpora after cascade.
+
+**Corpus router** ([`chatbot/corpus_catalog.py`](chatbot/corpus_catalog.py)): `select_corpora` gates which of the six collections to query (heuristic intent/keyword/`plan_type`/`task_mode` cues) and stamps `corpus_boost`. `RAG_CORPUS_ROUTER=off` restores fan-out to all six. Never skips more than three corpora; never returns an empty set.
+
+| Key | Default collection | Role |
+|-----|-------------------|------|
+| `news` | `news_data` | Timely journalism |
+| `academic_papers` | `academic_papers` | Peer-reviewed research |
+| `policies` | `policies` | Policy documents |
+| `public_reports` | `public_reports` | Institutional reports |
+| `formation` | `formation` | Training / farmer practice |
+| `ota` | `OTA_insights` | Analyst insights / metrics / recommendations |
 
 ### 6.2 BigQuery retrieval — [`retrievers/bq_retriever.py`](retrievers/bq_retriever.py)
 
@@ -262,17 +350,20 @@ Four modes selected via `RAG_RERANKER_MODE`:
 
 | Mode | Behaviour |
 |------|-----------|
-| `cohere` (recommended for production) | One HTTP call to Cohere's managed rerank API (`rerank-v3.5`). No model in the container — zero memory overhead on Railway. Scores are already `[0, 1]`; the static source boost is applied additively. Requires `COHERE_API_KEY` (or `RAG_RERANKER_COHERE_API_KEY`). Auto-selected when a key is present and `RAG_RERANKER_MODE` is not set explicitly. Cost is ~$0.002/1k chunks — negligible at freemium scale. |
-| `cross_encoder` (default for local dev; fallback when no Cohere key) | Single batched pass through a cross-encoder. Loads via fastembed first, falls back to sentence-transformers if installed. Model id is configurable via `RAG_RERANKER_MODEL` (default `BAAI/bge-reranker-base`; multilingual, ~280 MB). Raw scores are min-max normalised to `[0, 1]` then combined additively with the static source boost. |
+| `cross_encoder` (production on Railway) | Single batched pass through a cross-encoder. Loads via fastembed ONNX first (Railway slim image), falls back to sentence-transformers on dev machines. Model id via `RAG_RERANKER_MODEL` (default `BAAI/bge-reranker-base`; multilingual, ~280 MB, baked in `Dockerfile.railway`). Raw scores are min-max normalised to `[0, 1]` then combined additively with the static source boost. **Set explicitly** when using OpenRouter LLM — otherwise auto-promotion picks OpenRouter rerank. |
+| `openrouter` | One `POST /rerank` via OpenRouter (default model `cohere/rerank-4-pro`). Reuses `RAG_LLM_API_KEY`. |
+| `cohere` | One HTTP call to Cohere's managed rerank API (`rerank-v3.5`). Requires `COHERE_API_KEY`. Scores are already `[0, 1]`; source boost applied additively. |
 | `llm` | Legacy per-chunk LLM scoring (one `llm_chat_complete` call per chunk). Kept for back-compat / A-B testing — too slow and too expensive for production. |
 | `off` | Dev/debug pass-through using the static source boost only. |
 
-**Auto-promotion:** when `COHERE_API_KEY` (or `RAG_RERANKER_COHERE_API_KEY`) is set and `RAG_RERANKER_MODE` is not explicitly configured, the reranker automatically uses `cohere`. Set `RAG_RERANKER_MODE=cross_encoder` explicitly to override.
+**Auto-promotion** (when `RAG_RERANKER_MODE` is unset): `openrouter` (OpenRouter URL + `RAG_LLM_API_KEY`) → `cohere` (Cohere key) → legacy `RAG_LLM_RERANK` → default `cross_encoder`.
+
+Set `RAG_RERANKER_MODE=cross_encoder` explicitly on Railway to override OpenRouter auto-promotion.
 
 **Back-compat:** the old `RAG_LLM_RERANK` flag still works when `RAG_RERANKER_MODE` is unset (`on` → `llm`, `off` → `off`).
 
 **Graceful degradation (never raises):**
-`cohere` (no key or API error) → `cross_encoder` → `llm` if an LLM backend is configured → `off`.
+`openrouter` / `cohere` (no key or API error) → `cross_encoder` → `llm` if an LLM backend is configured → `off`.
 `cross_encoder` unavailable → `llm` if configured → `off`.
 
 Output trimmed to `rerank_top_k` (default 20 in Streamlit), with optional global cap `RAG_RERANKER_TOP_K`.
@@ -287,7 +378,7 @@ Conditional node after rerank (`RAG_WEB_FALLBACK_ENABLED=1`, off by default).
 | No news + no BQ | Only academic/OTA (or other) usable chunks remain |
 | Low rerank score | Optional: top `_rerank_score` &lt; `RAG_WEB_FALLBACK_MIN_RERANK_SCORE` when `RAG_LLM_RERANK` on |
 
-**Tier 1:** Wikipedia search + REST summary (no API key). **Tier 2:** Tavily news search if Wikipedia empty and `TAVILY_API_KEY` set (optional `langchain-tavily`). Chunks append to `reranked_context` with `_context_kind` `web_wikipedia` or `web_search`. Fail-soft: timeouts/errors return no web chunks.
+**Tier 1:** Free Wikipedia via shaped queries (entity+country first, then stopword-stripped question), MediaWiki `opensearch` for titles (fallback `list=search`), soft geo/topic title filter, REST summary, and optional first-section extract when the lead is thin — no API key. **Tier 2:** Tavily news search if Wikipedia empty and `TAVILY_API_KEY` set (optional `langchain-tavily`), using the primary shaped query. Chunks append to `reranked_context` with `_context_kind` `web_wikipedia` or `web_search`. Fail-soft: timeouts/errors return no web chunks.
 
 **Guardrails (free-tier Tavily protection + no-hallucination contract):**
 - Per-UTC-day call counter (`RAG_TAVILY_DAILY_LIMIT`, default **900**) stays under the free-tier ~1k/day cap. Set to `0` as an operational kill-switch.
@@ -295,11 +386,49 @@ Conditional node after rerank (`RAG_WEB_FALLBACK_ENABLED=1`, off by default).
 - Transient (non-rate-limit) errors are retried once after `RAG_TAVILY_BACKOFF_S` (default 2 s).
 - `retrieve_web_fallback_detailed` returns a `WebFallbackResult(items, status, reason)`. When the status is `rate_limited` / `error` / `disabled` / `empty` AND the existing reranked context is below `RAG_WEB_FALLBACK_MIN_CHUNKS`, the graph routes to `node_insufficient_context` (deterministic "I don't have enough information" answer, no citations) instead of letting `node_generate` fabricate around stale internal chunks.
 
+### 7.2.2 Generation strategy ([`chatbot/generation_plan.py`](chatbot/generation_plan.py))
+
+Deterministic post-retrieval reasoner — runs inside **`node_generate`** after rerank, before the LLM call. Does **not** re-retrieve or filter chunks in v1; only shapes the system prompt.
+
+**Inputs:** `task_mode`, `decomposition`, `measure_id` / `MeasureHit`, retrieval contract tags (`primary_measures`), reranked context fingerprint (counts by `_context_kind`).
+
+**Outputs (`generation_plan` on state):**
+
+| Field | Role |
+|-------|------|
+| `answer_shape` | `numeric_fact`, `ranking`, `comparison`, `trend`, `briefing_digest`, `research_synthesis`, `export_table`, `gap_ack`, … |
+| `evidence_priority` | Ordered source kinds, e.g. `["bigquery", "news", "public_report"]` |
+| `lead_with` | `structured_value` or `narrative_context` |
+| `must_ground_in` | `bigquery` / `narrative` / `any` |
+| `ontology` | measure id, geo, time window, companion measures |
+| `synthesis_notes` | 1–3 deterministic instruction strings |
+| `rationale` | Code path id for Streamlit inspector |
+
+**Rule layers:** gap (no usable context) → task mode base shape → measure ontology evidence priority → context fingerprint (BQ present + numeric query elevates BQ) → query heuristics (`is_ranking_numeric_query`, etc.).
+
+`generation_plan_addendum()` renders a short block (&lt;400 chars) appended in `_build_prompt` after stakeholder [`plan_policy`](chatbot/plan_policy.py) addendum and before task-mode blocks.
+
+```mermaid
+flowchart LR
+  subgraph planInputs [Inputs]
+    TM[task_mode]
+    ONT[measure ontology]
+    RC[contract tags]
+    CTX[reranked fingerprint]
+  end
+  planInputs --> BUILD[build_generation_plan]
+  BUILD --> ADD[generation_plan_addendum]
+  ADD --> PROMPT[_build_prompt]
+  PROMPT --> LLM[llm_chat_complete]
+```
+
+Regenerate diagram PNGs after editing `docs/diagrams/*.mmd`: `python scripts/generate_rag_architecture_pdf.py` from `ml-eng/`. Source files to sync: `runtime_graph.mmd`, `merge_rerank.mmd`, `generation_strategy.mmd` (new).
+
 ### 7.3 Generate ([`chatbot/generator.py`](chatbot/generator.py))
 
 - Builds **system + user** messages for OpenRouter / OpenAI-compatible APIs.
 - **Context packing:** numbered `[Source N | kind | detail]` labels; rank-weighted char budget (default **12000** total, **3000** per chunk); BQ structured-data chunks get a minimum floor.
-- **Prompt:** multi-paragraph synthesis; inline `[Source N]` citations when stating facts from context.
+- **Prompt stack:** base system rules → cross-domain synthesis → category tone → `plan_policy` stakeholder addendum → **`generation_plan` addendum** → task-mode block (FACT LOOKUP / BRIEFING / ANALYTICAL / …) → packed `[Source N]` context.
 - Calls `llm_chat_complete` with `RAG_GENERATE_MAX_TOKENS` (default **2048**), `RAG_GENERATE_TEMPERATURE` (default 0.5).
 - **Sources block:** appended after generation when `RAG_CITATIONS_MODE=referenced` (default) — only sources the model cited inline; set `all` to list every packed source. Covers news, academic, policy/public, OTA, BigQuery structured data, Wikipedia, and Tavily web search.
 - On failure: returns OpenRouter-oriented timeout hint + context excerpt.
@@ -320,7 +449,6 @@ Conditional node after rerank (`RAG_WEB_FALLBACK_ENABLED=1`, off by default).
 |------------|------------|----------------------------|------------|---------------|
 | `news` | `news` | `news_data` | `news_article` | `GDRIVE_FOLDER_NEWS_ID` |
 | `research` | `research` | `research_other_papers` | `academic_article`, `policy_document`, `public_report` | `GDRIVE_FOLDER_RESEARCH_PAPERS_ID`, `GDRIVE_FOLDER_OTHER_PAPERS_ID` |
-| `data_descriptions` | `data_description` | `BQ_table_descriptions` | `bq_table_description` | `GDRIVE_FOLDER_DATA_DESCRIPTIONS_ID` |
 | `ota` | `ota` | `OTA_insights` | (OTA-specific) | `GDRIVE_FOLDER_OTA_INSIGHTS_ID` |
 
 Profiles (chunk sizes, embedding model, vector mode) live in [`text_processors/chunking_config.py`](text_processors/chunking_config.py).
@@ -333,7 +461,6 @@ JSONL files under **`ml-eng/data/local/preprocessed_data/`** (see [`paths.py`](p
 |------|--------|
 | `news_chunks.jsonl` | news |
 | `research_chunks.jsonl` | research |
-| `data_descriptions_chunks.jsonl` | BQ descriptions |
 | `ota_insights_chunks.jsonl` | OTA |
 
 **Manifest:** `ingest_manifest.json` tracks `content_hash` per document for incremental skip.
@@ -350,7 +477,7 @@ Each line is one JSON object:
 
 **Common metadata keys:** `document_id`, `chunk_index`, `total_chunks`, `content_hash`, `ingest_version`, `section_path`, `doc_kind`.
 
-**Corpus-specific:** `published_at`, `title`, `country` (news); `table_name` (BQ); `strategy`, bibliographic fields (research).
+**Corpus-specific:** `published_at`, `title`, `country` (news); `strategy`, bibliographic fields (research).
 
 Loaders: [`text_processors/load_pdf_chunks_to_vector_db.py`](text_processors/load_pdf_chunks_to_vector_db.py) and thin wrappers (`*_load_to_vector_db.py`).
 
@@ -371,7 +498,6 @@ From [`chunking_config.py`](text_processors/chunking_config.py) `PROFILES` (over
 | news | `news_data` | `intfloat/multilingual-e5-base` | 384 | `recursive_semantic` | `dense_named` |
 | research | `research_other_papers` | `intfloat/multilingual-e5-small` | 384 | `hierarchical_semantic` | `dense_named` |
 | ota | `OTA_insights` | `intfloat/multilingual-e5-base` | 384 | `lane_semantic` | `ota_triple` |
-| data_description | `BQ_table_descriptions` | `intfloat/multilingual-e5-small` | 384 | `bq_structured` | `bq_triple` |
 
 **Reindex rule:** bump `INGEST_VERSION` in `chunking_config.py` or run loaders with `--reset` after changing chunking or embedding models.
 
@@ -425,8 +551,10 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | Variable | Purpose |
 |----------|---------|
 | `BQ_PROJECT` | GCP project |
-| `BQ_DATASET_BRONZE` | Dataset for NL-to-SQL + validation |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Service account JSON path |
+| `BQ_DATASET_SILVER` | Dataset for RAG NL-to-SQL + validation (default `staging_dev`) |
+| `BQ_DATASET_BRONZE` | Bronze/raw dataset (data-eng tooling; not queried by RAG NL2SQL) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Service account JSON path (local/GCE) |
+| `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | Base64 SA JSON (Railway; decoded at container start) |
 
 ### 12.3 Qdrant
 
@@ -434,9 +562,12 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 |----------|---------|
 | `QDRANT_URL`, `QDRANT_API_KEY` | Cluster access |
 | `QDRANT_COLLECTION_NEWS` | Default `news_data` |
-| `QDRANT_COLLECTION_RESEARCH_PAPERS` | Default `research_other_papers` |
-| `QDRANT_COLLECTION_DATA_DESCRIPTIONS` | Default `BQ_table_descriptions` |
+| `QDRANT_COLLECTION_ACADEMIC_PAPERS` | Default `academic_papers` |
+| `QDRANT_COLLECTION_POLICIES` | Default `policies` |
+| `QDRANT_COLLECTION_PUBLIC_REPORTS` | Default `public_reports` |
+| `QDRANT_COLLECTION_FORMATION` | Default `formation` |
 | `QDRANT_COLLECTION_OTA_INSIGHTS` | Default `OTA_insights` |
+| `QDRANT_COLLECTION_RESEARCH_PAPERS` | Legacy mixed research (optional; `RAG_USE_LEGACY_RESEARCH_COLLECTION=on`) |
 | `RAG_QDRANT_VECTOR_SIZE_*` | Dense dim per corpus (must match index) |
 
 ### 12.4 LLM
@@ -446,11 +577,12 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_LLM_BASE_URL` | e.g. `http://127.0.0.1:1234/v1` (LM Studio) |
 | `RAG_LLM_MODEL_ID` | Must match server model id |
 | `RAG_LLM_TIMEOUT_S` | Default HTTP timeout (e.g. 300) |
-| `RAG_RERANKER_MODE` | `cohere` (production) / `cross_encoder` (local dev) / `llm` / `off` |
-| `COHERE_API_KEY` | Enables the Cohere rerank API; auto-selects `cohere` mode when set |
+| `RAG_RERANKER_MODE` | `cross_encoder` (production Railway) / `openrouter` / `cohere` / `llm` / `off` |
+| `COHERE_API_KEY` | Optional; enables Cohere rerank API when mode is `cohere` |
 | `RAG_RERANKER_COHERE_API_KEY` | Alternative Cohere key var (takes precedence over `COHERE_API_KEY`) |
 | `RAG_RERANKER_COHERE_MODEL` | Cohere model id (default `rerank-v3.5`) |
-| `RAG_RERANKER_MODEL` | Cross-encoder model id (default `BAAI/bge-reranker-base`; multilingual) |
+| `RAG_RERANK_MODEL_ID` | OpenRouter rerank model slug (default `cohere/rerank-4-pro`) when mode is `openrouter` |
+| `RAG_RERANKER_MODEL` | Cross-encoder model id (default `BAAI/bge-reranker-base`; multilingual; baked in Railway image) |
 | `RAG_RERANKER_TOP_K` | Optional global cap on rerank output (`0` = use caller `top_k`) |
 | `RAG_RERANKER_MAX_TEXT_CHARS` | Per-chunk char cap fed to the encoder (default 2000) |
 | `RAG_LLM_RERANK` | **Legacy.** Honoured only when `RAG_RERANKER_MODE` is unset (`on` → `llm`, `off` → `off`) |
@@ -482,12 +614,14 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 |----------|---------|
 | `RAG_BQ_MAX_SQL_QUERIES` | Max SELECTs per question (default 10) |
 | `RAG_BQ_NL2SQL_MODE` | `per_hint` or `batch` |
-| `RAG_BQ_NL2SQL_PARALLEL` | Parallel per-hint calls (`off` for single-slot LM Studio) |
+| `RAG_BQ_NL2SQL_PARALLEL` | Parallel per-hint calls (`off` for single-slot LM Studio; `on` for Railway/OpenRouter) |
+| `RAG_BQ_NL2SQL_PARALLEL_WORKERS` | Thread pool size when parallel is on (default 4) |
 | `RAG_BQ_SKIP_LIVE_SCHEMA` | Use hint-only schema text (faster prompts) |
 | `RAG_BQ_ROWS_PER_QUERY` | Rows per executed SQL |
 | `RAG_BQ_HINT_MAX_CHARS` | Truncate each table hint in prompt |
-| `RAG_BRONZE_MODEL_YAML` | Path to bronze catalog YAML |
-| `RAG_BRONZE_MODEL_SOURCE` | dbt source name filter (default `bronze`) |
+| `RAG_BQ_MAX_TABLES` | Max tables the staging YAML reasoner may select (default **6**) |
+| `RAG_BQ_REASONER_MODEL_ID` | Dedicated model for `bq_reason` (e.g. `deepseek/deepseek-v4-flash-0731`) |
+| `RAG_BQ_NL2SQL_MODEL_ID` | Dedicated model for NL-to-SQL (e.g. `deepseek/deepseek-v4-flash-0731`; falls back to `RAG_LLM_MODEL_ID`) |
 
 ### 12.6 Retrieval / hybrid
 
@@ -497,11 +631,12 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_EMBEDDING_MODEL_*` | Per-corpus embedding model |
 | `RAG_QDRANT_HYBRID_SEARCH` | Dense + sparse RRF |
 | `RAG_HYBRID_DENSE_PREFETCH` / `SPARSE_PREFETCH` / `FUSION_LIMIT` | Hybrid breadth |
-| `RAG_NEWS_DOMAIN_FILTER` | Opt-in strict news domain filter |
-| `RAG_NEWS_GEO_FALLBACK` | Retry news without geo if empty |
-| `RAG_NEWS_TIME_FALLBACK` | Retry news without date filter if still empty |
-| `RAG_RESEARCH_GEO_FALLBACK` | Retry research without geo if empty |
-| `RAG_RESEARCH_TIME_FALLBACK` | Retry research without year filter if still empty |
+| `RAG_NEWS_DOMAIN_FILTER` | News domains MatchText filter (**default on**; set `off` to disable) |
+| `RAG_NEWS_GEO_FALLBACK` | Retry news without geo if empty (default on; set `off` for strict country QA) |
+| `RAG_NEWS_TIME_FALLBACK` | Retry news without date filter if still empty (default on) |
+| `RAG_RESEARCH_GEO_FALLBACK` | Retry research corpora without geo if empty (default on) |
+| `RAG_RESEARCH_TIME_FALLBACK` | Retry research without year filter if still empty (default on) |
+| `RAG_CORPUS_ROUTER` | Heuristic gate/boost over six collections (`on` default; `off` = always all six) |
 | Compare + 2 countries | Geo fallback disabled so news is not replaced with unrelated regions |
 
 ### 12.7 Chat memory
@@ -536,7 +671,7 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 
 1. Streamlit **pipeline debug** → check **BQ SQL queries** count and SQL text.
 2. Confirm `RAG_LLM_BASE_URL` and model id; NL-to-SQL empty → fallback SQL.
-3. Confirm `BQ_PROJECT`, credentials, `BQ_DATASET_BRONZE`.
+3. Confirm `BQ_PROJECT`, credentials, **`BQ_DATASET_SILVER`** (staging_dev).
 4. Set logging; check `bq_retriever` warnings for “0 queries from N hints”.
 5. Ensure decomposition shows correct `geography` / `time_*` (word-boundary country extraction).
 
@@ -557,7 +692,7 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | New graph node | `chatbot/graph.py` `build_graph()` |
 | Stronger reranker | `chatbot/reranker.py` (cross-encoder) |
 | Reserved BQ slots in context | `graph.node_merge` / `reranker` policy |
-| External session store + shared caches | `ml/rag/session_store.py` (Redis facade with memory fallback); used by `app/api.py`, `chat_turn.py`, `bq_retriever.py`, `bronze_dataset_catalog.py` |
+| External session store + shared caches | `ml/rag/session_store.py` (Redis facade with memory fallback); used by `app/api.py`, `chat_turn.py`, `bq_retriever.py` |
 
 ---
 
@@ -565,6 +700,11 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 
 | Document | Contents |
 |----------|----------|
+| [docs/OpenTrace-RAG-Pipeline-Architecture.pdf](docs/OpenTrace-RAG-Pipeline-Architecture.pdf) | Full LangGraph pipeline with Mermaid diagrams (regen: `python scripts/generate_rag_architecture_pdf.py`) |
+| [docs/OpenTrace-RAG-Pipeline-Architecture.docx](docs/OpenTrace-RAG-Pipeline-Architecture.docx) | Full LangGraph pipeline, ERDs, node reference (regen: `python scripts/generate_rag_architecture_docx.py`) |
+| [docs/OpenTrace-Ask-ADZA-API-Software-Team.docx](docs/OpenTrace-Ask-ADZA-API-Software-Team.docx) | Software-team handoff: production RAG + plan-scoped `/query/{plan}` (regen: `python scripts/generate_software_team_api_docx.py`) |
+| [docs/OpenTrace-RAG-API-Documentation.docx](docs/OpenTrace-RAG-API-Documentation.docx) | Internal RAG API HTTP reference (detailed) |
+| [docs/OpenTrace-Chatbot-API-v1-Documentation.docx](docs/OpenTrace-Chatbot-API-v1-Documentation.docx) | Chatbot v1 HTTP reference (local / separate app) |
 | [README.md](README.md) | Install, env tables, command cookbook |
 | [docs/SCRIPTS.md](docs/SCRIPTS.md) | Every CLI/module entry point |
 | [docs/BQ_NL2SQL_PLAN.md](docs/BQ_NL2SQL_PLAN.md) | Bronze NL-to-SQL design notes |

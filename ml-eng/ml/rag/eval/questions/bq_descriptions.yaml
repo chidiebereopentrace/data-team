@@ -1,4 +1,0 @@
-- query: "tables about crop yields"
-  expect_doc_kind: bq_table_description
-- query: "rainfall or weather bronze tables"
-  expect_doc_kind: bq_table_description

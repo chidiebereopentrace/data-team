@@ -41,6 +41,24 @@ _META_PATTERNS: tuple[str, ...] = (
     # Igbo / Yoruba (high-frequency identity)
     r"\bonye\s+[ịi]\s+b[ụu]\b",
     r"\bta\s+ni\s+[ẹe]\b",
+    # Hausa / Portuguese
+    r"\bmenene\s+sunan\s+ka\b",
+    r"\bquem\s+(?:é|e)\s+você\b",
+    r"\bquem\s+(?:é|e)\s+voce\b",
+    # Zulu / Xhosa / Kinyarwanda / Somali / Wolof / Twi
+    r"\bungubani\b",
+    r"\bungu\s+bani\b",
+    r"\bngu\s+bani\b",
+    r"\buri\s+nde\b",
+    r"\bmaxaad\s+tahay\b",
+    r"\bnan\s+la\s+yi\s+tudd\b",
+    r"\bwo\s+ho\s+te\s+sen\b",
+    # Bot / assistant disambiguation
+    r"\bare\s+you\s+a\s+bot\b",
+    r"\bare\s+you\s+an?\s+(?:ai|assistant|chatbot)\b",
+    r"\b(?:chatgpt|gpt)\b.*\b(?:you|are\s+you)\b",
+    r"\bes[- ]tu\s+un\s+bot\b",
+    r"\bwewe\s+ni\s+roboti\b",
 )
 
 _META_RE = re.compile("|".join(_META_PATTERNS), re.IGNORECASE)
@@ -69,6 +87,9 @@ def classify_meta_query(query: str) -> str | None:
         or re.search(r"\bwho\s+you\s+be\b", q)
         or re.search(r"\bonye\s+[ịi]\s+b[ụu]\b", q)
         or re.search(r"\bta\s+ni\s+[ẹe]\b", q)
+        or re.search(r"\bungubani\b", q)
+        or re.search(r"\buri\s+nde\b", q)
+        or re.search(r"\bare\s+you\s+a\s+bot\b", q)
     ):
         return "identity"
     if (

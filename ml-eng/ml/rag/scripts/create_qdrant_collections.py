@@ -5,7 +5,7 @@ Requires:
   QDRANT_URL, QDRANT_API_KEY
 
 Optional:
-  RAG_QDRANT_VECTOR_SIZE_NEWS / _RESEARCH / _OTA / _DATA_DESCRIPTIONS
+  RAG_QDRANT_VECTOR_SIZE_NEWS / _RESEARCH / _OTA
   RAG_QDRANT_VECTOR_SIZE (fallback when per-corpus var unset)
   --skip-existing            only create collections that are missing (no delete)
   --indexes-only             skip create/delete; only (re)apply payload indexes from
@@ -62,7 +62,6 @@ def main() -> int:
         ("news", PROFILES["news"].qdrant_collection),
         ("research", PROFILES["research"].qdrant_collection),
         ("ota", PROFILES["ota"].qdrant_collection),
-        ("data_description", PROFILES["data_description"].qdrant_collection),
     ]
 
     existing = {c.name for c in client.get_collections().collections}

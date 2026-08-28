@@ -9,10 +9,9 @@ Typical collection layouts (embedding model must match how points were indexed):
   news_data / research_other_papers        – single named ``dense`` vector (mode: **dense_named**; e5-small)
   legacy dual-vector collections           – named ``sentence`` + ``semantic`` (mode: **dual**)
   research_other_papers (legacy schema)    – ``abstract_vector`` + ``content_vector`` (mode: **research_dual**)
-  data descriptions (DOCX loader)          – named ``sentence`` only (mode: **sentence_named**)
   OTA_insights                             – insight / metric / recommendation (mode: **ota_triple**)
-  BQ_table_descriptions (triple schema)    – table / schema / business (mode: **bq_triple**)
   single-vector collections                – unnamed vector (mode: **legacy**)
+  legacy sentence-named collections        – named ``sentence`` only (mode: **sentence_named**)
 """
 
 from __future__ import annotations
@@ -241,6 +240,81 @@ def _publication_years_in_range(
     return [str(y) for y in range(y0, y1 + 1)]
 
 
+def _norm_geo_tokens(s: str) -> set[str]:
+    if not s:
+        return set()
+    parts = re.split(r"[;,/]", s)
+    return {p.strip().lower() for p in parts if p.strip()}
+
+
+def _geo_whole_word_match(text: str, country: str) -> bool:
+    if not text or not country:
+        return False
+    return re.search(r"\b" + re.escape(country) + r"\b", text, flags=re.IGNORECASE) is not None
+
+
+def score_metadata_constraints(
+    meta: dict[str, Any],
+    *,
+    geo_list: list[str] | None = None,
+    time_from: str | None = None,
+    time_to: str | None = None,
+    domains_substring: str | None = None,
+) -> float:
+    """Soft additive score in roughly [-0.5, +0.5] for geo/time/domain alignment."""
+    score = 0.0
+    countries = [c.strip().lower() for c in (geo_list or []) if str(c).strip()]
+    primary = str(meta.get("geo_country_primary") or meta.get("country") or "").strip()
+    blob = str(meta.get("geo_countries") or "").strip()
+    primary_l = primary.lower()
+    meta_set = _norm_geo_tokens(primary) | _norm_geo_tokens(blob)
+
+    if countries:
+        primary_hit = any(
+            primary_l == c or _geo_whole_word_match(primary, c) for c in countries
+        )
+        listed_hit = bool(meta_set & set(countries)) or any(
+            _geo_whole_word_match(blob, c) for c in countries
+        )
+        if primary_hit:
+            score += 0.25
+        elif listed_hit:
+            score += 0.1
+        elif primary_l and not any(_geo_whole_word_match(primary, c) for c in countries):
+            # Conflicting primary country when geo was requested.
+            if not listed_hit:
+                score -= 0.5
+
+    pub = str(meta.get("published_at") or "").strip()[:10]
+    year = ""
+    if pub and re.match(r"^\d{4}-\d{2}-\d{2}$", pub):
+        year = pub[:4]
+        if time_from and pub < time_from:
+            score -= 0.35
+        elif time_to and pub > time_to:
+            score -= 0.35
+        elif time_from or time_to:
+            score += 0.15
+    else:
+        py_raw = meta.get("publication_year")
+        if py_raw is not None and str(py_raw).strip():
+            year = str(py_raw).strip()[:4]
+            if re.match(r"^\d{4}$", year):
+                if time_from and year < time_from[:4]:
+                    score -= 0.35
+                elif time_to and year > time_to[:4]:
+                    score -= 0.35
+                elif time_from or time_to:
+                    score += 0.15
+
+    if domains_substring:
+        ds = str(meta.get("domains") or meta.get("domain") or "")
+        if domains_substring.lower() in ds.lower():
+            score += 0.1
+
+    return max(-0.5, min(0.5, score))
+
+
 def build_qdrant_filter(
     *,
     doc_kind: str | None = None,
@@ -381,7 +455,6 @@ def _merge_scored_hits(hits_lists: list[list[Any]], limit: int) -> list[Any]:
 RESEARCH_VECTORS = ("abstract_vector", "content_vector")
 DUAL_SENTENCE_SEMANTIC = ("sentence", "semantic")
 OTA_VECTORS = ("insight_vector", "metric_vector", "recommendation_vector")
-BQ_VECTORS = ("table_vector", "schema_vector", "business_vector")
 
 # Maps a query_using shorthand → actual named vector(s) to search.
 _RESEARCH_USING: dict[str, tuple[str, ...]] = {
@@ -394,12 +467,6 @@ _OTA_USING: dict[str, tuple[str, ...]] = {
     "metric": ("metric_vector",),
     "recommendation": ("recommendation_vector",),
     "merge": OTA_VECTORS,
-}
-_BQ_USING: dict[str, tuple[str, ...]] = {
-    "table": ("table_vector",),
-    "schema": ("schema_vector",),
-    "business": ("business_vector",),
-    "merge": BQ_VECTORS,
 }
 
 
@@ -428,11 +495,10 @@ class VectorRetriever(BaseRetriever):
       - QDRANT_URL / QDRANT_API_KEY / QDRANT_COLLECTION
       - RAG_EMBEDDINGS_MODE=local|fastembed (in-container only; fastembed on Railway)
       - RAG_EMBEDDING_MODEL_ID (default BAAI/bge-m3)
-      - RAG_QDRANT_VECTOR_SEARCH_MODE=legacy|dual|sentence_named|research_dual|ota_triple|bq_triple
+      - RAG_QDRANT_VECTOR_SEARCH_MODE=legacy|dual|sentence_named|research_dual|ota_triple
       - RAG_QDRANT_DUAL_QUERY_USING=sentence|semantic|both (only for mode dual; default both)
       - RAG_QDRANT_RESEARCH_QUERY_USING=abstract|content|both
       - RAG_QDRANT_OTA_QUERY_USING=insight|metric|recommendation|merge
-      - RAG_QDRANT_BQ_QUERY_USING=table|schema|business|merge
       - RAG_SPARSE_EMBEDDINGS=on|off (BM25 sparse vectors on upsert; default on)
       - RAG_QDRANT_HYBRID_SEARCH=on|off (dense+sparse RRF at query; default on)
       - RAG_HYBRID_DENSE_PREFETCH / RAG_HYBRID_SPARSE_PREFETCH / RAG_HYBRID_FUSION_LIMIT (default 20 each)
@@ -503,10 +569,6 @@ class VectorRetriever(BaseRetriever):
             dk = str(meta.get("doc_kind") or "").strip()
             it = str(meta.get("info_type") or "").strip()
             matched = dk in allowed_kinds or it in allowed_kinds
-            if not matched and "bq_table_description" in allowed_kinds:
-                matched = dk == "bq_table_description" or str(meta.get("type") or "").strip().lower().startswith(
-                    "bq "
-                )
             if not matched:
                 return False
 
@@ -517,9 +579,15 @@ class VectorRetriever(BaseRetriever):
             geo_list = [geo_country.strip().lower()]
 
         if geo_list:
-            primary = str(meta.get("geo_country_primary") or meta.get("country") or "").lower()
-            blob = str(meta.get("geo_countries") or "").lower()
-            if not any(gc in primary or gc in blob for gc in geo_list):
+            primary = str(meta.get("geo_country_primary") or meta.get("country") or "")
+            blob = str(meta.get("geo_countries") or "")
+            meta_countries = _norm_geo_tokens(primary) | _norm_geo_tokens(blob)
+            allowed = set(geo_list)
+            if meta_countries & allowed:
+                pass
+            elif any(_geo_whole_word_match(primary, gc) or _geo_whole_word_match(blob, gc) for gc in geo_list):
+                pass
+            else:
                 return False
 
         pub = str(meta.get("published_at") or "").strip()[:10]
@@ -689,7 +757,7 @@ class VectorRetriever(BaseRetriever):
         Each item: { "content", "score", "metadata", "source": "vector" }.
 
         Kwargs:
-          vector_search_mode: legacy | dual | sentence_named | research_dual | ota_triple | bq_triple
+          vector_search_mode: legacy | dual | sentence_named | research_dual | ota_triple
           doc_kind / doc_kinds / geo_country / published_at_from / published_at_to / domains_substring
         """
         doc_kind = kwargs.get("doc_kind")
@@ -849,16 +917,10 @@ class VectorRetriever(BaseRetriever):
             vector_names = _OTA_USING.get(using, OTA_VECTORS)
             hits = self._query_named_vectors(query, vector_names, fetch_n, q_filter, top_k=top_k)
 
-        # ----- bq_triple: table / schema / business -------------------------
-        elif vector_search_mode == "bq_triple":
-            using = _env("RAG_QDRANT_BQ_QUERY_USING", "merge").lower()
-            vector_names = _BQ_USING.get(using, BQ_VECTORS)
-            hits = self._query_named_vectors(query, vector_names, fetch_n, q_filter, top_k=top_k)
-
         else:
             raise ValueError(
                 f"Unknown vector_search_mode: {vector_search_mode!r} "
-                "(use legacy, dense_named, dual, sentence_named, research_dual, ota_triple, or bq_triple)"
+                "(use legacy, dense_named, dual, sentence_named, research_dual, or ota_triple)"
             )
 
         items: list[dict[str, Any]] = []
@@ -880,11 +942,20 @@ class VectorRetriever(BaseRetriever):
                 exclude_section_roles=exclude_section_roles,
             ):
                 continue
+            geo_list = geo_countries or ([geo_country] if geo_country else None)
+            soft = score_metadata_constraints(
+                meta,
+                geo_list=geo_list,
+                time_from=post_filter_from,
+                time_to=post_filter_to,
+                domains_substring=domains_substring,
+            )
+            base_score = float(getattr(h, "score", 0.0) or 0.0)
             items.append(
                 {
                     "content": content,
-                    "score": float(getattr(h, "score", 0.0) or 0.0),
-                    "metadata": meta,
+                    "score": base_score + soft,
+                    "metadata": {**meta, "soft_metadata_score": soft},
                     "source": "vector",
                 }
             )

@@ -1,0 +1,65 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_protected_areas
+description: Protected area features and area protected.
+grain: protected_area
+entity_type: spatial
+source:
+  layer: staging_dev
+  domain: spatial
+relationships:
+  primary_key:
+    type: logical
+    fields: protected_area
+semantic_role:
+  primary_domain: spatial
+  supports: &id001
+  - biodiversity
+  - protected areas
+business_questions_supported:
+- What insights does stg_protected_areas provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Avoid selecting large geometry_wkt unless needed
+columns:
+- name: objectid
+  type: STRING
+  description: objectid
+- name: protected_area_name
+  type: STRING
+  description: protected area name
+- name: feature_count
+  type: STRING
+  description: feature count
+- name: area_protected
+  type: STRING
+  description: area protected
+- name: geometry_wkt
+  type: STRING
+  description: geometry wkt
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: spatial
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_biodiversity
+    'on':
+    - spatial overlap
+    how: enrich
+    note: Protection with species richness/rarity
+  - table: stg_vegetation_ndvi
+    'on':
+    - spatial overlap
+    how: enrich
+    note: Protection with vegetation condition
+  companions:
+  - table: stg_germplasm
+    when: in-situ vs accession geography
+    role: enrich_context
+  do_not_join:
+  - table: stg_faostat_production
+    reason: national production aggregates

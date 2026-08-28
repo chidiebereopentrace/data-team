@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ml.rag.text_processors.bq_description_preprocessor import read_docx_text
+from ml.rag.text_processors.preprocess.docx_io import read_docx_text
 
 
 def docx_to_news_txt_content(path: Path) -> str:

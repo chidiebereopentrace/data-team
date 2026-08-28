@@ -1,0 +1,1194 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_fews_market_prices
+description: >
+  FEWS NET monthly market prices for staples, livestock, fuels, wages/services,
+  and related products at named markets. Filter by exact product_name +
+  price_type + market_name (+ country / year / month / unit / currency); never
+  invent labels. Do not AVG or SUM across unlike products, price types, units,
+  or currencies without using harmonized common_* fields.
+grain: country × market × product × year × month × price_type
+entity_type: fews
+source:
+  layer: staging_dev
+  domain: fews
+relationships:
+  primary_key:
+    type: logical
+    fields: country × market × product × year × month × price_type
+semantic_role:
+  primary_domain: fews
+  supports: &id001
+  - markets
+  - prices
+  - fews
+business_questions_supported:
+- What are maize, sorghum, or rice prices in a named market?
+- How do retail vs wholesale prices differ for a staple?
+- How have market prices changed over recent months?
+- How do prices compare across markets or countries using common_currency_price?
+- What are livestock, fuel, or wage rates in a market?
+filtering_guidance:
+- Filter by geography and time when present
+- country holds country labels only — never filter country = 'Africa' or a region
+- Filter market_name with an exact label (city; "City, Market"; Open market / Supermarket / Service station variants; district averages; National/Composite averages)
+- Prefer specific named markets over National Average / National / Composite (*) / district averages unless totals are asked
+- Always filter product_name to an exact FEWS label; prefer specific grain variants (e.g. Maize Grain (White)) over broad labels when both exist
+- Always filter price_type; prefer Retail for consumer prices; use Wholesale / Export / Spot / Wage when asked
+- Always pair value with unit and currency; prefer common_currency_price for cross-market or cross-country compares; prefer common_unit_price when units differ
+- Never AVG or SUM across unlike products, price types, units, or currencies without harmonized fields
+- Filter year and month for time-bounded questions
+- Never invent warehouse dimension tables (dim_*)
+- Joins to FAOSTAT or WFP prices are approximate product-name matches only — do not assume identical labels
+sql_generation_hints:
+- Filter country, market_name, product_name, and price_type with exact labels
+- Filter year and month for time series
+- Prefer common_currency_price for cross-market compare; prefer common_unit_price when units differ
+- GROUP BY country, market_name, product_name, year, month (plus price_type) when comparing
+- Never invent warehouse dimension tables (dim_*)
+columns:
+- name: country
+  type: STRING
+  description: Country name only. Never 'Africa' or a region label.
+- name: country_code
+  type: STRING
+  description: country code
+- name: admin_1
+  type: STRING
+  description: Admin level 1 label when populated
+- name: admin_2
+  type: STRING
+  description: Admin level 2 label when populated
+- name: market_name
+  type: STRING
+  description: >
+    Named market or average where the price is observed. Filter with an exact
+    market_name. Prefer specific markets over National Average / National /
+    Composite (*) / district averages unless totals are asked. Never invent
+    labels.
+
+    Family rules:
+    Named markets — city or town names; "City, Market" compounds.
+    Zimbabwe channels — Open market, Supermarket, and Service station variants.
+    Averages — district average, National Average, National, Composite
+    (Mombasa), Composite (North Africa).
+- name: product_name
+  type: STRING
+  description: >
+    FEWS NET product label for the priced good or service. Filter with an
+    exact product_name. Prefer specific variants over unspecified/mixed when
+    both exist. Never invent labels. Do not AVG unlike products together.
+
+    Family rules:
+    Cereals / flours / meals — maize grain/flour/meal, sorghum/millet/teff/
+    fonio, wheat grain/flour, bran.
+    Rice grades — milled, broken, long/medium/short grain, parboiled, etc.
+    Pulses / oilseeds — beans, lentils, chick peas, cowpeas, groundnuts,
+    sesame, soybean oil inputs.
+    Roots / tubers / fruits / veg — cassava, yams, potatoes, banana, tomato,
+    onions, leafy greens, mango, etc.
+    Livestock / animal products — cattle/sheep/goats/camels grades, chickens,
+    meat, milk, eggs, dried fish.
+    Oils / fuels / energy — vegetable/palm/groundnut oils, gasoline, diesel,
+    kerosene, LPG, charcoal, firewood.
+    Wages / services / other — casual/agricultural labor, bus fares, lodging,
+    utilities, fertilizer, soap, uniforms.
+- name: cpcv2
+  type: STRING
+  description: CPC v2 product classification code when populated
+- name: price_type
+  type: STRING
+  description: >
+    Price channel for the row. Filter with an exact price_type. Prefer Retail
+    for consumer staple prices unless another channel is asked.
+
+    Family rules:
+    Wholesale — trader/wholesale market prices.
+    Retail — consumer retail prices (default for staple price questions).
+    Export — export-facing prices.
+    Spot — spot market prices.
+    Wage — wage / labor rate rows (pair with labor product labels).
+- name: unit
+  type: STRING
+  description: >
+    Unit of the reported price. Always interpret value with unit and currency;
+    never compare unlike units without common_unit_price.
+
+    Family rules:
+    Mass — kg and bag/pack sizes (50_kg, 100_kg, 90_kg, g packs, etc.).
+    Volume — L and fractions (0.5_L, 5_L, gal, bbl, 1000_L).
+    Count / bundle — ea, ea_*, bundle, pile, bunch, loaf, Plate, Cart load,
+    100_tubers, cup.
+    Services / energy — day, One_way_trip, 200_kwh, cum.
+- name: currency
+  type: STRING
+  description: >
+    Local currency code for value. Filter with an exact currency. Prefer
+    common_currency_price for cross-currency compares. Note ZWL vs ZWL_cash
+    and historical MRO vs MRU — use the exact sample code.
+- name: value
+  type: FLOAT64
+  description: >
+    Local-currency price in the stated unit. AVG only when product_name,
+    price_type, unit, and currency are homogeneous (or use common_* fields).
+- name: common_unit_price
+  type: STRING
+  description: >
+    Harmonized unit price for cross-unit compares when populated. Prefer over
+    raw value when units differ across rows.
+- name: common_currency_price
+  type: STRING
+  description: >
+    Harmonized currency price for cross-market or cross-country compares when
+    populated. Prefer over raw value when currencies differ.
+- name: year
+  type: INT64
+  description: Observation year
+- name: month
+  type: INT64
+  description: Observation month (1-12)
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+market_value_samples:
+- "Ad Damazin"
+- "Al Qadarif"
+- Dongola
+- "Ed Daein"
+- "El Damer"
+- "El Fasher"
+- "El Obeid"
+- Geneina
+- Kadugli
+- Kassala
+- Khartoum
+- Kosti
+- Madani
+- Nyala
+- "Om Durman, Mowelih"
+- "Port Sudan"
+- Rabak
+- Singa
+- Sinnar
+- Zalingei
+- Abeche
+- "Adel Bagrou"
+- Afmadow
+- Amtiman
+- Aoujeft
+- Baidoa
+- Bardera
+- "Beled Weyn"
+- Biltine
+- "Boghé"
+- Bol
+- Bongor
+- Buale
+- Dinsor
+- Faya
+- Garissa
+- Hargeisa
+- Isiolo
+- Jowhar
+- Kankossa
+- Kelo
+- "Magta-lahjar"
+- Mao
+- Mongo
+- Moundou
+- Moussoro
+- "N'Djamena"
+- Nouadhibou
+- "Nouakchott, Marché SCIM"
+- Qorioley
+- Sarh
+- Tintane
+- Togwajale
+- "Toufoude Cive"
+- Turkana
+- Abim
+- Amudat
+- Kaabong
+- Kotido
+- Moroto
+- Nakapiripirit
+- Napak
+- "Al Foula"
+- Aweil
+- "Juba, Konyokonyo"
+- Leer
+- Maiwut
+- "Malakal, Aburoc"
+- Meyendit
+- "Om Durman"
+- Pibor
+- Poktap
+- Torit
+- Yei
+- "Aba, Udele"
+- "Antananarivo Average"
+- Barkeol
+- "Fianarantsoa I (CL)"
+- "Geidam, Kasuwan Shanu"
+- "Gombe, Tiken Shanu"
+- "Gujungu, Kara"
+- "Ibadan, Akinyele"
+- "Ihosy (CL)"
+- "Ilela, Kara Shanu"
+- "Lagos, Kara"
+- Maiadua
+- "Maiduguri, Kasuwan Shanu"
+- "Maigatari, Kara"
+- "Mubi, Tike"
+- Ndiago
+- "Ould Yenge"
+- "Port-Harcourt, Trans-Amadi"
+- "Potiskum, Tike"
+- "Toamasina I (CL)"
+- "Toliara I (CL)"
+- Twil
+- "Juba, Gumbo"
+- Kuajok
+- Rumbek
+- "Addis Ababa, Merkato"
+- Awash
+- "Bahir Dar"
+- Beddenno
+- Chereti
+- Degehabour
+- Dessie
+- "Dire Dawa, Kezira"
+- Gambella
+- Gode
+- Jinka
+- Logia
+- Mekele
+- "Nazareth, Adama"
+- Nekemte
+- Sekota
+- Shashemene
+- Shire
+- Sikela
+- Sodo
+- Warder
+- Yabelo
+- Galkayo
+- "Zeilac/Lawayacado"
+- Mederdra
+- "Om Durman, El Salam"
+- "Aba, Akwete"
+- Mbagne
+- Ouadane
+- Abudwak
+- Baringo
+- "Beled Hawa"
+- Borama
+- Bossaso
+- Burao
+- Dhusamareb
+- "El Barde"
+- "Embu-Mbeere"
+- Erigavo
+- Garowe
+- Hudur
+- Iskushuban
+- Kajiado
+- Kilifi
+- Kismayo
+- Kitui
+- Kwale
+- Laikipia
+- Lamu
+- Lasanod
+- Makueni
+- Mandera
+- Marsabit
+- Meru
+- Narok
+- "Qansah Dere"
+- Saakow
+- Samburu
+- "Taita Taveta"
+- "Tana River"
+- "Tharaka Nithi"
+- Wajir
+- "Wanle Weyne"
+- "West Pokot"
+- "Bindura, Chipadze market (Open market)"
+- "Bulawayo, Renkini market (Open market)"
+- "Chegutu, Gomba market (Open market)"
+- "Chinhoyi, Gadzema market (Open market)"
+- "Chipinge, Checheche market (Open market)"
+- "Gokwe South, Gokwe Produce market (Open market)"
+- "Gutu, Mupandawana market (Open market)"
+- "Gwanda, Old Msika Renkini (Open market)"
+- "Gweru, Mutapa market (Open market)"
+- "Harare, Mbare market (Open market)"
+- "Hwange, Number 1 terminus market (Open market)"
+- "Hwedza, Hwedza market (Open market)"
+- "Masvingo, Mucheke market (Open market)"
+- "Mt Darwin, New Rank market (Open market)"
+- "Murehwa, Murehwa city council market (Open market)"
+- "Mutare, Chikanga market (Open market)"
+- "Mwenezi, Rutenga market (Open market)"
+- "Nyanga, Nyamhuka 1 (Open market)"
+- "Plumtree, Solwezi-A market (Open market)"
+- "Tsholotsho, Tsholotsho center (Open market)"
+- "Zvishavane, Mandava market (Open market)"
+- Doblei
+- Busia
+- Eldoret
+- Kisumu
+- Kitale
+- Mombasa
+- Nairobi
+- "National Average"
+- Taveta
+- Douala
+- "El Nehoud"
+- "Richards Bay"
+- "Composite (North Africa)"
+- Adanyabal
+- Afgoi
+- Bandaga
+- "Bindura, Pick n Pay (Supermarket)"
+- Buhiga
+- Bukeye
+- Bukirasazi
+- "Bulawayo, OK Renkini (Supermarket)"
+- Bururi
+- Busoni
+- Buyengero
+- Cankuzo
+- "Chegutu, Pick n Pay (Supermarket)"
+- "Chinhoyi, Pick n Pay (Supermarket)"
+- "Chipinge, N. Richards (Supermarket)"
+- "El Dhere"
+- Elwak
+- Gasenyi
+- Gasorwe
+- Gatabo
+- Gihamagara
+- Gihogazi
+- Gisiru
+- Gitaza
+- Gitega
+- Giteranyi
+- Gitobe
+- "Gokwe South, Choppies (Supermarket)"
+- "Gutu, N. Richards (Supermarket)"
+- "Gwanda, OK (Supermarket)"
+- "Gweru, Pick n Pay (Supermarket)"
+- "Hara Dhere"
+- "Harare, OK Mbare (Supermarket)"
+- "Hwange, OK (Supermarket)"
+- "Hwedza, Vimai (Supermarket)"
+- Jamame
+- Jene
+- Jilib
+- Kamenge
+- Kanyosha
+- Kayanza
+- Kayero
+- Kayogoro
+- Kayongozi
+- Kigamba
+- Kinama
+- Kinyinya
+- Kirundo
+- Kivyuka
+- Kobero
+- Lugh
+- Mabanda
+- Mabayi
+- Makamba
+- Marangara
+- Masanganzira
+- "Masvingo, Pick n Pay (Supermarket)"
+- Matana
+- Merka
+- Mihigo
+- Mishiha
+- "Mogadishu, Bakara"
+- "Mt Darwin, Pachedu (Supermarket)"
+- Muhanga
+- Mukenke
+- Muramvya
+- "Murehwa, Mapfumo (Supermarket)"
+- Musenyi
+- Mutaho
+- "Mutare, TM Chikanga (Supermarket)"
+- Muyange
+- Muyinga
+- Muzinda
+- Mwakiro
+- Mwaro
+- "Mwenezi, N J sales (Supermarket)"
+- Ngozi
+- Nyabihanga
+- Nyabikere
+- Nyagasasa
+- "Nyanga, Mega Markets (Supermarket)"
+- "Plumtree, Greens (Supermarket)"
+- Rubaho
+- Rugombo
+- Ruhehe
+- Rumonge
+- Rusaka
+- Rutana
+- Ruyigi
+- Siyoni
+- "Tsholotsho, Family choice (Supermarket)"
+- Twinkwavu
+- Wimpfizi
+- "Zvishavane, OK (Supermarket)"
+- "Douala, Grand Hangar Bonaberi"
+- "Douala, Marché central"
+- "Douala, Sandaga"
+- "Harare, Mbare"
+- "Yaounde, Mfoundi"
+- "Yaounde, Mokolo"
+- "Yaounde, Tsinga 8ème"
+- "Blantyre, Limbe"
+- Chikhwawa
+- "Chikhwawa, Ngabu"
+- Lunzu
+- "Machinga, Namwera"
+- "Machinga, Ntaja"
+- Mangochi
+- "Mangochi, Liwonde"
+- "Mchinji, Nsundwe"
+- "Mulanje, Muloza"
+- Neno
+- "Nkhotakota, Mwansambo"
+- Nsanje
+- "Nsanje, Bangula"
+- Phalombe
+- "Thyolo, Bvumbwe"
+- "Thyolo, Luchenza"
+- Zomba
+- "Zomba, Jali"
+- "Zomba, Mayaka"
+- "Zomba, Thondwe"
+- "Nairobi, lower region"
+- "Conakry, Madina"
+- Abidjan
+- Bondoukou
+- "San Pedro"
+- Yamoussoukro
+- Amboasary
+- "Ambovombe Androy (CL)"
+- "Antsirabe I (CL)"
+- "Mahajanga I (CL)"
+- Mananjary
+- "Morondava (CL)"
+- Tsihombe
+- Yambio
+- Aba
+- Banjul
+- "Basse Santa su"
+- Bentiu
+- Beyla
+- Biu
+- Bo
+- Boffa
+- "Boké"
+- Bombali
+- Bonthe
+- Bor
+- Bouake
+- Brikama
+- Dabola
+- Damaturu
+- Dandume
+- Dimbokro
+- Faranah
+- Freetown
+- Fria
+- Giwa
+- Gombe
+- Gujungu
+- "Guéckédou"
+- "Gwandu, Dodoru"
+- "Ibadan, Bodija"
+- "Juba, Gudele Two"
+- Kailahun
+- Kambia
+- Kankan
+- "Kankan, Dibida"
+- "Kano, Dawanau"
+- "Kaura Namoda"
+- Kenema
+- Kindia
+- Kissidougou
+- Koinadugu
+- Kono
+- Korhogo
+- Koundara
+- "Kérouané"
+- "Labé"
+- "Labé, Marché central"
+- "Lagos, Mile 12"
+- Macenta
+- Maiduguri
+- Malakal
+- Mamou
+- Man
+- Moyamba
+- Mubi
+- "Nzérékoré"
+- "Nzérékoré, Grand marché"
+- "Port Loko"
+- Potiskum
+- Pujehun
+- Renk
+- Saminaka
+- Serrekunda
+- Siguiri
+- Tonkolili
+- "Télimélé"
+- Wau
+- Luanda
+- "Cotonou, Dantokpa"
+- Malanville
+- "Berea (district average)"
+- "Butha-Buthe (district average)"
+- "Leribe (district average)"
+- "Mafeteng (district average)"
+- "Maseru (district average)"
+- "Mohale's hoek (district average)"
+- "Mokhotlong (district average)"
+- "Qacha's Nek (district average)"
+- "Quthing (district average)"
+- "Thaba-Tseka (district average)"
+- "Bafata, Kirintim"
+- "Bafata, Nhambane"
+- Barclayville
+- "Bissau, Bandim"
+- "Bo-Waterside"
+- Bopolu
+- Buchanan
+- "Cestos City"
+- Conakry
+- Duala
+- "Fish Town"
+- "Forécariah"
+- Foya
+- Ganta
+- Gbarma
+- Gbarnga
+- Greenville
+- Harper
+- Kakata
+- Kamsar
+- "Monrovia, Red Light"
+- Pita
+- Pleebo
+- Saclepea
+- "Toe Town"
+- Tubmanburg
+- "Tuobo-Gbaweeleken"
+- Voinjama
+- Zwedru
+- Aleg
+- Atar
+- Djougountourou
+- Lexeibal
+- Maghama
+- Mbout
+- Moudjeria
+- Nema
+- Selibaby
+- Socogim
+- Tidjikja
+- Vassala
+- Wompou
+- Zoueiratt
+- Alisabieh
+- Arta
+- Dikhil
+- "Djibouti City"
+- "Gobabis (average)"
+- "Hhohho (average)"
+- "Katima (average)"
+- "Keetmanshoop (average)"
+- "Lubombo (average)"
+- "Manzini (average)"
+- "Mariental (average)"
+- Obock
+- "Oshakati (average)"
+- "Otjiwarongo (average)"
+- Santiago
+- "Santo Antao"
+- "Santo Vincente"
+- "Shiselweni (average)"
+- "Swakopmund (average)"
+- Tadjourah
+- "Windhoek (average)"
+- "Bubanza, Kivyuka"
+- "Bubanza, Musenyi"
+- "Bubanza, Muzinda"
+- "Bujumbura Mairie, Kamenge"
+- "Bujumbura Mairie, Kanyosha"
+- "Bujumbura Mairie, Siyoni"
+- "Bujumbura Rural, Kinama"
+- "Bururi, Matana"
+- "Bururi, Nyagasasa"
+- "Cankuzo, Kigamba"
+- "Cankuzo, Mishiha"
+- "Cankuzo, Twinkwavu"
+- "Cibitoke, Gasenyi"
+- "Cibitoke, Mabayi"
+- "Cibitoke, Rugombo"
+- "Gitega, Bukirasazi"
+- "Gitega, Gihamagara"
+- "Gitega, Mutaho"
+- "Karuzi, Buhiga"
+- "Karuzi, Gihogazi"
+- "Karuzi, Nyabikere"
+- "Kayanza, Bandaga"
+- "Kayanza, Jene"
+- "Kayanza, Muhanga"
+- "Kirundo, Busoni"
+- "Kirundo, Gitobe"
+- "Kirundo, Mukenke"
+- "Kirundo, Ruhehe"
+- "Makamba, Kayogoro"
+- "Makamba, Mabanda"
+- "Makamba, Muyange"
+- "Muramvya, Bukeye"
+- "Muramvya, Gatabo"
+- "Muyinga, Gasorwe"
+- "Muyinga, Giteranyi"
+- "Muyinga, Kobero"
+- "Muyinga, Mwakiro"
+- "Mwaro, Nyabihanga"
+- "Mwaro, Rusaka"
+- "Mwaro, Wimpfizi"
+- "Ngozi, Marangara"
+- "Ngozi, Masanganzira"
+- "Ngozi, Mihigo"
+- "Ngozi, Musenyi"
+- "Rumonge, Burambi"
+- "Rumonge, Buyengero"
+- "Rumonge, Gitaza"
+- "Rutana, Giharo"
+- "Rutana, Kayero"
+- "Rutana, Rubaho"
+- "Ruyigi, Biyorwa"
+- "Ruyigi, Gisuru"
+- "Ruyigi, Kayongozi"
+- "Ruyigi, Kinyinya"
+- "Huambo, Alemanha"
+- "Luanda, 30 Market"
+- "Lubango, Joao de Almeida"
+- "Abidjan, Adjame"
+- Amegnran
+- Anie
+- "Antsiranana I (CL)"
+- Balaka
+- Boundiali
+- "Cinkassé"
+- Come
+- Daloa
+- Ferkessedougou
+- Jenda
+- Kara
+- Karonga
+- Korbongou
+- Kouroussa
+- Lilongwe
+- "Lomé"
+- Mali
+- Mandiana
+- Mitundu
+- Mzuzu
+- Nikki
+- "Nsanje, Nsanje Boma"
+- Ntcheu
+- Ouangolodougou
+- Parakou
+- Salima
+- "Tougué"
+- Kiffa
+- Bohicon
+- Praia
+- Biyogwa
+- Bujumbura
+- Accra
+- Bolgatanga
+- Kumasi
+- Techiman
+- "Bugesera, Ruhuha"
+- "Burera, Kirambo"
+- Gakenke
+- "Gatsibo, Rwagitima"
+- "Gicumbi, Byumba"
+- "Gisagara, Musha"
+- "Huye, Butare"
+- "Kamonyi, Kayenzi"
+- "Karongi, Birambo"
+- "Kayonza, Kabarondo"
+- "Kigali City, Kimironko"
+- "Kirehe, Nyakarambi"
+- "Musanze (Ruhengeri)"
+- "Ngoma, Kibungo"
+- "Ngororero, Kabaya"
+- "Nyabihu, Mukamira"
+- "Nyagatare, Rukomo"
+- "Nyamagabe, Kabacuzi"
+- "Nyamasheke, Bushenge"
+- Nyanza
+- "Nyaruguru, Ndago"
+- "Rubavu, Mahoko"
+- Ruhango
+- "Rulindo, Base"
+- "Rusizi, Bugarama"
+- "Rutsiro, Congo Nil"
+- "Rwamagana, Karenge"
+- "Bindura, Zuva (Service station)"
+- "Bulawayo, Engen (Service station)"
+- "Bulawayo, Renkini"
+- "Chegutu, PUMA (Service station)"
+- "Chinhoyi, Trek  (Service station)"
+- "Chipinge, Kujokochera (Service station)"
+- "Gokwe South, Zuva (Service station)"
+- "Gutu, Genesis (Service station)"
+- "Gwanda, Engen (Service station)"
+- "Gweru, Kombayi"
+- "Gweru, PUMA Kombayi (Service station)"
+- "Harare, Engen (Service station)"
+- "Hwange, Zuva (Service station)"
+- "Hwedza, Engen (Service station)"
+- "Masvingo, Mucheke"
+- "Masvingo, PUMA (Service station)"
+- "Mt Darwin, Energy Park (Service station)"
+- "Murehwa, Liquid Cargo Africa (Service station)"
+- "Mutare, Sakubva"
+- "Mutare, Zuva (Service station)"
+- "Mwenezi, CMED (Service station)"
+- National
+- "Nyanga, Total  (Service station)"
+- "Plumtree, PUMA (Service station)"
+- "Tsholotsho, Glow Petroleum (Service station)"
+- "Zvishavane, Total  (Service station)"
+- "Abu Gibeha"
+- "Abi Adi"
+- Adigrat
+- Adwa
+- Ajeber
+- Alamata
+- Debark
+- "Dire Dawa"
+- Ebinat
+- Hawzen
+- Hossana
+- Jijiga
+- Kersa
+- Korem
+- Mota
+- Randfontein
+- Wekro
+- Abomsa
+- "Awassa zuriya"
+- Babile
+- Bati
+- Bedessa
+- Dapaong
+- Deder
+- Delo
+- Gulu
+- Karati
+- "Nyeri-Kieni"
+- "Shoa Robit"
+- Soroti
+- Turmi
+- Wolenchiti
+- "Juba, Nyakuron"
+- "Composite (Mombasa)"
+- Yaounde
+product_value_samples:
+- Cattle
+- "Cattle (Male, 2-3 years old, Local Quality)"
+- "Cattle (Medium-sized cow)"
+- "Cattle (Medium-sized bull)"
+- "Cattle (Male)"
+- "Cattle (Male, 1-2 years old, Uncastrated)"
+- "Cattle (Large-sized bull, Mature, Grade 1)"
+- "Cattle (Small-sized bull, Grade 3)"
+- "Cattle (Calf)"
+- "Oxen (Local Quality)"
+- "Cattle (Female, Local Milking, High Yield)"
+- "Cattle (female, Local Milking, Low Yield)"
+- Camels
+- "Camels (Local Quality)"
+- "Camels (Female, Average)"
+- "Camels (Male, Average)"
+- "Sheep (2-3 years old)"
+- "Sheep (2-3 years old, Castrated, Average Quality)"
+- "Sheep (Male, Medium-sized, Castrated)"
+- "Sheep (Export Quality)"
+- "Sheep (1 year old, Female)"
+- "Sheep (2-3 years, Average Quality)"
+- "Sheep (Adult, Male, Medium-sized)"
+- "Sheep (Male)"
+- "Sheep (Small-sized, Grade 3)"
+- "Sheep (Big-sized, Grade 1)"
+- "Sheep (Local Quality)"
+- "Sheep (less than 1 year old, 15 -30kg)"
+- "Goats (Local Quality)"
+- "Goats (Export Quality)"
+- "Goats (Male, Medium-sized, Castrated)"
+- "Goats (Male, Noubian, 13-30 kg)"
+- "Goats (Female, Medium-sized)"
+- "Goats (Adult, Male, Medium-sized)"
+- "Goats (Male)"
+- "Goat (Small-sized, Grade 3)"
+- "Goat (Big-sized, Grade 1)"
+- "Goats (Female, Local, Milking)"
+- "Broiler chicken (live)"
+- Chickens
+- "Chickens (Live)"
+- "Chicken (live, indigenous breed)"
+- "Cow's Milk (Raw)"
+- "Camel's Milk (Raw)"
+- "Eggs (Fresh)"
+- "Logs (Cameroon)"
+- Firewood
+- "Natural gums and resins (mixed)"
+- Coal
+- "Phosphate rock"
+- Salt
+- "Water (potable, drinking)"
+- "Beef (Fresh bovine meat)"
+- "Beef (Fresh bovine meat, with bone)"
+- "Beef (Fresh bovine meat, boneless)"
+- "Veal (fresh)"
+- "Pork Meat"
+- "Mutton (Sheep)"
+- "Lamb Meat"
+- "Goat Meat (Fresh or Chilled)"
+- "Fresh Goat Meat"
+- "Camel Meat"
+- "Chicken meat"
+- "Chicken meat (Whole)"
+- "Fish (Mackerel, Frozen)"
+- "Fish (Dried, Salted, or In Brine)"
+- "Fish (Dried, Yay Boy)"
+- "Fish (Dried, Bonga)"
+- "Fish (Dried, Mukene/Dagaa/Silver Fish)"
+- "Attiéké"
+- "Cassava Chips"
+- "Dried Cassava"
+- "Groundnuts (Shelled)"
+- "Soybean Oil"
+- "Groundnut Oil (Refined)"
+- "Sunflower-seed Oil (Refined)"
+- "Palm Oil (Refined)"
+- "Refined Vegetable Oil"
+- "Cooking fat"
+- "Cow's Milk (Fresh, Pasteurized)"
+- "Cow's milk (UHT)"
+- "Whole milk powder"
+- "Wheat Flour"
+- "Wheat Flour (White)"
+- "Sorghum Flour"
+- "Millet Flour"
+- "Maize Flour"
+- "Enriched corn/bean flour"
+- "Maize Meal"
+- "Roller Maize Meal"
+- "Breakfast Maize Meal"
+- "Rice (Milled)"
+- "Rice (100% Broken)"
+- "Rice (5% Broken)"
+- "Rice (Medium Grain, Emata)"
+- "Rice (Long Grain, Basmati)"
+- "Rice (Long Grain)"
+- "Rice (Low Grade)"
+- "Rice (Gasy)"
+- "Rice (Parboiled)"
+- "Rice (High Grade)"
+- "Rice (Long Grain, Perfumed)"
+- "Milled rice (non-perfumed)"
+- "Rice (Short Grain)"
+- "Rice (Medium Grain)"
+- "Cassava Flour"
+- "Gari (Yellow)"
+- "Gari (White)"
+- Gari
+- Bread
+- "Bread (small loaf)"
+- "Bread (fried)"
+- "Bread (brown loaf)"
+- "Bread (white loaf)"
+- "Bread (Traditional)"
+- "Refined sugar"
+- Spaghetti
+- "Pasta (Mixed)"
+- "Hibiscus (dried)"
+- "Prepared food (Ugali and Mboga)"
+- "Primary School Uniform"
+- "Sawnwood (Cameroon)"
+- "Exercise Book"
+- Gasoline
+- Kerosene
+- "Kerosene, industrial"
+- "Kerosene, domestic"
+- Diesel
+- "Diesel (Administered)"
+- "Diesel (Parallel)"
+- "Liquified Petroleum Gas"
+- "Propane and butanes, liquefied"
+- Charcoal
+- Urea
+- "Fertilizer (20-10-10)"
+- Soap
+- "Wheat bran"
+- "Rakhel (Feed)"
+- "Wheat Grain"
+- "Maize (Corn)"
+- "Maize Grain (Yellow)"
+- "Maize Grain (White)"
+- "Rice (Husked, Unspecified)"
+- Sorghum
+- "Sorghum (Brown)"
+- "Sorghum (Red)"
+- "Sorghum (White)"
+- "Sorghum (Yellow)"
+- "Sorghum (Feterita)"
+- "Sorghum (Bichna, Mixed))"
+- "Sorghum (R'haya, Brown)"
+- "Sorghum (Taghalit, Mixed)"
+- "Sorghum (Feterita, White)"
+- "Sorghum (Dabar)"
+- "Sorghum (Tabat)"
+- "Sorghum (Berbere)"
+- Millet
+- "Millet (Bulrush)"
+- "Millet (Finger)"
+- "Millet (Pearl)"
+- "Mixed Teff"
+- Fonio
+- "Cabbage (Unspecified)"
+- Kale
+- Chomolia
+- "Rape Leaves"
+- Spinach
+- Eggplant
+- Tomato
+- "Okras (Fresh)"
+- "Okras (Dry)"
+- Onions
+- "Avocado (unspecified)"
+- "Banana (unspecified)"
+- "Banana (small, sweet)"
+- "Cooking Banana (unspecified)"
+- "Dry Barakawi Date"
+- "Mango (Abu Samaka)"
+- "Mango (Baladi)"
+- "Guava (unspecified)"
+- "Orange (unspecified)"
+- "Groundnuts (In Shell)"
+- "Groundnut (without shell)"
+- "Sesame Seed"
+- "Sesame (White)"
+- "Potato (unspecified)"
+- "Potato (Irish)"
+- "Potato (White)"
+- "Sweet Potatoes"
+- Cassava
+- Yams
+- "Yam Abuja"
+- "Taro/Cocoyam (Unspecified)"
+- "Tea leaves (Mixed)"
+- "Tea (Mombasa)"
+- "Tea leaves (Black)"
+- "Tea leaves (Red)"
+- Cocoa
+- "Beans (mixed)"
+- "Beans (White)"
+- "Beans (K124/Nabe 4)"
+- "Beans (Rosecoco)"
+- "Beans (Yellow)"
+- "Beans (Brown)"
+- "Gram (Green)"
+- "Beans (Haricot)"
+- "Broad Beans"
+- "Horse beans"
+- "Fava bean"
+- "Chick Peas"
+- Lentils
+- "Dry Lentils"
+- "Split Peas (Yellow)"
+- "Cowpeas (Brown)"
+- "Cowpeas (Red)"
+- "Cowpeas (White)"
+- "Cowpeas (Mixed)"
+- "Pigeon Peas"
+- Alfalfa
+- "Rice Straw"
+- "Wild Straw"
+- Rubber
+- "Bus transport cost (Mbare to Market Square)"
+- "Bus transport cost (Mabvuku to Fourth Street)"
+- "Bus transport cost (Harare to Chiredzi)"
+- "Bus transport cost (Harare to Mutare)"
+- "Bus transport cost (Mutare to Penhalonga)"
+- "Intracity bus fare"
+- "Lodging rent, single room, monthly"
+- "Mobile phone airtime"
+- "Electricity transmission services"
+- "Water distribution services through mains (on a fee or contract basis)"
+- "Grain milling services"
+- "Laundry detergent"
+- "Casual Labor (unskilled, daily, without food)"
+- "Daily wage rate"
+- "Agricultural Labor"
+- "Skilled labor (daily, without food)"
+- "Casual labor (cargo handler)"
+- "Casual labor (construction)"
+- "Health services (General Practitioner)"
+price_type_value_samples:
+- Wholesale
+- Retail
+- Export
+- Spot
+- Wage
+unit_value_samples:
+- ea
+- kg
+- "0.5_L"
+- L
+- "ea_30"
+- "ea_12"
+- "ea_18"
+- "ea_6"
+- cum
+- bundle
+- "Cart load"
+- pile
+- "45_kg"
+- t
+- "500_g"
+- "200_L"
+- "3.5_kg"
+- "100_kg"
+- "5_L"
+- cup
+- "5_kg"
+- "750_ml"
+- gal
+- "2_L"
+- "500_ml"
+- "2270_g"
+- "50_kg"
+- "12.5_kg"
+- "2_kg"
+- "2.5_kg"
+- "900_g"
+- "10_kg"
+- "90_kg"
+- "700_g"
+- loaf
+- "800_g"
+- Plate
+- bbl
+- "12_kg"
+- "20_L"
+- "15_kg"
+- "109_kg"
+- "93_kg"
+- bunch
+- "6_kg"
+- "ea_40"
+- "ea_80"
+- "ea_100"
+- "110_kg"
+- "98_kg"
+- "91_kg"
+- "99_kg"
+- "100_tubers"
+- "250_kg"
+- "20_kg"
+- "125_g"
+- "100_g"
+- "250_g"
+- "One_way_trip"
+- "200_kwh"
+- "1000_L"
+- day
+currency_value_samples:
+- SDG
+- XAF
+- MRU
+- SOS
+- KES
+- SLS
+- UGX
+- SSP
+- NGN
+- MGA
+- ETB
+- MRO
+- USD
+- ZAR
+- BIF
+- "ZWL_cash"
+- ZWL
+- BWP
+- MWK
+- GNF
+- XOF
+- GMD
+- SLL
+- AOA
+- LSL
+- LRD
+- DJF
+- NAD
+- SZL
+- CVE
+- GHS
+- RWF
+_index_domain: fews
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_wfp_vampire_prices
+    'on':
+    - country
+    - product_name
+    - year
+    - month
+    how: compare
+    note: Align units/currency before comparing
+  - table: stg_faostat_prices
+    'on':
+    - country_name≈country
+    - product_name
+    - year
+    how: compare
+    note: Producer/CPI vs FEWS market prices
+  - table: stg_fews_food_security
+    'on':
+    - country
+    - year
+    - month
+    how: enrich
+    note: Prices with IPC context
+  - table: stg_yield_raw_data
+    'on':
+    - country
+    - product≈product_name
+    - year
+    how: enrich
+    note: Prices with production outcomes
+  companions:
+  - table: stg_fews_cross_border_trade
+    when: cross-border flow pressure on markets
+    role: enrich_context
+  do_not_join:
+  - table: stg_isric_africa_soil
+    reason: soil grids; no market grain

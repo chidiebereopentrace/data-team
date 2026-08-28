@@ -1,0 +1,106 @@
+erDiagram
+  Session {
+    string session_id PK
+    string conversation_summary
+    list recent_turns
+    string category
+    string plan_type
+    string country
+    dict last_structured_ranking
+  }
+  ChatTurn {
+    string turn_id PK
+    string session_id FK
+    string query
+    string answer
+    datetime created_at
+  }
+  RAGGraphState {
+    string state_id PK
+    string query
+    list merged_context
+    list reranked_context
+    string answer
+    list citations
+    mixed acf_fields
+    list artifacts
+  }
+  Decomposition {
+    string intent
+    list entities
+    list geography
+    list domains
+    string time_start
+    string time_end
+  }
+  VectorChunk {
+    string id PK
+    string corpus
+    string text
+    float score
+    dict metadata
+  }
+  BQContextItem {
+    string id PK
+    string source
+    string text
+    dict metadata
+  }
+  StructuredRankingCache {
+    string fingerprint PK
+    dict item
+    dict decomposition
+  }
+  ContextItem {
+    string id PK
+    string source
+    string text
+    dict metadata
+  }
+  GenerationResult {
+    string answer
+    list citations
+    dict usage
+    string langfuse_trace_id
+  }
+  Citation {
+    int index PK
+    string source_kind
+    string title
+    string url
+    dict metadata
+  }
+  ACFSignal {
+    string band
+    float score
+    string explanation
+    dict components
+  }
+  Artifact {
+    string artifact_id PK
+    string kind
+    string uri
+    string label
+  }
+  RankedTableMeta {
+    int rank
+    string entity
+    float metric_value
+    string metric
+    string unit
+    int year
+    string as_of_date
+  }
+
+  Session ||--o{ ChatTurn : contains
+  ChatTurn ||--|| RAGGraphState : produces
+  RAGGraphState ||--|| Decomposition : has
+  RAGGraphState ||--o{ VectorChunk : "vector_*_results"
+  RAGGraphState ||--o{ BQContextItem : bq_results
+  RAGGraphState |o--o| StructuredRankingCache : structured_ranking_cache
+  RAGGraphState ||--o{ ContextItem : "merged_context / reranked_context"
+  RAGGraphState ||--|| GenerationResult : answer_citations_acf
+  GenerationResult ||--o{ Citation : citations
+  GenerationResult ||--|| ACFSignal : acf
+  GenerationResult |o--o{ Artifact : artifacts
+  BQContextItem |o--o{ RankedTableMeta : ranked_rows

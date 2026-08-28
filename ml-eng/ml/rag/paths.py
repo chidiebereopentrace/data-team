@@ -16,14 +16,12 @@ PREPROCESSED_DATA_DIR = ML_ENG_ROOT / "data" / "local" / "preprocessed_data"
 INGEST_KIND_TO_JSONL: dict[str, str] = {
     "news": "news_chunks.jsonl",
     "research": "research_chunks.jsonl",
-    "data_descriptions": "data_descriptions_chunks.jsonl",
     "ota": "ota_insights_chunks.jsonl",
 }
 
 CORPUS_TO_JSONL: dict[CorpusKey, str] = {
     "news": "news_chunks.jsonl",
     "research": "research_chunks.jsonl",
-    "data_description": "data_descriptions_chunks.jsonl",
     "ota": "ota_insights_chunks.jsonl",
 }
 
@@ -34,7 +32,7 @@ def preprocessed_data_root() -> Path:
 
 
 def preprocessed_jsonl_for_kind(kind: str) -> Path:
-    """JSONL path for an ingestion rebuild kind (news, research, data_descriptions, ota)."""
+    """JSONL path for an ingestion rebuild kind (news, research, ota)."""
     name = INGEST_KIND_TO_JSONL.get(kind)
     if not name:
         raise ValueError(f"Unknown ingestion kind: {kind!r}")

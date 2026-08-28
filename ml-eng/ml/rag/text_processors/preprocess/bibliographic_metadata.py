@@ -321,7 +321,7 @@ def resolve_bibliographic_metadata(
 
 def format_academic_citation(meta: dict[str, Any]) -> str:
     """Compact citation string for the Sources block (not inline footnotes)."""
-    authors = str(meta.get("authors") or "").strip()
+    authors = _clean_citation_authors(str(meta.get("authors") or "").strip())
     year = str(meta.get("publication_year") or meta.get("year") or "").strip()
     title = str(meta.get("article_title") or meta.get("title") or "").strip()
     journal = str(meta.get("journal") or "").strip()
@@ -342,4 +342,29 @@ def format_academic_citation(meta: dict[str, Any]) -> str:
         parts.append(journal)
     if doi:
         parts.append(f"DOI {doi}")
-    return ". ".join(parts)
+    line = ". ".join(parts)
+    return _truncate_citation_line(line)
+
+
+_AFFILIATION_TRAIL_RE = re.compile(r"[\d\*⁰¹²³⁴⁵⁶⁷⁸⁹]+$")
+_UNKNOWN_AUTHOR_RE = re.compile(r"^unknown(?:\s+authors?)?$", re.IGNORECASE)
+
+
+def _clean_citation_authors(authors: str) -> str:
+    if not authors or _UNKNOWN_AUTHOR_RE.match(authors.strip()):
+        return ""
+    parts = re.split(r",\s*|\s+and\s+", authors)
+    cleaned: list[str] = []
+    for part in parts:
+        name = _AFFILIATION_TRAIL_RE.sub("", part.strip()).strip(" ,;")
+        if name and not _UNKNOWN_AUTHOR_RE.match(name):
+            cleaned.append(name)
+    return ", ".join(cleaned)
+
+
+def _truncate_citation_line(text: str, max_len: int = 240) -> str:
+    line = re.sub(r"\s+", " ", text.replace("\n", " ")).strip()
+    if len(line) <= max_len:
+        return line
+    cut = line[:max_len].rsplit(" ", 1)[0]
+    return cut.strip()

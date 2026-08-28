@@ -1,0 +1,80 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_s4a_field_surveys
+description: S4A field survey soil surface plots.
+grain: plot
+entity_type: soil_and_land
+source:
+  layer: staging_dev
+  domain: soil_and_land
+relationships:
+  primary_key:
+    type: logical
+    fields: plot
+semantic_role:
+  primary_domain: soil_and_land
+  supports: &id001
+  - soil
+  - field survey
+business_questions_supported:
+- What insights does stg_s4a_field_surveys provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_s4a_field_surveys`
+- Always include LIMIT
+columns:
+- name: plot_code
+  type: STRING
+  description: plot code
+- name: plot_id
+  type: STRING
+  description: plot id
+- name: country_code
+  type: STRING
+  description: country code
+- name: survey_date
+  type: STRING
+  description: survey date
+- name: altitude
+  type: STRING
+  description: altitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: tsu_id
+  type: STRING
+  description: tsu id
+- name: obstruction_layer
+  type: STRING
+  description: obstruction layer
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: soil_and_land
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_isric_africa_soil
+    'on':
+    - latitude
+    - longitude
+    how: validate
+    note: Field plots vs ISRIC grids
+  - table: stg_isda_soil_enriched
+    'on':
+    - latitude
+    - longitude
+    how: validate
+    note: Field plots vs iSDA
+  companions:
+  - table: stg_cifor_icraf
+    when: other plot nutrient surveys
+    role: enrich_context
+  do_not_join:
+  - table: stg_faostat_prices
+    reason: national prices

@@ -1,0 +1,29 @@
+﻿flowchart TB
+  START([node_bq_retrieve]) --> DEC{ranking follow-up?}
+
+  DEC -->|yes| CACHE["reuse ranked_rows<br/>bq_cache_hit=true"]
+  CACHE --> MERGE([merge])
+
+  DEC -->|no| REASON["ontology-scoped reasoner<br/>e.g. Yield element not Production"]
+  REASON --> RET[BQRetriever.retrieve]
+  RET --> TPL[SQL templates]
+  RET --> NL2[NL2SQL LLM]
+  RET --> VAL[bq_sql_validate]
+  RET --> EXEC[BigQuery execute]
+  TPL --> ENRICH
+  NL2 --> ENRICH
+  VAL --> ENRICH
+  EXEC --> ENRICH[enrich_bq_results]
+
+  ENRICH --> SEM[resolve_row_semantics]
+  ENRICH --> RANK[consolidate ranked_table]
+  ENRICH --> STAMP[_stamp_acf_metadata]
+  ENRICH --> TREND[maybe_attach_ranking_trend]
+
+  SEM --> TRIM
+  RANK --> TRIM
+  STAMP --> TRIM
+  TREND --> TRIM[trim_bq_result_contents]
+
+  TRIM --> SAVE[cache_entry_from_bq_results]
+  SAVE --> MERGE

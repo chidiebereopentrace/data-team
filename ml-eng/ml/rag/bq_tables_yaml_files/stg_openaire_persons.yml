@@ -1,0 +1,71 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_openaire_persons
+description: OpenAIRE persons.
+grain: entity row
+entity_type: research
+source:
+  layer: staging_dev
+  domain: research
+relationships:
+  primary_key:
+    type: logical
+    fields: entity row
+semantic_role:
+  primary_domain: research
+  supports: &id001
+  - research
+  - openaire
+business_questions_supported:
+- What insights does stg_openaire_persons provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Query only `opentrace-prod-5ga4.staging_dev.stg_openaire_persons`
+- Always include LIMIT
+columns:
+- name: person_id
+  type: STRING
+  description: person id
+- name: given_name
+  type: STRING
+  description: given name
+- name: family_name
+  type: STRING
+  description: family name
+- name: biography
+  type: STRING
+  description: biography
+- name: coauthor_count
+  type: STRING
+  description: coauthor count
+- name: fetched_at
+  type: STRING
+  description: fetched at
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: research
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_openaire_product_links
+    'on':
+    - person links
+    how: enrich
+    note: People with products
+  - table: stg_openaire_organisations
+    'on':
+    - affiliation via graph
+    how: enrich
+    note: People with orgs
+  - table: stg_openaire_projects
+    'on':
+    - participation via graph
+    how: enrich
+    note: People with projects
+  companions: []
+  do_not_join:
+  - table: stg_wfp_vampire_prices
+    reason: market prices

@@ -284,3 +284,96 @@ def test_bq_row_with_prior_value_scores() -> None:
     # With one claim we expect a real score path
     claims = adapt_cited_claims([item])
     assert len(claims) == 1
+
+
+def test_context_ranked_table_bq_with_stamped_metadata() -> None:
+    item = {
+        "content": "ranked table prose",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "bq_enrichment": "ranked_table",
+            "as_of_date": "2020-01-01",
+            "year": 2020,
+            "metric": "Physical crop/livestock production output",
+            "unit": "tonnes",
+            "direction": "increasing",
+            "value": 120.0,
+            "prior_value": 100.0,
+            "magnitude": 20.0,
+            "coverage_strength": 1.0,
+            "geo_country_primary": "Nigeria",
+            "geo_countries": "Nigeria",
+            "ranked_rows": [
+                {
+                    "rank": 1,
+                    "label": "Nigeria",
+                    "value": 120.0,
+                    "unit": "tonnes",
+                    "measure_label": "Production",
+                }
+            ],
+            "sql": (
+                "SELECT country_name, SUM(value) AS total "
+                "FROM `proj.staging_dev.stg_faostat_production` "
+                "WHERE year = 2020 AND element = 'Production'"
+            ),
+        },
+    }
+    record = context_item_to_acf_record(item)
+    assert record is not None
+    assert record["as_of_date"] == "2020-01-01"
+    assert record["geo_scope"] == ["Nigeria"]
+    assert record["direction"] == "increasing"
+    assert record["metric"] != "general"
+    claims = adapt_cited_claims([item])
+    assert len(claims) == 1
+    acf = score_cited_evidence(
+        [item],
+        query="Which country had the best agricultural activity in 2020?",
+        reference_date=date(2021, 1, 1),
+    )
+    assert acf.band != "no_evidence"
+
+
+def test_adapt_country_level_bq_without_region() -> None:
+    item = {
+        "content": "Ghana rice production 973000 t in 2020",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "country_name": "Ghana",
+            "product_name": "Rice",
+            "element": "Production",
+            "year": 2020,
+            "value": 973000,
+            "unit": "t",
+            "direction": "unknown",
+            "geo_country_primary": "Ghana",
+            "geo_countries": "Ghana",
+            "as_of_date": "2020-01-01",
+            "tier": 2,
+            "sql": "SELECT * FROM `proj.staging_dev.stg_faostat_production`",
+        },
+    }
+    claims = adapt_cited_claims([item])
+    assert len(claims) == 1
+
+
+def test_adapt_subnational_bq_with_region_uses_from_row() -> None:
+    item = {
+        "content": "Northern Ghana IPC phase 3",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "region": "Northern",
+            "country_name": "Ghana",
+            "year": 2024,
+            "value": 3,
+            "as_of_date": "2024-06-01",
+            "geo_country_primary": "Ghana",
+            "sql": "SELECT * FROM `proj.staging_dev.stg_fews_ipc`",
+        },
+    }
+    claims = adapt_cited_claims([item])
+    assert len(claims) == 1

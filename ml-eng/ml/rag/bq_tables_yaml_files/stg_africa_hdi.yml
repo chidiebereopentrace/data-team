@@ -1,0 +1,76 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_africa_hdi
+description: Africa Human Development Index by country and year.
+grain: country × year
+entity_type: socio_economic
+source:
+  layer: staging_dev
+  domain: socio_economic
+relationships:
+  primary_key:
+    type: logical
+    fields: country × year
+semantic_role:
+  primary_domain: socio_economic
+  supports: &id001
+  - hdi
+  - development
+business_questions_supported:
+- How has HDI changed for a country?
+filtering_guidance:
+- Filter by geography and time when present
+- country holds country labels only — never filter country = 'Africa'
+- Use only when the question asks for HDI/development; do not join as an Africa country list for production rankings
+sql_generation_hints:
+- Filter country_code and year
+- Never invent warehouse dimension tables (dim_*)
+columns:
+- name: country
+  type: STRING
+  description: Country name only. Never 'Africa' or a region label.
+- name: country_code
+  type: STRING
+  description: country code
+- name: year
+  type: INT64
+  description: year
+- name: hdi_value
+  type: FLOAT64
+  description: hdi value
+  sql_aggregation: avg
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: socio_economic
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_africa_gdp_ppp
+    'on':
+    - country_code
+    - year≈observation_year
+    how: enrich
+    note: HDI with income
+  - table: stg_faostat_population_employment
+    'on':
+    - country≈country_name
+    - year
+    how: enrich
+    note: HDI with employment
+  - table: stg_faostat_sdg_hdi
+    'on':
+    - country≈country_name
+    - year
+    how: compare
+    note: Parallel development indicators
+  companions:
+  - table: stg_climatewatch_health
+    when: health/climate development stress
+    role: enrich_context
+  do_not_join:
+  - table: stg_ilri_vegetation_feed
+    reason: plot vegetation surveys
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims / country lists for unrelated rankings

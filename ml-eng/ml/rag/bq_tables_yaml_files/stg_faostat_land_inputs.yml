@@ -1,0 +1,461 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_land_inputs
+description: >
+  FAOSTAT land use/cover, fertilizers, pesticides, manure, nutrient balance,
+  and related bioenergy inputs. Rows are country-level facts (not continent
+  aggregates). Filter by exact item + element + unit; never invent labels.
+  Do not SUM across unrelated item families (land vs fertilizer vs pesticide
+  vs manure vs bioenergy) in one query.
+grain: country × item × element × year
+entity_type: faostat
+source:
+  layer: staging_dev
+  domain: faostat
+relationships:
+  primary_key:
+    type: logical
+    fields: country × item × element × year
+semantic_role:
+  primary_domain: faostat
+  supports: &id001
+  - land
+  - fertilizer
+  - faostat
+business_questions_supported:
+- What is fertilizer use by country?
+- What is agricultural land / cropland / arable land area?
+- What is pesticide use (total or by class)?
+- What is nutrient nitrogen / phosphate / potash use or cropland nutrient intensity?
+filtering_guidance:
+- Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa' or a region
+- For continental/Africa rankings stay on this table; do not join a geo dimension
+- This table mixes land use/cover, fertilizer nutrients, pesticides, livestock/manure N, nutrient balance, and bioenergy — filter item+element to one family
+- Never SUM across unrelated item families in one query
+- Filter element to exactly one metric; never SUM across different elements
+- Always interpret value with the matching unit; never SUM across unlike units
+- Prefer headline items for generic questions: Nutrient nitrogen N (total) / Nutrient phosphate P2O5 (total) / Nutrient potash K2O (total) or Mineral fertilizers with Agricultural Use; land → Agricultural land / Cropland / Arable land; pesticides → Pesticides (total) unless a class is named
+- Prefer primary items over rollups (Agriculture, Input, Outputs, Major livestock types, All Animals, Pesticides (total)) unless totals are asked
+- Pesticide labels may differ by hyphen vs en-dash (Herbicides - nes vs Herbicides – Carbamates) — use the exact sample string
+- Filter year for time-bounded questions
+sql_generation_hints:
+- Filter country_name and year
+- Always filter element = '<exact label>' for the metric needed
+- Filter item = '<exact FAOSTAT label>' when a land class, nutrient, pesticide, or livestock item is named
+- GROUP BY country_name, item, year when comparing
+- Prefer element = 'Agricultural Use' for fertilizer/pesticide use; prefer element = 'Area' (or share elements) for land extent
+- Never invent warehouse dimension tables (dim_*)
+columns:
+- name: area_code
+  type: STRING
+  description: FAO area code
+- name: area_code_m49
+  type: STRING
+  description: UN M49 area code for the country row (not a continent filter key)
+- name: country_name
+  type: STRING
+  description: Country name only (e.g. Nigeria, Kenya). Never 'Africa' or a region label.
+- name: partner_country_code
+  type: STRING
+  description: partner country code (when populated)
+- name: partner_country_code_m49
+  type: STRING
+  description: partner country code m49 (when populated)
+- name: partner_countries
+  type: STRING
+  description: partner countries (when populated)
+- name: item_code
+  type: STRING
+  description: item code
+- name: item_code_cpc
+  type: STRING
+  description: item code cpc
+- name: item
+  type: STRING
+  description: >
+    FAOSTAT land/inputs item (land class, fertilizer, pesticide, livestock,
+    nutrient-balance flow, or bioenergy). Filter with an exact item. Prefer
+    primary items over rollups. Never invent labels. Do not SUM primary rows
+    with aggregate rollups together.
+
+    Family rules:
+    Livestock — Cattle, dairy/non-dairy, Sheep, Goats, Swine*, Chickens*,
+    Poultry Birds, Buffalo, Equidae, Major livestock types, All Animals.
+    Fertilizers / nutrients — Nutrient nitrogen N / phosphate P2O5 / potash K2O
+    (total), Mineral fertilizers, Urea, DAP, MAP, NPK, MOP/SOP, other N/P/K
+    compounds and n.e.c. fertilizers.
+    Pesticides — Pesticides (total), Insecticides/Herbicides/Fungicides/
+    Rodenticides classes and actives, Hazardous pesticides, Plant Growth
+    Regulators. Watch hyphen vs en-dash spelling in samples.
+    Land use/cover — Agricultural land, Cropland, Arable land, Forest land,
+    meadows/pastures, irrigation/organic/tillage variants, Country area, etc.
+    Nutrient-balance flows — Leaching, Volatilisation, Atmospheric deposition,
+    Crop harvest/residue removal, Biological fixation, Manure applied, Input,
+    Outputs, Nutrient balance.
+    Bioenergy / fuels — Solid/liquid/gaseous biofuels, Fuelwood, Charcoal,
+    Bagasse, Total Bioenergy.
+    Waters — Inland/coastal waters, EEZ, aquaculture/capture-fisheries uses.
+- name: months_code
+  type: STRING
+  description: months code (when populated)
+- name: months
+  type: STRING
+  description: months (when populated)
+- name: element_code
+  type: STRING
+  description: element code
+- name: element
+  type: STRING
+  description: >
+    Metric type for the row's value. Filter with an exact element (one metric
+    per query). Do not mix elements in the same SUM/AVG. Always read value
+    together with unit.
+
+    Family rules:
+    Area / shares — Area, Area per capita, Share in Land/Cropland/Agricultural/
+    Forest land, Area from CGLS/CCI_LC/MODIS/WorldCover, Standard Deviation.
+    Use / production / trade — Agricultural Use, Production, Import/Export
+    quantity or value, Use per capita / per cropland area / per Ag production.
+    Manure N pathways — Amount excreted, Manure applied to soils, left on
+    pasture, management/losses, leach/volatilise variants (N content).
+    Cropland nutrients — Cropland nitrogen/phosphorus/potassium (level, per
+    unit area, use efficiency); nutrient trade in tonnes N/P/K.
+    Energy — Energy production, Energy consumption.
+    Livestock density — Stocks, Share in total livestock, LSU per ag land area.
+    Other — Carbon stock in living biomass, Temperature change, Value of
+    agricultural production (Int. $) per Area.
+
+    Defaults: fertilizer/pesticide use → Agricultural Use; land extent → Area
+    (or share elements when asked).
+- name: year
+  type: INT64
+  description: Observation year
+- name: unit
+  type: STRING
+  description: >
+    Unit of value for this element. Always interpret value with element + unit;
+    never compare or SUM unlike units.
+
+    1000 ha — land area in thousand hectares.
+    t / million t / kg — mass quantities.
+    kg/ha / kg/cap / LSU/ha / ha/cap — intensities and densities.
+    % / %LSU — shares.
+    LSU / An — livestock units / animal counts.
+    TJ — energy.
+    1000 USD / USD_PPP/ha / g/Int$ — money or productivity ratios.
+    °C — temperature change.
+- name: value
+  type: FLOAT64
+  description: >
+    Numeric measure for the element. SUM across items/years only when element
+    and unit are homogeneous. Never SUM across different elements or unlike units.
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+item_value_samples:
+- Goats
+- "Swine / pigs"
+- Swine
+- "Chickens, layers"
+- Fungicides and Bactericides
+- Other Pesticides nes
+- "Insecticides (excl. Haz. pest.)"
+- Urea
+- "Calcium ammonium nitrate (CAN) and other mixtures with calcium carbonate"
+- "Ammonia, anhydrous"
+- Superphosphates above 35%
+- "Other potassic fertilizers, n.e.c."
+- "Diammonium phosphate (DAP)"
+- "Monoammonium phosphate (MAP)"
+- Leaching
+- Manure applied
+- Agricultural land
+- Permanent meadows and pastures
+- "Artificial surfaces (including urban and associated areas)"
+- Mangroves
+- Grassland
+- "Cattle, non-dairy"
+- Rodenticides
+- Antimalarial insecticides
+- Temporary fallow
+- Other land
+- Coastal water bodies and intertidal areas
+- "Ethylene dibromide (1,2-dibromoethane)"
+- "Oxirane (ethylene oxide)"
+- "Compounds of mercury chemically defined, excluding amalgams"
+- "DDT (clofenotane (INN))"
+- Woody crops
+- "Insecticides – Chlorinated Hydrocarbons"
+- "Herbicides – Carbamates"
+- Herbicides - nes
+- "Fung & Bact – Triazoles, diazoles"
+- Cropland area under protective cover
+- Binapacryl
+- Land area actually irrigated
+- Pentachlorophenol
+- Other NK compounds
+- Cropland area actually irrigated
+- Chlordimeform
+- Azinphos-methyl
+- Endosulfan
+- Coastal waters used for capture fisheries
+- Cropland area under conservation tillage
+- "Rodenticides – Cyanide Generators"
+- EEZ used for capture fisheries
+- Inland waters used for aquac. or holding facilities
+- "Chickens, broilers"
+- Chickens
+- Ducks
+- Horses
+- Herbicides
+- Cattle and Buffaloes
+- Camels and Llamas
+- Equidae
+- "Nutrient potash K2O (total)"
+- Ammonium sulphate
+- "Other nitrogenous fertilizers, n.e.c."
+- Phosphate rock
+- "Other phosphatic fertilizers, n.e.c."
+- Other NP compounds
+- Input
+- Nutrient balance
+- Mineral fertilizers
+- Solid biofuels
+- Land area
+- Agriculture
+- Agriculture area actually irrigated
+- Temporary crops
+- Forest land
+- "Perm. meadows & pastures - Cultivated"
+- "Perm. meadows & pastures - Nat. growing"
+- Agriculture area under organic agric.
+- Land used for aquaculture
+- Terrestrial barren land
+- Sheep
+- Charcoal
+- Ethylene dichloride
+- "DDT, Hexachlorobenzene"
+- Animal waste
+- "Perm. meadows & pastures area certified organic"
+- "Rodenticides – Other"
+- Biogases
+- Farm buildings and Farmyards
+- "Herbicides – Sulfonyl ureas"
+- "Fluoroacetamide, monocrotophos & phosphamidon"
+- Black liquor
+- Alachlor
+- Coastal waters
+- Inland waters used for capture fisheries
+- "Fung & Bact - Biopesticides"
+- "Rodenticides – Hypercalcaemics"
+- Herbicides - Biopesticides
+- Cropland area under zero or no tillage
+- Cropland area under conventional tillage
+- Coastal waters used for aquac. or holding facilities
+- "Swine, market"
+- Insecticides
+- Fungicides
+- "Fungicides (excl. Haz. pest.)"
+- "Disinfectants, etc (excl. Haz. pest.)"
+- Cattle
+- Mules and Asses
+- Poultry Birds
+- "Nutrient nitrogen N (total)"
+- "Ammonium nitrate (AN)"
+- Sodium nitrate
+- "Superphosphates, other"
+- "Potassium chloride (muriate of potash) (MOP)"
+- "Potassium sulphate (sulphate of potash) (SOP)"
+- Fertilizers n.e.c.
+- Atmospheric deposition
+- Outputs
+- Volatilisation
+- Fuelwood
+- Total Bioenergy
+- Temporary meadows and pastures
+- Land area equipped for irrigation
+- Primary Forest
+- Naturally regenerating forest
+- Herbaceous crops
+- Shrub-covered areas
+- "Shrubs and/or herbaceous vegetation, aquatic or regularly flooded"
+- Sparsely natural vegetated areas
+- "Cattle, dairy"
+- "Fung & Bact - nes"
+- "Herbicides (excl. Haz. pest.)"
+- Bagasse
+- Other vegetal material and residues
+- Chlorobenzilate
+- Insecticides - Biopesticides
+- Insecticides - nes
+- "Rodenticides – Anti-coagulants"
+- "Herbicides – Bipiridils"
+- "Fung & Bact – Diazines, morpholines"
+- Gaseous biofuels
+- Cropland area under organic agric.
+- Dinoseb and its salts
+- "Herbicides – Triazines"
+- "Herbicides – Dinitroanilines"
+- Tributyltin compounds
+- "Herbicides – Phenoxy hormone products"
+- "Herbicides – Amides"
+- Salts of Pentachlorophenol
+- "Herbicides – Uracil"
+- "Aldrin, Chlordane, Heptachlor"
+- Dieldrin
+- "Perm. meadows & pastures area actually irrig."
+- "Swine, breeding"
+- Turkeys
+- Asses
+- Mules and hinnies
+- Camels
+- Plant Growth Regulators
+- "Pesticides (total)"
+- "Disinfectants, etc"
+- Hazardous pesticides
+- Sheep and Goats
+- Major livestock types
+- All Animals
+- "Nutrient phosphate P2O5 (total)"
+- "Urea and ammonium nitrate solutions (UAN)"
+- NPK fertilizers
+- Potassium nitrate
+- PK compounds
+- Crop harvest removal
+- Biological fixation
+- Seed
+- Crop residue removal
+- Country area
+- Cropland
+- Arable land
+- Permanent crops
+- Planted Forest
+- Tree-covered areas
+- Permanent snow and glaciers
+- Inland water bodies
+- "Fung & Bact – Inorganics"
+- Mercury compounds etc. excl. amalgams
+- "2,4,5-T and its salts and esters"
+- "Parathion & parathion-methyl"
+- "Aldicarb, captafol & methamidophos"
+- Inland waters
+- "Insecticides – Organo-phosphates"
+- "Insecticides – Carbamates"
+- "Insecticides – Pyrethroids"
+- "Herbicides – Urea derivates"
+- "Fung & Bact – Dithiocarbamates"
+- "Fung & Bact – Benzimidazoles"
+- Dinoseb acetate
+- Cropland area certified organic
+- Agriculture area certified organic
+- Biogasoline
+- Liquid biofuels
+- DNOC and its salts
+- "HCH (mixed isomers) / Lindane"
+- "Exclusive Economic Zone (EEZ)"
+- Buffalo
+- "Perm. meadows & pastures area under organic agric."
+- "Rodenticides – Narcotics"
+- Forestry area actually irrigated
+- Other liquid biofuels
+element_value_samples:
+- Stocks
+- "Manure management (manure treated, N content)"
+- "Losses from manure treated (N content)"
+- Use per capita
+- Export quantity
+- "Import quantity (tonnes N)"
+- "Export quantity (tonnes N)"
+- Cropland phosphorus per unit area
+- Cropland phosphorus
+- Cropland phosphorus use efficiency
+- Share in Land area
+- Share in Cropland
+- Area from CGLS
+- "Manure left on pasture (N content)"
+- Share in total livestock
+- Livestock units per agricultural land area
+- "Manure applied to soils that volatilises (N content)"
+- "Manure left on pasture that leaches (N content)"
+- "Manure left on pasture that volatilises (N content)"
+- Agricultural Use
+- Import value
+- Import quantity
+- Production
+- Cropland nitrogen
+- Energy production
+- Energy consumption
+- Share in Agricultural land
+- Area per capita
+- Area from CCI_LC
+- Standard Deviation
+- "Manure applied to soils that leaches (N content)"
+- "Amount excreted in manure (N content)"
+- "Manure applied to soils (N content)"
+- Use per value of agricultural production
+- "Import quantity (tonnes K)"
+- "Export quantity (tonnes K)"
+- Cropland potassium
+- "Value of agricultural production (Int. $) per Area"
+- Area from MODIS
+- Area from WorldCover
+- Temperature change
+- Use per area of cropland
+- Export value
+- "Export quantity (tonnes P)"
+- "Import quantity (tonnes P)"
+- Cropland nitrogen per unit area
+- Cropland potassium per unit area
+- Cropland potassium use efficiency
+- Cropland nitrogen use efficiency
+- Area
+- Carbon stock in living biomass
+- Share in Forest land
+unit_value_samples:
+- "°C"
+- "LSU/ha"
+- "kg/cap"
+- "kg/ha"
+- "g/Int$"
+- "%"
+- "ha/cap"
+- An
+- TJ
+- "USD_PPP/ha"
+- kg
+- LSU
+- million t
+- "%LSU"
+- t
+- 1000 USD
+- 1000 ha
+_index_domain: faostat
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_faostat_production
+    'on':
+    - country_name
+    - year
+    how: enrich
+    note: Inputs vs production
+  - table: stg_faostat_emissions
+    'on':
+    - country_name
+    - year
+    how: enrich
+    note: Fertilizer/land-use vs emissions
+  - table: stg_isric_africa_soil
+    'on':
+    - country via spatial
+    how: enrich
+    note: Soil constraints (spatial join caution)
+  companions:
+  - table: stg_unccd_land_degradation
+    when: degradation pressure
+    role: enrich_context
+  do_not_join:
+  - table: stg_ilri_vendor_consumer
+    reason: survey microdata

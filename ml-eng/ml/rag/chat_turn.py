@@ -1,9 +1,9 @@
 """
 Shared chat execution entrypoint (execute_chat_turn) with durable server-side session
-memory (summary + recent turns + category) backed by Redis when configured.
+memory (summary + recent turns + profile) backed by Redis when configured.
 
-The facade in session_store.py provides the shared persistence; this module owns only
-the category validation + memory folding logic on top of the blobs.
+The facade in session_store.py provides the shared persistence; this module owns
+memory folding and plan/category/country continuity on top of the blobs.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from typing import Any
 
 from ml.rag.chatbot.chat_history import normalize_messages
 from ml.rag.chatbot.chat_memory import append_turn_and_compact, flat_messages_to_memory
+from ml.rag.chatbot.plan_policy import allows_export, is_valid_plan_type
 from ml.rag.chatbot.stakeholder_prompts import is_valid_category
 from ml.rag.observability import flush_langfuse, get_current_trace_id, rag_trace_context
 from ml.rag.session_store import get_session_blob, save_session_blob
@@ -28,60 +29,105 @@ class ChatTurnResult:
     pipeline_error: str | None = None
     raw_result: dict[str, Any] | None = None
     langfuse_trace_id: str | None = None
+    session_found: bool = False
 
 
 def _empty_session_blob() -> dict[str, Any]:
     """Default shape for a fresh session blob (internal)."""
-    return {"conversation_summary": "", "recent_turns": [], "category": None}
+    return {
+        "conversation_summary": "",
+        "recent_turns": [],
+        "category": None,
+        "plan_type": None,
+        "country": None,
+        "last_structured_ranking": None,
+    }
 
 
-def create_session(category: str) -> str:
+def create_session(category: str, *, plan_type: str | None = None, country: str | None = None) -> str:
     if not is_valid_category(category):
         raise ValueError("invalid category")
     sid = uuid.uuid4().hex
     blob = _empty_session_blob()
     blob["category"] = category.strip()
+    if plan_type and is_valid_plan_type(plan_type):
+        blob["plan_type"] = plan_type.strip()
+    if country and str(country).strip():
+        blob["country"] = str(country).strip()
     save_session_blob(sid, blob)
     return sid
 
 
-def _resolve_prior_and_category(
+def _blob_str(blob: dict[str, Any], key: str) -> str | None:
+    raw = blob.get(key)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
+def _resolve_prior_and_profile(
     session_id: str | None,
     conversation_history: list[dict[str, str]] | None,
     explicit_category: str | None,
-) -> tuple[str, str, list[dict[str, str]], str | None]:
+    explicit_plan_type: str | None,
+    explicit_country: str | None,
+) -> tuple[str, str, list[dict[str, str]], str | None, str | None, str | None, bool]:
     """
-    Returns (session_id, conversation_summary, recent_turns, category_for_rag).
+    Returns (session_id, summary, recent_turns, category, plan_type, country, session_found).
+    Explicit request fields win; otherwise fall back to the session blob.
+    session_found is False when conversation_history is supplied (server session is
+    not used as memory) or when no blob exists for the id.
     """
     if conversation_history is not None:
         sid = (session_id or "").strip() or uuid.uuid4().hex
         raw_msgs = list(conversation_history)
         prior = normalize_messages(raw_msgs)
         summary, recent = flat_messages_to_memory(prior)
-        cat: str | None = None
-        if explicit_category and is_valid_category(explicit_category):
-            cat = explicit_category.strip()
-        elif (session_id or "").strip():
-            blob = get_session_blob((session_id or "").strip()) or _empty_session_blob()
-            raw = blob.get("category")
-            if isinstance(raw, str) and is_valid_category(raw):
-                cat = raw.strip()
-        return sid, summary, recent, cat
+        sid_key = (session_id or "").strip()
+        blob = (get_session_blob(sid_key) or _empty_session_blob()) if sid_key else _empty_session_blob()
+        session_found = False
+    else:
+        sid = (session_id or "").strip() or uuid.uuid4().hex
+        loaded = get_session_blob(sid)
+        session_found = loaded is not None
+        blob = loaded or _empty_session_blob()
+        summary = str(blob.get("conversation_summary") or "")
+        recent = normalize_messages(blob.get("recent_turns"))
 
-    sid = (session_id or "").strip() or uuid.uuid4().hex
-    blob = get_session_blob(sid) or _empty_session_blob()
-    summary = str(blob.get("conversation_summary") or "")
-    recent = normalize_messages(blob.get("recent_turns"))
-    blob_cat = blob.get("category")
-    cat = None
-    if explicit_category is not None and is_valid_category(explicit_category):
+    cat: str | None = None
+    if explicit_category and is_valid_category(explicit_category):
         cat = explicit_category.strip()
-    elif isinstance(blob_cat, str) and is_valid_category(blob_cat):
-        cat = blob_cat.strip()
-    return sid, summary, recent, cat
+    else:
+        blob_cat = _blob_str(blob, "category")
+        if blob_cat and is_valid_category(blob_cat):
+            cat = blob_cat
+
+    plan: str | None = None
+    if explicit_plan_type and is_valid_plan_type(explicit_plan_type):
+        plan = explicit_plan_type.strip()
+    else:
+        blob_plan = _blob_str(blob, "plan_type")
+        if blob_plan and is_valid_plan_type(blob_plan):
+            plan = blob_plan
+
+    country: str | None = None
+    if explicit_country and str(explicit_country).strip():
+        country = str(explicit_country).strip()
+    else:
+        country = _blob_str(blob, "country")
+
+    return sid, summary, recent, cat, plan, country, session_found
 
 
-def persist_session_turn(session_id: str, user_msg: str, assistant_msg: str) -> None:
+def persist_session_turn(
+    session_id: str,
+    user_msg: str,
+    assistant_msg: str,
+    *,
+    category: str | None = None,
+    plan_type: str | None = None,
+    country: str | None = None,
+) -> None:
     blob = get_session_blob(session_id) or _empty_session_blob()
     summary, recent = append_turn_and_compact(
         str(blob.get("conversation_summary") or ""),
@@ -89,11 +135,25 @@ def persist_session_turn(session_id: str, user_msg: str, assistant_msg: str) -> 
         user_msg,
         assistant_msg,
     )
+    new_cat = blob.get("category")
+    if category and is_valid_category(category):
+        new_cat = category.strip()
+    new_plan = blob.get("plan_type")
+    if plan_type and is_valid_plan_type(plan_type):
+        new_plan = plan_type.strip()
+    new_country = blob.get("country")
+    if country and str(country).strip():
+        new_country = str(country).strip()
+
     new_blob: dict[str, Any] = {
         "conversation_summary": summary,
         "recent_turns": recent,
-        "category": blob.get("category"),
+        "category": new_cat,
+        "plan_type": new_plan,
+        "country": new_country,
     }
+    if blob.get("last_structured_ranking") is not None:
+        new_blob["last_structured_ranking"] = blob["last_structured_ranking"]
     save_session_blob(session_id, new_blob)
 
 
@@ -113,27 +173,44 @@ def execute_chat_turn(
     """
     Run one user query through run_rag with optional server session memory.
 
-    plan_type and category are resolved by the caller from user_profile.
+    plan_type and category are resolved from args / user_profile, with session blob fallback.
     When chat_history is set, server session is not updated unless persist_to_session
     is True and chat_history is absent.
     """
     history = chat_history if chat_history is not None else conversation_history
-    sid, prior_summary, prior_recent, cat = _resolve_prior_and_category(
-        session_id, history, category
+    profile = user_profile if isinstance(user_profile, dict) else {}
+    explicit_cat = category or (str(profile.get("category") or "").strip() or None)
+    explicit_plan = plan_type or (str(profile.get("plan_type") or "").strip() or None)
+    explicit_country = str(profile.get("country") or "").strip() or None
+
+    sid, prior_summary, prior_recent, cat, plan, country, session_found = _resolve_prior_and_profile(
+        session_id,
+        history,
+        explicit_cat,
+        explicit_plan,
+        explicit_country,
     )
 
     kwargs: dict[str, Any] = dict(rag_kwargs)
     if prior_summary.strip() or prior_recent:
         kwargs["conversation_summary"] = prior_summary
         kwargs["recent_turns"] = prior_recent
-    if plan_type:
-        kwargs["plan_type"] = plan_type
+    if plan:
+        kwargs["plan_type"] = plan
     if cat:
         kwargs["category"] = cat
-    if user_profile is not None:
+    # Always pass a profile dict when any lens field is known (geo + tone continuity).
+    if plan or cat or country:
+        kwargs["user_profile"] = {
+            "country": country,
+            "plan_type": plan,
+            "category": cat,
+        }
+    elif user_profile is not None:
         kwargs["user_profile"] = user_profile
     kwargs["session_id"] = sid
     kwargs["trace_tags"] = ["chat"]
+    kwargs.setdefault("export_enabled", allows_export(plan))
 
     from ml.rag.chatbot.graph import run_rag  # defer heavy graph / torch imports
 
@@ -141,7 +218,7 @@ def execute_chat_turn(
         trace_name="rag.chat_turn",
         session_id=sid,
         user_id=user_id,
-        plan_type=plan_type,
+        plan_type=plan,
         category=cat,
         trace_input={"query": query[:500]},
         tags=["chat"],
@@ -158,7 +235,19 @@ def execute_chat_turn(
         err_s = None
 
     if persist_to_session and history is None:
-        persist_session_turn(sid, query.strip(), answer)
+        cache = result.get("structured_ranking_cache")
+        if isinstance(cache, dict):
+            blob = get_session_blob(sid) or _empty_session_blob()
+            blob["last_structured_ranking"] = cache
+            save_session_blob(sid, blob)
+        persist_session_turn(
+            sid,
+            query.strip(),
+            answer,
+            category=cat,
+            plan_type=plan,
+            country=country,
+        )
 
     raw_citations = result.get("citations")
     citations = list(raw_citations) if isinstance(raw_citations, list) else []
@@ -176,4 +265,5 @@ def execute_chat_turn(
         pipeline_error=err_s,
         raw_result=dict(result),
         langfuse_trace_id=langfuse_trace_id,
+        session_found=session_found,
     )

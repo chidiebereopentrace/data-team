@@ -7,14 +7,21 @@
 # Build from ml-eng/ (Railway root directory should be ml-eng):
 #   docker build -f Dockerfile.railway -t opentrace-rag-railway:latest .
 #
-# Railway secrets (minimum):
+# Railway secrets (minimum — see deploy/PRODUCTION_ENV.md):
 #   RAG_LLM_BASE_URL=https://openrouter.ai/api/v1
 #   RAG_LLM_API_KEY=<OPENROUTER_API_KEY>
-#   RAG_LLM_MODEL_ID=openrouter/owl-alpha
-#   No HF_API_TOKEN needed for embeddings (models baked into image via fastembed)
-#   QDRANT_URL, QDRANT_API_KEY, BQ_PROJECT, BQ_DATASET_BRONZE
+#   RAG_LLM_MODEL_ID=qwen/qwen3-30b-a3b-instruct-2507
+#   QDRANT_URL, QDRANT_API_KEY
+#   QDRANT_COLLECTION_NEWS=news_data
+#   QDRANT_COLLECTION_ACADEMIC_PAPERS=academic_papers
+#   QDRANT_COLLECTION_POLICIES=policies
+#   QDRANT_COLLECTION_PUBLIC_REPORTS=public_reports
+#   QDRANT_COLLECTION_FORMATION=formation
+#   QDRANT_COLLECTION_OTA_INSIGHTS=OTA_insights
+#   BQ_PROJECT, BQ_DATASET_SILVER=staging_dev
 #   GOOGLE_APPLICATION_CREDENTIALS_BASE64 (base64 of GCP service account JSON)
-# Do NOT set RAG_LLM_BASE_URL to a local/LAN IP. Remove HF-only router vars if using OpenRouter.
+#   RAG_RERANKER_MODE=cross_encoder, RAG_RERANKER_MODEL=BAAI/bge-reranker-base
+# Do NOT set RAG_LLM_BASE_URL to a local/LAN IP. Remove QDRANT_COLLECTION_DATA_DESCRIPTIONS.
 
 FROM python:3.11-slim
 
@@ -23,6 +30,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -31,8 +39,10 @@ WORKDIR /app
 COPY requirements.railway.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code + Railway entrypoint (GCP SA decode/validate)
 COPY ml ./ml
+COPY scripts/railway-entrypoint.sh /app/scripts/railway-entrypoint.sh
+RUN chmod +x /app/scripts/railway-entrypoint.sh
 # Note: config/ is not copied - Railway uses environment variables only
 
 # Set Python path and unbuffer output for Railway logs
@@ -47,9 +57,16 @@ ENV RAG_QDRANT_HYBRID_SEARCH=on
 ENV RAG_SPARSE_MODEL=Qdrant/bm25
 ENV RAG_EMBEDDING_MODEL_ID=intfloat/multilingual-e5-small
 
-# Bake embedding models into the image (avoids Hub download on first user query)
+# Bake embedding + cross-encoder rerank models into the image (avoids Hub download on first query)
 RUN mkdir -p /app/models/fastembed \
-    && python -c "from ml.rag.dense_embeddings import warmup_dense_model; from ml.rag.sparse_embeddings import warmup_sparse_model; warmup_dense_model('intfloat/multilingual-e5-small'); warmup_sparse_model(); print('Embedding models cached in image')"
+    && python -c "\
+from ml.rag.dense_embeddings import warmup_dense_model; \
+from ml.rag.sparse_embeddings import warmup_sparse_model; \
+from ml.rag.chatbot.reranker import _load_cross_encoder; \
+warmup_dense_model('intfloat/multilingual-e5-small'); \
+warmup_sparse_model(); \
+_load_cross_encoder('BAAI/bge-reranker-base'); \
+print('Embedding and rerank models cached in image')"
 
 # Health check for Railway
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
@@ -59,5 +76,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ENV PORT=7860
 EXPOSE $PORT
 
-# Startup with GCP credential handling
-CMD ["sh", "-c", "if [ -n \"$GOOGLE_APPLICATION_CREDENTIALS_BASE64\" ]; then echo \"$GOOGLE_APPLICATION_CREDENTIALS_BASE64\" | base64 -d > /tmp/gcp-sa-key.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa-key.json && echo 'GCP credentials configured'; fi && echo '=== Starting RAG API ===' && uvicorn ml.rag.api:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# Validate GCP SA (fail closed) then start API. Do not set GOOGLE_APPLICATION_CREDENTIALS
+# to a stale path like /tmp/gcp-sa.json in Railway — entrypoint overwrites to /tmp/gcp-sa-key.json.
+ENTRYPOINT ["/app/scripts/railway-entrypoint.sh"]
+CMD ["sh", "-c", "echo '=== Starting RAG API ===' && uvicorn ml.rag.api:app --host 0.0.0.0 --port ${PORT:-7860}"]

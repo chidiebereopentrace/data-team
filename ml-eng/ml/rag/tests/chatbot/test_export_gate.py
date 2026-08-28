@@ -29,3 +29,40 @@ def test_node_export_no_intent() -> None:
     out = node_export({"export_enabled": True, "answer": "Hello"})
     assert out["artifacts"] == []
     assert "answer" not in out
+
+
+def test_node_export_skips_csv_when_bq_prep_fails() -> None:
+    answer = "no accurate CSV export can be generated from OpenTrace sources"
+    out = node_export(
+        {
+            "export_intent": "csv",
+            "export_enabled": True,
+            "plan_type": "Agribusinesses",
+            "query": (
+                "Compare maize production in Kenya and Nigeria over the last five years, "
+                "and give me a CSV export of the figures."
+            ),
+            "answer": answer,
+            "bq_results": [
+                {
+                    "source": "bigquery",
+                    "content": (
+                        "[BQ no_valid_sql: All SQL attempts failed validation or execution]"
+                    ),
+                    "metadata": {
+                        "status": "no_valid_sql",
+                        "prep_error": (
+                            "All SQL attempts failed validation or execution; "
+                            "model=deepseek/deepseek-v4-flash-0731"
+                        ),
+                        "validation_failed": True,
+                    },
+                }
+            ],
+            "citations": [],
+        }
+    )
+    assert out["artifacts"] == []
+    merged = out.get("answer") or answer
+    assert "Downloadable files" not in merged
+    assert "prep_error" not in merged

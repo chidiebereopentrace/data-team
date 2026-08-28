@@ -1,0 +1,10 @@
+﻿flowchart TB
+  vectorResults[vector_*_results] --> mergeNode[merge<br/>corpus labels]
+  bqResults[bq_results] --> mergeNode
+  mergeNode --> mergedContext[merged_context]
+  mergedContext --> rerankNode[rerank<br/>cross-encoder]
+  rerankNode --> pinBq["pin BQ for fact / analytical"]
+  pinBq --> rerankedContext[reranked_context]
+  rerankedContext --> next{next}
+  next -->|enough context| generate[generate]
+  next -->|weak + web on| webFallback[web_fallback]

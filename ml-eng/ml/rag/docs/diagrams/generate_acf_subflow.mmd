@@ -1,0 +1,14 @@
+﻿flowchart TB
+  START([generate]) --> PACK["pack vector+BQ context<br/>Source N blocks"]
+  PACK --> LLM["LLM answer<br/>personas + recency tier<br/>inline N footnotes"]
+  LLM --> STRIP[_strip_invalid_citation_markers]
+  STRIP --> REF[referenced_citations]
+  REF --> SCORE[score_cited_evidence Path B]
+
+  SCORE --> ACF1[context_item_to_acf_record]
+  SCORE --> ACF2[adapt_cited_claims to score_evidence]
+  SCORE --> ACF3[acf_signal_from_result to API acf]
+
+  ACF1 --> OUT([answer + citations + acf])
+  ACF2 --> OUT
+  ACF3 --> OUT

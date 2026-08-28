@@ -1,3 +1,82 @@
-# Auto-generated from dbt/models/sources.yml (source: mart_dev)
-# Override: set BQ_GOLD_TABLES or edit this file for a smaller subset.
-_placeholder
+# Auto-generated from dbt/models/mart_dev (DPL-044 final schema).
+# All tables in the mart_dev (Gold) layer.
+
+# ── CORE DIMENSIONS ───────────────────────────────────────────────────────
+dim_geography
+dim_time
+dim_season
+dim_source
+dim_unit
+dim_organisation
+dim_product
+dim_livestock
+dim_audit
+
+# ── SECONDARY DIMENSIONS ──────────────────────────────────────────────────
+dim_disease
+dim_pest
+dim_technology
+dim_person
+dim_market
+dim_scenario
+dim_classification
+dim_production_system
+dim_farm_practice
+dim_soil
+dim_emission_category
+dim_land_use
+dim_indicator
+dim_status
+dim_trade_flow
+dim_breed_variety
+dim_sensor
+dim_research_project
+dim_water
+dim_currency
+
+# ── BRIDGE TABLES ─────────────────────────────────────────────────────────
+bridge_household_crop
+bridge_household_livestock
+bridge_household_disease
+bridge_season_calendar
+bridge_project_organisation
+bridge_geography_aez
+
+# ── FACT TABLES ───────────────────────────────────────────────────────────
+fct_food_security
+fct_production
+fct_prices
+fct_trade
+fct_animal_health
+fct_household
+fct_gender_inclusion
+fct_emissions
+fct_climate
+fct_soil_health
+fct_hdi
+fct_technology
+fct_vegetation
+fct_market_access
+fct_economics
+fct_investment
+fct_researchers
+fct_research_expenditure
+fct_land_use
+fct_land_degradation
+fct_fertilizer
+fct_pesticide
+fct_air_quality
+fct_biodiversity
+fct_protected_areas
+fct_germplasm
+fct_food_balance
+fct_value_chain
+fct_forestry
+fct_machinery
+fct_employment
+fct_population_dynamics
+fct_humanitarian
+
+# ── AGGREGATES ────────────────────────────────────────────────────────────
+agg_food_security_monthly
+agg_production_annual

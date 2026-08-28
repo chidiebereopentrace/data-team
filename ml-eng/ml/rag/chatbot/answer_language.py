@@ -2,111 +2,165 @@
 Detect user query language and produce generation instructions that mirror it.
 
 Language affects answer prompts only — never translate the query before E5 retrieve.
-Soft tags: en | non_en | ar | am | mixed. Generation uses a language-agnostic mirror
-instruction (Igbo, Yoruba, Twi, Efik, Swahili, French, Hausa, Portuguese, Arabic,
-Amharic, Nigerian Pidgin, code-mix) without requiring a tag per language.
+Named tags: en | sw | fr | pcm | ar | am | ig | yo | ha | pt | tw | efi | zu | xh | so | wo | rw | mixed | unknown.
 """
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
+from functools import lru_cache
 from typing import Final
 
-AnswerLang = str  # en | non_en | ar | am | mixed
+AnswerLang = str
 
 _ARABIC_RE = re.compile(r"[\u0600-\u06FF]")
 _AMHARIC_RE = re.compile(r"[\u1200-\u137F]")
 _TOKEN_RE = re.compile(r"[a-zA-ZÀ-ÿ']+")
 
-# High-precision markers → non_en (not separate generation tags).
-_NON_EN_MARKERS: Final[frozenset[str]] = frozenset(
-    {
-        # Swahili
-        "habari",
-        "asante",
-        "tafadhali",
-        "nini",
-        "nani",
-        "wapi",
-        "mazao",
-        "kilimo",
-        "chakula",
-        "maendeleo",
-        "jina",
-        "lako",
-        "wewe",
-        "mahindi",
-        "mvua",
-        "ukame",
-        # French
-        "bonjour",
-        "merci",
-        "comment",
-        "pourquoi",
-        "récolte",
-        "recolte",
-        "sécheresse",
-        "secheresse",
-        "rendement",
-        "maïs",
-        "données",
-        "donnees",
-        "alimentaire",
-        "pouvez",
-        # Hausa
-        "sannu",
-        "yaya",
-        "noma",
-        "hatsi",
-        "masara",
-        "shinkafa",
-        "menene",
-        "yaushe",
-        # Portuguese
-        "olá",
-        "ola",
-        "obrigado",
-        "obrigada",
-        "você",
-        "voce",
-        "colheita",
-        "produção",
-        "producao",
-        "também",
-        "tambem",
-        # Nigerian Pidgin (strong only)
-        "wetin",
-        "dey",
-        "abi",
-        "una",
-        "wahala",
-        "abeg",
-        "sabi",
-        "comot",
-        "pikin",
-        "oyibo",
-        # Igbo
-        "kedu",
-        "biko",
-        "ndewo",
-        "dalụ",
-        "dalu",
-        "ịmeela",
-        "imeela",
-        # Yoruba (ascii folds)
-        "bawo",
-        "jowo",
-        "ekabo",
-        "pele",
-        # Twi
-        "medaase",
-        "medaasepa",
-        "woho",
-        # Efik
-        "mbọk",
-        "mbok",
-    }
+# Display names for client-facing language-help responses.
+SUPPORTED_ANSWER_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
+    ("en", "English"),
+    ("sw", "Swahili"),
+    ("fr", "French"),
+    ("pcm", "Nigerian Pidgin"),
+    ("ar", "Arabic"),
+    ("am", "Amharic"),
+    ("ig", "Igbo"),
+    ("yo", "Yoruba"),
+    ("ha", "Hausa"),
+    ("pt", "Portuguese"),
+    ("tw", "Twi"),
+    ("efi", "Efik"),
+    ("zu", "Zulu"),
+    ("xh", "Xhosa"),
+    ("so", "Somali"),
+    ("wo", "Wolof"),
+    ("rw", "Kinyarwanda"),
+    ("mixed", "Code-mixed (user's mix)"),
 )
+
+_LANG_DISPLAY: Final[dict[str, str]] = {code: name for code, name in SUPPORTED_ANSWER_LANGUAGES}
+
+# Marker tokens → named language codes (high precision).
+_MARKER_LANG: Final[dict[str, str]] = {
+    # Swahili
+    "habari": "sw",
+    "asante": "sw",
+    "tafadhali": "sw",
+    "nini": "sw",
+    "nani": "sw",
+    "wapi": "sw",
+    "mazao": "sw",
+    "kilimo": "sw",
+    "chakula": "sw",
+    "maendeleo": "sw",
+    "jina": "sw",
+    "lako": "sw",
+    "wewe": "sw",
+    "mahindi": "sw",
+    "mvua": "sw",
+    "ukame": "sw",
+    # French
+    "bonjour": "fr",
+    "merci": "fr",
+    "comment": "fr",
+    "pourquoi": "fr",
+    "récolte": "fr",
+    "recolte": "fr",
+    "sécheresse": "fr",
+    "secheresse": "fr",
+    "rendement": "fr",
+    "maïs": "fr",
+    "données": "fr",
+    "donnees": "fr",
+    "alimentaire": "fr",
+    "pouvez": "fr",
+    # Hausa
+    "sannu": "ha",
+    "yaya": "ha",
+    "noma": "ha",
+    "hatsi": "ha",
+    "masara": "ha",
+    "shinkafa": "ha",
+    "menene": "ha",
+    "yaushe": "ha",
+    # Portuguese
+    "olá": "pt",
+    "ola": "pt",
+    "obrigado": "pt",
+    "obrigada": "pt",
+    "você": "pt",
+    "voce": "pt",
+    "colheita": "pt",
+    "produção": "pt",
+    "producao": "pt",
+    "também": "pt",
+    "tambem": "pt",
+    # Nigerian Pidgin
+    "wetin": "pcm",
+    "dey": "pcm",
+    "abi": "pcm",
+    "una": "pcm",
+    "wahala": "pcm",
+    "abeg": "pcm",
+    "sabi": "pcm",
+    "comot": "pcm",
+    "pikin": "pcm",
+    "oyibo": "pcm",
+    # Igbo
+    "kedu": "ig",
+    "biko": "ig",
+    "ndewo": "ig",
+    "dalụ": "ig",
+    "dalu": "ig",
+    "ịmeela": "ig",
+    "imeela": "ig",
+    "obodo": "ig",
+    "ako": "ig",
+    # Yoruba
+    "bawo": "yo",
+    "jowo": "yo",
+    "ekabo": "yo",
+    "pele": "yo",
+    # Twi
+    "medaase": "tw",
+    "medaasepa": "tw",
+    "woho": "tw",
+    # Efik
+    "mbọk": "efi",
+    "mbok": "efi",
+    # Zulu
+    "sawubona": "zu",
+    "ngiyabonga": "zu",
+    "unjani": "zu",
+    "yebo": "zu",
+    "ukulima": "zu",
+    "ukudla": "zu",
+    # Xhosa
+    "molo": "xh",
+    "enkosi": "xh",
+    "kunjani": "xh",
+    "ukutya": "xh",
+    # Somali
+    "salaan": "so",
+    "mahadsanid": "so",
+    "sidee": "so",
+    "beeraha": "so",
+    "cunto": "so",
+    # Wolof
+    "salaamalekum": "wo",
+    "jërëjëf": "wo",
+    "jerejef": "wo",
+    # Kinyarwanda
+    "muraho": "rw",
+    "murakoze": "rw",
+    "amakuru": "rw",
+    "ubuhinzi": "rw",
+    "ibiribwa": "rw",
+}
+
+_NON_EN_MARKERS: Final[frozenset[str]] = frozenset(_MARKER_LANG.keys())
 
 _PCM_PHRASE_RE = re.compile(
     r"\b(?:wetin\s+be|who\s+you\s+be|wetin\s+your\s+name|how\s+far|abeg\s+|una\s+dey|e\s+dey)\b",
@@ -125,7 +179,8 @@ _SW_PHRASE_RE = re.compile(
     re.IGNORECASE,
 )
 _IG_PHRASE_RE = re.compile(
-    r"\b(?:kedu|biko|ndewo|onye\s+ị\s+bụ|onye\s+i\s+bu|gịnị\s+ka|gini\s+ka)\b",
+    r"\b(?:kedu|biko|ndewo|onye\s+ị\s+bụ|onye\s+i\s+bu|gịnị\s+ka|gini\s+ka|"
+    r"obodo|kacha)\b",
     re.IGNORECASE,
 )
 _YO_PHRASE_RE = re.compile(
@@ -134,6 +189,34 @@ _YO_PHRASE_RE = re.compile(
 )
 _TWI_PHRASE_RE = re.compile(
     r"\b(?:medaase|wo\s+ho\s+te\s+s[ɛe]n|yɛ\s+fr[ɛe]|wo\s+din\s+de)\b",
+    re.IGNORECASE,
+)
+_HA_PHRASE_RE = re.compile(
+    r"\b(?:sannu|menene|yaushe|ina\s+aiki)\b",
+    re.IGNORECASE,
+)
+_PT_PHRASE_RE = re.compile(
+    r"\b(?:olá|ola|obrigad[oa]|você|voce|colheita|produção|producao)\b",
+    re.IGNORECASE,
+)
+_ZU_PHRASE_RE = re.compile(
+    r"\b(?:sawubona|ngiyabonga|unjani|ukulima|ukudla)\b",
+    re.IGNORECASE,
+)
+_XH_PHRASE_RE = re.compile(
+    r"\b(?:molo|enkosi|kunjani|ukutya)\b",
+    re.IGNORECASE,
+)
+_SO_PHRASE_RE = re.compile(
+    r"\b(?:salaan|mahadsanid|sidee|beeraha|cunto)\b",
+    re.IGNORECASE,
+)
+_WO_PHRASE_RE = re.compile(
+    r"\b(?:salaamalekum|j[eë]r[eë]j[eë]f|jerejef|nanga\s+def)\b",
+    re.IGNORECASE,
+)
+_RW_PHRASE_RE = re.compile(
+    r"\b(?:muraho|murakoze|amakuru|ubuhinzi|ibiribwa)\b",
     re.IGNORECASE,
 )
 
@@ -171,8 +254,19 @@ _EN_INSTRUCTION = (
 _MIRROR_INSTRUCTION = (
     "Answer in the same language as the user question. This includes African and regional "
     "languages such as Igbo, Yoruba, Twi, Efik, Swahili, French, Hausa, Portuguese, Arabic, "
-    "Amharic, and Nigerian Pidgin, as well as code-mixing when that is how they wrote. "
+    "Amharic, Zulu, Xhosa, Somali, Wolof, Kinyarwanda, and Nigerian Pidgin, as well as "
+    "code-mixing when that is how they wrote. "
     "Keep citation footnote numbers [N], numbers, and proper nouns faithful. "
+    "Do not switch to English unless the user wrote in English. "
+    "Avoid academic hedges unless the context explicitly supports the qualification."
+)
+
+_MIRROR_INSTRUCTION_NO_INLINE = (
+    "Answer in the same language as the user question. This includes African and regional "
+    "languages such as Igbo, Yoruba, Twi, Efik, Swahili, French, Hausa, Portuguese, Arabic, "
+    "Amharic, Zulu, Xhosa, Somali, Wolof, Kinyarwanda, and Nigerian Pidgin, as well as "
+    "code-mixing when that is how they wrote. "
+    "Keep numbers and proper nouns faithful; do not insert [N] or [Source N] footnote markers. "
     "Do not switch to English unless the user wrote in English. "
     "Avoid academic hedges unless the context explicitly supports the qualification."
 )
@@ -214,7 +308,6 @@ _INSUFFICIENT: Final[dict[str, str]] = {
         "هل يمكنك إعادة الصياغة أو تضييق البلد أو الفترة الزمنية أو طرح سؤال ذي صلة يمكنني "
         "تثبيته في المصادر المتاحة؟"
     ),
-    # Amharic via unicode escapes (avoid encoding corruption in source edits).
     "am": (
         "\u12a0\u1201\u1295 \u1260\u12a5\u122d\u130d\u1320\u1295\u1290\u1275 "
         "\u1208\u1218\u1218\u1208\u1235 \u1260\u1242 \u12a0\u1235\u1270\u121b\u121b\u129d "
@@ -224,13 +317,66 @@ _INSUFFICIENT: Final[dict[str, str]] = {
         "\u12a0\u120b\u1218\u1323\u121d \u12a5\u1293 \u1208\u12da\u1205 "
         "\u1325\u12eb\u1244 \u1270\u1328\u121b\u122a \u12e8\u12f5\u122d "
         "\u134d\u1208\u130b \u12a0\u120d\u1270\u1308\u1298\u121d\u1362 "
-        "\u12a5\u1263\u12ad\u12ce \u12a5\u1295\u12f0\u1308\u1293 \u12ed\u133b\u1349\u1363 "
+        "\u12a5\u1263\u12ab\u12ce \u12a5\u1295\u12f0\u1308\u1293 \u12ed\u133b\u1349\u1363 "
         "\u12a0\u1308\u122d \u12c8\u12ed\u121d \u130a\u12dc \u12ed\u1308\u12f5\u1261\u1363 "
         "\u12c8\u12ed\u121d \u1260\u121a\u1308\u1299 \u121d\u1295\u132e\u127d "
         "\u120b\u12ed \u120d\u1218\u1230\u122d\u1275 \u12e8\u121d\u127d\u120d "
         "\u1270\u12db\u121b\u1305 \u1325\u12eb\u1244 \u12ed\u1320\u12ed\u1241\u1362"
     ),
 }
+
+
+_log = logging.getLogger(__name__)
+
+_COMMONLINGUA_TO_ADZA: Final[dict[str, str]] = {
+    "eng": "en",
+    "swh": "sw", "swa": "sw",
+    "fra": "fr",
+    "pcm": "pcm",
+    "ara": "ar", "arb": "ar",
+    "amh": "am",
+    "ibo": "ig",
+    "yor": "yo",
+    "hau": "ha",
+    "por": "pt",
+    "twi": "tw", "aka": "tw",
+    "efi": "efi",
+    "zul": "zu",
+    "xho": "xh",
+    "som": "so",
+    "wol": "wo",
+    "kin": "rw",
+}
+
+_COMMONLINGUA_CONFIDENCE_THRESHOLD: Final[float] = 0.6
+_COMMONLINGUA_MIN_CHARS: Final[int] = 12
+
+
+@lru_cache(maxsize=1)
+def _load_commonlingua():
+    from commonlid import classify
+    classify("warmup")
+    return classify
+
+
+def _commonlingua_detect(text: str) -> str | None:
+    if len(text) < _COMMONLINGUA_MIN_CHARS:
+        return None
+    try:
+        classify = _load_commonlingua()
+        result = classify(text, model_id="commonlingua")
+        if not result:
+            return None
+        code, confidence = result[0]
+        if confidence < _COMMONLINGUA_CONFIDENCE_THRESHOLD:
+            return None
+        adza = _COMMONLINGUA_TO_ADZA.get(code)
+        if adza == "en":
+            return None
+        return adza
+    except Exception:
+        _log.debug("CommonLingua unavailable, falling back to regex-only", exc_info=True)
+        return None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -252,17 +398,53 @@ def _accent_density(text: str) -> float:
     return non_ascii / len(letters)
 
 
-def _marker_hits(tokens: list[str]) -> int:
-    folded = {_ascii_fold(t) for t in tokens}
-    folded |= set(tokens)
-    return sum(1 for t in folded if t in _NON_EN_MARKERS or _ascii_fold(t) in _NON_EN_MARKERS)
+def _phrase_lang(text: str) -> str | None:
+    if _PCM_PHRASE_RE.search(text):
+        return "pcm"
+    if _FR_PHRASE_RE.search(text):
+        return "fr"
+    if _SW_PHRASE_RE.search(text):
+        return "sw"
+    if _IG_PHRASE_RE.search(text):
+        return "ig"
+    if _YO_PHRASE_RE.search(text):
+        return "yo"
+    if _TWI_PHRASE_RE.search(text):
+        return "tw"
+    if _HA_PHRASE_RE.search(text):
+        return "ha"
+    if _PT_PHRASE_RE.search(text):
+        return "pt"
+    if _ZU_PHRASE_RE.search(text):
+        return "zu"
+    if _XH_PHRASE_RE.search(text):
+        return "xh"
+    if _SO_PHRASE_RE.search(text):
+        return "so"
+    if _WO_PHRASE_RE.search(text):
+        return "wo"
+    if _RW_PHRASE_RE.search(text):
+        return "rw"
+    return None
+
+
+def _marker_lang_votes(tokens: list[str]) -> dict[str, int]:
+    votes: dict[str, int] = {}
+    for t in tokens:
+        folded = _ascii_fold(t)
+        for key in (t, folded):
+            code = _MARKER_LANG.get(key)
+            if code:
+                votes[code] = votes.get(code, 0) + 1
+                break
+    return votes
 
 
 def detect_answer_language(query: str) -> AnswerLang:
     """
-    Soft language tag for routing (static English skip / mirror vs English).
+    Named language tag for routing and generation.
 
-    Returns one of: en, non_en, ar, am, mixed.
+    Returns one of: en, sw, fr, pcm, ar, am, ig, yo, ha, pt, tw, efi, zu, xh, so, wo, rw, mixed, unknown.
     """
     text = (query or "").strip()
     if not text:
@@ -273,29 +455,33 @@ def detect_answer_language(query: str) -> AnswerLang:
     if _ARABIC_RE.search(text):
         return "ar"
 
-    strong_phrase = bool(
-        _PCM_PHRASE_RE.search(text)
-        or _FR_PHRASE_RE.search(text)
-        or _SW_PHRASE_RE.search(text)
-        or _IG_PHRASE_RE.search(text)
-        or _YO_PHRASE_RE.search(text)
-        or _TWI_PHRASE_RE.search(text)
-    )
-
+    phrase = _phrase_lang(text)
     tokens = _tokenize(text)
-    hits = _marker_hits(tokens)
+    votes = _marker_lang_votes(tokens)
+    hit_count = sum(votes.values())
     accents = _accent_density(text)
     en_hits = sum(1 for t in tokens if t in _EN_FUNCTION)
 
-    non_en_signal = strong_phrase or hits >= 2 or accents >= 0.08
+    named: str | None = phrase
+    if votes:
+        top_code = max(votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        if named is None or votes.get(named, 0) < votes[top_code]:
+            named = top_code
+        elif named in votes and votes[named] == votes[top_code]:
+            named = named  # phrase wins ties
+
+    non_en_signal = named is not None or hit_count >= 2 or accents >= 0.08
 
     if not non_en_signal:
-        return "en"
+        return _commonlingua_detect(text) or "en"
 
-    if en_hits >= 2 and (hits >= 1 or strong_phrase):
+    if en_hits >= 2 and (hit_count >= 1 or phrase is not None):
         return "mixed"
 
-    return "non_en"
+    if named:
+        return named
+
+    return _commonlingua_detect(text) or "unknown"
 
 
 def detect_canned_insufficient_lang(query: str) -> str:
@@ -307,31 +493,11 @@ def detect_canned_insufficient_lang(query: str) -> str:
     text = (query or "").strip()
     if not text:
         return "en"
-    if _AMHARIC_RE.search(text):
-        return "am"
-    if _ARABIC_RE.search(text):
-        return "ar"
-    if _PCM_PHRASE_RE.search(text):
-        return "pcm"
-    if _FR_PHRASE_RE.search(text):
-        return "fr"
-    if _SW_PHRASE_RE.search(text):
-        return "sw"
-
-    tokens = _tokenize(text)
-    sw = sum(1 for t in tokens if t in {"habari", "asante", "kilimo", "mazao", "wewe", "jina", "tafadhali"})
-    fr = sum(
-        1
-        for t in tokens
-        if t in {"bonjour", "merci", "comment", "pourquoi", "récolte", "recolte", "sécheresse", "secheresse", "rendement"}
-    )
-    pcm = sum(1 for t in tokens if t in {"wetin", "dey", "abi", "una", "wahala", "abeg", "sabi"})
-    if pcm >= 2:
-        return "pcm"
-    if sw >= 2:
-        return "sw"
-    if fr >= 2:
-        return "fr"
+    tag = detect_answer_language(text)
+    if tag in _INSUFFICIENT:
+        return tag
+    if tag in ("mixed", "unknown", "ig", "yo", "ha", "pt", "tw", "efi", "zu", "xh", "so", "wo", "rw", "non_en"):
+        return "en"
     return "en"
 
 
@@ -339,17 +505,40 @@ def is_english_answer_lang(lang: str) -> bool:
     return (lang or "en").strip().lower() == "en"
 
 
-def language_instruction(lang: str) -> str:
-    """System-prompt addendum: English business prose vs agnostic mirror-user language."""
+def language_instruction(lang: str, *, inline_citations: bool = False) -> str:
+    """System-prompt addendum: English business prose vs named-language mirror."""
+    mirror = _MIRROR_INSTRUCTION if inline_citations else _MIRROR_INSTRUCTION_NO_INLINE
     tag = (lang or "en").strip().lower()
     if tag == "en":
         return _EN_INSTRUCTION
     if tag == "mixed":
         return (
             "The user is code-mixing languages. Mirror their mix; do not force pure English. "
-            + _MIRROR_INSTRUCTION
+            + mirror
         )
-    return _MIRROR_INSTRUCTION
+    if tag == "unknown":
+        return _EN_INSTRUCTION
+    display = _LANG_DISPLAY.get(tag, tag)
+    return (
+        f"Answer in {display} (language code: {tag}). "
+        + mirror
+    )
+
+
+def language_unclear_answer() -> str:
+    """Client message when query language cannot be named definitively."""
+    lines = [
+        "I could not definitively detect the language of your question.",
+        "Please rephrase in one of the languages Ask ADZA supports:",
+    ]
+    for code, name in SUPPORTED_ANSWER_LANGUAGES:
+        if code == "mixed":
+            continue
+        lines.append(f"- {name} ({code})")
+    lines.append(
+        "You may also write in a natural code-mix of these languages."
+    )
+    return "\n".join(lines)
 
 
 def insufficient_context_answer(lang: str = "", *, query: str | None = None) -> str:
@@ -357,21 +546,25 @@ def insufficient_context_answer(lang: str = "", *, query: str | None = None) -> 
     Deterministic insufficient-context message.
 
     Prefer ``query=`` so specialty canned languages (sw/fr/pcm/ar/am) can be inferred.
-    Soft tags ``non_en`` / ``mixed`` fall back to English canned.
+    Soft tags ``non_en`` / ``mixed`` / named langs without canned copy fall back to English.
     """
     if query is not None:
         tag = detect_canned_insufficient_lang(query)
     else:
         tag = (lang or "en").strip().lower()
-        if tag in ("non_en", "mixed", ""):
+        if tag in ("non_en", "mixed", "unknown", ""):
+            tag = "en"
+        elif tag not in _INSUFFICIENT:
             tag = "en"
     return _INSUFFICIENT.get(tag) or _INSUFFICIENT_EN
 
 
 __all__ = [
+    "SUPPORTED_ANSWER_LANGUAGES",
     "detect_answer_language",
     "detect_canned_insufficient_lang",
     "is_english_answer_lang",
     "language_instruction",
+    "language_unclear_answer",
     "insufficient_context_answer",
 ]

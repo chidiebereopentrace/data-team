@@ -1,0 +1,774 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_faostat_trade
+description: >
+  FAOSTAT crop and livestock merchandise trade: import/export quantity and
+  value flows, trade indices (2014-2016 = 100), and trade-structure ratios.
+  Rows are country-level facts (not continent aggregates). Filter by exact
+  product_name + element; never invent labels. Do not SUM quantity with value,
+  or flows with indices/ratios, in one query.
+grain: country × product × element × year
+entity_type: faostat
+source:
+  layer: staging_dev
+  domain: faostat
+relationships:
+  primary_key:
+    type: logical
+    fields: country × product × element × year
+semantic_role:
+  primary_domain: faostat
+  supports: &id001
+  - trade
+  - faostat
+business_questions_supported:
+- What is the import or export quantity of a commodity?
+- What is the import or export value of a commodity?
+- What are trade or unit-value indices for a product?
+- What is the import dependency, self-sufficiency, or agricultural trade openness?
+- Which countries rank highest for trade of a product (single-table ranking)?
+filtering_guidance:
+- Filter by geography and time when present
+- country_name holds country labels only — never filter country_name = 'Africa' or a region
+- For continental/Africa rankings stay on this table; do not invent dim_* geo tables
+- Filter element to exactly one metric; never SUM across different elements
+- Always interpret value with the matching unit; never SUM across unlike units
+- Prefer flow elements for volume/value asks: Import quantity, Export quantity, Import value, Export value (exact sample casing)
+- Prefer index elements (* Index (2014-2016 = 100)) only when indices are asked
+- Prefer ratio elements (Import dependency ratio, Self-sufficiency ratio, Terms of trade, Revealed comparative advantage index, Agricultural trade openness index, Share of agricultural exports to GDP) only when those metrics are asked
+- Prefer primary product_name commodities over rollups (Total Merchandise Trade, Cereals, Food Excluding Fish, Crops and livestock products, Meat and Meat Preparations, Dairy Products, Vegetable Oil and Fat, etc.) unless totals are asked
+- Never SUM primary product rows with aggregate/rollup product rows in the same query
+- Filter year for time-bounded questions
+sql_generation_hints:
+- Filter country_name and year
+- Always filter element = '<exact label>' for the metric needed
+- Filter product_name = '<exact FAOSTAT label>' when a commodity is named
+- GROUP BY country_name, product_name, year when comparing
+- Continental trade ranking: filter element + product_name; SUM(value) GROUP BY country_name ORDER BY total DESC; single-table; no dim_geography
+- Never invent warehouse dimension tables (dim_*)
+columns:
+- name: area_code
+  type: STRING
+  description: FAO area code
+- name: area_code_m49
+  type: STRING
+  description: UN M49 area code for the country row (not a continent filter key)
+- name: country_name
+  type: STRING
+  description: Country name only (e.g. Nigeria, Kenya). Never 'Africa' or a region label.
+- name: item_code
+  type: STRING
+  description: item code
+- name: item_code_cpc
+  type: STRING
+  description: item code cpc
+- name: product_name
+  type: STRING
+  description: >
+    FAOSTAT trade commodity / aggregate label. Filter with an exact
+    product_name. Prefer primary commodities over rollups. Never invent
+    labels. Do not SUM primary rows with aggregate rollups together.
+
+    Family rules:
+    Primary crops — cereals, fruits, vegetables, pulses, oilseeds, sugar
+    crops, roots/tubers, stimulants/spices, fibres.
+    Live animals — Cattle, Sheep, Goats, Swine / pigs, poultry species,
+    camels, equines, bees, other live animals.
+    Meats / offals / preparations — fresh or chilled meats, salted/dried/
+    smoked, sausages, meat meal, meat preparations.
+    Dairy / eggs — milk powders, cheese, butter/ghee, whey, yoghurt, hen
+    eggs and related.
+    Oils / fats / cakes / bran / feed — crude/refined oils, oilseed cakes,
+    bran, compound feed, fodder and feeding stuff.
+    Beverages / processed foods — juices, wine/beer/spirits, sugar
+    confectionery, infant food, food preparations n.e.c.
+    Non-food — hides/skins, wool/hair, rubber, tobacco, textile fibres,
+    waxes, crude materials.
+    Aggregates / rollups — Total Merchandise Trade, Cereals, Food Excluding
+    Fish, Crops and livestock products, Meat and Meat Preparations, Dairy
+    Products, Vegetable Oil and Fat, etc. (use only when totals are asked).
+- name: element_code
+  type: STRING
+  description: element code
+- name: element
+  type: STRING
+  description: >
+    Metric type for the row's value. Filter with an exact element (one metric
+    per query). Do not mix elements in the same SUM/AVG. Always read value
+    together with unit. Use exact sample casing (e.g. Import quantity, not
+    Import Quantity).
+
+    Family rules:
+    Flows — Import quantity; Export quantity; Import value; Export value.
+    Indices (2014-2016 = 100) — Import/Export Quantity Index; Import/Export
+    Value Index; Import/Export Unit/Value Index.
+    Structure ratios — Import dependency ratio; Self-sufficiency ratio;
+    Terms of trade; Revealed comparative advantage index; Agricultural
+    trade openness index; Share of agricultural exports to GDP.
+
+    Defaults: volume → Import quantity or Export quantity; money → Import
+    value or Export value.
+- name: year
+  type: INT64
+  description: Observation year
+- name: unit
+  type: STRING
+  description: >
+    Unit of value for this element. Always interpret value with element + unit;
+    never compare or SUM unlike units.
+
+    t — trade quantity in tonnes.
+    1000 USD — trade value in thousand US dollars.
+    % — ratios, shares, and percentage metrics.
+    An / 1000 An / No — live-animal or count measures.
+- name: value
+  type: FLOAT64
+  description: >
+    Numeric measure for the element. SUM across products/years only when
+    element and unit are homogeneous. Never SUM quantity with value, or flows
+    with indices/ratios, or primary products with aggregate rollups.
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+product_value_samples:
+- Pears
+- Juice of fruits n.e.c.
+- "Meat of cattle with the bone, fresh or chilled"
+- "Rice, milled"
+- "Meat of chickens, fresh or chilled"
+- Oats
+- Fruit and Vegetables
+- Sunflower seed
+- Cheese from whole cow milk
+- Non-food
+- "Other oil of vegetable origin, crude n.e.c."
+- Fruit prepared n.e.c.
+- "Walnuts, shelled"
+- Nuts
+- Cereal preparations
+- "Other stimulant, spice and aromatic crops, n.e.c."
+- Bran of cereals n.e.c.
+- Bovine Meat
+- Infant food
+- "Rapeseed or canola oil, crude"
+- Evaporated & Condensed Milk
+- Beverages
+- Wheat
+- "Skim Milk & Buttermilk, Dry"
+- Rape or colza seed
+- "Coffee, green"
+- "Sunflower-seed oil, crude"
+- Oilseeds
+- Cocoa powder and cake
+- Butter of cow milk
+- Raw milk of cattle
+- hydrogenated oils and fats
+- Lemons and limes
+- Cake of soya beans
+- Fruit
+- Coconut oil
+- Palm oil
+- Grapes
+- Vegetables
+- Copra
+- Peaches and nectarines
+- Oil of castor beans
+- Dairy Products
+- "Chillies and peppers, dry (Capsicum spp., Pimenta spp.), raw"
+- "Coconuts, in shell"
+- "Onions and shallots, dry (excluding dehydrated)"
+- "Whey, dry"
+- Cotton seed
+- "Cocoa butter, fat and oil"
+- Butter and Ghee
+- "Other meat and edible meat offal, salted, in brine, dried or smoked; edible flours and meals of meat or meat offal"
+- "Other meat of mammals, fresh or chilled"
+- Cake of cottonseed
+- Rye
+- "Extracts and juices of meat, fish, crustaceans, molluscs or other aquatic invertebrates"
+- "Skins, goat, dry salted"
+- "Tangerines, mandarins, clementines"
+- "Other live animals, n.e.c."
+- Turkeys
+- "Cereal straw, husks, unprepared, ground, pressed, or in the form of pellets"
+- Flour of pulses
+- Cotton linters
+- Lucerne (alfalfa) meal and pellets
+- Sugar beet
+- Prepared groundnuts
+- Cabbages
+- "Vegetable waxes (other than triglycerides), whether or not refined or coloured"
+- "Sweet corn, frozen"
+- Sugar Crops Primary
+- "Tomatoes, peeled (o/t vinegar)"
+- Grapefruit juice
+- "Other forage products, n.e.c."
+- Other vegetables provisionally preserved
+- "Peas, green"
+- Beet pulp
+- Olives preserved
+- "Chick peas, dry"
+- "Edible offal of pigs, fresh, chilled or frozen"
+- Vermouth and other wine of fresh grapes flavoured with plats or aromatic substances
+- Non-alcoholic Beverages
+- Mushrooms and truffles
+- Figs
+- "Wool, hair waste"
+- Cake of sesame seed
+- Residues of fatty substances
+- "Potatoes, frozen"
+- Ghee from cow milk
+- Flour of rye
+- Flour of maize
+- Vegetables preserved (frozen)
+- Soya sauce
+- "Other beans, green"
+- "Undenatured ethyl alcohol of an alcoholic strength by volume of less than 80% vol; spirits, liqueurs and other spirituous beverages"
+- Mustard seed
+- Cotton waste
+- Food preparations n.e.c.
+- Watermelons
+- Tomato juice
+- Flour of mustard seed
+- Buckwheat
+- "Uncooked pasta, not stuffed or otherwise prepared"
+- Coffee substitutes
+- Animal oils and fats n.e.c.
+- "Hair, carded/combed"
+- "Peas, dry"
+- Bran of maize
+- "Dog or cat food, put up for retail sale"
+- "Refined cane or beet sugar, in solid form, containing added flavouring or colouring matter; maple sugar and maple syrup"
+- Plums and sloes
+- "Other tropical fruits, n.e.c."
+- Homogenized vegetable preparations
+- Brewing or distilling dregs and waste
+- Leather used & waste
+- Kiwi fruit
+- Sweet potatoes
+- "Cow peas, dry"
+- Currants
+- Non-edible Fats and Oils
+- Must of grape
+- Juice of lemon
+- "Bovine meat, salted, dried or smoked"
+- "Meat of geese, fresh or chilled"
+- "Fine animal hair, n.e.c."
+- "Edible offals and liver of geese, fresh, chilled or frozen"
+- Quinces
+- Yams
+- Fat of poultry
+- "Bambara beans, dry"
+- "Abaca, manila hemp, raw"
+- Germ of wheat
+- Fonio
+- "Hides, horse, wet salted"
+- Butter of karite nuts
+- Tapioca of potatoes
+- Soya paste
+- "Forage and silage, alfalfa"
+- "Skins, sheep nes"
+- "Safflower-seed oil, crude"
+- Lard stearine and lard oil
+- Cranberries
+- Potato offals
+- "Skins, karakul"
+- Areca nuts
+- Flour of sorghum
+- "Pulp, waste of fruit for feed"
+- Cake of rice bran
+- Olive residues
+- "Meat of camels, fresh or chilled"
+- "Skins, rabbit"
+- "Skins, pig nes"
+- "Skins, pig, wet salted"
+- Oil of rice bran
+- Total Merchandise Trade
+- "Other live animals non food, n.e.c."
+- "Pig, butcher fat"
+- Jojoba oil
+- Other rodents
+- Rice-fermented beverages
+- Mango pulp
+- Cake of safflowerseed
+- Other camelids
+- Bran of barley
+- Coarse goat hair
+- Flour of buckwheat
+- "Feed, other concentrates nes"
+- "Ramie, raw or retted"
+- Pigmeat (meat equivalent)
+- Animal Fats and Oils (excl. Butter)
+- "Dairy Products, milk equivalent"
+- Tobacco
+- Unmanufactured tobacco
+- Textile Fibres
+- Cocoa beans
+- Vegetables preserved nes (o/t vinegar)
+- "Meat of pig with the bone, fresh or chilled"
+- Olive oil
+- Soya bean oil
+- Meat and Meat Preparations
+- Oil of maize
+- Cocoa paste not defatted
+- Cereals n.e.c.
+- "Meat of sheep, fresh or chilled"
+- Raisins
+- "Other fruit n.e.c., dried"
+- Sugar and Honey
+- Alcoholic Beverages
+- Sesame seed
+- Natural honey
+- Hop cones
+- Maize (corn)
+- Other food
+- "Flax, processed but not spun"
+- Wheat and meslin flour
+- "Beef and Buffalo Meat, primary"
+- Natural rubber in other forms
+- Poultry Meat
+- Cereal preparations total
+- Oil of palm kernel
+- "Cotton lint, ginned"
+- "Flour, meal, powder, flakes, granules and pellets of potatoes"
+- Raw silk (not thrown)
+- "Offals n.e.c. (excluding mammals), fresh, chilled or frozen"
+- Sheep and Goat Meat
+- "Coconuts, desiccated"
+- "Eggs, dried"
+- Sugar and syrups n.e.c.
+- Food Excluding Fish
+- Other Meat
+- Groundnut oil
+- "Pineapples, otherwise prepared or preserved"
+- Tomatoes
+- "Shorn wool, greasy, including fleece-washed shorn wool"
+- "Groundnuts, excluding shelled"
+- Cottonseed oil
+- "Other citrus fruit, n.e.c."
+- Coffee extracts
+- Gluten feed and meal
+- Castor oil seeds
+- "Hides, wet-salted of cattle"
+- Rice
+- Plantains and cooking bananas
+- Horses
+- Goats
+- Rabbits and hares
+- "Communion wafers, empty cachets of a kind suitable for pharmaceutical use, sealing wafers, rice paper and similar products."
+- Whole milk powder
+- "Cotton, carded or combed"
+- "Rice, paddy (rice milled equivalent)"
+- Canned mushrooms
+- Poultry meat preparations
+- "Meat of cattle boneless, fresh or chilled"
+- Processed cheese
+- Coffee husks and skins
+- Breakfast cereals
+- Molasses
+- Germ of maize
+- Cigars and cheroots
+- "Meat of pig boneless, fresh or chilled"
+- "Fruit, nuts, peel, sugar preserved"
+- Fat of pigs
+- "Oats, rolled"
+- "Chestnuts, in shell"
+- Wool grease and lanolin
+- Natural rubber in primary forms
+- Papayas
+- Orange juice
+- "Meat of ducks, fresh or chilled"
+- "Edible offal of cattle, fresh, chilled or frozen"
+- Flour of fruits
+- "Meat of buffalo, fresh or chilled"
+- "Coffee, decaffeinated or roasted"
+- "Other raw skins of other animals, preserved"
+- "Plums, dried"
+- Ice cream and other edible ice
+- Mixes and doughs for the preparation of bakers' wares
+- Pomelos and grapefruits
+- "Beans, dry"
+- "Yoghurt, with additives"
+- Starch of cassava
+- "Skins, wet-salted of calves"
+- Essential oils n.e.c.
+- "Meat of rabbits and hares, fresh or chilled"
+- "Chillies and peppers, green (Capsicum spp. and Pimenta spp.)"
+- "Flax, raw or retted"
+- "Grapefruit juice, concentrated"
+- "Orange juice, concentrated"
+- Feed minerals
+- "Food preparations of flour, meal or malt extract"
+- Peanut butter
+- "Brazil nuts, in shell"
+- Persimmons
+- "Apple juice, concentrated"
+- Flour of cassava
+- "Meat of goat, fresh or chilled"
+- "Cashew nuts, shelled"
+- "Walnuts, in shell"
+- "Broad beans and horse beans, green"
+- "Pigeon peas, dry"
+- Dried mushrooms
+- "Feed, food waste preparations"
+- Kola nuts
+- "Mangoes, guavas and mangosteens"
+- Bran of pulses
+- Olives
+- "Sausages and similar products of meat, offal or blood of beef and veal"
+- "Hides, cattle nes"
+- Maté leaves
+- "Barley, pearled"
+- "Pumpkins, squash and gourds"
+- Melonseed
+- Liver preparations
+- "Cassava, dry"
+- Green corn (maize)
+- Whey cheese
+- "Pyrethrum, dried flowers"
+- "True hemp, raw or retted"
+- "Cassava, fresh"
+- "Cattle fat, unrendered"
+- "Mustard seed oil, crude"
+- Mixed grain
+- Sugar cane
+- "Hair, goat, fine"
+- "Skim milk, condensed"
+- Bulgur
+- Vitamins
+- "Meat of pigeons and other birds n.e.c., fresh, chilled or frozen"
+- Hempseed
+- Yautia
+- "Hides, wet salted nes"
+- "Feed, compound, poultry"
+- "Whey, fresh"
+- "Skins, calve, dry salted"
+- Bran of sorghum
+- "Hair, horse"
+- "Sheep fat, unrendered"
+- "Beer of sorghum, malted"
+- Reconstituted milk
+- "Hides, dry-salted of buffalo"
+- "Hay, non-leguminous"
+- Swedes for fodder
+- Bran of mixed grain
+- Meat meal
+- Vegetable products for feed n.e.c.
+- "Meat, Poultry"
+- Eggs
+- Apples
+- "Pig meat, cuts, salted, dried or smoked (bacon and ham)"
+- Refined sugar
+- Tea leaves
+- "Malt, whether or not roasted"
+- Cheese (All Kinds)
+- Safflower seed
+- Potatoes
+- "Vegetables, dehydrated"
+- Fodder and Feeding Stuff
+- Cereals
+- Fat preparations n.e.c.
+- Crops and livestock products
+- "Wool, degreased or carbonized, not carded or combed"
+- Cake of sunflower seed
+- Dairy Products and Eggs
+- Flour of cereals n.e.c.
+- Linseed
+- "Pepper (Piper spp.), raw"
+- Pulses
+- "Cake, oilseeds nes"
+- Pineapples
+- Dates
+- Yoghurt
+- Soya beans
+- "Groundnuts, shelled"
+- "Pig fat, rendered"
+- Palm kernels
+- Cake of rapeseed
+- "Vanilla, raw"
+- "Flours and meals of oil seeds or oleaginous fruits, except those of mustard"
+- Cake of copra
+- "Agave fibres, raw, n.e.c."
+- "Onions and shallots, green"
+- Bees
+- Asses
+- Buffalo
+- Chickens
+- Ducks
+- Geese
+- Flour of roots and tubers n.e.c.
+- "Buttermilk, curdled and acidified milk"
+- "Other oil seeds, n.e.c."
+- "Vegetables, pulses and potatoes, preserved by vinegar or acetic acid"
+- "Hazelnuts, shelled"
+- "Figs, dried"
+- "Broad beans and horse beans, dry"
+- "Apricots, dried"
+- Glucose and dextrose
+- "Skins, furs"
+- Feed supplements
+- Cider and other fermented beverages
+- "Cashew nuts, in shell"
+- Dairy products n.e.c.
+- Liquid margarine
+- "Anise, badian, coriander, cumin, caraway, fennel and juniper berries, raw"
+- Green garlic
+- "Lentils, dry"
+- Compound feed n.e.c.
+- Asparagus
+- "Coir, raw"
+- Artichokes
+- "Raw hides and skins of sheep or lambs, with wool"
+- Cantaloupes and other melons
+- "Edible offal of sheep, fresh, chilled or frozen"
+- "Whole milk, evaporated"
+- Apple juice
+- "Cream, fresh"
+- Silk-worm cocoons suitable for reeling
+- "Almonds, shelled"
+- Quinoa
+- Flour of rice
+- Beef and veal preparations nes
+- "Cloves (whole stems), raw"
+- Crude organic material n.e.c.
+- "Homogenized cooked fruit, prepared"
+- Margarine and shortening
+- Oil of sesame seed
+- "Nutmeg, mace, cardamoms, raw"
+- "Eggs from other birds in shell, fresh, n.e.c."
+- "Juice of pineapples, concentrated"
+- Carrots and turnips
+- "Other tropical fruit, dried"
+- Beeswax
+- Husked rice
+- Avocados
+- "Brazil nuts, shelled"
+- Other fructose and syrup
+- Cucumbers and gherkins
+- Oil of citronella
+- Spinach
+- Raspberries
+- "Game meat, fresh, chilled or frozen"
+- Poppy seed
+- Flour of mixed grain
+- Grape juice
+- Fatty liver preparations
+- Homogenized meat preparations
+- "Hides, cattle, dry salted"
+- Bran of wheat
+- "Kenaf, and other textile bast fibres, raw or retted"
+- "Skins, wet-salted of sheep"
+- Pyrethrum extract
+- Cocoa husks and shells
+- "Balata, gutta-percha, guayule, chicle and similar natural gums in primary forms or in plates, sheets or strip"
+- "Rice, milled (husked)"
+- Locust beans (carobs)
+- "Peppermint, spearmint"
+- "Edible offals of horses and other equines, fresh, chilled or frozen"
+- Other sugar crops n.e.c.
+- "Cane sugar, non-centrifugal"
+- Sour cherries
+- "Cheese from milk of sheep, fresh or processed"
+- "Buttermilk, dry"
+- Pot barley
+- "Sisal, raw"
+- Flour of millet
+- "Hides, dry-salted of horses"
+- Blueberries
+- "Forage and silage, maize"
+- "Hay for forage, from other crops n.e.c."
+- Cheese from skimmed cow milk
+- Bran of rye
+- Bran of millet
+- Bran of rice
+- Juice of tangerine
+- "Edible roots and tubers with high starch or inulin content, n.e.c., dry"
+- "Skins, goat nes"
+- Butter and ghee of sheep milk
+- Beets for fodder
+- Fat of camels
+- Cake of mustard seed
+- Raw cane or beet sugar (centrifugal only)
+- "Eggs, liquid"
+- Non-edible Crude Materials
+- Crude Materials nes
+- Pastry
+- Cereals and Preparations
+- Chocolate products nes
+- "Beer of barley, malted"
+- "Hen eggs in shell, fresh"
+- "Skim milk, evaporated"
+- Sheep
+- Vegetables frozen
+- Cattle
+- Other pulses n.e.c.
+- Other manufactured tobacco and manufactured tobacco substitutes; 'homogenized' or 'reconstituted' tobacco; tobacco extracts and essences
+- Roots and Tubers
+- Live Animals
+- Meat prepared n.e.c.
+- "Edible roots and tubers with high starch or inulin content, n.e.c., fresh"
+- Other food nes
+- Food wastes
+- Fats and Oils (excluding Butter)
+- Natural Rubber
+- "Sausages and similar products of meat, offal or blood of pig"
+- Vegetable Oil and Fat
+- "Other fruits, n.e.c."
+- "Jute, raw or retted"
+- Wine
+- "Other vegetables, fresh n.e.c."
+- Oil of linseed
+- Barley
+- Skim milk and whey powder
+- Bananas
+- Sugar confectionery
+- Oranges
+- Swine / pigs
+- Tallow
+- Hides and skins
+- Cake of palm kernel
+- "Skins, dry-salted of sheep"
+- Cake of linseed
+- "Horse meat, fresh or chilled"
+- Sorghum
+- Camels
+- Mules and hinnies
+- "Other nuts (excluding wild edible nuts and groundnuts), in shell, n.e.c."
+- Paste of tomatoes
+- "Meat of turkeys, fresh or chilled"
+- "Almonds, in shell"
+- "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils"
+- Lactose
+- Cigarettes
+- "Ginger, raw"
+- "Vegetable products, fresh or dry n.e.c."
+- Pig meat preparations
+- Millet
+- "Whole milk, condensed"
+- "Cinnamon and cinnamon-tree flowers, raw"
+- Other non-alcoholic caloric beverages
+- Cauliflowers and broccoli
+- Leeks and other alliaceous vegetables
+- "Skins, wet-salted of goats"
+- Pineapple juice
+- "Pistachios, in shell"
+- "Flax, tow and waste"
+- Malt extract
+- Apricots
+- Strawberries
+- Skim milk of cows
+- Eggplants (aubergines)
+- "Other fibre crops, raw, n.e.c."
+- "Hazelnuts, in shell"
+- Juice of citrus fruit n.e.c.
+- "Feed, compound, cattle"
+- Cake of groundnuts
+- Prepared nuts
+- "Edible offals and liver of chickens and guinea fowl, fresh, chilled or frozen"
+- "Sweet corn, prepared or preserved"
+- Karite nuts (sheanuts)
+- Bread
+- Canary seed
+- "Extracts, essences and concentrates of tea or mate, and preparations with a basis thereof or with a basis of tea or maté"
+- Industrial monocarboxylic fatty acids; acid oils from refining
+- "Poultry fat, rendered"
+- Triticale
+- "Edible offals and liver of ducks, fresh, chilled or frozen"
+- Tapioca of cassava
+- Other berries and fruits of the genus vaccinium n.e.c.
+- Lettuce and chicory
+- "Lemon juice, concentrated"
+- "Rice, broken"
+- "Whey, condensed"
+- Oil of olive residues
+- Taro
+- Silk waste
+- Cherries
+- Cake of maize
+- "Citrus juice, concentrated n.e.c."
+- "Hides nes, dry salted"
+- Degras
+- Spermaceti
+- Other vegetable juices
+- Gooseberries
+- Barley flour and grits
+- "Wool, shoddy"
+- Flour of fonio
+- Other stone fruits
+- "Hair, coarse nes"
+- Isoglucose
+- Chicory roots
+- Bagasse
+- Okra
+- Vegetables and roots fodder
+- "Hides, wet-salted of camels"
+- Raw milk of sheep
+- "Hides, horse nes"
+- Lupins
+- Oil of tung nuts
+- Juice of mango
+- Bran of fonio
+- Vetches
+- "Kapok fibre, raw"
+- "Cattle, butcher fat"
+- "Feed, compound, pigs"
+- "Skins, calve nes"
+element_value_samples:
+- Import Unit/Value Index (2014-2016 = 100)
+- Import Quantity Index (2014-2016 = 100)
+- Import dependency ratio
+- Share of agricultural exports to GDP
+- Terms of trade
+- Import quantity
+- Import Value Index (2014-2016 = 100)
+- Export Unit/Value Index (2014-2016 = 100)
+- Revealed comparative advantage index
+- Export Value Index (2014-2016 = 100)
+- Export Quantity Index (2014-2016 = 100)
+- Self-sufficiency ratio
+- Agricultural trade openness index
+- Import value
+- Export quantity
+- Export value
+unit_value_samples:
+- "%"
+- 1000 An
+- "No"
+- An
+- 1000 USD
+- t
+_index_domain: faostat
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_faostat_production
+    'on':
+    - country_name
+    - product_name
+    - year
+    how: enrich
+    note: Trade vs domestic production
+  - table: stg_fews_cross_border_trade
+    'on':
+    - country≈country_name
+    - product_name
+    - year
+    how: compare
+    note: FAOSTAT vs FEWS corridor flows
+  - table: stg_faostat_food_balances
+    'on':
+    - country_name
+    - product_name
+    - year
+    how: enrich
+    note: Trade in food balance context
+  companions:
+  - table: stg_faostat_prices
+    when: unit value / price context
+    role: enrich_context
+  do_not_join:
+  - table: stg_nakuru_air_quality
+    reason: local sensors only
+  - table: dim_geography
+    reason: not in staging catalog; never invent geo dims for Africa country lists

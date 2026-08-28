@@ -1,0 +1,82 @@
+table_name: opentrace-prod-5ga4.staging_dev.stg_climatewatch_health
+description: ClimateWatch climate–health impact indicators.
+grain: country × indicator × year × scenario
+entity_type: climate
+source:
+  layer: staging_dev
+  domain: climate
+relationships:
+  primary_key:
+    type: logical
+    fields: country × indicator × year × scenario
+semantic_role:
+  primary_domain: climate
+  supports: &id001
+  - climate
+  - health
+business_questions_supported:
+- What insights does stg_climatewatch_health provide for African agriculture?
+filtering_guidance:
+- Filter by geography and time when present
+sql_generation_hints:
+- Filter scenario and indicator
+columns:
+- name: country_name
+  type: STRING
+  description: country name
+- name: country_code
+  type: STRING
+  description: country code
+- name: model
+  type: STRING
+  description: model
+- name: scenario
+  type: STRING
+  description: scenario
+- name: category
+  type: STRING
+  description: category
+- name: subcategory
+  type: STRING
+  description: subcategory
+- name: indicator
+  type: STRING
+  description: indicator
+- name: unit
+  type: STRING
+  description: unit
+- name: year
+  type: INT64
+  description: year
+- name: value
+  type: FLOAT64
+  description: value
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: STRING
+  description: loaded at
+_index_domain: climate
+_index_tags: *id001
+semantic_relationships:
+  joins_with:
+  - table: stg_africa_hdi
+    'on':
+    - country_code
+    - year
+    how: enrich
+    note: Health impacts with development
+  - table: stg_faostat_sdg_hdi
+    'on':
+    - country_name
+    - year
+    how: enrich
+    note: SDG health/nutrition angles
+  companions:
+  - table: stg_fews_food_security
+    when: food security co-stress
+    role: enrich_context
+  do_not_join:
+  - table: stg_cifor_icraf
+    reason: plot nutrients; not national health scenarios

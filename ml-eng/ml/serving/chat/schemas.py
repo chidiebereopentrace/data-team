@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats, UserProfile
+from ml.rag.session_store import session_ttl_seconds
 
 
 
@@ -134,6 +135,20 @@ class ChatSuccessResponse(BaseModel):
     )
 
     session_id: str
+
+    session_found: bool = Field(
+        False,
+        description=(
+            "True when a prior server-side session blob was loaded for this request "
+            "(Redis / in-memory). False for new sessions, expired/missing ids, or "
+            "when chat_history is supplied (server session is not read)."
+        ),
+    )
+
+    session_ttl_seconds: int = Field(
+        default_factory=session_ttl_seconds,
+        description="Configured server session TTL (RAG_SESSION_TTL_SECONDS, default 604800).",
+    )
 
     usage: UsageStats = Field(default_factory=lambda: UsageStats())
 

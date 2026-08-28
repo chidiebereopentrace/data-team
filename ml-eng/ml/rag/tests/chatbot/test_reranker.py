@@ -116,6 +116,7 @@ def test_cross_encoder_reorders_to_query_relevant_chunk(monkeypatch) -> None:
     """The cross-encoder must lift the most-relevant chunk above the others,
     even when the static source boost would otherwise prefer a different one."""
     items = _sample_items()
+    original_content = {item["_context_kind"]: item["content"] for item in items}
     fake_model = mock.Mock()
     fake_model.predict.return_value = [0.1, 0.95, 0.2]  # news, academic, bq
     monkeypatch.setattr(
@@ -132,6 +133,9 @@ def test_cross_encoder_reorders_to_query_relevant_chunk(monkeypatch) -> None:
         assert "_ce_score_raw" in entry
         assert "_source_boost" in entry
         assert "_rerank_score" in entry
+        kind = entry["_context_kind"]
+        assert entry["content"] == original_content[kind]
+        assert not entry["content"].startswith("[geo=")
 
 
 def test_cross_encoder_normalises_scores_into_unit_range(monkeypatch) -> None:
@@ -324,3 +328,17 @@ def test_openrouter_failure_degrades(monkeypatch) -> None:
 
 def test_empty_context_returns_empty() -> None:
     assert R.rerank("q", [], top_k=5) == []
+
+
+def test_passage_with_metadata_header() -> None:
+    item = {
+        "content": "Maize harvest outlook for Kenya.",
+        "metadata": {
+            "geo_country_primary": "Kenya",
+            "published_at": "2021-03-15",
+            "domains": "food_security",
+        },
+    }
+    text = R._passage_with_metadata(item, "content", 500)
+    assert text.startswith("[geo=Kenya; year=2021; domains=food_security]")
+    assert "Maize harvest" in text
