@@ -15,6 +15,7 @@ from ml.rag.chatbot.acf_scoring import (
 )
 from ml.rag.chatbot.acf_metadata import (
     context_item_to_acf_record,
+    derive_as_of_date,
     derive_tier_and_data_level,
     enrich_acf_payload_fields,
     project_bq_row_acf,
@@ -168,6 +169,34 @@ def test_project_bq_row_acf() -> None:
     assert meta["metric"] == "maize"
     assert "yield_raw_data" in meta["source_id"]
     assert meta["direction"] == "unknown"
+
+
+def test_acf_source_id_includes_source_key() -> None:
+    meta_a = project_bq_row_acf(
+        {
+            "country_name": "Nigeria",
+            "year": 2022,
+            "total_production_qty": 963000000,
+            "source_key": "faostat_production_nga",
+            "sql": "SELECT * FROM `proj.mart_dev.agg_production_annual`",
+        }
+    )
+    meta_b = project_bq_row_acf(
+        {
+            "country_name": "Nigeria",
+            "year": 2022,
+            "total_production_qty": 404000000,
+            "source_key": "other_production_nga",
+            "sql": "SELECT * FROM `proj.mart_dev.agg_production_annual`",
+        }
+    )
+    assert meta_a["source_id"] == "faostat_production_nga"
+    assert meta_b["source_id"] == "other_production_nga"
+    assert meta_a["source_id"] != meta_b["source_id"]
+
+
+def test_derive_as_of_date_from_time_key() -> None:
+    assert derive_as_of_date({"time_key": 2022}) == "2022-01-01"
 
 
 def test_project_bq_row_acf_preserves_warehouse_contract() -> None:

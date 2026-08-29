@@ -101,7 +101,17 @@ _LABEL_KEYS = (
     "product_name",
     "product",
 )
-_RANK_VALUE_KEYS = ("total", "sum_value", "value", "gdp_per_capita_ppp", "hdi_value", "production", "yield")
+_RANK_VALUE_KEYS = (
+    "total",
+    "total_production_qty",
+    "production_qty",
+    "sum_value",
+    "value",
+    "gdp_per_capita_ppp",
+    "hdi_value",
+    "production",
+    "yield",
+)
 
 
 def _s(value: Any) -> str:
@@ -253,12 +263,24 @@ def _resolve_unit(table_id: str, row: dict[str, Any], measure_col: str) -> str:
         return "people"
     if mt == "classification":
         return "IPC classification"
+    prod_unit = _s(row.get("production_unit"))
+    if prod_unit:
+        return prod_unit
     unit = _s(row.get("unit"))
     currency = _s(row.get("currency"))
     if currency and unit:
         return f"{currency}/{unit}"
     if unit:
         return unit
+    if bare in ("fct_production", "agg_production_annual") or "production" in bare:
+        if measure_col in (
+            "total_production_qty",
+            "production_qty",
+            "total",
+            "production",
+            "value",
+        ):
+            return "tonnes"
     if measure_col == "yield":
         return "yield units (see source table)"
     if measure_col == "area":
@@ -294,7 +316,7 @@ def _resolve_measure_label(
         return "Human Development Index score"
     if measure_col == "yield":
         return "Crop yield (productivity per land area)"
-    if measure_col == "production":
+    if measure_col in ("production", "total_production_qty", "production_qty"):
         return "Crop production volume"
     if measure_col == "area":
         return "Harvested or cultivated area"
@@ -672,6 +694,147 @@ def _stamp_acf_metadata(
     return out
 
 
+def _point_fact_canonical_score(raw: dict[str, Any], table_id: str) -> tuple[int, int, int, float]:
+    """Sort key for picking one point-fact row (higher is better)."""
+    bare = table_id.lower()
+    if bare.startswith("fct_"):
+        kind = 3
+    elif bare.startswith("agg_"):
+        kind = 1
+    else:
+        kind = 0
+    tier = raw.get("tier")
+    try:
+        tier_boost = 2 if int(tier) == 2 else (1 if int(tier) == 1 else 0)
+    except (TypeError, ValueError):
+        tier_boost = 0
+    faostat = 1 if "faostat" in _s(raw.get("source_key")).lower() else 0
+    try:
+        record_count = float(raw.get("record_count") or 0)
+    except (TypeError, ValueError):
+        record_count = 0.0
+    return (kind, tier_boost, faostat, record_count)
+
+
+def _consolidate_point_fact_batch(
+    items: list[dict[str, Any]],
+    *,
+    table_id: str,
+    decomposition: dict[str, Any] | None = None,
+    task_mode: str = "",
+) -> dict[str, Any] | None:
+    if len(items) < 2:
+        return None
+    meta0 = dict(items[0].get("metadata") or {})
+    template = _s(meta0.get("template"))
+    if template != "mart_point_fact" and task_mode != "fact_lookup":
+        return None
+    if template != "mart_point_fact":
+        return None
+    sql = _s(meta0.get("sql"))
+    if not sql:
+        return None
+    for item in items[1:]:
+        if _s((item.get("metadata") or {}).get("sql")) != sql:
+            return None
+
+    candidates: list[dict[str, Any]] = []
+    for item in items:
+        raw = _raw_row_from_item(item)
+        semantics = resolve_row_semantics(raw, table_id=table_id, sql=sql)
+        val = semantics.get("measure_value")
+        if val is None:
+            continue
+        try:
+            float(val)
+        except (TypeError, ValueError):
+            continue
+        candidates.append(
+            {
+                "item": item,
+                "raw": raw,
+                "semantics": semantics,
+                "score": _point_fact_canonical_score(raw, table_id),
+            }
+        )
+    if len(candidates) < 1:
+        return None
+
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    winner = candidates[0]
+    head_sem = winner["semantics"]
+
+    numeric_values: list[float] = []
+    alternate_values: list[dict[str, Any]] = []
+    for entry in candidates:
+        try:
+            num = float(entry["semantics"]["measure_value"])
+        except (TypeError, ValueError):
+            continue
+        numeric_values.append(num)
+        alternate_values.append(
+            {
+                "value": num,
+                "source_key": _s(entry["raw"].get("source_key")),
+                "source_name": _s(entry["raw"].get("source_name")),
+            }
+        )
+
+    value_conflict = False
+    if len(numeric_values) >= 2:
+        spread = max(numeric_values) - min(numeric_values)
+        denom = max(abs(max(numeric_values)), 1e-9)
+        if spread / denom > 0.01:
+            value_conflict = True
+
+    out_meta = dict(meta0)
+    out_meta["raw_row"] = winner["raw"]
+    out_meta["value_semantics"] = head_sem
+    out_meta["bq_enrichment"] = "point_fact"
+    for key in (
+        "source_key",
+        "source_name",
+        "tier",
+        "data_level",
+        "place_scope",
+        "metric",
+        "unit",
+        "production_unit",
+        "production_grain",
+        "record_count",
+    ):
+        if winner["raw"].get(key) is not None:
+            out_meta[key] = winner["raw"][key]
+    if table_id:
+        out_meta["table_id"] = table_id
+    if value_conflict:
+        out_meta["value_conflict"] = True
+        out_meta["alternate_values"] = alternate_values
+    out_meta = _stamp_acf_metadata(
+        out_meta,
+        head_sem,
+        sql=sql,
+        decomposition=decomposition,
+        row=winner["raw"],
+    )
+
+    content = format_row_prose(
+        head_sem,
+        sql_source=_s(out_meta.get("sql_source")),
+        template=template,
+        direction=out_meta.get("direction"),
+        magnitude=out_meta.get("magnitude"),
+    )
+    if value_conflict:
+        content += "\nNote: multiple warehouse rows matched this point fact; canonical row selected."
+
+    return {
+        "content": content,
+        "source": "bigquery",
+        "metadata": out_meta,
+    }
+
+
 def _consolidate_ranking_batch(
     items: list[dict[str, Any]],
     *,
@@ -851,6 +1014,15 @@ def enrich_bq_results(
         table_id = _table_from_sql(sql if sql != "__no_sql__" else "")
         if not table_id and selected:
             table_id = selected[0]
+        consolidated = _consolidate_point_fact_batch(
+            group,
+            table_id=table_id,
+            decomposition=dec,
+            task_mode=str(plan.get("task_mode") or "").strip().lower(),
+        )
+        if consolidated:
+            enriched.append(consolidated)
+            continue
         consolidated = _consolidate_ranking_batch(
             group,
             query=query,

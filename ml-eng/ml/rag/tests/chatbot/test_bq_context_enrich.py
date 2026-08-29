@@ -6,6 +6,7 @@ from ml.rag.chatbot.bq_context_enrich import (
     enrich_bq_results,
     format_row_prose,
     resolve_row_semantics,
+    _resolve_unit,
 )
 from ml.rag.chatbot.bq_table_schema_yaml import (
     column_description,
@@ -443,6 +444,74 @@ def test_fct_production_element_semantics() -> None:
     assert sem["unit"] == "tonnes"
     assert sem["geo"] == "ZAF"
     assert "yield" in " ".join(sem["not_this"]).lower()
+
+
+def test_resolve_unit_production_qty_tonnes() -> None:
+    assert (
+        _resolve_unit(
+            "agg_production_annual",
+            {"total_production_qty": 963000000},
+            "total_production_qty",
+        )
+        == "tonnes"
+    )
+
+
+def test_enrich_consolidates_duplicate_point_fact_rows() -> None:
+    sql = (
+        "SELECT country_iso3, product_key, year, total_production_qty, source_key "
+        "FROM `proj.mart_dev.agg_production_annual` "
+        "WHERE country_iso3 = 'NGA' AND year = 2022 LIMIT 1"
+    )
+    items = [
+        _bq_item(
+            {
+                "country_iso3": "NGA",
+                "product_key": "maize",
+                "year": 2022,
+                "total_production_qty": 963000000,
+                "source_key": "other_src",
+                "record_count": 1,
+            },
+            sql=sql,
+            template="mart_point_fact",
+        ),
+        _bq_item(
+            {
+                "country_iso3": "NGA",
+                "product_key": "maize",
+                "year": 2022,
+                "total_production_qty": 404000000,
+                "source_key": "faostat_production_nga",
+                "record_count": 50,
+                "tier": 2,
+            },
+            sql=sql,
+            template="mart_point_fact",
+        ),
+        _bq_item(
+            {
+                "country_iso3": "NGA",
+                "product_key": "maize",
+                "year": 2022,
+                "total_production_qty": 887000000,
+                "source_key": "legacy_src",
+                "record_count": 10,
+            },
+            sql=sql,
+            template="mart_point_fact",
+        ),
+    ]
+    out = enrich_bq_results(
+        items,
+        query="What was maize production in Nigeria in 2022?",
+        plan={"selected_tables": ["agg_production_annual"], "task_mode": "fact_lookup"},
+    )
+    assert len(out) == 1
+    assert out[0]["metadata"].get("bq_enrichment") == "point_fact"
+    assert out[0]["metadata"].get("source_key") == "faostat_production_nga"
+    assert out[0]["metadata"].get("value_conflict") is True
+    assert "tonnes" in out[0]["content"].lower()
 
 
 def test_rank_consolidation_uses_country_iso3() -> None:

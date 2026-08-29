@@ -5,8 +5,10 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.bq_table_schema_yaml import (
+    columns_for_mart_tables,
     discriminator_equality_filters,
     geo_column,
+    load_mart_table_schema,
     match_product_samples,
     measure_columns_mart,
     product_column,
@@ -53,6 +55,12 @@ _MART_PRODUCTION_TABLES = (
     "fct_production",
     "fct_yield",
 )
+# Point facts prefer fct_* (ACF contract + production_grain) over agg rollups.
+_MART_POINT_FACT_PRODUCTION = (
+    "fct_production",
+    "fct_yield",
+    "agg_production_annual",
+)
 _MART_PRICE_TABLES = ("fct_prices", "agg_prices_country_month")
 _MART_FOOD_SECURITY_TABLES = ("fct_food_security", "agg_food_security_monthly")
 _MART_RANK_TABLES = ("agg_production_annual", "fct_production", "fct_trade")
@@ -62,6 +70,22 @@ _MART_FACT_TABLES = frozenset(
         *_MART_PRICE_TABLES,
         "fct_yield",
     }
+)
+
+_POINT_FACT_LINEAGE_COLS = (
+    "source_key",
+    "source_name",
+    "tier",
+    "data_level",
+    "place_scope",
+    "metric",
+    "as_of_date",
+    "as_of_date_basis",
+    "unit",
+    "production_unit",
+    "production_grain",
+    "geo_scope",
+    "record_count",
 )
 
 # Speech synonyms for crop detection. Warehouse labels come from YAML samples.
@@ -173,6 +197,38 @@ def _mart_geo_col(table_id: str) -> str:
 
 def _mart_year_col(table_id: str) -> str:
     return year_column(table_id) or "year"
+
+
+def _pick_point_fact_production_table(tables: set[str]) -> str:
+    return _pick_table(tables, _MART_POINT_FACT_PRODUCTION) or "fct_production"
+
+
+def _point_fact_select_cols(
+    table_id: str,
+    *,
+    geo_col: str,
+    ycol: str,
+    prod_col: str | None,
+    metric: str,
+) -> list[str]:
+    available = columns_for_mart_tables({table_id}).get(table_id) or set()
+    out: list[str] = []
+    for col in (geo_col, prod_col, ycol, metric):
+        if col and col in available and col not in out:
+            out.append(col)
+    for col in _POINT_FACT_LINEAGE_COLS:
+        if col in available and col not in out:
+            out.append(col)
+    return out or [geo_col, ycol, metric]
+
+
+def _point_fact_order_clause(table_id: str) -> str:
+    available = columns_for_mart_tables({table_id}).get(table_id) or set()
+    if "record_count" in available:
+        return "ORDER BY record_count DESC "
+    if "tier" in available:
+        return "ORDER BY tier ASC "
+    return ""
 
 
 def _mart_product_col(table_id: str) -> str:
@@ -303,9 +359,9 @@ def build_mart_point_fact_sql(
     product_name: str | None,
     year: int,
     blob: str,
-    limit: int = 5,
+    limit: int = 1,
 ) -> str:
-    lim = max(1, min(int(limit or 5), 20))
+    lim = max(1, min(int(limit or 1), 5))
     geo_col = _mart_geo_col(table_id)
     ycol = _mart_year_col(table_id)
     metric = resolve_measure_column(table_id, "value") or (
@@ -320,18 +376,35 @@ def build_mart_point_fact_sql(
         clauses.append(f"{geo_col} IN ({lits})")
     for col, val in discriminator_equality_filters(table_id, blob):
         clauses.append(f"{col} = {_sql_literal(val)}")
+    if table_id == "fct_production":
+        schema = load_mart_table_schema(table_id) or {}
+        col_names = {
+            str(c.get("name") or "").strip()
+            for c in (schema.get("columns") or [])
+            if str(c.get("name") or "").strip()
+        }
+        if "production_grain" in col_names and not any(
+            c.startswith("production_grain") for c in clauses
+        ):
+            clauses.append("production_grain = 'physical'")
     prod_clause, _ = _product_filter(table_id, blob, product_name)
     where = " AND ".join(clauses)
     prod_col = _mart_product_col(table_id)
-    select_cols = [geo_col, ycol, metric]
-    if prod_col:
-        select_cols.insert(1, prod_col)
+    select_cols = _point_fact_select_cols(
+        table_id,
+        geo_col=geo_col,
+        ycol=ycol,
+        prod_col=prod_col,
+        metric=metric,
+    )
+    order_clause = _point_fact_order_clause(table_id)
     fqn = f"`{project_id}.{dataset}.{table_id}`"
     return (
         f"SELECT {', '.join(select_cols)} "
         f"FROM {fqn} "
         f"WHERE {where} "
         f"{prod_clause}"
+        f"{order_clause}"
         f"LIMIT {lim}"
     )
 
@@ -447,7 +520,8 @@ def try_sql_template(
         elif _PRICE_RE.search(blob):
             table_id = _pick_table(tables, _MART_PRICE_TABLES) or "fct_prices"
         else:
-            table_id = _pick_table(tables, _MART_PRODUCTION_TABLES) or "fct_production"
+            table_id = _pick_point_fact_production_table(tables)
+        point_limit = 1
         return {
             "sql": build_mart_point_fact_sql(
                 project_id=project_id,
@@ -457,7 +531,7 @@ def try_sql_template(
                 product_name=crop,
                 year=year,
                 blob=blob,
-                limit=limit,
+                limit=point_limit,
             ),
             "template": "mart_point_fact",
             "country": country,

@@ -1013,6 +1013,7 @@ class BQRetriever(BaseRetriever):
 
         def _try_template_sql() -> list[str]:
             nonlocal template_meta, sql_source
+            template_limit = 1 if fast_fact else rows_per_query
             hit = try_sql_template(
                 query=query,
                 project_id=self.project_id,
@@ -1021,7 +1022,7 @@ class BQRetriever(BaseRetriever):
                 entities=entities,
                 time_start=time_start,
                 time_end=time_end,
-                limit=rows_per_query,
+                limit=template_limit,
                 geo_country=geo_country,
                 geo_countries=geo_countries,
             )
@@ -1170,7 +1171,12 @@ class BQRetriever(BaseRetriever):
                 if budget <= 0 or queries_left <= 0:
                     break
                 queries_left -= 1
-                limit = min(rows_per_query, budget)
+                point_fact_cap = (
+                    fast_fact
+                    and template_meta
+                    and template_meta.get("template") == "mart_point_fact"
+                )
+                limit = min(1 if point_fact_cap else rows_per_query, budget)
                 validated, prep_err = self._prepare_sql(
                     raw_sql,
                     question=query,
