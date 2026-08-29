@@ -703,11 +703,14 @@ def _point_fact_canonical_score(raw: dict[str, Any], table_id: str) -> tuple[int
         kind = 1
     else:
         kind = 0
-    tier = raw.get("tier")
-    try:
-        tier_boost = 2 if int(tier) == 2 else (1 if int(tier) == 1 else 0)
-    except (TypeError, ValueError):
-        tier_boost = 0
+    tier_raw = raw.get("tier")
+    tier_boost = 0
+    if tier_raw is not None:
+        try:
+            tier_int = int(tier_raw)
+            tier_boost = 2 if tier_int == 2 else (1 if tier_int == 1 else 0)
+        except (TypeError, ValueError):
+            tier_boost = 0
     faostat = 1 if "faostat" in _s(raw.get("source_key")).lower() else 0
     try:
         record_count = float(raw.get("record_count") or 0)

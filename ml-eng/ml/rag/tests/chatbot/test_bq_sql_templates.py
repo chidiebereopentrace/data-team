@@ -10,6 +10,15 @@ from ml.rag.chatbot.bq_sql_templates import (
     match_mart_point_fact,
     try_sql_template,
 )
+from ml.rag.chatbot.bq_sql_validate import (
+    validate_required_metric_filters,
+    validate_sql_table_allowlist,
+    validate_sql_value_samples,
+)
+from ml.rag.chatbot.bq_table_schema_yaml import (
+    compile_product_filter_sql,
+    resolve_dictionary_label,
+)
 
 
 def test_match_mart_country_rank_africa_2020() -> None:
@@ -44,7 +53,6 @@ def test_build_mart_point_fact_sql_uses_nga() -> None:
         dataset="mart_dev",
         table_id="fct_production",
         country_labels=["Nigeria"],
-        product_name="Maize",
         year=2022,
         blob="maize production Nigeria 2022",
         limit=1,
@@ -53,10 +61,76 @@ def test_build_mart_point_fact_sql_uses_nga() -> None:
     assert "fct_production" in sql
     assert "NGA" in sql
     assert "2022" in sql
-    assert "Maize" in sql or "product_key" in sql
+    assert "dim_product" in sql
+    assert "product_name = 'Maize'" in sql
+    assert "product_key = 'Maize'" not in sql
     assert "source_key" in sql
     assert "production_grain" in sql
+    assert "element = 'Production'" in sql
+    assert "metric = 'production_production_physical'" in sql
     assert "LIMIT 1" in sql
+
+
+def test_compile_semantic_filter_fct_production_maize() -> None:
+    sql, labels = compile_product_filter_sql(
+        "fct_production",
+        project_id="proj",
+        dataset="mart_dev",
+        blob="maize production Nigeria 2022",
+    )
+    assert labels == ["Maize"]
+    assert "dim_product" in sql
+    assert "product_name = 'Maize'" in sql
+    assert "product_key = 'Maize'" not in sql
+
+
+def test_compile_semantic_filter_agg_direct_product_name() -> None:
+    sql, labels = compile_product_filter_sql(
+        "agg_production_annual",
+        project_id="proj",
+        dataset="mart_dev",
+        blob="maize production Nigeria 2022",
+    )
+    assert labels == ["Maize"]
+    assert "product_name = 'Maize'" in sql
+    assert "dim_product" not in sql
+
+
+def test_resolve_dictionary_label_unknown_crop_returns_none() -> None:
+    assert (
+        resolve_dictionary_label(column="product_name", blob="xyzunknowncrop production")
+        is None
+    )
+
+
+def test_compile_product_filter_fct_trade_maize() -> None:
+    sql, labels = compile_product_filter_sql(
+        "fct_trade",
+        project_id="proj",
+        dataset="mart_dev",
+        blob="rice export Nigeria 2022",
+        labels=["Rice"],
+    )
+    assert labels == ["Rice"]
+    assert "dim_product" in sql
+    assert "product_key IN (SELECT product_key" in sql
+    assert "product_name = 'Rice'" in sql
+    assert "product_name IN" not in sql
+
+
+def test_mart_point_fact_sql_passes_validation() -> None:
+    sql = build_mart_point_fact_sql(
+        project_id="proj",
+        dataset="mart_dev",
+        table_id="fct_production",
+        country_labels=["Nigeria"],
+        year=2022,
+        blob="maize production Nigeria 2022",
+    )
+    selected = {"fct_production"}
+    assert validate_sql_table_allowlist(sql, selected) is None
+    assert validate_sql_value_samples(sql, selected) is None
+    assert validate_required_metric_filters(sql, selected) is None
 
 
 def test_mart_point_fact_prefers_fct_production() -> None:
@@ -73,6 +147,8 @@ def test_mart_point_fact_prefers_fct_production() -> None:
     assert hit["template"] == "mart_point_fact"
     assert hit["table_id"] == "fct_production"
     assert "fct_production" in hit["sql"]
+    assert "dim_product" in hit["sql"]
+    assert "product_name = 'Maize'" in hit["sql"]
     assert "production_grain" in hit["sql"]
     assert "source_key" in hit["sql"]
     assert "LIMIT 1" in hit["sql"]
@@ -84,12 +160,12 @@ def test_mart_point_fact_sql_includes_lineage_cols() -> None:
         dataset="mart_dev",
         table_id="agg_production_annual",
         country_labels=["Nigeria"],
-        product_name="Maize",
         year=2022,
         blob="maize production Nigeria 2022",
     )
     assert "source_key" in sql
     assert "source_name" in sql
+    assert "product_name = 'Maize'" in sql
     assert "total_production_qty" in sql or "production_qty" in sql
     assert "ORDER BY record_count DESC" in sql
     assert "LIMIT 1" in sql

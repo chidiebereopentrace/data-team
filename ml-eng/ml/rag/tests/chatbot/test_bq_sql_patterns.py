@@ -315,10 +315,9 @@ def test_try_sql_patterns_kenya_nigeria_maize_series() -> None:
     assert "Kenya" in sqls or "KEN" in sqls
     assert "Nigeria" in sqls or "NGA" in sqls
     assert "country_iso3 IN (" in sqls
-    samples = value_samples_for_mart_tables({"fct_production"})
-    product_col = "product_name" if "product_name" in samples.get("fct_production", {}) else "product_key"
-    if product_col in samples.get("fct_production", {}) and hits[0].get("product_name"):
-        assert hits[0]["product_name"] in samples["fct_production"][product_col]
+    assert hits[0].get("product_name") == "Maize"
+    assert "dim_product" in sqls
+    assert "product_name = 'Maize'" in sqls
 
 
 def test_time_series_honors_country_grain() -> None:

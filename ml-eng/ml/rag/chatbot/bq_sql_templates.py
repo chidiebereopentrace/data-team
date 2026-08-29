@@ -6,14 +6,18 @@ from typing import Any
 
 from ml.rag.chatbot.bq_table_schema_yaml import (
     columns_for_mart_tables,
+    compile_product_filter_sql,
+    default_discriminator_value,
     discriminator_equality_filters,
     geo_column,
     load_mart_table_schema,
     match_product_samples,
     measure_columns_mart,
     product_column,
+    resolve_dictionary_label,
     resolve_geo_filter_values,
     resolve_measure_column,
+    value_samples_for_mart_tables,
     year_column,
 )
 from ml.rag.chatbot.geo_regions import is_zone_label
@@ -133,12 +137,13 @@ def _blob(query: str, entities: list[str] | None) -> str:
     return q
 
 
+def _resolve_dictionary_product(blob: str) -> str | None:
+    return resolve_dictionary_label(column="product_name", blob=blob)
+
+
 def _extract_crop(blob: str) -> str | None:
-    low = (blob or "").lower()
-    for alias, product in _CROP_ALIASES:
-        if re.search(rf"\b{re.escape(alias)}\b", low):
-            return product
-    return None
+    """Facet-bridge helper; SQL filters must use compile_product_filter_sql instead."""
+    return _resolve_dictionary_product(blob)
 
 
 def _sql_literal(value: str) -> str:
@@ -235,13 +240,20 @@ def _mart_product_col(table_id: str) -> str:
     return product_column(table_id) or "product_name"
 
 
-def _product_filter(table_id: str, blob: str, product_name: str | None) -> tuple[str, str | None]:
-    hits = match_product_samples(table_id, blob)
-    pname = hits[0] if hits else product_name
-    if not pname:
-        return "", None
-    col = _mart_product_col(table_id)
-    return f"AND {col} = {_sql_literal(pname)} ", pname
+def _product_filter(
+    table_id: str,
+    blob: str,
+    *,
+    project_id: str,
+    dataset: str,
+) -> tuple[str, str | None]:
+    sql, labels = compile_product_filter_sql(
+        table_id,
+        project_id=project_id,
+        dataset=dataset,
+        blob=blob,
+    )
+    return sql, (labels[0] if labels else None)
 
 
 def match_mart_point_fact(
@@ -326,7 +338,7 @@ def match_mart_country_rank(
     if not _pick_table(tables, _MART_RANK_TABLES):
         return False
     blob = _blob(query, entities)
-    if _extract_crop(blob) and _RANK_RE.search(blob):
+    if _resolve_dictionary_product(blob) and _RANK_RE.search(blob):
         return _year_from_context(time_start=time_start, time_end=time_end, query=query or "") is not None
     if not _PRODUCTION_RE.search(blob) and not _PRICE_RE.search(blob):
         return False
@@ -356,7 +368,6 @@ def build_mart_point_fact_sql(
     dataset: str,
     table_id: str,
     country_labels: list[str],
-    product_name: str | None,
     year: int,
     blob: str,
     limit: int = 1,
@@ -387,7 +398,29 @@ def build_mart_point_fact_sql(
             c.startswith("production_grain") for c in clauses
         ):
             clauses.append("production_grain = 'physical'")
-    prod_clause, _ = _product_filter(table_id, blob, product_name)
+        samples_map = value_samples_for_mart_tables({table_id}).get(table_id) or {}
+        if _PRODUCTION_RE.search(blob) and not any(c.startswith("element") for c in clauses):
+            element = default_discriminator_value(
+                "element",
+                samples_map.get("element") or [],
+                query=blob,
+            )
+            if element:
+                clauses.append(f"element = {_sql_literal(element)}")
+        if "metric" in col_names and not any(c.startswith("metric") for c in clauses):
+            metric_val = default_discriminator_value(
+                "metric",
+                samples_map.get("metric") or [],
+                query=blob,
+            )
+            if metric_val:
+                clauses.append(f"metric = {_sql_literal(metric_val)}")
+    prod_clause, _ = _product_filter(
+        table_id,
+        blob,
+        project_id=project_id,
+        dataset=dataset,
+    )
     where = " AND ".join(clauses)
     prod_col = _mart_product_col(table_id)
     select_cols = _point_fact_select_cols(
@@ -495,7 +528,7 @@ def try_sql_template(
         return None
     year = _year_from_context(time_start=time_start, time_end=time_end, query=query or "")
     blob = _blob(query, entities)
-    crop = _extract_crop(blob)
+    product_label = _resolve_dictionary_product(blob)
     country = _resolve_country(
         query=query,
         entities=entities,
@@ -528,14 +561,13 @@ def try_sql_template(
                 dataset=dataset,
                 table_id=table_id,
                 country_labels=[country],
-                product_name=crop,
                 year=year,
                 blob=blob,
                 limit=point_limit,
             ),
             "template": "mart_point_fact",
             "country": country,
-            "product_name": crop,
+            "product_name": product_label,
             "table_id": table_id,
             "year": year,
         }
@@ -580,7 +612,7 @@ def try_sql_template(
                 dataset=dataset,
                 table_id=table_id,
                 metric=metric,
-                product_name=products[0] if products else crop,
+                product_name=products[0] if products else product_label,
                 products=products or None,
                 year=year,
                 limit=max(limit, 100),
@@ -591,7 +623,7 @@ def try_sql_template(
             ),
             "template": "mart_country_series",
             "country": country,
-            "product_name": crop,
+            "product_name": product_label,
             "table_id": table_id,
         }
 
@@ -614,7 +646,7 @@ def try_sql_template(
                 table_id=table_id,
                 year=year,
                 limit=limit,
-                product_name=products[0] if products else crop,
+                product_name=products[0] if products else product_label,
                 products=products or None,
                 grain=grain,
                 blob=blob,
@@ -623,7 +655,7 @@ def try_sql_template(
             ),
             "template": "mart_country_rank",
             "year": year,
-            "product_name": crop,
+            "product_name": product_label,
             "table_id": table_id,
         }
 
