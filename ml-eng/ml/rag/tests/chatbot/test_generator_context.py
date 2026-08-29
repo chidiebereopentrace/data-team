@@ -154,6 +154,21 @@ def test_bq_citation_uses_domain_when_table_id_is_generic() -> None:
     assert "[Structured data]" not in line
 
 
+def test_bq_citation_uses_fews_from_source_name_on_agg_production() -> None:
+    item = _bq_item()
+    item["metadata"]["table_id"] = "agg_production_annual"
+    item["metadata"]["source_name"] = "yield_raw_data"
+    item["metadata"]["country_name"] = "Nigeria"
+    item["metadata"]["product_name"] = "Maize"
+    item["metadata"]["year"] = 2022
+    line = _format_source_citation(item)
+    assert line is not None
+    assert line.startswith("[FEWS NET]")
+    assert "yield_raw_data" not in line
+    assert "[Structured data]" not in line
+    assert "Nigeria" in line
+
+
 def _bq_error_item() -> dict:
     return {
         "content": "[BQ execution error: 404 Not found: Table raw_dev.fews_net]",

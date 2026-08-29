@@ -117,11 +117,88 @@ _BQ_ROW_HINT_KEYS = (
 )
 _BQ_PUBLIC_LABEL = "OpenTrace agricultural data"
 
+# Warehouse source_name / source_natural_key → public institution (dim_source.organisation_name).
+_SOURCE_KEY_PUBLIC_LABELS: dict[str, str] = {
+    "yield_raw_data": "FEWS NET",
+    "fews_food_security": "FEWS NET",
+    "fews_food_security_master": "FEWS NET",
+    "fews_market_prices": "FEWS NET",
+    "fews_cross_border_trade": "FEWS NET",
+    "faostat_production": "FAOSTAT",
+    "faostat_prices": "FAOSTAT",
+    "faostat_trade": "FAOSTAT",
+    "faostat_food_balances": "FAOSTAT",
+    "faostat_emissions": "FAOSTAT",
+    "faostat_land_inputs": "FAOSTAT",
+    "faostat_population_employment": "FAOSTAT",
+    "faostat_investment_asti": "FAOSTAT",
+    "faostat_sdg_hdi": "FAOSTAT",
+    "wfp_vampire_prices": "WFP",
+    "ilri_household_food_security": "ILRI",
+    "ilri_animal_health": "ILRI",
+    "nasa_power": "NASA POWER",
+    "copernicus_era5": "Copernicus ERA5",
+    "isric_africa_soil": "ISRIC",
+    "isda_soil_enriched": "iSDA",
+    "africa_hdi": "UNDP / HDI",
+    "africa_gdp_ppp": "World Bank / GDP",
+    "openaire_projects": "OpenAIRE",
+    "biodiversity": "GBIF / biodiversity",
+}
+
+
+def _label_from_source_key(raw: str) -> str | None:
+    """Map a warehouse source key or natural key to a public institution name."""
+    key = str(raw or "").strip().lower()
+    if not key:
+        return None
+    if key in _SOURCE_KEY_PUBLIC_LABELS:
+        return _SOURCE_KEY_PUBLIC_LABELS[key]
+    if key.startswith("stg_"):
+        key = key[4:]
+    if key in _SOURCE_KEY_PUBLIC_LABELS:
+        return _SOURCE_KEY_PUBLIC_LABELS[key]
+    if "fews" in key or key == "yield_raw_data" or key == "yield extract":
+        return "FEWS NET"
+    if "faostat" in key:
+        return "FAOSTAT"
+    if "ilri" in key:
+        return "ILRI"
+    if "wfp" in key or "vampire" in key:
+        return "WFP"
+    if "nasa" in key:
+        return "NASA POWER"
+    if "copernicus" in key or "era5" in key:
+        return "Copernicus ERA5"
+    if "isric" in key:
+        return "ISRIC"
+    if "isda" in key:
+        return "iSDA"
+    if "openaire" in key:
+        return "OpenAIRE"
+    if "hdi" in key:
+        return "UNDP / HDI"
+    if "gdp" in key:
+        return "World Bank / GDP"
+    if key in {"fews net", "fewsnet"}:
+        return "FEWS NET"
+    return None
+
 
 def _public_source_label(table_id: str | None, meta: dict[str, Any] | None = None) -> str | None:
     """Return a clean institutional source name, or None to use the structured-data fallback."""
-    tid = (table_id or "").lower().strip()
     payload = meta or {}
+    org = str(payload.get("organisation_name") or "").strip()
+    if org and org.lower() not in {"other", "unknown"}:
+        known = _label_from_source_key(org)
+        return known or org
+
+    for key_field in ("source_name", "source_natural_key", "price_source"):
+        hit = _label_from_source_key(str(payload.get(key_field) or ""))
+        if hit:
+            return hit
+
+    tid = (table_id or "").lower().strip()
     domain = str(payload.get("source_domain") or "").strip().lower()
     if domain:
         if "faostat" in domain or domain == "fao":

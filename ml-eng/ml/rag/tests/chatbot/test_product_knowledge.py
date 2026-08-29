@@ -92,9 +92,28 @@ def test_is_help_query_capability_phrases() -> None:
 
 def test_static_capability_answer_includes_indicator_classes() -> None:
     ans = static_capability_answer("what kind of questions can you answer")
-    assert "PROD" in ans or "production" in ans.lower()
-    assert "FS" in ans or "food security" in ans.lower()
-    assert "Example:" in ans or "example" in ans.lower()
+    assert "Agricultural production" in ans
+    assert "Food security" in ans
+    assert "?" in ans
+    assert "fct_" not in ans
+    assert "Primary tables" not in ans
+    assert "measure_type" not in ans
+
+
+def test_public_capability_answer_has_topic_sections_not_internals() -> None:
+    from ml.rag.chatbot.product_knowledge import render_public_capability_answer
+
+    ans = render_public_capability_answer()
+    assert "Agricultural production" in ans
+    assert "Prices and markets" in ans
+    assert "Climate and weather" in ans
+    assert "maize production in nigeria" in ans.lower()
+    assert "fct_" not in ans
+    assert "agg_" not in ans
+    assert "PROD —" not in ans
+    assert "FNID" not in ans
+    assert "Primary tables" not in ans
+    assert "Note:" not in ans
 
 
 def test_askadza_one_word_brand_normalization() -> None:
@@ -115,8 +134,9 @@ def test_is_help_query_product_brand_mechanics() -> None:
 def test_static_capability_answer_content() -> None:
     ans = static_capability_answer("what can I use you for")
     assert "natural-language interface" in ans.lower()
-    assert "PROD" in ans or "production" in ans.lower()
-    assert "indicator" in ans.lower() or "Example:" in ans
+    assert "Agricultural production" in ans or "production" in ans.lower()
+    assert "?" in ans
+    assert "fct_" not in ans
     assert "Citations" not in ans
     assert META_ANSWER_FOOTER.strip() in ans or "opentrace.africa" in ans.lower()
 
@@ -125,7 +145,8 @@ def test_generate_product_answer_help_uses_static() -> None:
     with patch("ml.rag.chatbot.generator._call_llama") as llama:
         ans = generate_product_answer("what can I use you for")
     llama.assert_not_called()
-    assert "PROD" in ans or "production" in ans.lower()
+    assert "Food security" in ans or "production" in ans.lower()
+    assert "fct_" not in ans
     assert "Citations" not in ans
 
 

@@ -487,34 +487,54 @@ def _normalize_for_product_gate(query: str) -> str:
     return text.casefold()
 
 
-def render_indicator_catalog_answer(*, max_classes: int = 8) -> str:
-    """Render indicator-class catalog with sample questions from mart_indicator_classes.yaml."""
+def render_internal_indicator_catalog(*, max_classes: int = 8) -> str:
+    """Internal/debug catalog with table names and do-not-mix notes (not for public users)."""
     from ml.rag.chatbot.ontology_context import list_indicator_class_contexts
 
     lines = [
-        "Ask ADZA is OpenTrace Africa's natural-language interface for agricultural "
-        "intelligence across the continent. You can ask structured questions in these "
-        "indicator areas — each maps to specific mart tables and filters:",
+        "Ontology indicator catalog (internal):",
         "",
     ]
     for ctx in list_indicator_class_contexts(max_classes=max_classes):
         facts = ", ".join(ctx.primary_facts[:3]) or "see mart index"
-        lines.append(f"**{ctx.code} — {ctx.name}**")
+        lines.append(f"{ctx.code} — {ctx.name}")
         lines.append(f"Primary tables: {facts}")
         for claim in ctx.example_claims[:2]:
             lines.append(f"- Example: “{claim}”")
         if ctx.do_not_mix_notes:
             lines.append(f"- Note: {ctx.do_not_mix_notes[0][:120]}")
         lines.append("")
-    lines.extend(
-        [
-            "Cross-cutting tips:",
-            "- Name **country or region**, **crop/commodity** (when relevant), and **year**.",
-            "- Production volume uses PROD tables; yield uses separate FNID-season facts.",
-            "- Food security (IPC) and production totals should not be blended without caveats.",
-        ]
+    return "\n".join(lines)
+
+
+def render_public_capability_answer() -> str:
+    """User-facing help: topic sections with plain-language example questions."""
+    from ml.rag.chatbot.ontology_context import list_public_capability_contexts
+
+    lines = [
+        "Ask ADZA is OpenTrace Africa's natural-language interface for agricultural "
+        "intelligence across Africa. Ask in everyday language—we find the right data "
+        "behind the scenes.",
+        "",
+        "You can ask about topics like:",
+        "",
+    ]
+    for ctx in list_public_capability_contexts():
+        lines.append(ctx.name)
+        for question in ctx.public_examples[:2]:
+            lines.append(f"- {question}")
+        lines.append("")
+    lines.append(
+        "Tip: include a country or region, the crop or topic when relevant, "
+        "and a year or time period for the clearest answers."
     )
     return "\n".join(lines)
+
+
+def render_indicator_catalog_answer(*, max_classes: int = 8) -> str:
+    """Deprecated alias — use render_public_capability_answer for user help."""
+    _ = max_classes
+    return render_public_capability_answer()
 
 
 def _is_methodology_question(normalized: str, raw_query: str) -> bool:
@@ -580,7 +600,7 @@ def static_capability_answer(query: str = "", answer_lang: str | None = None) ->
     if lang in CAPABILITY_TEMPLATES and lang != "en":
         text = CAPABILITY_TEMPLATES.get(lang) or CAPABILITY_STATIC_ANSWER
     else:
-        text = render_indicator_catalog_answer()
+        text = render_public_capability_answer()
     return _append_footer(text.strip())
 
 
