@@ -45,6 +45,7 @@ bridge_geography_aez
 # ── FACT TABLES ───────────────────────────────────────────────────────────
 fct_food_security
 fct_production
+fct_yield
 fct_prices
 fct_trade
 fct_animal_health
@@ -80,3 +81,4 @@ fct_humanitarian
 # ── AGGREGATES ────────────────────────────────────────────────────────────
 agg_food_security_monthly
 agg_production_annual
+agg_prices_country_month

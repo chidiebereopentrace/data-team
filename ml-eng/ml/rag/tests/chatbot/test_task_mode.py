@@ -80,7 +80,7 @@ def test_ranking_africa_default_is_fact_not_clarify() -> None:
 
 
 def test_fact_bq_plan_forced() -> None:
-    known = {"stg_faostat_production"}
+    known = {"fct_production"}
     plan = build_fact_bq_plan(
         "maize production Nigeria 2020",
         decomposition={"geography": ["Nigeria"], "entities": ["maize"], "time_end": "2020-12-31"},

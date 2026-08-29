@@ -56,7 +56,7 @@ def test_analytical_intent_rejects_simple_chat() -> None:
 
 
 def test_analytical_bq_plan_never_skips() -> None:
-    known = {"stg_faostat_production", "stg_faostat_trade"}
+    known = {"fct_production", "fct_trade"}
     plan = build_analytical_bq_plan(
         "West Africa agricultural production report",
         decomposition={
@@ -70,7 +70,42 @@ def test_analytical_bq_plan_never_skips() -> None:
     assert plan is not None
     assert plan["skip_bq"] is False
     assert len(plan["query_intents"]) >= 2
-    assert "stg_faostat_production" in plan["selected_tables"]
+    assert "fct_production" in plan["selected_tables"]
+
+
+def test_analytical_bq_plan_hdi_via_contract() -> None:
+    known = {"fct_hdi", "fct_economics", "fct_employment", "fct_production"}
+    plan = build_analytical_bq_plan(
+        "HDI trends across West Africa",
+        decomposition={
+            "geography": ["Nigeria", "Ghana", "Senegal"],
+            "time_start": "2020-01-01",
+            "time_end": "2024-12-31",
+            "entities": ["HDI", "human development"],
+        },
+        known_tables=known,
+    )
+    assert plan is not None
+    assert plan["skip_bq"] is False
+    assert "fct_hdi" in plan["selected_tables"]
+    assert plan["rationale"] == "analytical_forced_contract"
+
+
+def test_analytical_bq_plan_climate_via_contract() -> None:
+    known = {"fct_climate", "fct_production"}
+    plan = build_analytical_bq_plan(
+        "Climate rainfall Nigeria 2020-2024",
+        decomposition={
+            "geography": ["Nigeria"],
+            "time_start": "2020-01-01",
+            "time_end": "2024-12-31",
+            "entities": ["rainfall", "climate"],
+        },
+        known_tables=known,
+    )
+    assert plan is not None
+    assert "fct_climate" in plan["selected_tables"]
+    assert "fct_production" not in plan["selected_tables"]
 
 
 def test_sections_from_markdown_headings() -> None:

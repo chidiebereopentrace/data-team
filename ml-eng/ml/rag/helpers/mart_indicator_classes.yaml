@@ -1,0 +1,359 @@
+version: "2026.8"
+# OpenTrace indicator classes (Mart Complete Guide §6) — routing spine for mart BQ reasoner.
+classes:
+  EL:
+    code: EL
+    name: Economic and livelihood
+    aliases:
+      - employment
+      - agricultural employment
+      - farm income
+      - off-farm income
+      - value added
+      - gdp share
+      - livelihood
+      - economics
+    primary_facts:
+      - fct_employment
+      - fct_economics
+      - fct_household
+    companion_facts:
+      - dim_indicator
+      - dim_geography
+    do_not_mix:
+      - tables: [fct_employment, fct_household]
+        reason: Do not union employment % shares with household income sample rows without grain caveat
+    families:
+      - id: ag_employment_share
+        table: fct_employment
+        filters: "Join dim_indicator; filter unit='%' and sex when question specifies; use indicator_key"
+        example_claim: Agricultural employment share by sex in country-year
+      - id: farm_offfarm_income
+        table: fct_household
+        filters: farm_income vs offfarm_income columns; sample not census
+        example_claim: Farm vs off-farm income in ILRI household sample
+
+  GYI:
+    code: GYI
+    name: Gender, youth and inclusion
+    aliases:
+      - gender
+      - youth
+      - inclusion
+      - women control
+      - land rights
+      - sdg 5
+    primary_facts:
+      - fct_gender_inclusion
+      - fct_household
+      - fct_employment
+    companion_facts:
+      - dim_geography
+    do_not_mix:
+      - tables: [fct_gender_inclusion, fct_household]
+        reason: Never union SDG national gender rows with household control scores
+    families:
+      - id: sdg_national
+        table: fct_gender_inclusion
+        filters: Official SDG indicators; national grain
+      - id: hh_control_scores
+        table: fct_household
+        filters: Survey sample control scores; not SDG official
+
+  FVC:
+    code: FVC
+    name: Food system and value chain
+    aliases:
+      - value chain
+      - food system
+      - losses
+      - forestry
+      - food balance
+    primary_facts:
+      - fct_economics
+      - fct_food_balance
+      - fct_prices
+      - fct_trade
+      - fct_forestry
+    companion_facts:
+      - dim_product
+      - dim_geography
+      - dim_source
+    do_not_mix:
+      - tables: [fct_trade, fct_food_balance]
+        reason: Filter trade_grain before border vs national trade claims
+    families:
+      - id: trade_grain
+        table: fct_trade
+        filters: "trade_grain in (fews_border_month, faostat_country_year)"
+      - id: food_losses
+        table: fct_food_balance
+        filters: losses via element_code; SUA disappearance not farm-gate waste
+
+  FS:
+    code: FS
+    name: Food security and nutrition
+    aliases:
+      - food security
+      - food insecurity
+      - ipc
+      - famine
+      - fies
+      - humanitarian food
+      - crisis phase
+    primary_facts:
+      - fct_food_security
+      - fct_household
+      - fct_humanitarian
+      - fct_food_balance
+    companion_facts:
+      - agg_food_security_monthly
+      - dim_classification
+      - dim_geography
+    do_not_mix:
+      - tables: [fct_food_security]
+        reason: "measure_type=population vs classification — never union in one query"
+    families:
+      - id: ipc_population
+        table: fct_food_security
+        filters: "measure_type='population'; exclude classification-only rows"
+      - id: ipc_classification
+        table: fct_food_security
+        filters: "measure_type='classification'; scenario_name for outlook"
+      - id: household_fies
+        table: fct_household
+        filters: fies_score; project sample not national census
+
+  PROD:
+    code: PROD
+    name: Agricultural production
+    aliases:
+      - production
+      - harvest
+      - output
+      - yield
+      - tonnes
+      - crop production
+    primary_facts:
+      - fct_production
+      - fct_yield
+      - agg_production_annual
+    companion_facts:
+      - dim_product
+      - dim_geography
+      - dim_source
+    do_not_mix:
+      - tables: [fct_production, fct_yield]
+        reason: FAOSTAT country-year production vs FNID-season yield — never mix
+    families:
+      - id: faostat_country_year_physical
+        table: fct_production
+        filters: "production_grain='physical'; metric or element for qty"
+        do_not_mix_with: [fnid_season_yield]
+      - id: faostat_index_gross_value
+        table: fct_production
+        filters: "production_grain in ('index','gross_value')"
+      - id: fnid_season_yield
+        table: fct_yield
+        filters: season_key / harvest_year; subnational FNID grain
+        do_not_mix_with: [faostat_country_year_physical]
+      - id: agg_country_year
+        table: agg_production_annual
+        filters: Prefer for national annual rollups
+
+  PRC:
+    code: PRC
+    name: Prices and markets
+    aliases:
+      - price
+      - prices
+      - retail price
+      - market price
+      - producer price
+      - wholesale
+    primary_facts:
+      - fct_prices
+    companion_facts:
+      - dim_market
+      - dim_geography
+      - dim_product
+      - agg_prices_country_month
+    do_not_mix:
+      - tables: [fct_prices]
+        reason: "Filter price_source (fews/wfp/faostat) — do not blend without explicit caveat"
+    families:
+      - id: fews_market
+        filters: "price_source='fews'; common_unit_price may be populated"
+      - id: wfp_market
+        filters: "price_source='wfp'; common_unit_price often null"
+      - id: faostat_national
+        filters: "price_source='faostat'; national country×item×element grain"
+
+  CLIM:
+    code: CLIM
+    name: Climate and weather
+    aliases:
+      - climate
+      - weather
+      - rainfall
+      - precipitation
+      - temperature
+      - drought
+    primary_facts:
+      - fct_climate
+    companion_facts:
+      - dim_indicator
+      - dim_geography
+    families:
+      - id: point_obs
+        filters: "climate_grain='point_obs'"
+      - id: country_model
+        filters: "climate_grain='country_model'"
+
+  SOIL:
+    code: SOIL
+    name: Soil health and land
+    aliases:
+      - soil
+      - soil health
+      - land degradation
+      - fertilizer use
+      - cropland
+    primary_facts:
+      - fct_soil_health
+      - fct_land_inputs
+      - fct_land_degradation
+    companion_facts:
+      - agg_soil_admin
+      - bridge_geography_aez
+    do_not_mix:
+      - tables: [fct_soil_health]
+        reason: Compare iSDA vs ISRIC sources; do not average across source_key
+
+  AH:
+    code: AH
+    name: Animal health
+    aliases:
+      - animal health
+      - livestock disease
+      - veterinary
+      - food hazards
+      - livestock insurance
+    primary_facts:
+      - fct_animal_health
+      - fct_food_hazards
+      - fct_insurance
+    families:
+      - id: farm_cds
+        table: fct_animal_health
+        filters: Farm CDS prevalence; not study-level
+      - id: study_prevalence
+        filters: Study-level prevalence rows; do not treat as census
+
+  VEG:
+    code: VEG
+    name: Vegetation
+    aliases:
+      - ndvi
+      - vegetation
+      - remote sensing
+      - carrying capacity
+    primary_facts:
+      - fct_vegetation
+    families:
+      - id: ndvi_grid
+        filters: "vegetation_grain='ndvi_grid'"
+      - id: ilri_site
+        filters: "vegetation_grain='ilri_site'"
+
+  ENV:
+    code: ENV
+    name: Environment and emissions
+    aliases:
+      - emissions
+      - ghg
+      - greenhouse gas
+      - carbon
+    primary_facts:
+      - fct_emissions
+    families:
+      - id: element_total
+        filters: Filter element for total vs intensity
+
+  INP:
+    code: INP
+    name: Inputs
+    aliases:
+      - inputs
+      - fertilizer
+      - pesticide
+      - machinery
+      - land inputs
+    primary_facts:
+      - fct_land_inputs
+      - fct_machinery
+      - fct_fertilizer
+      - fct_pesticide
+    families:
+      - id: use_vs_trade
+        table: fct_land_inputs
+        filters: "input_grain distinguishes use vs trade"
+
+  HDI:
+    code: HDI
+    name: Human development
+    aliases:
+      - hdi
+      - human development
+      - gdp
+      - development index
+    primary_facts:
+      - fct_hdi
+      - fct_economics
+    companion_facts:
+      - agg_hdi_latest
+    families:
+      - id: country_year
+        filters: country-year only; skip rows with null geography_key
+
+  BIO:
+    code: BIO
+    name: Biodiversity and protection
+    aliases:
+      - biodiversity
+      - protected areas
+      - germplasm
+      - conservation
+    primary_facts:
+      - fct_biodiversity
+      - fct_protected_areas
+      - fct_germplasm
+    families:
+      - id: occurrence
+        table: fct_biodiversity
+      - id: protected_area
+        table: fct_protected_areas
+
+  RES:
+    code: RES
+    name: Research system
+    aliases:
+      - research
+      - asti
+      - r&d
+      - researchers
+      - research expenditure
+      - investment in research
+    primary_facts:
+      - fct_investment
+      - fct_researchers
+      - fct_research_expenditure
+    companion_facts:
+      - dim_research_project
+      - dim_organisation
+      - dim_indicator
+    families:
+      - id: asti_expenditure
+        table: fct_research_expenditure
+      - id: asti_researchers
+        table: fct_researchers

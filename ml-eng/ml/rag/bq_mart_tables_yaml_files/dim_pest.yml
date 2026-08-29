@@ -1,0 +1,93 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_pest
+description: dim pest
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: pest_key
+  type: STRING
+  description: pest key
+- name: pest_natural_key
+  type: STRING
+  description: pest natural key
+- name: pest_name
+  type: STRING
+  description: pest name
+- name: pest_type
+  type: STRING
+  description: pest type
+- name: target_crop_livestock
+  type: STRING
+  description: target crop livestock
+- name: description
+  type: STRING
+  description: description
+- name: valid_from
+  type: DATE
+  description: valid from
+- name: valid_to
+  type: DATE
+  description: valid to
+- name: is_current
+  type: BOOL
+  description: is current
+pest_key_value_samples:
+- 8453cdd2437b9517d94f319e979315c5
+- c1a9d12e13ade0ff4da4ee524544e034
+- 0b3516a5bbb77566f904f9d3877f4710
+- ab2376038cbba3ad0a6d5f2101c7050a
+- c72754b0a43ced21b9ff8d0eb0256336
+- 288162a252c6cc8c6b3cafc2895ec2cc
+- 6c82da57fcf44b3968a426d0f0f088c2
+- eaa57458742e1b8b7962d7cebc759ff7
+- 1a7e84b018f40edad512c1925d3d5363
+- 21f06156b074603c81a99a0f572fb37e
+pest_natural_key_value_samples:
+- 8453cdd2437b9517d94f319e979315c5
+- c1a9d12e13ade0ff4da4ee524544e034
+- 0b3516a5bbb77566f904f9d3877f4710
+- ab2376038cbba3ad0a6d5f2101c7050a
+- c72754b0a43ced21b9ff8d0eb0256336
+- 288162a252c6cc8c6b3cafc2895ec2cc
+- 6c82da57fcf44b3968a426d0f0f088c2
+- eaa57458742e1b8b7962d7cebc759ff7
+- 1a7e84b018f40edad512c1925d3d5363
+- 21f06156b074603c81a99a0f572fb37e
+pest_name_value_samples:
+- Stem Borer
+- Tsetse Fly
+- Tick
+- Fusarium Wilt
+- Striga
+- Whitefly
+- Fall Armyworm
+- Desert Locust
+- Aphid
+- Coffee Berry Borer
+pest_type_value_samples:
+- Insect
+- Arachnid
+- Fungal Pathogen
+- Weed
+target_crop_livestock_value_samples:
+- Livestock
+- Cereals
+- Banana
+- Sorghum/Maize
+- Vegetables
+- Maize
+- Crops
+- Legumes
+- Coffee
+description_value_stats:
+  distinct_count: 0
+  null_count: 10
+  is_truncated: false
+valid_from_value_samples:
+- '2000-01-01'
+valid_to_value_stats:
+  distinct_count: 0
+  null_count: 10
+  is_truncated: false
+is_current_value_samples:
+- 'true'

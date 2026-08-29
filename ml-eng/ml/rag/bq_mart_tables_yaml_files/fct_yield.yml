@@ -1,0 +1,117 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_yield
+description: FNID–season crop yield (subnational); FAOSTAT national yield lives in
+  fct_production.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T20:00:00+00:00'
+grain: FNID–season yield (yield_raw_data); not comparable to fct_production national
+  totals
+entity_type: production
+columns:
+- name: yield_key
+  type: STRING
+  description: Surrogate key for FNID–season–product–harvest period
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (FNID / admin geography)
+- name: geo_level
+  type: STRING
+  description: Geography resolution (national / sub_national / etc.)
+- name: country_iso3
+  type: STRING
+  description: ISO3 country code
+- name: season_key
+  type: STRING
+  description: FK to dim_season
+- name: product_key
+  type: STRING
+  description: FK to dim_product
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: tier
+  type: INT64
+  description: Producer scale (1=global, 2=national, 3=community)
+- name: data_level
+  type: STRING
+  description: Row resolution for ACF
+- name: geo_scope
+  type: STRING
+  description: national / sub_national / community / point
+- name: metric
+  type: STRING
+  description: Stable slug (production_{crop}_yield)
+- name: source_id
+  type: STRING
+  description: Lineage key (= dim_source.source_key)
+- name: production_unit_key
+  type: STRING
+  description: FK to dim_unit for production quantity
+- name: year
+  type: INT64
+  description: Harvest year
+- name: month
+  type: INT64
+  description: Harvest month (1–12 when known)
+- name: date_key
+  type: STRING
+  description: YYYYMMDD observation key
+- name: as_of_date
+  type: DATE
+  description: Observation date when known
+- name: as_of_date_basis
+  type: STRING
+  description: observation or loaded_at
+- name: grain_flag
+  type: STRING
+  description: fnid_season (always for this fact)
+- name: area_harvested
+  type: FLOAT64
+  description: Harvested area (ha)
+- name: production_qty
+  type: FLOAT64
+  description: Production quantity (tonnes)
+- name: yield_value
+  type: FLOAT64
+  description: Yield (t/ha)
+- name: value
+  type: FLOAT64
+  description: coalesce(production_qty, yield_value) — prefer yield_value for yield
+    questions
+- name: source_natural_key
+  type: STRING
+  description: Bronze lineage key
+country_iso3_value_samples:
+- GHA
+- KEN
+- NGA
+- ETH
+- UGA
+metric_value_samples:
+- production_maize_yield
+- production_rice_yield
+- production_sorghum_yield
+grain_flag_value_samples:
+- fnid_season
+indicator_classes:
+- PROD
+sql_generation_hints:
+- Yield = production / area when computing from components; use yield column when
+  present
+business_questions_supported:
+- What is maize yield by season and FNID?
+indicator_families:
+- id: fnid_season_yield
+  filters: season_key / harvest_year; subnational FNID grain
+semantic_role:
+  primary_domain: production
+  supports:
+  - yield
+  - PROD
+filtering_guidance:
+- Subnational seasonal grain — not comparable to fct_production national totals
+- Filter harvest_year, season_key, country_iso3
+semantic_relationships:
+  do_not_join:
+  - table: fct_production
+    reason: FAOSTAT national vs FNID-season

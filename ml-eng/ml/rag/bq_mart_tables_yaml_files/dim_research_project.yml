@@ -1,0 +1,390 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_research_project
+description: OpenAIRE research projects.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Project id
+entity_type: research
+columns:
+- name: research_project_key
+  type: STRING
+  description: research project key
+- name: project_id
+  type: STRING
+  description: project id
+- name: project_code
+  type: STRING
+  description: project code
+- name: acronym
+  type: STRING
+  description: acronym
+- name: project_title
+  type: STRING
+  description: project title
+- name: start_date
+  type: DATE
+  description: start date
+- name: currency
+  type: STRING
+  description: currency
+- name: total_cost
+  type: FLOAT64
+  description: total cost
+- name: funded_amount
+  type: FLOAT64
+  description: funded amount
+- name: primary_funder_name
+  type: STRING
+  description: primary funder name
+- name: jurisdiction
+  type: STRING
+  description: jurisdiction
+- name: funding_stream_desc
+  type: STRING
+  description: funding stream desc
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+research_project_key_value_stats:
+  distinct_count: 3708782
+  null_count: 0
+  is_truncated: true
+  min_value: 00000026e466b99b9c2b3ecb8a9caa36
+  max_value: fffffc382560682bd51a1a583a7e163d
+project_id_value_stats:
+  distinct_count: 3766435
+  null_count: 0
+  is_truncated: true
+  min_value: 100002089___::1e5e62235d094afd01cd56e65112fc63
+  max_value: wt__________::fffa4a78fa5c50e264ccbf0054e6d825
+project_code_value_stats:
+  distinct_count: 3737506
+  null_count: 0
+  is_truncated: true
+  min_value: '-'
+  max_value: ΚΟΥΛΤΟΥΡΑ/ΒΡ-ΝΕ/0517/14
+acronym_value_stats:
+  distinct_count: 108569
+  null_count: 3623919
+  is_truncated: true
+  min_value: '"CHIP SEQ RA CD"'
+  max_value: €ROSNZ
+project_title_value_stats:
+  distinct_count: 1904793
+  null_count: 16362
+  is_truncated: true
+  min_value: '!nformalScience.org: Building a Web Community for Informal Science'
+  max_value: �Traction� or �Turbulence� in Japanese Regulatory Style? - An Empirical
+    Analysis of Japanese Commercial Law Reform since the 1990s
+start_date_value_stats:
+  distinct_count: 16283
+  null_count: 180798
+  is_truncated: true
+  min_value: '0007-03-02'
+  max_value: '2125-05-30'
+currency_value_samples:
+- USD
+- EUR
+- GBP
+- SEK
+- AUD
+- $
+- HRK
+- CHF
+- INR
+- ZAR
+- NOK
+- SGD
+- CAD
+- IDR
+total_cost_value_stats:
+  distinct_count: 24755
+  null_count: 0
+  is_truncated: true
+  min_value: '0'
+  max_value: '2500000000'
+funded_amount_value_stats:
+  distinct_count: 762722
+  null_count: 0
+  is_truncated: true
+  min_value: '-8656260'
+  max_value: '3640000000'
+primary_funder_name_value_samples:
+- National Institutes of Health
+- National Science Foundation
+- UK Research and Innovation
+- European Commission
+- Fundação para a Ciência e a Tecnologia, I.P.
+- Swiss National Science Foundation
+- Netherlands Organisation for Scientific Research (NWO)
+- National Health and Medical Research Council (NHMRC)
+- French National Research Agency (ANR)
+- Research Council of Finland
+- Australian Research Council (ARC)
+- Deutsche Forschungsgemeinschaft
+- The Research Council of Norway
+- Swedish Governmental Agency for Innovation Systems
+- Swedish Research Council
+- Wellcome Trust
+- Austrian Science Fund (FWF)
+- Türkiye Bilimsel ve Teknolojik Araştırma Kurumu
+- Swedish Research Council for Environment, Agricultural Sciences and Spatial Planning
+- Science Foundation Ireland
+- The Swedish Energy Agency
+- Independent Research Fund Denmark
+- The Finnish Cultural Foundation
+- Novo Nordisk Foundation
+- Swedish Research Council for Health, Working Life and Welfare
+- Croatian Science Foundation (CSF)
+- Ministry of Science, Education and Sports of the Republic of Croatia (MSES)
+- Institut National du Cancer
+- Innovaatiorahoituskeskus Business Finland
+- Carlsberg Foundation
+- Health Research Board
+- Lundbeck Foundation
+- Swedish Heart-Lung Foundation
+- Riksbankens Jubileumsfond
+- Research and Innovation Foundation
+- Kone Foundation
+- Ministry of Education, Science and Technological Development of Republic of Serbia
+- Villum Foundation
+- Svenska kulturfonden
+- Swedish National Space Agency
+- Karolinska Institute
+- Taighde Eireann - Research Ireland
+- Kamprad Family Foundation
+- KAUTE-sti
+- VELUX FOUNDATION
+- The Foundation for Baltic and East European Studies
+- The Paulo Foundation
+- Maa- ja vesitekniikan tuki ry
+- Maj and Tor Nessling Foundation
+- Finnish Medical Foundation
+- CHIST-ERA
+- Swedish Environmental Protection Agency
+- Institute for Evaluation of Labour Market and Education Policy
+- The Diabetes Research Foundation
+- Jane and Aatos Erkko Foundation
+- Ministry of Science, Education and Youth of the Republic of Croatia
+- Latvian Council of Science
+- The Foundation for the Advancement of Finnish Securities Markets
+- Helsingin Sanomat Foundation
+- Sakari Alhopuro Foundation
+- Paavo Nurmi Foundation
+- Aligning Science Across Parkinson's
+- Swedish Knowledge and Competence Development Foundation
+- The Finnish Research Impact Foundation
+- Society of Swedish Literature in Finland
+- The Swedish Geotechnical Institute
+- Templeton World Charity Foundation
+- European Environment Agency
+- Suomen Sypyhdistys ry
+- Tara Expeditions Foundation
+- Arts Council of Ireland
+- Department of Tourism, Culture, Arts, Gaeltacht, Sport and Media
+- Irish Research Council for the Humanities and Social Sciences
+- Humanities in the European Research Area
+- Irish MPS Society
+- Canadian Institutes of Health Research
+- University College Cork
+- Food Institutional Research Measure
+- GLEN
+- Marine Institute
+- Lauritzson Foundation
+- Raidió Teilifís Éireann
+- Nabriva Therapeutics
+- University of Galway
+- Athlone Institute of Technology
+- Irish Aid
+- Simon Cumbers Media Fund
+- Jazz Pharmaceuticals
+- Physical Education and Sport Sciences Department, University of Limerick
+- Royal Dublin Society
+- Amarin Corporation
+- Irish Cancer Society
+- ADAPT - Centre for Digital Content Technology
+- St. Luke's Institute of Cancer Research
+- Perrigo Company Charitable Foundation
+- Breakthrough Cancer Research
+- Health Service Executive
+- Royal College of Surgeons in Ireland
+- St Vincents Anaesthesia Foundation
+- Transport Infrastructure Ireland
+- Gaelic Athletic Association
+- Irish Endocrine Society
+- Ireland Funds
+- Deparment of Children and Youth Affairs, Ireland
+- Irish Thoracic Society
+- Dairy Research Ireland
+- National University of Ireland
+- National Children's Research Centre
+- Natural Sciences and Engineering Research Council of Canada
+- Department for Culture, Heritage and the Gaeltacht, Ireland
+- Arts and Disability Ireland
+- Asian Spinal Cord Network
+- Dairy Processing Technology Centre
+- Dormant Accounts Fund
+- Filmbase
+- Health Research Institute, University of Limerick
+- Shell E and P Ireland
+- Irish Phytochemical Food Network
+- PrecisionBiotics Group
+- Epilepsy Ireland
+- Meath Foundation
+- Horizon Pharma
+- Sustainable Energy Authority of Ireland
+- Shire
+- Central Remedial Clinic
+- Department of Jobs, Enterprise and Innovation
+- Our Lady's Children's Hospital, Crumlin
+- Alimentary Glycoscience Research Cluster
+- Irish College of General Practitioners
+- Galway University Foundation
+- Department of the Environment, Climate and Communications
+- Irish Hospice Foundation
+- Advanced Materials and Bioengineering Research
+- Enterprise Ireland
+- Alkermes
+- College of Medicine, Nursing and Health Sciences, National University of Ireland,
+  Galway
+- Centre for Ageing Research and Development in Ireland
+- Inland Fisheries Ireland
+- Horizon Therapeutics
+- Covidien
+- Research and Education Foundation, Sligo General Hospital
+- IDA Ireland
+- Irish Rugby Football Union
+- HRB Clinical Research Facility Galway
+- National Council for Forest Research and Development
+- Dystonia Ireland
+- Social Sciences and Humanities Research Council
+- Munster Technological University
+- Alimentary Health
+- Irish Composites Centre
+- Health and Social Care Board
+- Food Safety Authority of Ireland
+- Insight SFI Research Centre for Data Analytics
+- Cystic Fibrosis Ireland
+- Teagasc
+- Endo International
+- Trinity College Dublin
+- Medical Research Charities Group
+- Allergan
+- Pfizer Healthcare Ireland
+- Global Brain Health Institute
+- Cork Institute of Technology
+- HeyStaks Technologies
+- Breast Cancer Ireland
+- UCD Foundation
+- University College Dublin
+- An Roinn Sláinte
+- Elan Pharma International
+- Mental Health Commission
+- Geological Survey of Ireland
+- Irish Institute of Clinical Neuroscience
+- Irish Motor Neurone Disease Association
+- Irish Centre for High-End Computing
+- Waterford Institute of Technology
+- APC Microbiome Institute
+- National Parks and Wildlife Service
+- Irish Youth Justice Service
+- Environmental Protection Agency
+- National Cancer Registry Ireland
+- Department of Foreign Affairs and Trade, Ireland
+- Paralympics Ireland
+- Dublin Institute for Advanced Studies
+- Department of Agriculture, Food and the Marine, Ireland
+- Ireland Canada University Foundation
+- CLARITY Centre for Sensor Web Technologies
+- Health Research Charities Ireland
+- Tyndall National Institute
+- Cystinosis Ireland
+- Irish Research Council
+- Dublin City Council
+- Department of Education and Skills, Ireland
+- Bausch and Lomb Ireland
+- FotoNation
+- X-Bolt Orthopaedics
+- Rannís
+- Brennan and Company
+- College of Engineering and Informatics, National University of Ireland, Galway
+- Energy Policy Research Centre, Economic and Social Research Institute
+- Cystinosis Foundation Ireland
+- Iris O'Brien Foundation
+- Department of Communications, Energy and Natural Resources, Ireland
+- Friedreich’s Ataxia Research Alliance Ireland
+- National University of Ireland, Maynooth
+- Elan
+- Royal Irish Academy
+- Technological University Dublin
+- European Society of Cataract and Refractive Surgeons
+- Programme of Competitive Forestry Research for Development
+- Royal College of Physicians of Ireland
+- Heritage Council
+- Irish Research Council for Science, Engineering and Technology
+- Irish Association for Cancer Research
+- Irish Research eLibrary
+- Collaborative Centre for Applied Nanotechnology
+- University of Limerick
+- Irish Nephrology Society
+- Higher Education Authority
+- Synthesis and Solid State Pharmaceutical Centre
+- Irish Heart Foundation
+- Institute of Technology, Tralee
+- Moore Institute for Research in the Humanities and Social Studies, University of
+  Galway
+- Aspect Medical Systems
+- Bernal Institute, University of Limerick
+- Dublin City University
+- Economic and Social Research Institute
+- Parkinson's Association of Ireland
+- Teknologi Pendidikan ID
+- Sport Ireland Institute
+- Society for Musicology in Ireland
+jurisdiction_value_samples:
+- US
+- GB
+- EU
+- PT
+- CH
+- SE
+- AU
+- NL
+- FI
+- FR
+- DE
+- 'NO'
+- AT
+- TR
+- DK
+- IE
+- HR
+- CY
+- RS
+- LV
+- BS
+- CA
+- ID
+funding_stream_desc_value_stats:
+  distinct_count: 3569
+  null_count: 3693
+  is_truncated: true
+  min_value: '#ConnectingMinds Projects'
+  max_value: Ünite
+source_natural_key_value_samples:
+- openaire_projects
+loaded_at_value_samples:
+- '2026-08-24 14:23:03.025159+00'
+filtering_guidance:
+- 'Grain: Project id'
+- OpenAIRE research projects.
+sql_generation_hints:
+- 'Join keys: research_project_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: research
+  supports:
+  - research

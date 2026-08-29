@@ -1,6 +1,6 @@
 """
-BigQuery retriever: natural-language questions → BigQuery SQL over staging_dev only.
-Uses an LLM for NL-to-SQL; validates and runs only SELECTs against BQ_DATASET_SILVER.
+BigQuery retriever: natural-language questions → BigQuery SQL over mart_dev only.
+Uses an LLM for NL-to-SQL; validates and runs only SELECTs against BQ_DATASET_GOLD.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from ml.rag.chatbot.bq_sql_validate import (
     broaden_empty_sql_once,
     dry_run_sql,
     inject_missing_metric_filters,
+    inject_time_bounds,
     sql_retry_enabled,
     validate_required_metric_filters,
     validate_sql_column_allowlist,
@@ -27,7 +28,7 @@ from ml.rag.chatbot.bq_sql_validate import (
     validate_sql_value_samples,
 )
 from ml.rag.chatbot.query_decomposer import _NON_COUNTRY_GEO
-from ml.rag.helpers.staging_semantic_relationships import format_join_fragments_for_nl2sql
+from ml.rag.chatbot.bq_table_schema_yaml import join_fragments_for_tables
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 from ml.rag.observability import (
@@ -48,6 +49,13 @@ _observe_span = get_observe_decorator()
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+_MART_TABLE_PREFIXES = ("fct_", "agg_", "dim_", "bridge_")
+
+
+def _is_mart_table_id(table_id: str) -> bool:
+    return (table_id or "").strip().lower().startswith(_MART_TABLE_PREFIXES)
+
+
 def _load_dotenv() -> None:
     """Delegate to the single RAG env loader. Safe to call multiple times."""
     try:
@@ -57,9 +65,9 @@ def _load_dotenv() -> None:
 
 
 def _get_datasets_config() -> dict[str, str]:
-    """Staging (silver) dataset ID from env — sole NL-to-SQL target."""
+    """Mart (gold) dataset ID from env — sole NL-to-SQL target."""
     return {
-        "staging": os.environ.get("BQ_DATASET_SILVER", "staging_dev").strip(),
+        "mart": os.environ.get("BQ_DATASET_GOLD", "mart_dev").strip(),
     }
 
 
@@ -101,35 +109,31 @@ _SCHEMA_FILTER_GUIDE = """
 Filter columns by question intent — use ONLY exact names from each table's Columns block
 in the table hints (never invent bronze/raw names like area or item when Columns lists
 country_name / product_name):
-- Geography: whatever the Columns block lists (often country_name; sometimes country,
-  admin_1, geographic_unit_name, etc.)
-- Time: year, planting_year, harvest_year, month, observation_year when listed
-- Product / entity dims: product_name, product, item, market_name when listed
-- Metric discriminators (REQUIRED when that table has *_value_samples for them):
-  element, indicator, price_type, measure_type, treatment, and grain dims like
-  scenario_name — filter with exact sample strings; never SUM across mixed values
-- Prefer SELECT grain dims + value + unit over bare SELECT *
+- Geography: country_iso3 on facts; join dim_geography for country names
+- Time: year, month, as_of_date, date_key when listed
+- Product: product_key + join dim_product, or product_name when denormalized
+- Metric discriminators: metric, production_grain, price_source, price_type, measure_type, trade_grain, climate_grain, input_grain — filter with exact sample strings
+- Prefer SELECT grain dims + value + unit + warehouse ACF contract columns over bare SELECT *
+- On fct_* facts include when listed in Columns: tier, data_level, geo_scope, place_scope, metric, source_id (or source_key), as_of_date, as_of_date_basis
 
 Query patterns:
-- Time-bounded questions -> WHERE on the time column from Columns
-- Rankings / comparisons -> GROUP BY the geography column from Columns
-- Equality filters on any column with *_value_samples must use exact sample strings
-- Default Production / Retail / population / etc. only when filtering_guidance in the
-  packed table hint says so for that table
+- Time-bounded questions -> WHERE on as_of_date or year from Columns
+- Rankings / comparisons -> GROUP BY country_iso3
+- JOIN dim_geography / dim_product / dim_indicator when filtering by names
 
-Staging tables (use only tables in the Schema / table hints — examples):
-- Yield/crop: stg_yield_raw_data
-- Food security / IPC: stg_fews_food_security
-- Market prices: stg_fews_market_prices, stg_wfp_vampire_prices, stg_faostat_prices
-- Production / trade: stg_faostat_production, stg_faostat_trade
-- Climate: stg_nasa_power, stg_copernicus_era5
-- Soil: stg_isric_africa_soil, stg_isda_soil_enriched
-- HDI / GDP: stg_africa_hdi, stg_africa_gdp_ppp
+Mart tables (use only tables in the Schema / table hints — examples):
+- Production: fct_production, agg_production_annual
+- Yield: fct_yield
+- Food security / IPC: fct_food_security, agg_food_security_monthly
+- Prices: fct_prices, agg_prices_country_month
+- Trade: fct_trade
+- Climate: fct_climate
+- Employment/HDI: fct_employment, fct_hdi, fct_economics
 """
 
-# Bare identifier `country` → `country_name` when SQL targets FAOSTAT staging facts.
+# Bare identifier `country` → `country_iso3` when SQL targets mart production facts.
 _BARE_COUNTRY_IDENT_RE = re.compile(r"(?<![A-Za-z0-9_])country(?![A-Za-z0-9_])", re.IGNORECASE)
-_FAOSTAT_TABLE_IN_SQL_RE = re.compile(r"stg_faostat_", re.IGNORECASE)
+_MART_PRODUCTION_IN_SQL_RE = re.compile(r"fct_production|agg_production", re.IGNORECASE)
 
 # Forbidden SQL tokens (case-insensitive) for safety
 _FORBIDDEN_SQL = re.compile(
@@ -295,10 +299,10 @@ def _parse_sql_queries(raw: str, max_queries: int) -> list[str]:
 
 
 def _rewrite_faostat_country_ident(sql: str) -> str:
-    """Map bare ``country`` → ``country_name`` when SQL references stg_faostat_*."""
-    if not sql or not _FAOSTAT_TABLE_IN_SQL_RE.search(sql):
+    """Map bare ``country`` → ``country_iso3`` when SQL references mart production tables."""
+    if not sql or not _MART_PRODUCTION_IN_SQL_RE.search(sql):
         return sql
-    return _BARE_COUNTRY_IDENT_RE.sub("country_name", sql)
+    return _BARE_COUNTRY_IDENT_RE.sub("country_iso3", sql)
 
 
 def _validate_sql(sql: str, allowed_dataset_ids: set[str], default_limit: int) -> str | None:
@@ -315,7 +319,7 @@ def _validate_sql(sql: str, allowed_dataset_ids: set[str], default_limit: int) -
         return None
     if _FORBIDDEN_SQL.search(normalized):
         return None
-    # Ensure referenced datasets are in the allowed set (staging_dev only for RAG).
+    # Ensure referenced datasets are in the allowed set (mart_dev only for RAG).
     # Only inspect backtick-quoted FQNs so aliases like curr.year are ignored.
     if allowed_dataset_ids:
         allowed_lower = {a.lower() for a in allowed_dataset_ids}
@@ -357,7 +361,7 @@ def _bq_diagnostic_item(
 
 class BQRetriever(BaseRetriever):
     """
-    Retrieve context by querying BigQuery. Uses staging_dev only (BQ_DATASET_SILVER).
+    Retrieve context by querying BigQuery. Uses mart_dev only (BQ_DATASET_GOLD).
     Uses an LLM for NL-to-SQL when no explicit sql is provided.
     """
 
@@ -410,7 +414,7 @@ class BQRetriever(BaseRetriever):
         return ":".join(parts)
 
     def _get_schema(self) -> str:
-        """Build a compact schema summary for staging_dev; cached via Redis when configured."""
+        """Build a compact schema summary for mart_dev; cached via Redis when configured."""
         cache_key = self._schema_cache_key()
         cached = get_bq_schema_cache(cache_key)
         if cached is not None:
@@ -456,10 +460,10 @@ class BQRetriever(BaseRetriever):
             "yes",
         )
         if skip_live and table_hints:
-            ds = self.datasets_config.get("staging", "").strip()
+            ds = self.datasets_config.get("mart", "").strip()
             return (
-                f"Project: `{self.project_id}`. Staging dataset: `{ds}`. "
-                "Use only the stg_* tables and columns described in the table hints below."
+                f"Project: `{self.project_id}`. Mart dataset: `{ds}`. "
+                "Use only the fct_* / agg_* / dim_* tables described in the table hints below."
             )
         return self._get_schema()
 
@@ -514,7 +518,7 @@ class BQRetriever(BaseRetriever):
                     used += cost
                     hints_truncated = hints_truncated or was_cut
                 hints_block = (
-                    "\n\nSelected staging_dev table schemas from YAML "
+                    "\n\nSelected mart_dev table schemas from YAML "
                     "(use only these tables; honor sql_generation_hints and filtering_guidance):\n"
                     + "\n".join(packed)
                 )
@@ -530,24 +534,23 @@ class BQRetriever(BaseRetriever):
             output_rule = (
                 "9) Output exactly one SELECT. No explanation, no markdown, no code fence."
             )
-        ds = self.datasets_config.get("staging", "staging_dev")
+        ds = self.datasets_config.get("mart", "mart_dev")
         allowed_tables = [
             str(t).strip().split(".")[-1]
             for t in (selected_tables or [])
             if str(t).strip()
         ]
         tables_rule = (
-            f"Tables you may use (exactly these stg_* tables): {', '.join(allowed_tables)}. "
-            "JOINs are allowed ONLY between these tables using on= keys from semantic_relationships "
-            "in the hints / JOIN fragments. Never reference a stg_* table outside this list. "
-            "Never invent dim_*, dim_geography, or any table not in this list."
+            f"Tables you may use: {', '.join(allowed_tables)}. "
+            "JOINs are allowed between these tables and documented dim_* targets using on= keys "
+            "from semantic_relationships / JOIN fragments. Never reference tables outside this list."
             if allowed_tables
             else (
-                "Use ONLY stg_* tables and columns from the Schema / table hints. "
-                "Never invent dim_* or other warehouse dimension tables."
+                "Use ONLY mart tables and columns from the Schema / table hints. "
+                "JOIN dim_geography, dim_product, dim_indicator when filtering by names."
             )
         )
-        join_fragments = format_join_fragments_for_nl2sql(allowed_tables)
+        join_fragments = join_fragments_for_tables(allowed_tables)
         join_rule = (
             "8) When JOIN fragments are listed, use those ON predicates exactly; "
             "if fragments say to run separate SELECTs, do not invent joins. "
@@ -558,21 +561,20 @@ class BQRetriever(BaseRetriever):
             f"You are a BigQuery expert for OpenTrace agricultural data in the `{ds}` dataset only. "
             "Rules: "
             f"1) {tables_rule} "
-            f"Use full names: `{self.project_id}.{ds}.stg_*`. "
-            "2) Use exact column names from the Columns blocks only — never invent columns "
-            "or bronze/raw names (e.g. use country_name not country/area; product_name not item "
-            "unless Columns lists item). "
-            "3) For every table hint, equality-filter every metric-discriminator column that has "
-            "*_value_samples (element, price_type, measure_type, indicator, treatment, "
-            "scenario_name when in grain, etc.) using exact sample strings. "
-            "Default Production/Retail/population only when filtering_guidance in the hint says so. "
-            "4) Prefer SELECT of grain columns + value + unit over bare SELECT *. "
+            f"Use full names: `{self.project_id}.{ds}.fct_*` / `agg_*` / `dim_*`. "
+            "2) Use exact column names from the Columns blocks only — prefer country_iso3 on facts; "
+            "join dim_geography for country names when needed. "
+            "3) For every table hint, equality-filter metric-discriminator columns that have "
+            "*_value_samples (metric, production_grain, price_source, price_type, measure_type, "
+            "trade_grain, climate_grain, etc.) using exact sample strings. "
+            "4) Prefer SELECT of grain columns + value + unit + warehouse ACF contract columns "
+            "(tier, data_level, geo_scope, place_scope, metric, source_id/source_key, as_of_date, "
+            "as_of_date_basis when listed) over bare SELECT *. "
             "Never SUM/AVG across mixed discriminator values. "
             "5) When Query constraints are present, REQUIRED country and time filters MUST appear. "
-            "6) For country rankings: filter the discriminator + year, then "
-            "SUM(value) GROUP BY geography column ORDER BY total DESC — not MAX per product row; "
-            "for Africa/continental questions stay on the fact table (no geo-dim subquery). "
-            "7) country_name / country values are countries only — never filter = 'Africa'. "
+            "6) For country rankings: filter discriminators + year, then "
+            "SUM(value) GROUP BY country_iso3 ORDER BY total DESC. "
+            "7) country_iso3 values are ISO3 codes — never filter = 'Africa'. "
             f"{join_rule}"
             f"{output_rule}"
         )
@@ -673,22 +675,32 @@ class BQRetriever(BaseRetriever):
             return None
 
         def _maybe_inject(sql: str) -> str:
-            metric_err = validate_required_metric_filters(sql, selected_tables or None)
-            if not metric_err:
-                return sql
             cue = question or query or ""
-            fixed, notes = inject_missing_metric_filters(
-                sql,
-                selected_tables or None,
-                query=cue,
-            )
-            if not notes:
-                return sql
-            revalidated = _validate_sql(fixed, allowed_datasets, limit)
-            if revalidated is None:
-                return sql
-            logger.info("BQ discriminator auto-inject: %s", "; ".join(notes))
-            return revalidated
+            metric_err = validate_required_metric_filters(sql, selected_tables or None)
+            if metric_err:
+                fixed, notes = inject_missing_metric_filters(
+                    sql,
+                    selected_tables or None,
+                    query=cue,
+                )
+                if notes:
+                    revalidated = _validate_sql(fixed, allowed_datasets, limit)
+                    if revalidated is not None:
+                        logger.info("BQ discriminator auto-inject: %s", "; ".join(notes))
+                        sql = revalidated
+            if time_start or time_end:
+                decomp = {"time_start": time_start or "", "time_end": time_end or ""}
+                timed, time_notes = inject_time_bounds(
+                    sql,
+                    decomp,
+                    selected_tables or None,
+                )
+                if time_notes:
+                    revalidated = _validate_sql(timed, allowed_datasets, limit)
+                    if revalidated is not None:
+                        logger.info("BQ time bounds auto-inject: %s", "; ".join(time_notes))
+                        sql = revalidated
+            return sql
 
         validated = _maybe_inject(validated)
         check_err = _post_checks(validated)
@@ -766,6 +778,10 @@ class BQRetriever(BaseRetriever):
             },
         ):
             parallel_used = False
+            timed_out_hints = 0
+            hints_for_calls: list[str | None] = (
+                list(cleaned_hints[:max_queries]) if cleaned_hints else [None]
+            )
             queries: list[str] = []
 
             if mode == "batch":
@@ -790,7 +806,6 @@ class BQRetriever(BaseRetriever):
                     queries = parsed
 
             if not queries:
-                hints_for_calls = cleaned_hints[:max_queries] if cleaned_hints else [None]
                 parallel = os.environ.get("RAG_BQ_NL2SQL_PARALLEL", "off").strip().lower() in (
                     "1",
                     "true",
@@ -814,7 +829,6 @@ class BQRetriever(BaseRetriever):
                     )
 
                 seen: set[str] = set()
-                timed_out_hints = 0
                 if parallel and len(hints_for_calls) > 1:
                     parallel_used = True
                     call_budget = _nl2sql_call_timeout_s()
@@ -967,7 +981,7 @@ class BQRetriever(BaseRetriever):
         if isinstance(raw_selected, (list, tuple)):
             for item in raw_selected:
                 tid = str(item).strip().split(".")[-1].lower()
-                if tid.startswith("stg_"):
+                if _is_mart_table_id(tid):
                     selected_tables.add(tid)
 
         raw_intents = kwargs.get("query_intents")
@@ -990,7 +1004,7 @@ class BQRetriever(BaseRetriever):
 
         template_meta: dict[str, Any] | None = None
         pattern_meta: dict[str, Any] | None = None
-        ds_name = self.datasets_config.get("staging", "staging_dev")
+        ds_name = self.datasets_config.get("mart", "mart_dev")
         rows_per_query = max(1, int(os.environ.get("RAG_BQ_ROWS_PER_QUERY", "10") or 10))
         sql_source = "none"
         pattern_sqls: list[str] = []
@@ -1056,7 +1070,7 @@ class BQRetriever(BaseRetriever):
                 for intent in leftover_intents:
                     for raw in intent.get("tables") or []:
                         tid = str(raw).strip().split(".")[-1].lower()
-                        if tid.startswith("stg_") and tid not in leftover_tables:
+                        if _is_mart_table_id(tid) and tid not in leftover_tables:
                             leftover_tables.append(tid)
                 need_nl2sql = self.nl2sql_enabled and (
                     not pattern_sqls

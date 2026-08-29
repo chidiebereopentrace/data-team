@@ -1,17 +1,17 @@
-"""Per-table YAML loader for BigQuery semantic schemas under ``ml/rag/bq_tables_yaml_files``.
+"""Per-table YAML loader for BigQuery semantic schemas.
 
-Staging_dev ``stg_*`` YAMLs are the sole table catalog for Ask ADZA NL-to-SQL
-(no Qdrant table-description matching). Each YAML carries grain, keys, hints,
-and columns for the SQL reasoner and NL-to-SQL prompts.
+Mart_dev ``fct_*`` / ``agg_*`` YAMLs under ``bq_mart_tables_yaml_files/`` are the sole
+table catalog for Ask ADZA NL-to-SQL. Staging ``stg_*`` YAMLs remain for reference/tests.
 
 Public API:
-- ``load_table_schema(name)``       -> raw dict for the table, or None.
-- ``format_table_schema(name, ...)`` -> compact SQL-prompt block string, or "".
-- ``known_table_names()``           -> set[str] of all indexed names (bare + FQN).
-- ``list_staging_table_index()``    -> compact index rows for the SQL reasoner.
-- ``pack_selected_table_hints(...)`` -> byte-capped full YAML packs for NL2SQL.
-- ``columns_for_tables(...)``       -> YAML column names per table (SQL allowlist).
-- ``value_samples_for_tables(...)`` -> enum/sample labels per column for soft checks.
+- ``load_mart_table_schema(name)``       -> mart_dev YAML dict.
+- ``format_table_schema(name, loader=...)`` -> compact SQL-prompt block.
+- ``list_mart_table_index()``            -> compact index rows for the SQL reasoner.
+- ``format_mart_reasoner_index(...)``      -> byte-capped mart index for LLM prompt.
+- ``pack_mart_table_hints(...)``         -> byte-capped full YAML packs for NL2SQL.
+- ``columns_for_mart_tables(...)``       -> YAML column names per table (SQL allowlist).
+- ``value_samples_for_mart_tables(...)`` -> enum/sample labels per column.
+- Staging helpers (``load_table_schema``, ``list_staging_table_index``, …) retained for tests.
 """
 from __future__ import annotations
 
@@ -23,13 +23,21 @@ from typing import Any
 import yaml
 
 from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, pack_lines, reasoner_index_max_bytes, truncate_utf8, utf8_len
+from ml.rag.chatbot.mart_indicator_classes import (
+    families_for_fact,
+    indicator_classes_for_table,
+)
+from ml.rag.helpers.mart_semantic_relationships import compact_rels_summary as mart_compact_rels_summary
+from ml.rag.helpers.mart_semantic_relationships import format_join_fragments_for_nl2sql as mart_join_fragments
 from ml.rag.helpers.staging_semantic_relationships import compact_rels_summary
 
 # bq_table_schema_yaml.py lives at ml/rag/chatbot/, YAMLs live at ml/rag/bq_tables_yaml_files/.
 _DEFAULT_DIR = Path(__file__).resolve().parents[1] / "bq_tables_yaml_files"
+_DEFAULT_MART_DIR = Path(__file__).resolve().parents[1] / "bq_mart_tables_yaml_files"
 
 # Cache: (cache_key, index)
 _cache: tuple[tuple[Any, ...], dict[str, dict[str, Any]]] | None = None
+_mart_cache: tuple[tuple[Any, ...], dict[str, dict[str, Any]]] | None = None
 
 
 def _yaml_dir() -> Path:
@@ -39,12 +47,33 @@ def _yaml_dir() -> Path:
     return _DEFAULT_DIR.resolve()
 
 
+def _mart_yaml_dir() -> Path:
+    raw = os.environ.get("RAG_BQ_MART_TABLES_YAML_DIR", "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return _DEFAULT_MART_DIR.resolve()
+
+
 def _strip_fqn(table_name: str) -> str:
     """Return the bare table name (last dotted segment) from a possibly fully-qualified id."""
     text = (table_name or "").strip().strip("`")
     if not text:
         return ""
     return text.split(".")[-1]
+
+
+_MART_TABLE_PREFIXES = ("fct_", "agg_", "dim_", "bridge_")
+
+
+def _is_mart_table_id(table_id: str) -> bool:
+    bare = _strip_fqn(table_id).lower()
+    return bare.startswith(_MART_TABLE_PREFIXES)
+
+
+def _schema_loader_for(table_id: str):
+    if _is_mart_table_id(table_id):
+        return load_mart_table_schema
+    return load_table_schema
 
 
 def _index_yaml_files(directory: Path) -> dict[str, dict[str, Any]]:
@@ -109,6 +138,52 @@ def load_table_schema(table_name: str) -> dict[str, Any] | None:
     if not name:
         return None
     index = _build_index()
+    if name in index:
+        return index[name]
+    bare = _strip_fqn(name)
+    if bare and bare in index:
+        return index[bare]
+    return None
+
+
+def _build_mart_index() -> dict[str, dict[str, Any]]:
+    """Load all mart YAML files; cache by (dir_path, dir_mtime, sorted file mtimes)."""
+    global _mart_cache
+    directory = _mart_yaml_dir()
+    try:
+        dir_mtime = directory.stat().st_mtime_ns if directory.is_dir() else None
+    except OSError:
+        dir_mtime = None
+    file_sig: tuple[tuple[str, int], ...] = tuple()
+    if dir_mtime is not None and directory.is_dir():
+        try:
+            file_sig = tuple(
+                sorted(
+                    (p.name, p.stat().st_mtime_ns)
+                    for p in directory.glob("*.yml")
+                )
+            )
+        except OSError:
+            file_sig = tuple()
+    cache_key = ("v1", str(directory), dir_mtime, file_sig)
+    if _mart_cache is not None and _mart_cache[0] == cache_key:
+        return _mart_cache[1]
+    index = _index_yaml_files(directory)
+    _mart_cache = (cache_key, index)
+    return index
+
+
+def known_mart_table_names() -> set[str]:
+    """All names (bare + FQN aliases) for which a mart YAML schema is available."""
+    return set(_build_mart_index().keys())
+
+
+def load_mart_table_schema(table_name: str) -> dict[str, Any] | None:
+    """Resolve a mart table name to its raw YAML dict."""
+    name = (table_name or "").strip()
+    if not name:
+        return None
+    index = _build_mart_index()
     if name in index:
         return index[name]
     bare = _strip_fqn(name)
@@ -209,7 +284,7 @@ def column_for_sample_key(sample_key: str) -> str:
 
 def discriminator_columns(table_id: str) -> list[str]:
     """Physical columns with YAML ``*_value_samples`` (metric grain discriminators)."""
-    schema = load_table_schema(table_id)
+    schema = _schema_loader_for(table_id)(table_id)
     if not schema:
         return []
     out: list[str] = []
@@ -226,6 +301,8 @@ def discriminator_columns(table_id: str) -> list[str]:
 
 def measure_columns(table_id: str) -> list[str]:
     """Numeric measure columns excluding geo/time keys and metric discriminators."""
+    if _is_mart_table_id(table_id):
+        return measure_columns_mart(table_id)
     schema = load_table_schema(table_id)
     if not schema:
         return []
@@ -247,7 +324,33 @@ def measure_columns(table_id: str) -> list[str]:
     return out
 
 
+def measure_columns_mart(table_id: str) -> list[str]:
+    schema = load_mart_table_schema(table_id)
+    if not schema:
+        return []
+    disc = {c.lower() for c in discriminator_columns(table_id)}
+    out: list[str] = []
+    col_names = {str(c.get("name") or "").strip().lower() for c in _schema_columns(schema)}
+    if "value" in col_names:
+        return ["value"]
+    for col in _schema_columns(schema):
+        name = str(col.get("name") or "").strip()
+        if not name:
+            continue
+        low = name.lower()
+        typ = str(col.get("type") or "").upper()
+        if typ not in _NUMERIC_COLUMN_TYPES:
+            continue
+        if low in _MEASURE_SKIP_COLUMNS or low.endswith("_key"):
+            continue
+        if low in disc or low in _CORE_METRIC_DISCRIMINATORS or low in _GRAIN_METRIC_DISCRIMINATORS:
+            continue
+        out.append(name)
+    return out[:6]
+
+
 _GEO_COLUMN_CANDIDATES = ("country_name", "country")
+_MART_GEO_COLUMN_CANDIDATES = ("country_iso3", "country_name", "country")
 _YEAR_COLUMN_CANDIDATES = ("year", "harvest_year", "observation_year", "mp_year")
 _PRODUCT_COLUMN_CANDIDATES = ("product_name", "product", "item")
 _PATTERN_DENY_TABLES = frozenset(
@@ -312,17 +415,32 @@ _CLASSIFICATION_QUERY_RE = re.compile(r"\b(classification|phase)\b", re.IGNORECA
 
 
 def _column_names(table_id: str) -> set[str]:
-    schema = load_table_schema(table_id)
+    loader = _schema_loader_for(table_id)
+    schema = loader(table_id)
     if not schema:
         return set()
     return {str(c.get("name") or "").strip() for c in _schema_columns(schema) if str(c.get("name") or "").strip()}
 
 
 def geo_column(table_id: str) -> str | None:
-    """Country label column from YAML, preferring ``country_name`` over ``country``."""
+    """Country label column from YAML, preferring mart ``country_iso3`` or staging ``country_name``."""
+    if _is_mart_table_id(table_id):
+        return geo_column_mart(table_id)
     names = _column_names(table_id)
     by_low = {n.lower(): n for n in names}
     for cand in _GEO_COLUMN_CANDIDATES:
+        if cand in by_low:
+            return by_low[cand]
+    return None
+
+
+def geo_column_mart(table_id: str) -> str | None:
+    schema = load_mart_table_schema(table_id)
+    if not schema:
+        return None
+    names = {str(c.get("name") or "").strip() for c in _schema_columns(schema) if str(c.get("name") or "").strip()}
+    by_low = {n.lower(): n for n in names}
+    for cand in _MART_GEO_COLUMN_CANDIDATES:
         if cand in by_low:
             return by_low[cand]
     return None
@@ -338,6 +456,8 @@ def year_column(table_id: str) -> str | None:
 
 
 def product_column(table_id: str) -> str | None:
+    if _is_mart_table_id(table_id):
+        return product_column_mart(table_id)
     names = _column_names(table_id)
     by_low = {n.lower(): n for n in names}
     samples = value_samples_for_tables({table_id}).get(_strip_fqn(table_id).lower()) or {}
@@ -350,8 +470,23 @@ def product_column(table_id: str) -> str | None:
     return None
 
 
+def product_column_mart(table_id: str) -> str | None:
+    """Product filter column on mart facts (product_key only — join dim_product for names)."""
+    schema = load_mart_table_schema(table_id)
+    if not schema:
+        return None
+    names = {str(c.get("name") or "").strip() for c in _schema_columns(schema) if str(c.get("name") or "").strip()}
+    by_low = {n.lower(): n for n in names}
+    for cand in ("product_name", "product_key", "item_name", "item_key"):
+        if cand in by_low:
+            return by_low[cand]
+    return None
+
+
 def table_supports_sql_pattern(table_id: str) -> bool:
     """True when YAML grain is country×year facts that SUM/AVG patterns can compile."""
+    if _is_mart_table_id(table_id):
+        return table_supports_sql_pattern_mart(table_id)
     bare = _strip_fqn(table_id).lower()
     if not bare or bare in _PATTERN_DENY_TABLES or bare.startswith("stg_ilri_"):
         return False
@@ -366,6 +501,28 @@ def table_supports_sql_pattern(table_id: str) -> bool:
     if year_column(bare) is None:
         return False
     return bool(measure_columns(bare))
+
+
+def table_supports_sql_pattern_mart(table_id: str) -> bool:
+    bare = _strip_fqn(table_id).lower()
+    if not bare or bare.startswith("dim_") or bare.startswith("bridge_"):
+        return False
+    schema = load_mart_table_schema(bare)
+    if not schema:
+        return False
+    grain = str(schema.get("grain") or "")
+    if _PATTERN_DENY_GRAIN_RE.search(grain):
+        return False
+    if geo_column_mart(bare) is None:
+        return False
+    if year_column(bare) is None and "as_of_date" not in _column_names(bare):
+        return False
+    return bool(measure_columns_mart(bare))
+
+
+def join_fragments_for_tables(selected_tables: list[str] | set[str] | None) -> str:
+    """Standard LEFT JOIN blocks for selected mart tables."""
+    return mart_join_fragments(selected_tables)
 
 
 def measure_sql_aggregation(table_id: str, column: str, *, element: str | None = None) -> str:
@@ -561,20 +718,22 @@ def discriminator_equality_filters(table_id: str, blob: str) -> list[tuple[str, 
 
 def table_source_meta(table_id: str) -> dict[str, Any]:
     """Compact table-level metadata for BQ context enrichment."""
-    schema = load_table_schema(table_id) or {}
+    loader = _schema_loader_for(table_id)
+    schema = loader(table_id) or {}
     bare = _strip_fqn(table_id).lower()
     source_obj = schema.get("source")
     source: dict[str, Any] = source_obj if isinstance(source_obj, dict) else {}
     semantic_obj = schema.get("semantic_role")
     semantic: dict[str, Any] = semantic_obj if isinstance(semantic_obj, dict) else {}
     supports = semantic.get("supports")
+    layer = str(source.get("layer") or ("mart_dev" if _is_mart_table_id(bare) else "staging_dev")).strip()
     return {
         "table_id": bare,
         "table_name": str(schema.get("table_name") or bare).strip(),
         "description": " ".join(str(schema.get("description") or "").split())[:500],
         "grain": str(schema.get("grain") or "").strip(),
         "entity_type": str(schema.get("entity_type") or "").strip(),
-        "source_layer": str(source.get("layer") or "staging_dev").strip(),
+        "source_layer": layer,
         "source_domain": str(source.get("domain") or semantic.get("primary_domain") or "").strip(),
         "supports": list(supports) if isinstance(supports, list) else [],
     }
@@ -632,6 +791,34 @@ def columns_for_tables(table_ids: set[str] | list[str]) -> dict[str, set[str]]:
     return out
 
 
+def columns_for_mart_tables(table_ids: set[str] | list[str]) -> dict[str, set[str]]:
+    """Return column allowlists from mart YAMLs (includes dim join targets)."""
+    return _columns_for_schemas(table_ids, load_mart_table_schema)
+
+
+def _columns_for_schemas(table_ids: set[str] | list[str], loader) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for raw in table_ids or []:
+        bare = _strip_fqn(str(raw)).lower()
+        if not bare:
+            continue
+        schema = loader(bare)
+        if not schema:
+            continue
+        cols_raw = schema.get("columns")
+        names: set[str] = set()
+        if isinstance(cols_raw, list):
+            for col in cols_raw:
+                if not isinstance(col, dict):
+                    continue
+                name = str(col.get("name") or "").strip()
+                if name:
+                    names.add(name)
+        if names:
+            out[bare] = names
+    return out
+
+
 def value_samples_for_tables(
     table_ids: set[str] | list[str],
 ) -> dict[str, dict[str, list[str]]]:
@@ -639,12 +826,26 @@ def value_samples_for_tables(
 
     Sample order follows the YAML list (first listed label is the catalog default).
     """
+    return _value_samples_for_schemas(table_ids, load_table_schema)
+
+
+def value_samples_for_mart_tables(
+    table_ids: set[str] | list[str],
+) -> dict[str, dict[str, list[str]]]:
+    """Return mart table column samples from ``bq_mart_tables_yaml_files``."""
+    return _value_samples_for_schemas(table_ids, load_mart_table_schema)
+
+
+def _value_samples_for_schemas(
+    table_ids: set[str] | list[str],
+    loader,
+) -> dict[str, dict[str, list[str]]]:
     out: dict[str, dict[str, list[str]]] = {}
     for raw in table_ids or []:
         bare = _strip_fqn(str(raw)).lower()
         if not bare:
             continue
-        schema = load_table_schema(bare)
+        schema = loader(bare)
         if not schema:
             continue
         yaml_cols: set[str] = set()
@@ -908,6 +1109,8 @@ _SECTION_ORDER: list[tuple[str, str]] = [
     ("metrics", "Metric columns"),
     ("scenario_context", "Scenario context"),
     ("semantic_role", "Semantic role"),
+    ("indicator_classes", "Indicator classes"),
+    ("indicator_families", "Indicator families"),
     ("business_questions_supported", "Business questions supported"),
     ("aggregation_rules", "Aggregation rules"),
     ("filtering_guidance", "Filtering guidance"),
@@ -1008,6 +1211,7 @@ def format_table_schema(
     include_columns: bool = True,
     selected_tables: set[str] | None = None,
     query_terms: list[str] | None = None,
+    loader=None,
 ) -> str:
     """Compact, SQL-prompt-friendly rendering of a per-table YAML schema.
 
@@ -1015,7 +1219,8 @@ def format_table_schema(
     ``max_bytes`` (preferred) or ``max_chars``. Value-sample lists prefer
     entries matching ``query_terms`` so large FAOSTAT enums fit the hint budget.
     """
-    schema = load_table_schema(table_name)
+    load_fn = loader or _schema_loader_for(table_name)
+    schema = load_fn(table_name)
     if not schema:
         return ""
 
@@ -1211,6 +1416,157 @@ def pack_selected_table_hints(
             include_columns=True,
             selected_tables=selected,
             query_terms=query_terms,
+        )
+        if not block:
+            continue
+        cost = utf8_len(block) + (1 if hints else 0)
+        if used + cost > budget:
+            frag, _ = truncate_utf8(block, remain_total)
+            if frag:
+                hints.append(frag)
+            truncated = True
+            break
+        hints.append(block)
+        used += cost
+    return hints, truncated or len(hints) < known_count
+
+
+_MART_INDEX_PREFIXES = ("fct_", "agg_", "dim_")
+
+
+def list_mart_table_index() -> list[dict[str, Any]]:
+    """Compact catalog for the mart SQL reasoner (fct/agg/dim YAMLs)."""
+    index = _build_mart_index()
+    seen: set[str] = set()
+    rows: list[dict[str, Any]] = []
+    for key, schema in index.items():
+        if not isinstance(schema, dict):
+            continue
+        fqn = str(schema.get("table_name") or "").strip().strip("`")
+        bare = _strip_fqn(fqn) or (key if key.startswith(_MART_INDEX_PREFIXES) else "")
+        if not bare.startswith(_MART_INDEX_PREFIXES) or bare in seen:
+            continue
+        seen.add(bare)
+        raw_role = schema.get("semantic_role")
+        role: dict[str, Any] = raw_role if isinstance(raw_role, dict) else {}
+        raw_tags = role.get("supports")
+        tags: list[Any] = raw_tags if isinstance(raw_tags, list) else []
+        raw_ic = schema.get("indicator_classes")
+        iclasses: list[str] = [str(c) for c in raw_ic] if isinstance(raw_ic, list) else indicator_classes_for_table(bare)
+        raw_fams = schema.get("indicator_families")
+        fam_ids: list[str] = []
+        if isinstance(raw_fams, list):
+            fam_ids = [str(f.get("id") or "") for f in raw_fams if isinstance(f, dict) and f.get("id")]
+        if not fam_ids:
+            fam_ids = [str(f.get("id") or "") for f in families_for_fact(bare) if f.get("id")]
+        domain = str(
+            role.get("primary_domain")
+            or schema.get("entity_type")
+            or ""
+        ).strip()
+        rows.append(
+            {
+                "table_id": bare,
+                "fqn": fqn or bare,
+                "description": str(schema.get("description") or "").strip(),
+                "grain": str(schema.get("grain") or "").strip(),
+                "domain": domain,
+                "tags": [str(t).strip() for t in tags if str(t).strip()],
+                "indicator_classes": iclasses,
+                "families": fam_ids,
+                "rels": mart_compact_rels_summary(bare),
+            }
+        )
+    rows.sort(key=lambda r: r["table_id"])
+    return rows
+
+
+def format_mart_reasoner_index(
+    *,
+    max_bytes: int | None = None,
+    table_ids: list[str] | None = None,
+    domains: list[str] | None = None,
+    indicator_classes: list[str] | None = None,
+) -> tuple[str, bool]:
+    """Byte-capped mart index for the SQL reasoner (class-scoped when possible)."""
+    budget = reasoner_index_max_bytes() if max_bytes is None else max(0, max_bytes)
+    prefer = {str(t).strip().split(".")[-1].lower() for t in (table_ids or []) if str(t).strip()}
+    prefer_domains = {str(d).strip().lower() for d in (domains or []) if str(d).strip()}
+    prefer_classes = {str(c).strip().upper() for c in (indicator_classes or []) if str(c).strip()}
+    rows = list_mart_table_index()
+    if prefer or prefer_domains or prefer_classes:
+        scoped = [
+            r
+            for r in rows
+            if (prefer and str(r.get("table_id") or "").lower() in prefer)
+            or (
+                prefer_domains
+                and str(r.get("domain") or "").lower() in prefer_domains
+            )
+            or (
+                prefer_classes
+                and prefer_classes.intersection({str(c).upper() for c in (r.get("indicator_classes") or [])})
+            )
+        ]
+        if prefer:
+            have = {str(r.get("table_id") or "").lower() for r in scoped}
+            for r in rows:
+                tid = str(r.get("table_id") or "").lower()
+                if tid in prefer and tid not in have:
+                    scoped.append(r)
+                    have.add(tid)
+        if scoped:
+            rows = scoped
+    lines: list[str] = []
+    for row in rows:
+        tags = ", ".join(row.get("tags") or [])
+        ic = ",".join(row.get("indicator_classes") or []) or "-"
+        fams = ",".join(row.get("families") or []) or "-"
+        desc = str(row.get("description") or "")
+        if len(desc) > 120:
+            desc = desc[:119].rstrip() + "…"
+        rels = str(row.get("rels") or mart_compact_rels_summary(str(row["table_id"])))
+        if len(rels) > 140:
+            rels = rels[:139].rstrip() + "…"
+        lines.append(
+            f"- {row['table_id']} | classes={ic} | families={fams} | "
+            f"domain={row.get('domain') or '-'} | grain={row.get('grain') or '-'} | "
+            f"tags={tags or '-'} | rels={rels} | {desc}"
+        )
+    return pack_lines(lines, budget)
+
+
+def pack_mart_table_hints(
+    table_ids: list[str],
+    *,
+    max_bytes: int | None = None,
+    query_terms: list[str] | None = None,
+) -> tuple[list[str], bool]:
+    """Full mart YAML packs for selected tables, truncated to the NL2SQL hint byte budget."""
+    budget = hint_max_bytes() if max_bytes is None else max(0, max_bytes)
+    if budget <= 0 or not table_ids:
+        return [], bool(table_ids)
+    selected = {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
+    per = max(400, budget // max(1, len(table_ids)))
+    hints: list[str] = []
+    used = 0
+    truncated = False
+    known_count = 0
+    for tid in table_ids:
+        if not load_mart_table_schema(tid):
+            continue
+        known_count += 1
+        remain_total = budget - used - (1 if hints else 0)
+        if remain_total <= 0:
+            truncated = True
+            break
+        block = format_table_schema(
+            tid,
+            max_bytes=min(per, remain_total),
+            include_columns=True,
+            selected_tables=selected,
+            query_terms=query_terms,
+            loader=load_mart_table_schema,
         )
         if not block:
             continue

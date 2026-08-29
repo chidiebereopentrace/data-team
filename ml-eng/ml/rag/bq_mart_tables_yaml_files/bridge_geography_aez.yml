@@ -1,0 +1,81 @@
+table_name: opentrace-prod-5ga4.mart_dev.bridge_geography_aez
+description: Many-to-many geography ↔ AEZ.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: geography_key × AEZ
+entity_type: geography
+columns:
+- name: geography_aez_bridge_key
+  type: STRING
+  description: geography aez bridge key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (null if unmatched)
+- name: aez_key
+  type: STRING
+  description: aez key
+- name: aez_code
+  type: STRING
+  description: aez code
+- name: aez_name
+  type: STRING
+  description: aez name
+- name: aez_version
+  type: STRING
+  description: aez version
+- name: aez_source
+  type: STRING
+  description: aez source
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+geography_aez_bridge_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+geography_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+aez_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+aez_code_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+aez_name_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+aez_version_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+aez_source_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+source_natural_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+loaded_at_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+filtering_guidance:
+- 'Grain: geography_key × AEZ'
+- Many-to-many geography ↔ AEZ.
+sql_generation_hints:
+- 'Join keys: geography_key, aez_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: geography
+  supports:
+  - geography

@@ -1,0 +1,14 @@
+# Audit tables populated by data-eng/data/local/scripts (not dbt run).
+
+version: 2
+
+sources:
+  - name: mart_dev_audit
+    description: "Script-maintained audit tables in the mart_dev (Gold) dataset."
+    schema: "{{ env_var('BQ_DATASET_GOLD', 'mart_dev') }}"
+    database: "{{ env_var('BQ_PROJECT', 'your-gcp-project-id') }}"
+    tables:
+      - name: audit_mart_column_labels
+        description: >
+          Live column label distributions for all mart_dev columns.
+          Regenerate: python data-eng/data/local/scripts/regenerate_mart_table_yamls.py

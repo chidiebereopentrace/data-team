@@ -1,0 +1,781 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_forestry
+description: Forestry production/trade long-form.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Country × item × forestry_grain × year
+entity_type: production
+columns:
+- name: forestry_key
+  type: STRING
+  description: forestry key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (null if unmatched)
+- name: geo_level
+  type: STRING
+  description: geo level
+- name: country_iso3
+  type: STRING
+  description: ISO3 from dim or extractable geo even if key null
+- name: item_key
+  type: STRING
+  description: item key
+- name: element_key
+  type: STRING
+  description: element key
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: tier
+  type: INT64
+  description: Producer scale (1=global, 2=national ministry, 3=community survey)
+- name: data_level
+  type: STRING
+  description: Resolution of the number (warehouse row resolution)
+- name: geo_scope
+  type: STRING
+  description: national / sub_national / community / point (null when geography_key
+    null)
+- name: place_scope
+  type: ARRAY<STRING>
+  description: ARRAY of comparable place labels for ACF geo overlap
+- name: metric
+  type: STRING
+  description: Stable slug for the measure
+- name: source_id
+  type: STRING
+  description: Lineage key (= dim_source.source_key)
+- name: forestry_grain
+  type: STRING
+  description: forestry grain
+- name: partner_countries
+  type: STRING
+  description: partner countries
+- name: year
+  type: INT64
+  description: year
+- name: date_key
+  type: STRING
+  description: date key
+- name: as_of_date
+  type: DATE
+  description: Observation date when known; else DATE(loaded_at)
+- name: as_of_date_basis
+  type: STRING
+  description: observation or loaded_at
+- name: unit
+  type: STRING
+  description: Unit of measure
+- name: value
+  type: FLOAT64
+  description: Numeric measure
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+forestry_key_value_stats:
+  distinct_count: 768881
+  null_count: 0
+  is_truncated: true
+  min_value: 0000098c5e2aeb7b43f0b33b5ecec08c
+  max_value: fffffd2cc517c178b30a5c24086e331c
+geography_key_value_samples:
+- 3e162de530565ea7fd832dcf8d5d8e00
+- 869dbec7886b8171527c101f0aafa9d7
+- dd2eb23623d3cfe1d69e6d1ef080baa4
+- 514d63591d4d149773d80aac5c002246
+- fafb8c280b3839e5bb2cf04e4982d459
+- f14bb4203a7073edd04952936c354fca
+- 41a9071812831bd833b31a0015a7fc21
+- 82dc51dcf101cb11ff4c3346a530efbc
+- ec7437dac6b677268f738803c348a944
+- 896ec125e415d43f6917dafc7bdbe109
+- 939117deefb921f24dcb765b8ae3027d
+- dad3f956104596ff2fd5ccc98d2ac7c8
+- 14cd64b93250222ef8109668740e33c9
+- d081c90ab6801ddb32bedd266ed0bc9e
+- f879de6d2aff3bb8e6336e65db2e4cb3
+- bfcc5273fd7dce595c475531c8db844a
+- b9a6c3cfa0ba81a70106dd8e6007df4e
+- 629f6ee5a903f4bcce1aa6a327392f4a
+- 7f24cf6c5ae4ae2c13e4a3cd9da9563d
+- c7afa8e5dc75eaed3f865becb594623a
+- fc36cac904ae8ed303bd472e14279601
+- caabf8e59e96c9806dd79ded964857de
+- 73abae1655254baa0c8f2d1cdbf350da
+- 6f8c5d76bea0a5e7b6408e80dd147dfc
+- 97b9d0ff0519f52da36b9897dbc109d8
+- 42fc637e79bb98d1e905f28e55fca77a
+- 08d5d1fbcfbc008d33905868ea7a2dd7
+- b93642c9546b0ad7c4b50b1edd34b641
+- 4873407b6dcd3d440b964ca0e6285ec2
+- 643b7e5a6012349b12e2a7d8b9f9b12f
+- da5416d0b7eb15e076fd031e9a0b2e22
+- 547d52a13b878d359e6e0e930b5fed18
+- 6b6a33d1b12ec418b4d84ea86d5ee2f1
+- e1490c9d435658d25b0069edb3330168
+- 8a9d2f38657b41d1beee71987b789584
+- e2a7da7be69c9efab479954c7fc62683
+- b4f3325b4dff86fd532a100b328770a4
+- 82533bcf1d2275baadeab94166482969
+- ff2abe6b8f87b63b0a4d12a3dc2fb900
+- 6258dc0299b2e5beaec7f3d0e69cd89f
+- 96a41cc70b4b99b5b238b479e6274f4c
+- e36a49cf9440c0469a0b80d3dc94e83e
+- 8a6973d8ba686f5a6c7618896e9e9a6a
+- 414e80f7a6cec83f4a5fa1139fc707bf
+- d8e7902a1aab9ce87cb3a10af9e19e8e
+- c3b34f1c114c01b1ac1f59b7cc1199a3
+- 8d2977ea05cfc771252b5dd2e3456353
+- 7f4e1c93fa0ec34f371db0ceafe3a203
+- 4d9142fd531731495f9f581296425df2
+- e2e7220258577b7bf5917652b1a0c882
+- f73b9fe995874638e36e5bd11f8866e4
+- e06752126ff796d0bfd12fb5a3f93e52
+- 8fdd65bc015f999ef22a924baf8e4980
+- 8b2130007752cc4fd2bc50ce5f2ce31b
+- d185cda4a02671a4ed8ccd6509c1494a
+- 0a0441b57f37ba6fcab0014f30073fe0
+- 813e1dfd9941f45a5c4665d686c3ca61
+- cdb4c89696d45097587020d9c09861d9
+- f3d9c789cd0435e4115220ab2b98481f
+geo_level_value_samples:
+- country
+country_iso3_value_samples:
+- ZAF
+- EGY
+- MAR
+- TUN
+- GHA
+- KEN
+- CIV
+- TZA
+- NGA
+- CMR
+- DZA
+- MUS
+- ZWE
+- SEN
+- MOZ
+- MDG
+- COG
+- UGA
+- GAB
+- COD
+- ZMB
+- AGO
+- ETH
+- LBY
+- MWI
+- SLE
+- SDN
+- TGO
+- GIN
+- BEN
+- MLI
+- CAF
+- GMB
+- LBR
+- BFA
+- NER
+- RWA
+- MRT
+- CPV
+- DJI
+- GNQ
+- BDI
+- SOM
+- GNB
+- SWZ
+- TCD
+- STP
+- NAM
+- ERI
+- SYC
+- REU
+- BWA
+- COM
+- LSO
+- SHN
+- ATF
+- SSD
+- MYT
+- ESH
+item_key_value_samples:
+- bc99b3793cbaa02394ab027987e4da35
+- 189077128eef458cbd7f9430d94b1722
+- fc8a72e50c1e6e65a24907b3a2546d7f
+- 7fa39536c385807265f6bc939970f529
+- 297471d454600805d397fa21f29adb9e
+- 4035e6308a2cf840572a2fd2e95559cf
+- 606b523d56bbb8cf29cad806d22cdf97
+- 5c2cfa10fe554a87a49cd42884921f3f
+- b900ae2c6a1cd561554ccb9f50c5bfc3
+- 78872cea00d6db1a15de6a8bb6b1833d
+- 64dd7aa6e8f18d49d1509ef6ef90b4c4
+- 9b75478c7e3d99120e3037925a64cb9f
+- cf7eea9862c3b9ef33bdf0fbec486dca
+- 8db4db3373d13ce6f9853c44cede33cf
+- dac0afd40d47ffb62814278024052fb5
+- 2f71b1c2f4f8863f190a1a3323e7cedb
+- dba22a8efcc7a6f294c97e801af75782
+- cbe531561243bc747d378492873a6777
+- d22dc138351db6db13cfad18150aa002
+- 1c705735e6efca190e6ca327ac5974be
+- 646100a3d1fa3240dbaa1295456ec95c
+- 5711693d2012058630b8c854b740c3c6
+- c12eb861ded7098efb6f67b1292ac20e
+- 645aebf0a4e07cae93760c9dac676cd2
+- 9da968719e5298f1388620a728992996
+- 2f7d88edf9b93f4da6afc83d46a2c6c2
+- bc66e025b8c2c69663d2df89995f0b7d
+- cc0e7797d75f36e185b17c524d168fcf
+- 74ed19117f6e67ba386a50e85e5932e4
+- 3698d7bf0ce94e631de5a3644609b4bb
+- 81e64f73f4b323b94470238a57c7cfb2
+- 69bbcf74f5bd8ad4fd18ea6da8de0f30
+- ca94fa984823279a1e53eb0d194dd9aa
+- 3d027d69ca2a01d71da06183e62b41c2
+- 653ebdad91847e027cd90240d38925f1
+- 96096f5fe844f80b1be185a79e2feb8f
+- aaba09ef17f1ef519f0f9d0989e89bcc
+- d21af22640fc45681b77a10ecfc75cfc
+- fa30871112fbdb6e08dca5d3ace63705
+- 59fed09c711f9f9ea781f56ad7b89292
+- eb751e59ecb040563eb2221b69535ecb
+- 0c0354ee8cf08d78894800d40631016c
+- 65a0fe78734fc390d6e73bbd39ea972f
+- 86af2a3069c41cca0e698c36f61e086b
+- 23bc126a3feecf555d6b2b41d03a0696
+- 6094d13d8f8747ffb1b59457338bafa1
+- f90060a4bf326b4752bd73580a4cbc74
+- 94246c4861f7058f711ac92e0fd78a0e
+- 4ab21e80ccfb205c6ffc33490ade17ce
+- 76616092f5760e218e304c3004e8054f
+- 6d3b7ca6de157064cb0b60af18a5267d
+- bc824abd046fc58344de099250f28fd3
+- cd58ccd866266b89eab609e6039a4e0b
+- 82dba80cc3145172701e8d4b7849d021
+- cfba23aa25529979e6f9ff625ab2a50b
+- eac276a586edf1f2dbc11e406af17147
+- a230aedd7b7dd18e029ccdaf8e050e10
+- bc1ad3728060e759c06956f194fa8228
+- 07e9973d81601e77982739c23eb664af
+- 97945636f30777783b8d7c3209240607
+- 0a8f5bf28e667dc4f46e4cc9accde6ae
+- 32386fbabd02af1e9b5005ff0c4da691
+- 458b56f28eda83fb0135bc958d49d658
+- 3616aa7d54e4c4693787fea0c5d0716b
+- fc228817691b19f0b892594e46cdc3ad
+- 59a6e92295e29866769478f440e57634
+- 48d4b707c45e50f99faf117e11a6bfe9
+- 07f9bcd977a5b90beb48357aabccda36
+- c124dafc82f712d8fd1f84aea0a87386
+- e8e3f1c74ff6740051c74ca825772789
+- 3678a8cae2c61112effe16d4a389f7a2
+- cee34dd5e631c0132d8a76af50ae5832
+- 2c2823b17e0fe57f173727b9b06e9944
+- f4a1e4d4cc7ce9032a682da5c13739cf
+- 77514ac7a3a835b9babc65c9eccecbd6
+- 80ba9a640386999bf250428f5ad4fcaa
+- ff14c22d5d7fd339bc3bc96227b70439
+- 695bf594e2ed91202028cf5413fa5d93
+- 987a772daa2a9824e1809df3ca1d6c93
+- f574a4548e721683d45101751f3c13fa
+- a01b96447e3fa91c3bd9c2d361e05431
+- 0eb2f66f7c955225d0a97441bb62bd15
+- 8bfa385084e83c60596f5eb5fd7cdbde
+- 8bac0ab7cc78bc1572568cb2c49e46df
+- 8188a699d422222a827d0e6f9dd6b679
+- bdf707f77d8276c296890823d7fc7296
+- 47241182480341cdc7f5716723346123
+- 915fdb8f0bf842c6d59b3f247a187e12
+- 86a925b06b63696c5880b8428558daff
+- af841bcba04435f83fe1d648ef43e68e
+- 477d6e381784faa720631df770dcbd28
+- b784e8ba037d1989900b2ba744379825
+- 5edca042a71ab79d37e49c0a00389c36
+- 9906e4a44806e12f52173efe9fa562e8
+- cf8fe075651445b938d3f6c31cb02d68
+- 9036bb83d51530f17cc14c85c85b6060
+- 58b757a555025b27f189c72db3981c42
+- 95605dc5361f9caf35e470fe9406f5c8
+- 31cedbf696bb09d0ee02ba40aeb4fb09
+- e6685835a127e8c2440aa887f2f21ebb
+- 685a262c3160eb89567da66f60e3473a
+- d41a3a8f5104ed501d0cfae12ef05dad
+- 37d2b1003b5a8583eff4ee59ae661329
+- 7af33b58ac4e6411bc41542640deaccd
+- 50ececc8217266c287fb20a1dff76c98
+- 6a544aeabbae71fbe842935dd33e5850
+- 2772cb32be1c5b1011c755df85ccdf48
+- 0f4de75ec5957e905e890665d9331fac
+- 51d5276491fbecc993ae258464ffce22
+- dfccf63d1ce1126047e85acc31a84f1f
+- 4dc8ff7194b5257b0081c60b9a400d3b
+- 918d1eba562fa60e21005feccd13d30d
+- badc5496fe6ede99ec73de6b6087bd94
+- a8c58860e66128acbd08981226e6ec62
+- f9f952575f4c66efd61f5ab05b1b1832
+- 9487a4f31425ff3af8dd067f47c2d6d9
+- 03b2c61c8fa2e09928b21c85c431cee3
+- 45e3b025b6520b536a2a80b88e71d4f6
+- 5950c6695cdee1c2fd33fc2a51742deb
+- 1f5deca2891842852ee3d7d4c53819eb
+- b0192392a6edc84e6000d58dcc4fcb49
+- a31793240098b6e5fd871eb6c52f0123
+- 280b05d754a309dd29e5d4edf0c336a4
+- 6e8b8717b6d0caed4ebacbc87c1d770f
+- a64adfa7aa34947f54eaae4d2fa7aa00
+- 69dee106a090556c3dd17ec9d90b9ad5
+- 7533885c2175bbc23d2e48fbd8aba10e
+- 644bb2b911175d82df181f178eb0ccb7
+- 502c25718518fba75dd8ddd3bbc952f6
+element_key_value_samples:
+- 6d2eb7cd4f5fa90f0cb49af3ef1fce8e
+- 3df2cb1273ded5a0377130a88ca5a7c2
+- 4ef6feefa668774bf71f1be17920338d
+- 90c943f7183fca0f754d6f3198b47854
+- fd89784e59c72499525556f80289b2c7
+- 7bd14a231864e618e1840c7e117e59c1
+- 96ef8a8fb4b4a6a06eda2f99193de99b
+- e2d58d16fcceed18505a94c7c864b5eb
+source_key_value_samples:
+- ccd165821fa362d2fbd27fe77489f76e
+- 3c0da5496ac74e479dd7583f44f903c2
+- e12e36382d31e6a74891004b363c333e
+tier_value_samples:
+- '1'
+data_level_value_samples:
+- national
+geo_scope_value_samples:
+- national
+metric_value_samples:
+- trade_flow_import_value
+- production_or_capacity_import_value
+- production_or_capacity_import_quantity
+- trade_flow_import_quantity
+- production_or_capacity_export_value
+- trade_flow_export_value
+- production_or_capacity_production
+- production_or_capacity_export_quantity
+- trade_flow_export_quantity
+- production_or_capacity_capacity
+- production_or_capacity_market_pulp_capacity
+- production_or_capacity_consumption
+source_id_value_samples:
+- ccd165821fa362d2fbd27fe77489f76e
+- 3c0da5496ac74e479dd7583f44f903c2
+- e12e36382d31e6a74891004b363c333e
+forestry_grain_value_samples:
+- production_or_capacity
+- trade_flow
+partner_countries_value_samples:
+- Total FAO
+- Others (adjustment)
+- China
+- France
+- Italy
+- Germany
+- South Africa
+- United States of America
+- Spain
+- Belgium
+- United Kingdom of Great Britain and Northern Ireland
+- India
+- Türkiye
+- Netherlands (Kingdom of the)
+- Portugal
+- Sweden
+- Austria
+- Unspecified Area
+- Brazil
+- Canada
+- Finland
+- Indonesia
+- Russian Federation
+- United Arab Emirates
+- Malaysia
+- Republic of Korea
+- Thailand
+- Singapore
+- Switzerland
+- Poland
+- Lebanon
+- Kenya
+- Japan
+- Slovenia
+- Senegal
+- Czechia
+- Romania
+- Côte d'Ivoire
+- Greece
+- Australia
+- Denmark
+- United Republic of Tanzania
+- Saudi Arabia
+- Morocco
+- Ghana
+- Egypt
+- Uganda
+- Tunisia
+- Zimbabwe
+- Norway
+- Zambia
+- Ireland
+- Mauritius
+- Cameroon
+- Malawi
+- Mozambique
+- Democratic Republic of the Congo
+- Pakistan
+- Croatia
+- Israel
+- Belgium-Luxembourg
+- Estonia
+- Nigeria
+- New Zealand
+- Viet Nam
+- Ukraine
+- Bulgaria
+- Argentina
+- Congo
+- Hungary
+- Rwanda
+- Gabon
+- Cyprus
+- Togo
+- Mexico
+- Slovakia
+- Burkina Faso
+- Oman
+- Niger
+- Chile
+- Qatar
+- Madagascar
+- Benin
+- Bosnia and Herzegovina
+- Jordan
+- Mali
+- Algeria
+- Burundi
+- Latvia
+- Philippines
+- Lithuania
+- Angola
+- Malta
+- Guinea
+- Mauritania
+- Kuwait
+- Syrian Arab Republic
+- Sri Lanka
+- Gambia
+- Central African Republic
+- Sudan (former)
+- Belarus
+- Uruguay
+- Luxembourg
+- Ethiopia
+- Libya
+- Bahrain
+- Iran (Islamic Republic of)
+- Dominican Republic
+- Sierra Leone
+- Colombia
+- Iceland
+- Liberia
+- Albania
+- Guinea-Bissau
+- Ecuador
+- Cabo Verde
+- Equatorial Guinea
+- Bangladesh
+- Myanmar
+- Democratic People's Republic of Korea
+- Barbados
+- Chad
+- Bolivia (Plurinational State of)
+- Somalia
+- French Polynesia
+- Djibouti
+- Eritrea
+- Paraguay
+- Peru
+- Georgia
+- New Caledonia
+- Guatemala
+- Venezuela (Bolivarian Republic of)
+- Republic of Moldova
+- Panama
+- Serbia and Montenegro
+- Costa Rica
+- Armenia
+- Afghanistan
+- Cambodia
+- Guyana
+- Dominica
+- Belize
+- Sao Tome and Principe
+- Fiji
+- Kazakhstan
+- Iraq
+- Papua New Guinea
+- Jamaica
+- Honduras
+- Yemen
+- Netherlands Antilles (former)
+- Suriname
+- Saint Vincent and the Grenadines
+- Trinidad and Tobago
+- Azerbaijan
+- Bahamas
+- El Salvador
+- Nicaragua
+- Brunei Darussalam
+- Nepal
+- Haiti
+- Bhutan
+- Kyrgyzstan
+- Timor-Leste
+- Vanuatu
+- Cuba
+- Tonga
+- Solomon Islands
+- Tajikistan
+- Mongolia
+- Uzbekistan
+- Lao People's Democratic Republic
+- Samoa
+- Turkmenistan
+year_value_samples:
+- '2010'
+- '2016'
+- '2014'
+- '2017'
+- '2011'
+- '2018'
+- '2015'
+- '2008'
+- '2009'
+- '2013'
+- '2012'
+- '2007'
+- '2006'
+- '2004'
+- '2003'
+- '2005'
+- '2002'
+- '1999'
+- '2001'
+- '2000'
+- '1998'
+- '1997'
+- '2024'
+- '2023'
+- '2022'
+- '2021'
+- '2020'
+- '2019'
+- '1996'
+- '1995'
+- '1994'
+- '1993'
+- '1992'
+- '1991'
+- '1987'
+- '1990'
+- '1989'
+- '1988'
+- '1986'
+- '1985'
+- '1984'
+- '1982'
+- '1983'
+- '1981'
+- '1974'
+- '1978'
+- '1977'
+- '1975'
+- '1976'
+- '1979'
+- '1980'
+- '1973'
+- '1971'
+- '1972'
+- '1970'
+- '1969'
+- '1968'
+- '1967'
+- '1966'
+- '1965'
+- '1964'
+- '1963'
+- '1962'
+- '1961'
+- '2026'
+- '2025'
+date_key_value_samples:
+- '20100101'
+- '20160101'
+- '20140101'
+- '20170101'
+- '20110101'
+- '20180101'
+- '20150101'
+- '20080101'
+- '20090101'
+- '20130101'
+- '20120101'
+- '20070101'
+- '20060101'
+- '20040101'
+- '20030101'
+- '20050101'
+- '20020101'
+- '19990101'
+- '20010101'
+- '20000101'
+- '19980101'
+- '19970101'
+- '20240101'
+- '20230101'
+- '20220101'
+- '20210101'
+- '20200101'
+- '20190101'
+- '19960101'
+- '19950101'
+- '19940101'
+- '19930101'
+- '19920101'
+- '19910101'
+- '19870101'
+- '19900101'
+- '19890101'
+- '19880101'
+- '19860101'
+- '19850101'
+- '19840101'
+- '19820101'
+- '19830101'
+- '19810101'
+- '19740101'
+- '19780101'
+- '19770101'
+- '19750101'
+- '19760101'
+- '19790101'
+- '19800101'
+- '19730101'
+- '19710101'
+- '19720101'
+- '19700101'
+- '19690101'
+- '19680101'
+- '19670101'
+- '19660101'
+- '19650101'
+- '19640101'
+- '19630101'
+- '19620101'
+- '19610101'
+- '20260101'
+- '20250101'
+as_of_date_value_samples:
+- '2010-12-31'
+- '2016-12-31'
+- '2014-12-31'
+- '2017-12-31'
+- '2011-12-31'
+- '2018-12-31'
+- '2015-12-31'
+- '2008-12-31'
+- '2009-12-31'
+- '2013-12-31'
+- '2012-12-31'
+- '2007-12-31'
+- '2006-12-31'
+- '2004-12-31'
+- '2003-12-31'
+- '2005-12-31'
+- '2002-12-31'
+- '1999-12-31'
+- '2001-12-31'
+- '2000-12-31'
+- '1998-12-31'
+- '1997-12-31'
+- '2024-12-31'
+- '2023-12-31'
+- '2022-12-31'
+- '2021-12-31'
+- '2020-12-31'
+- '2019-12-31'
+- '1996-12-31'
+- '1995-12-31'
+- '1994-12-31'
+- '1993-12-31'
+- '1992-12-31'
+- '1991-12-31'
+- '1987-12-31'
+- '1990-12-31'
+- '1989-12-31'
+- '1988-12-31'
+- '1986-12-31'
+- '1985-12-31'
+- '1984-12-31'
+- '1982-12-31'
+- '1983-12-31'
+- '1981-12-31'
+- '1974-12-31'
+- '1978-12-31'
+- '1977-12-31'
+- '1975-12-31'
+- '1976-12-31'
+- '1979-12-31'
+- '1980-12-31'
+- '1973-12-31'
+- '1971-12-31'
+- '1972-12-31'
+- '1970-12-31'
+- '1969-12-31'
+- '1968-12-31'
+- '1967-12-31'
+- '1966-12-31'
+- '1965-12-31'
+- '1964-12-31'
+- '1963-12-31'
+- '1962-12-31'
+- '1961-12-31'
+- '2025-12-31'
+- '2026-12-31'
+as_of_date_basis_value_samples:
+- observation
+unit_value_samples:
+- 1000 USD
+- m3
+- t
+value_value_stats:
+  distinct_count: 66109
+  null_count: 0
+  is_truncated: true
+  min_value: '-10387403'
+  max_value: '123276160'
+source_natural_key_value_samples:
+- Unpivoted_FAOstat_africa_Forestry_Forestry_Production_and_Trade
+- Unpivoted_FAOstat_africa_Discontinued_archives_and_data_series_Forestry_Trade_Flows
+- Unpivoted_FAOstat_africa_Forestry_Pulp_and_paper_capacities_survey
+loaded_at_value_samples:
+- '2026-08-26 01:15:23.160952+00'
+filtering_guidance:
+- 'Grain: Country × item × forestry_grain × year'
+- Forestry production/trade long-form.
+sql_generation_hints:
+- 'Join keys: geography_key, item_key, element_key, source_key, date_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: production
+  supports:
+  - production

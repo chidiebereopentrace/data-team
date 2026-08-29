@@ -1,6 +1,6 @@
 """
 RAG graph: query → decompose → parallel retrieval (six Qdrant corpora)
-→ BQ SQL reasoner (staging_dev YAML) → BigQuery → merge → rerank → generate.
+→ BQ SQL reasoner (mart_dev YAML) → BigQuery → merge → rerank → generate.
 """
 from __future__ import annotations
 
@@ -1156,7 +1156,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
 
 
 def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
-    """YAML-index SQL reasoner: select staging_dev tables and query intents."""
+    """YAML-index SQL reasoner: select mart_dev tables and query intents."""
     q = (state.get("query") or "").strip()
     analytical = bool(state.get("analytical_mode"))
     task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
@@ -1819,6 +1819,8 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         measure_id=str(mid) if mid else None,
     )
     gkw["generation_plan"] = gen_plan.to_dict()
+    if gen_plan.effective_category:
+        gkw["category"] = gen_plan.effective_category
     gen_t0 = time.perf_counter()
     gen_result = generate(query, context, **gkw)
     gen_max = _generate_max_tokens(task_mode)

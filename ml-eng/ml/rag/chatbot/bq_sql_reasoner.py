@@ -1,4 +1,4 @@
-"""YAML-index SQL reasoner: pick staging_dev tables and query intents (no Qdrant).
+"""YAML-index SQL reasoner: pick mart_dev tables and query intents (no Qdrant).
 
 Reasoner-first with ontology-scoped prompts. Fail closed after retries, then
 ontology fallback_plan last resort (never invent tables outside the catalog).
@@ -22,9 +22,9 @@ from ml.rag.chatbot.analytical_bq_plan import (
 )
 from ml.rag.chatbot.bq_sql_patterns import normalize_pattern_name
 from ml.rag.chatbot.bq_table_schema_yaml import (
-    format_reasoner_index,
-    list_staging_table_index,
-    pack_selected_table_hints,
+    format_mart_reasoner_index,
+    list_mart_table_index,
+    pack_mart_table_hints,
 )
 from ml.rag.chatbot.fact_bq_plan import build_fact_bq_plan
 from ml.rag.chatbot.plan_policy import model_for_plan
@@ -67,7 +67,7 @@ def _reasoner_model(plan_type: str | None) -> str:
 
 
 def _known_table_ids() -> set[str]:
-    return {str(r["table_id"]) for r in list_staging_table_index()}
+    return {str(r["table_id"]) for r in list_mart_table_index()}
 
 
 def _extract_json_obj(raw: str) -> dict[str, Any] | None:
@@ -188,7 +188,7 @@ def _finalize_selected_plan(
     }
     if extra:
         plan.update(extra)
-    hints, hints_truncated = pack_selected_table_hints(
+    hints, hints_truncated = pack_mart_table_hints(
         list(plan.get("selected_tables") or []),
         query_terms=_query_terms_for_packing(query, decomposition),
     )
@@ -237,7 +237,7 @@ def reason_bq_sql_plan(
     task_mode: str | None = None,
 ) -> dict[str, Any]:
     """
-    Decide which staging_dev tables and SQL intents to run.
+    Decide which mart_dev tables and SQL intents to run.
 
     Forced modes (analytical / fact / export) use ontology-aware builders.
     Otherwise: ontology-scoped LLM reasoner with retries; ontology fallback last.
@@ -250,8 +250,10 @@ def reason_bq_sql_plan(
     scope = reasoner_scope(hit) if hit else None
 
     preferred_tables = set(scope["candidate_tables"]) if scope else set()
-    index_text, index_truncated = format_reasoner_index(
+    iclasses = list(scope.get("indicator_classes") or []) if scope else []
+    index_text, index_truncated = format_mart_reasoner_index(
         table_ids=list(preferred_tables) if preferred_tables else None,
+        indicator_classes=iclasses or None,
     )
 
     if analytical_mode or mode == "analytical":
@@ -276,16 +278,14 @@ def reason_bq_sql_plan(
     # Entity/domain contract: multi-measure tables + intents before LLM freelancing.
     # Specialized builders (e.g. food_security) run only when that measure is activated.
     contract = build_retrieval_contract(query, decomposition=dec, known_tables=known)
-    if contract.primary_measures or contract.bq_tables:
+    if contract.bq_tables and contract.bq_intents:
         plan = contract_to_bq_plan(
             contract,
             query=query,
             decomposition=dec,
             index_truncated=index_truncated,
         )
-        if plan is not None and (
-            plan.get("skip_bq") or (plan.get("selected_tables") and plan.get("query_intents"))
-        ):
+        if plan is not None and plan.get("selected_tables") and plan.get("query_intents"):
             update_current_span_metadata(
                 {
                     "selected_tables": plan.get("selected_tables"),
@@ -369,12 +369,12 @@ def reason_bq_sql_plan(
         )
 
     system = (
-        "You are the OpenTrace BigQuery SQL planner for the staging_dev dataset only. "
-        "OpenTrace is Africa-first. Use the measure ontology hints when provided — "
-        "do NOT default every question to stg_faostat_production element='Production'. "
-        "Yield → element='Yield'; exports → trade tables; retail prices → FEWS/WFP; "
-        "IPC → food security; soil → ISRIC/iSDA; climate → NASA/ERA5; GDP → socio_economic. "
-        "Select the minimum set of stg_* tables that fully answers the question. "
+        "You are the OpenTrace BigQuery SQL planner for the mart_dev dataset only. "
+        "OpenTrace is Africa-first. Use the measure ontology and indicator class hints — "
+        "do NOT default every question to fct_production production_grain='physical'. "
+        "Yield → fct_yield; exports → fct_trade; retail prices → fct_prices + price_source; "
+        "IPC → fct_food_security measure_type; soil → fct_soil_health; climate → fct_climate. "
+        "Select the minimum set of fct_* / agg_* tables (plus dim_* for joins when needed). "
         "Never invent table names outside the provided index. "
         "When selecting 2+ tables, use ONLY pairs listed in semantic_relationships "
         "(rels=) joins_with with explicit on= keys; never invent joins. "
@@ -383,7 +383,7 @@ def reason_bq_sql_plan(
         "question clearly matches; otherwise use custom. Include metric, grain, and "
         "order_by when using a non-custom pattern. "
         "If decomposition.africa_panel is true, plan a full African country panel "
-        "(GROUP BY country_name), not a which-country clarify. "
+        "(GROUP BY country_iso3), not a which-country clarify. "
         "If decomposition.africa_default is true, plan continental country rankings. "
         "If structured tables cannot help, set skip_bq=true. "
         "Respond with JSON only, no markdown."
@@ -396,12 +396,12 @@ def reason_bq_sql_plan(
         f"Task mode: {mode}\n"
         f"Decomposition: {json.dumps(dec, ensure_ascii=False)[:2000]}\n"
         f"Question: {query}\n\n"
-        f"Staging table index (scoped when measure known):\n{index_text}\n\n"
+        f"Mart table index (scoped when measure/class known):\n{index_text}\n\n"
         "Return JSON with keys:\n"
-        '  "selected_tables": ["stg_..."],\n'
-        '  "query_intents": [{"goal":"...","tables":["stg_..."],"filters":"...",'
+        '  "selected_tables": ["fct_..."],\n'
+        '  "query_intents": [{"goal":"...","tables":["fct_..."],"filters":"...",'
         '"pattern":"rank_by_sum|yoy_delta|share_of_total|time_series|custom",'
-        '"metric":"value","grain":["country_name"],"order_by":"total DESC","notes":"..."}],\n'
+        '"metric":"value","grain":["country_iso3"],"order_by":"total DESC","notes":"..."}],\n'
         '  "skip_bq": false,\n'
         '  "rationale": "short reason"\n'
     )
@@ -513,7 +513,7 @@ def _heuristic_faostat_production_rank(
     known: set[str],
 ) -> dict[str, Any] | None:
     """Deprecated production-rank heuristic — prefer ontology fallback."""
-    if "stg_faostat_production" not in known:
+    if "fct_production" not in known:
         return None
     q = query or ""
     if not _RANKING_SCOPE_RE.search(q):
@@ -530,21 +530,25 @@ def _heuristic_faostat_production_rank(
         )
     year_hint = str(decomposition.get("time_start") or "")[:4] or "year from question"
     want_yield = bool(re.search(r"\byields?\b", q, re.IGNORECASE))
-    element = "Yield" if want_yield else "Production"
+    grain = "physical"
+    table = "fct_production"
+    if want_yield:
+        table = "fct_yield"
+        grain = "season_key/harvest_year"
     return {
-        "selected_tables": ["stg_faostat_production"],
+        "selected_tables": [table],
         "query_intents": [
             {
-                "goal": f"Africa country {element} ranking",
-                "tables": ["stg_faostat_production"],
+                "goal": f"Africa country {'yield' if want_yield else 'production'} ranking",
+                "tables": [table],
                 "filters": (
-                    f"element='{element}'; year≈{year_hint}; "
-                    "Africa continental (no geo dim)"
+                    f"{'production_grain=' + repr(grain) + '; ' if not want_yield else ''}"
+                    f"year≈{year_hint}; Africa continental (country_iso3)"
                 ),
                 "notes": "heuristic_africa_rank",
                 "pattern": "rank_by_sum",
                 "metric": "value",
-                "grain": ["country_name"],
+                "grain": ["country_iso3"],
                 "order_by": "total DESC",
             }
         ],

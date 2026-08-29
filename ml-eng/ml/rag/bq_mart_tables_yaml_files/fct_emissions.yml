@@ -1,0 +1,733 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_emissions
+description: FAOSTAT agricultural emissions.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Country × item × element × year
+entity_type: climate
+columns:
+- name: emissions_key
+  type: STRING
+  description: emissions key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (null if unmatched)
+- name: geo_level
+  type: STRING
+  description: geo level
+- name: country_iso3
+  type: STRING
+  description: ISO3 from dim or extractable geo even if key null
+- name: item_key
+  type: STRING
+  description: item key
+- name: element_key
+  type: STRING
+  description: element key
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: tier
+  type: INT64
+  description: Producer scale (1=global, 2=national ministry, 3=community survey)
+- name: data_level
+  type: STRING
+  description: Resolution of the number (warehouse row resolution)
+- name: geo_scope
+  type: STRING
+  description: national / sub_national / community / point (null when geography_key
+    null)
+- name: place_scope
+  type: ARRAY<STRING>
+  description: ARRAY of comparable place labels for ACF geo overlap
+- name: metric
+  type: STRING
+  description: Stable slug for the measure
+- name: source_id
+  type: STRING
+  description: Lineage key (= dim_source.source_key)
+- name: year
+  type: INT64
+  description: year
+- name: date_key
+  type: STRING
+  description: date key
+- name: as_of_date
+  type: DATE
+  description: Observation date when known; else DATE(loaded_at)
+- name: as_of_date_basis
+  type: STRING
+  description: observation or loaded_at
+- name: unit
+  type: STRING
+  description: Unit of measure
+- name: value
+  type: FLOAT64
+  description: Numeric measure
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+emissions_key_value_stats:
+  distinct_count: 2698667
+  null_count: 0
+  is_truncated: true
+  min_value: 00000dca59c039e11de1178ed1f3497b
+  max_value: ffffff609a0ea96984e41406f1ad8199
+geography_key_value_samples:
+- 869dbec7886b8171527c101f0aafa9d7
+- 939117deefb921f24dcb765b8ae3027d
+- dd2eb23623d3cfe1d69e6d1ef080baa4
+- 3e162de530565ea7fd832dcf8d5d8e00
+- 514d63591d4d149773d80aac5c002246
+- 14cd64b93250222ef8109668740e33c9
+- dad3f956104596ff2fd5ccc98d2ac7c8
+- 73abae1655254baa0c8f2d1cdbf350da
+- ec7437dac6b677268f738803c348a944
+- da5416d0b7eb15e076fd031e9a0b2e22
+- d081c90ab6801ddb32bedd266ed0bc9e
+- 8a6973d8ba686f5a6c7618896e9e9a6a
+- 8a9d2f38657b41d1beee71987b789584
+- e2a7da7be69c9efab479954c7fc62683
+- c3b34f1c114c01b1ac1f59b7cc1199a3
+- 7f4e1c93fa0ec34f371db0ceafe3a203
+- bfcc5273fd7dce595c475531c8db844a
+- 8d2977ea05cfc771252b5dd2e3456353
+- d8e7902a1aab9ce87cb3a10af9e19e8e
+- f14bb4203a7073edd04952936c354fca
+- f879de6d2aff3bb8e6336e65db2e4cb3
+- 97b9d0ff0519f52da36b9897dbc109d8
+- fafb8c280b3839e5bb2cf04e4982d459
+- 896ec125e415d43f6917dafc7bdbe109
+- e06752126ff796d0bfd12fb5a3f93e52
+- 643b7e5a6012349b12e2a7d8b9f9b12f
+- 82dc51dcf101cb11ff4c3346a530efbc
+- 8b2130007752cc4fd2bc50ce5f2ce31b
+- caabf8e59e96c9806dd79ded964857de
+- b93642c9546b0ad7c4b50b1edd34b641
+- 08d5d1fbcfbc008d33905868ea7a2dd7
+- fc36cac904ae8ed303bd472e14279601
+- 4873407b6dcd3d440b964ca0e6285ec2
+- ff2abe6b8f87b63b0a4d12a3dc2fb900
+- 82533bcf1d2275baadeab94166482969
+- 414e80f7a6cec83f4a5fa1139fc707bf
+- 629f6ee5a903f4bcce1aa6a327392f4a
+- 6f8c5d76bea0a5e7b6408e80dd147dfc
+- c7afa8e5dc75eaed3f865becb594623a
+- 6b6a33d1b12ec418b4d84ea86d5ee2f1
+- 547d52a13b878d359e6e0e930b5fed18
+- b4f3325b4dff86fd532a100b328770a4
+- 42fc637e79bb98d1e905f28e55fca77a
+- e36a49cf9440c0469a0b80d3dc94e83e
+- 41a9071812831bd833b31a0015a7fc21
+- b9a6c3cfa0ba81a70106dd8e6007df4e
+- 7f24cf6c5ae4ae2c13e4a3cd9da9563d
+- e1490c9d435658d25b0069edb3330168
+- 96a41cc70b4b99b5b238b479e6274f4c
+- 8fdd65bc015f999ef22a924baf8e4980
+- e2e7220258577b7bf5917652b1a0c882
+- f73b9fe995874638e36e5bd11f8866e4
+- 6258dc0299b2e5beaec7f3d0e69cd89f
+- 4d9142fd531731495f9f581296425df2
+- 813e1dfd9941f45a5c4665d686c3ca61
+- d185cda4a02671a4ed8ccd6509c1494a
+- cdb4c89696d45097587020d9c09861d9
+- f3d9c789cd0435e4115220ab2b98481f
+geo_level_value_samples:
+- country
+country_iso3_value_samples:
+- EGY
+- DZA
+- MAR
+- ZAF
+- TUN
+- ZWE
+- MUS
+- ETH
+- NGA
+- MLI
+- SEN
+- SOM
+- BFA
+- NER
+- TCD
+- NAM
+- MDG
+- STP
+- SWZ
+- KEN
+- MOZ
+- MWI
+- GHA
+- CMR
+- BWA
+- BEN
+- TZA
+- LSO
+- AGO
+- TGO
+- SDN
+- ZMB
+- GIN
+- CPV
+- MRT
+- GNB
+- UGA
+- LBY
+- COD
+- GMB
+- CAF
+- RWA
+- SLE
+- BDI
+- CIV
+- COG
+- GAB
+- LBR
+- GNQ
+- COM
+- SYC
+- REU
+- DJI
+- ERI
+- SSD
+- SHN
+- MYT
+- ESH
+item_key_value_samples:
+- de3335066bfdb66bd985d3b39a0b9799
+- 455176b77136faf3624142c4cf6e90c5
+- 0efc2c0ddb969c6093329659d4a1a78f
+- bd5f4b0419caa97dd2f9b4d3238ff92f
+- 9037a098b8b835cde8c3e2005fce6d3c
+- 63a4bd4710ca2b59158159d14d557729
+- 23ec24c5ca59000543cee1dfded0cbea
+- f8b775ff32f8feb90b057b3ba4521f65
+- fc3c7372fd3443aa831194ff4124a6d5
+- 5301513e85028bd9677b406d7344d5c5
+- 3a6ad3cffd52913dfafce6761c0424a7
+- 86a99e7b76baf1fb50dafae2049a5bb7
+- 2e7fa19acc8fa097a8037536c874c820
+- 799ff528cbb8430c475922116126835c
+- 0d76a5d1bdc836d38ea9ff6d9988ad1b
+- baf6580baa2e9eb6eb6d81863b31cf91
+- 52b14869c15726dda86b87cb93666a74
+- 871a7b28acd2ef0dbbd35d84d8efd69b
+- b2be364159dab61479b86959c647f916
+- 3767b450824877f2b8f284f7a5625440
+- b716cac8657f2d18f3206eb2e1f311a8
+- 05e7d19a6d002118deef70d21ff4226e
+- 144a9188ac142a6d20b211b4221f674f
+- 96c3480e17962c1ae22edbd39bc7a575
+- b6259fb2ff1936bf8a36e10723e2d87d
+- 9d0d118b741caea0a5f6a35af14ec62e
+- 9658a3717978c4f3d443d17e08f662cc
+- b94e3e1bc93b9ba9aeda2cdbc80252fc
+- c6361575eace1adab380de170386af25
+- 41abdebcf589a9762bede0e2868337cb
+- 5677c318a1c18bfe86f230a997ab43a9
+- cb15e32f389b7af9b285a63ca1044651
+- e63b0b842360045d5a92f25a68e43381
+- 16e6bb88bea6bfcebc2096989366054d
+- 7ebfcd673dcc5354a06fc81278cfa25b
+- d0c3251252aa3ba6a806464d2de418b2
+- e72ae25522622a588539d9a5f1be53de
+- 661635d707337212046d56ba128e6372
+- 948b25b1e8e901406e2bba9d8fdf949a
+- 74b4cb9079301c319f74ab659f8741b4
+- 65c1a639c821cdb085b26bf515e3dc43
+- 1c1f7d09aa238d3ae88f3e55066ec289
+- 026a4c89899aa5bf254aea253d830fd7
+- 1ca3de38ecb762ba4dba33e3a9e4baed
+- 132729427c3ddaaca6e04efb7d580bb1
+- beea180d5ce2c498bcfdeb6161de4ebd
+- 7d0a2fa7c167a1dcb1e6e2bec603c946
+- a4ffbd86d8ffd0e7780429ac350e052e
+- 07c28ec76b8232ad89b43ff6e4b887a2
+- a420bb8bfefabf90d6eef8272b222e59
+- 34dbcc8112fb4ebf0062100653197ffd
+- a511bd008a325e04cda3a2eff5c70445
+- 795f3202b17cb6bc3d4b771d8c6c9eaf
+- c5f0d0ee310979cebe230e6a7b0f070a
+- 84367526410751b7a49b49f4715130b9
+- 9a280b5306a7fe001b866e8e95d1173a
+- d29db4ac8712f5bdb343991281b26db1
+- 24a564ce688f971247160cd7b6b2154e
+- 41a6bb044da7295123972bb24598604b
+- 9f71b0544244bdb453cfe21590d0808a
+- d7e415ea2cfbb7037ac8c4c621f994a9
+- 2f17f5d70e7a549e74c86f13deca25ed
+- edcc4c12e07cc204925b7fdec9501ee4
+- c389fa69638468a121f9f9fcfb2bd9c0
+- 57e7153e6d3adcf6d2d5b0268412af2b
+- 64844987806ff73051562ef37f3fca1f
+- 0dbca6d14a83789bb70486edf0c86ade
+- f25f3964ba379e79d18aeec1a2f199a2
+- 546a09127247410aa29ce6d5c0a25bcb
+- e1a1f0be30cefc7d857ea6408cd00a12
+- 1f7d985406fafc9ff3e990e3e35a1afd
+- 95084f43612b149ac7b730d7edb767b7
+- 1915f062b9ce94854d2f6bc7d87d3aba
+- ddd00561800f6ec3818d2140022c7dba
+- 8596182cdd43ef8c509d8e0fd2ae8728
+- 14f545e97688257b3fcb171ef9d798ed
+- 36e8b77838cdb81c43059695c30dffb5
+- 9d229ea29361be4e51e129f61ff8a51c
+- 204cc4aeade313a260004a95bbe5431c
+- 1b2dd777e6b719c5184c2822852a8837
+- e8917613458b3fc5d5c64291f4ae2d05
+- 19e0082fa49cea409651c43df6182343
+- 8530d3d247f52c00c36b5c508b044478
+- 868bfa7feb5ce6eb442faf46c591db7a
+- 1bd96a8e4d5a7bc813d3662ac11664d4
+- f8be48acff3a88bf1d74f9c514d4731a
+- a22ec93009028de9f684c77242372163
+- b2ab006c7aa2f7cf40d5c034c788edea
+- 89bf57579099ea895a8353106680d69d
+- 0ad6741c38000c4924bafe9d03277841
+- 422845ffe2a2e1c181559469bbb56490
+- 93c522f34729cb981a9430fbae053e8e
+- 200299c4699d2f8b7f2589eafe435d03
+- 377ad8b924f9118392f9ca39151cee85
+- d934940e50be20e951fbcc6a2fc25905
+- d7757b525e70b2945b30ba963f7d0d73
+- efde0150b06cfdd6a94505f0e75226bd
+- 9e6ae092765e94b36ee58c71d53d74e9
+- 173171e517462a6b07e274e3f1167ee7
+- 79acce28a91c3a54768e4d79b2d03bc5
+- 85fd562f5f42d8d94dcf2505d3af9f50
+- 97c2015418f174e36346e13a153fdf96
+- c19ed6cd570aa9002d50fa3e21ce25b9
+- 02facb072e3fb74a221b36db58b4493c
+- a39b7ddfae79159abf78e972cbab1dcf
+- bcb2750ff6f20411b7e305760985726d
+- 641b2b00d03f9990007869f7cc5281e4
+- 6cae2e248e8ec64fc097f2c8beb607a1
+- 4adbe8659c7adbabb1b8073a0c8141f7
+- 60d263a7891e5623d9eadf73be549851
+- 578ea8c1d5aa7698d8dff476de96e592
+- 978c7f86526e2d45e0ae34b2d04c3e73
+- e0cc7d9909076b4be3886012f1bbe673
+- 5271e118dc81adb543b7856bb6ea0445
+- 79c7b7989975c8ec4f3f9ec33a62ac11
+- 400a8f6716375443c853ae0dfd78b768
+element_key_value_samples:
+- 6576cd1e13083c94cd4de925fd0435a2
+- 245b44b9220c1e02524c3f9d806a2091
+- 4c03dd820c1cee817d359fda6a78292e
+- 577ba98582eaba6cb86211e1e350d88c
+- ad3696a9c684bb5921fa88707189d48a
+- add0bb8b2ae1b6ca4a8c4bd8d1603202
+- 05f8477dc5a6f5095ac7234785e39b0f
+- 9544b0763069b820a42ca022c5bd3f9c
+- c86e01b50000dfa49b6963aeb1a35c4c
+- 03990a2195c44cd6f2c405bca76cdcd5
+- 4cd2f69083364d323a3a238fe68e0332
+- 82ca6e7b5c50534d2454de5f5bce3026
+- 837a05ed5d86d67d6643f083e9847fd7
+- 1ff72606442eb5d2ac3a03462a93feaa
+- 2ab2238d32cdef0b5388352ce8214731
+- 13e721c7cd220fff1fd135caea1d0517
+- 726e16b342cf330a398917867f0da8ff
+- 8a33073fd31292938e4af29f6ff1684c
+- 1604da3cf09b394766da8030abec64b3
+- b6b51533c24d2d7dec4dc64d6b486834
+- 20fda4d701759e7b7415e757aa8f41c0
+- 43f82baa6401eef1de10462e83491184
+- 3d428679244a47664e7fe95c4d30c7ad
+- fd92cd7f6d79adddb2e4c0db1d1e58cc
+- 3ceb2d8b13cf641d10c076e2e9409e0b
+- b7b643e13705aa011e57834a9c748099
+- 006306682b162b86e1b20f59c1813086
+- 654bf3bd0a3bceefb1ebdba96f6d624b
+- 5bce9763a0772f6289d919b757427f66
+- 5dfbeb6fde1a51ad6a319cd19bc1283e
+- f49b96fa31cbdd3dab57fb31941e0cab
+- a47f49ae56e716625daa5d413d648fe0
+- bda6f5cb1de356a2e62f440532b92983
+- fd89784e59c72499525556f80289b2c7
+- 8f54b5766d30c33d4eb9a0c3f474e26c
+- 699caacfb46fd4a7f6f11313b1f14579
+- c093f6da9b67c3645781b08d8883aca6
+- ad6a6942350e53267659abfdfbf74c0e
+- 62b14150f45e506655b307a4f23002cb
+- 681e065a57d6597cbccaaa6f02701664
+- bd86666c88ccb45bec25e7ebbf1d40c0
+- 8b4d0453097bc620823d8f35e6886ff6
+- 962fc7592b4810835d51dd65332c381a
+- 1b1fc9d74deb6769516b260646d6a321
+- bd6d1622861893c3c88935ca51f3c186
+- 440f614a0627f06da85a0b974334e069
+- b29ad73dfdaa73341e741d7cd8e540ba
+- 065b5e82c829c8f072860cc45d02d5e0
+- f9e77e4658a87176c32bec11b12db875
+- 4b82677b6c1408df4be21ada9a584fde
+- 072fa08e28c2f558ed287b7607d56ee8
+- 2bd11d83d00f3a902cb964a58369e330
+- 024fca2c58feee75118f9132f4220c08
+- 2aecb71a4de69124c36ff7bf8ef6722f
+- a1214f76060000420746015c7728e9e6
+- 4ecc669889e0879d69554ba35c2fb386
+- d1292711039f78e29427c4bc6764eef2
+- 16e4057023ab14beff1532d7b4d9dd5f
+- 41ba692cc71812b64e5928474cd3f6b9
+- d02c194428b029471b789ee1a96ae905
+- daed9e985f303200a2a9978c785307fd
+- 2ac21086aee597b9509bdf3dbe7537eb
+- fa16c8be0d73e1a8112f69faa25a6108
+- e7e9a52e8ad9ee4673bff2007539d165
+- 81ff50bba5dab8b0e86efd17cd1ee941
+- cce095aa7aa3bbbf917607a925cb8d12
+- 1008d6461286982bb72c68486debd9e7
+- 8bd9375dc4e11ff5f656924ec1e40ba7
+- b444bc5d9a124c1a868baad582c43830
+- 90d34ba1f1a97f1ffabaec9873907a72
+source_key_value_samples:
+- 4683d9507b492958d442d409242d1328
+- 7e39376543c68c9792c1fff7bc64534a
+- 94f9b3352fe08a5b25661869fcbc71ba
+- 66462c8004adb2adada02342ff8e1eb8
+- c6bbe220735e9713346125982d4b0998
+- 5a37fe788f70f9b3e5edad0179c372fa
+- 287db3202f2f7554983d5aa46b240163
+- 22de7614571f35a5ca70ac97f5447094
+- 442b204bc129f7997cb3986994fc602b
+- 23f03f2ea6e0dfa7cf34bb14eabb2c82
+tier_value_samples:
+- '1'
+data_level_value_samples:
+- national
+geo_scope_value_samples:
+- national
+metric_value_samples:
+- emissions_emissions_(co2eq)_(ar5)
+- emissions_emissions_(n2o)
+- emissions_emissions_(ch4)
+- emissions_emissions_(co2eq)_from_n2o_(ar5)
+- emissions_emissions_(co2)
+- emissions_emissions_(co2eq)_from_ch4_(ar5)
+- emissions_livestock_total_(emissions_ch4)
+- emissions_manure_management_(emissions_ch4)
+- emissions_livestock_total_(emissions_n2o)
+- emissions_manure_management_(emissions_n2o)
+- emissions_stocks
+- emissions_manure_management_(direct_emissions_n2o)
+- emissions_manure_left_on_pasture_(direct_emissions_n2o)
+- emissions_manure_applied_to_soils_(direct_emissions_n2o)
+- emissions_manure_left_on_pasture_(indirect_emissions_n2o)
+- emissions_emissions_(n2o)_(manure_applied)
+- emissions_manure_left_on_pasture_(n_content)
+- emissions_manure_applied_to_soils_that_leaches_(n_content)
+- emissions_manure_applied_to_soils_(indirect_emissions_n2o)
+- emissions_indirect_emissions_(n2o_that_volatilises)_(manure_on_pasture)
+- emissions_manure_left_on_pasture_(emissions_n2o)
+- emissions_manure_applied_to_soils_(n_content)
+- emissions_indirect_emissions_(n2o_that_leaches)_(manure_on_pasture)
+- emissions_manure_left_on_pasture_that_leaches_(n_content)
+- emissions_manure_left_on_pasture_that_volatilises_(n_content)
+- emissions_manure_management_(manure_treated,_n_content)
+- emissions_indirect_emissions_(n2o_that_volatilises)_(manure_applied)
+- emissions_indirect_emissions_(n2o_that_leaches)_(manure_applied)
+- emissions_manure_management_(indirect_emissions_n2o)
+- emissions_manure_applied_to_soils_that_volatilises_(n_content)
+- emissions_enteric_fermentation_(emissions_ch4)
+- emissions_burning_crop_residues_(biomass_burned,_dry_matter)
+- emissions_direct_emissions_(n2o)
+- emissions_production
+- emissions_emissions_intensity
+- emissions_indirect_emissions_(n2o)
+- emissions_emissions_share_(co2eq)_(ar5)
+- emissions_emissions_per_capita
+- emissions_emissions_share_(n2o)
+- emissions_emissions_share_(ch4)
+- emissions_burned_area
+- emissions_crop_residues_(direct_emissions_n2o)
+- emissions_crop_residues_(indirect_emissions_n2o)
+- emissions_crop_residues_(n_content)
+- emissions_crop_residues_(emissions_n2o)
+- emissions_emissions_share_(co2)
+- emissions_emissions_(co2eq)_from_f-gases_(ar5)
+- emissions_burning_crop_residues_(emissions_ch4)
+- emissions_burning_crop_residues_(emissions_n2o)
+- emissions_area
+- emissions_energy_use_(total)
+- emissions_energy_use_(electricity)
+- emissions_emissions_share_(co2eq)_(ar5)_(f-gases)
+- emissions_net_emissions/removals_(co2)_(forest_land)
+- emissions_emissions_per_area_of_agricultural_land
+- emissions_emissions_per_value_of_agricultural_production
+- emissions_energy_use_in_agriculture
+- emissions_crops_total_(emissions_n2o)
+- emissions_nitrogen_fertilizer_content_applied_that_leaches
+- emissions_indirect_emissions_(n2o_that_volatilises)_(synthetic_fertilizers)
+- emissions_nitrogen_fertilizer_content_applied_that_volatilises
+- emissions_indirect_emissions_(n2o_that_leaches)_(synthetic_fertilizers)
+- emissions_synthetic_fertilizers_(direct_emissions_n2o)
+- emissions_synthetic_fertilizers_(emissions_n2o)
+- emissions_crops_total_(emissions_ch4)
+- emissions_synthetic_fertilizers_(agricultural_use)
+- emissions_area_harvested
+- emissions_rice_cultivation_(emissions_ch4)
+- emissions_energy_use_(coal)
+- emissions_energy_use_(natural_gas,_including_lng)
+source_id_value_samples:
+- 4683d9507b492958d442d409242d1328
+- 7e39376543c68c9792c1fff7bc64534a
+- 94f9b3352fe08a5b25661869fcbc71ba
+- 66462c8004adb2adada02342ff8e1eb8
+- c6bbe220735e9713346125982d4b0998
+- 5a37fe788f70f9b3e5edad0179c372fa
+- 287db3202f2f7554983d5aa46b240163
+- 22de7614571f35a5ca70ac97f5447094
+- 442b204bc129f7997cb3986994fc602b
+- 23f03f2ea6e0dfa7cf34bb14eabb2c82
+year_value_samples:
+- '2016'
+- '2015'
+- '2000'
+- '2017'
+- '2018'
+- '2012'
+- '2022'
+- '2020'
+- '2014'
+- '2021'
+- '2019'
+- '2023'
+- '2013'
+- '2005'
+- '1994'
+- '2006'
+- '2003'
+- '2001'
+- '2004'
+- '2002'
+- '2010'
+- '1995'
+- '1999'
+- '1998'
+- '2011'
+- '2009'
+- '1997'
+- '2008'
+- '1996'
+- '2007'
+- '1993'
+- '1990'
+- '1992'
+- '1991'
+- '1988'
+- '1989'
+- '1987'
+- '1986'
+- '1985'
+- '1984'
+- '1983'
+- '1982'
+- '1981'
+- '1980'
+- '1979'
+- '1978'
+- '1977'
+- '1976'
+- '1975'
+- '1973'
+- '1974'
+- '1972'
+- '1970'
+- '1971'
+- '1969'
+- '1968'
+- '1967'
+- '1966'
+- '1963'
+- '1961'
+- '1962'
+- '1964'
+- '1965'
+- '2050'
+- '2030'
+- '2024'
+- '2025'
+date_key_value_samples:
+- '20160101'
+- '20150101'
+- '20000101'
+- '20170101'
+- '20180101'
+- '20120101'
+- '20220101'
+- '20200101'
+- '20210101'
+- '20140101'
+- '20190101'
+- '20230101'
+- '20130101'
+- '20050101'
+- '19940101'
+- '20060101'
+- '20030101'
+- '20010101'
+- '20040101'
+- '20020101'
+- '20100101'
+- '19950101'
+- '19990101'
+- '19980101'
+- '20110101'
+- '20090101'
+- '19970101'
+- '20080101'
+- '19960101'
+- '20070101'
+- '19930101'
+- '19900101'
+- '19920101'
+- '19910101'
+- '19880101'
+- '19890101'
+- '19870101'
+- '19860101'
+- '19850101'
+- '19840101'
+- '19830101'
+- '19820101'
+- '19810101'
+- '19800101'
+- '19790101'
+- '19780101'
+- '19770101'
+- '19760101'
+- '19750101'
+- '19740101'
+- '19730101'
+- '19720101'
+- '19700101'
+- '19710101'
+- '19690101'
+- '19680101'
+- '19670101'
+- '19660101'
+- '19620101'
+- '19630101'
+- '19610101'
+- '19640101'
+- '19650101'
+- '20500101'
+- '20300101'
+- '20240101'
+- '20250101'
+as_of_date_value_samples:
+- '2016-12-31'
+- '2015-12-31'
+- '2000-12-31'
+- '2017-12-31'
+- '2018-12-31'
+- '2012-12-31'
+- '2022-12-31'
+- '2020-12-31'
+- '2014-12-31'
+- '2021-12-31'
+- '2019-12-31'
+- '2023-12-31'
+- '2013-12-31'
+- '2005-12-31'
+- '1994-12-31'
+- '2006-12-31'
+- '2003-12-31'
+- '2001-12-31'
+- '2004-12-31'
+- '2002-12-31'
+- '2010-12-31'
+- '1995-12-31'
+- '1999-12-31'
+- '1998-12-31'
+- '2011-12-31'
+- '2009-12-31'
+- '1997-12-31'
+- '2008-12-31'
+- '1996-12-31'
+- '2007-12-31'
+- '1993-12-31'
+- '1990-12-31'
+- '1992-12-31'
+- '1991-12-31'
+- '1988-12-31'
+- '1989-12-31'
+- '1987-12-31'
+- '1986-12-31'
+- '1985-12-31'
+- '1984-12-31'
+- '1983-12-31'
+- '1982-12-31'
+- '1981-12-31'
+- '1980-12-31'
+- '1979-12-31'
+- '1978-12-31'
+- '1977-12-31'
+- '1976-12-31'
+- '1975-12-31'
+- '1973-12-31'
+- '1974-12-31'
+- '1972-12-31'
+- '1970-12-31'
+- '1971-12-31'
+- '1969-12-31'
+- '1968-12-31'
+- '1967-12-31'
+- '1966-12-31'
+- '1963-12-31'
+- '1961-12-31'
+- '1962-12-31'
+- '1964-12-31'
+- '1965-12-31'
+- '2030-12-31'
+- '2050-12-31'
+- '2024-12-31'
+- '2025-12-31'
+as_of_date_basis_value_samples:
+- observation
+unit_value_samples:
+- kt
+- kg
+- '%'
+- t
+- An
+- ha
+- kg CO2eq/kg
+- t CO2eq/cap
+- TJ
+- 1000 ha
+- t CO2eq/ha
+- kg CO2eq/Int$
+value_value_stats:
+  distinct_count: 708174
+  null_count: 0
+  is_truncated: true
+  min_value: '-11288401'
+  max_value: '4526592452'
+source_natural_key_value_samples:
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Farm_gate_Emissions_from_Livestock
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_totals
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Farm_gate_Emissions_from_Crops
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_indicators
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_intensities
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Pre_and_post_agricultural_production_Emissions_from_pre_and_post_agricultural_production
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Land_use_and_change_Emissions_from_Fires
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Land_use_and_change_Emissions_from_Drained_organic_soils
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Farm_gate_Emissions_from_Energy_use_in_agriculture
+- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Land_use_and_change_Emissions_from_Forests
+loaded_at_value_samples:
+- '2026-08-26 01:15:23.025364+00'
+filtering_guidance:
+- 'Grain: Country × item × element × year'
+- FAOSTAT agricultural emissions.
+sql_generation_hints:
+- 'Join keys: geography_key, item_key, element_key, source_key, date_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: climate
+  supports:
+  - climate

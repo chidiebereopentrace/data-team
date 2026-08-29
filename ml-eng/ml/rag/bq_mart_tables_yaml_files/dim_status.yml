@@ -1,0 +1,49 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_status
+description: dim status
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: status_key
+  type: STRING
+  description: status key
+- name: status_code
+  type: STRING
+  description: status code
+- name: status_name
+  type: STRING
+  description: status name
+- name: status_type
+  type: STRING
+  description: status type
+status_key_value_samples:
+- 6404c64cfdbbb47577cb1988b492c454
+- eca0cc39bdacecffe2f7821bc877bc7c
+- 3f754af8e7c813ce04e9998c3df74dc5
+- 7c5a8ae35c3f958f5e65e4e841334ddd
+- bbdbf499f5c05b2c02612e78e4908afb
+- f10f22ce67d7252a5bf6b26ec7f6316f
+- 4ddcbdebc53f6b1d92b4f6c098c31b65
+- 5d46f75853e138eecc8805bd41438e44
+status_code_value_samples:
+- PENDING
+- INACTIVE
+- ACTIVE
+- PUBLISHED
+- DRAFT
+- REJECTED
+- FLAGGED
+- VALIDATED
+status_name_value_samples:
+- Pending
+- Inactive
+- Active
+- Published
+- Draft
+- Rejected
+- Flagged
+- Validated
+status_type_value_samples:
+- collection
+- quality
+- publication

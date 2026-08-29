@@ -1,0 +1,86 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_breed_variety
+description: dim breed variety
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: breed_variety_key
+  type: STRING
+  description: breed variety key
+- name: variety_code
+  type: STRING
+  description: variety code
+- name: variety_name
+  type: STRING
+  description: variety name
+- name: species
+  type: STRING
+  description: species
+- name: description
+  type: STRING
+  description: description
+- name: valid_from
+  type: DATE
+  description: valid from
+- name: valid_to
+  type: DATE
+  description: valid to
+- name: is_current
+  type: BOOL
+  description: is current
+breed_variety_key_value_samples:
+- aa070ba3c04d211e6ec180791db1aebe
+- fcc79658c26c34ae68781c148ceb2970
+- f3f966199fbe5e4b5bb00b04220644d5
+- 404b0869c8c513180d6ab0422a9af6e4
+- a1322996afabce6e36dca98178e93c2f
+- 43fc0912744b16e187a370dff766d422
+- 4785c80de674be9316b4f554a2a16909
+- 39df8620ef9d53f567ab33f745b2d63a
+- 09df3ecc79295c9f6a6a2b904736636e
+- caea3774cb5db861e5c6f99f1d97ca3b
+- c923affff37f7fbda455000b88950eab
+- 3c9aad51ee5a6b51e3e52026cbad4629
+- 07e9fe55719330c42f509e90e7ba9b25
+- 6687bdc7466f4283d46d49bcf590552a
+- fa2ab8c7566f2c1214d1ba3d5a692ad5
+- 89c545cbfa1b3aabaf536eb8bf103f37
+- c1b2efa178b83e0fb2ff20d117ca6a56
+- 281706a6ad79d7383b8b4d95fabf4cfd
+variety_code_value_stats:
+  distinct_count: 0
+  null_count: 18
+  is_truncated: false
+variety_name_value_samples:
+- Oryza punctata
+- Oryza longistaminata
+- Oryza stapfii
+- Oryza sp.
+- Oryza latifolia
+- Oryza barthii
+- Oryza rufipogon x sativa
+- Oryza eichingeri
+- Oryza hybrid swarm
+- Oryza rufipogon
+- Oryza glaberrima
+- Oryza brachyantha
+- Oryza hybrid
+- Oryza barthii x glaberrima
+- Oryza sativa
+- Oryza glaberrima & sp.
+- Oryza wild species
+- Oryza sativa x nivara
+species_value_samples:
+- crop
+description_value_stats:
+  distinct_count: 0
+  null_count: 18
+  is_truncated: false
+valid_from_value_samples:
+- '2000-01-01'
+valid_to_value_stats:
+  distinct_count: 0
+  null_count: 18
+  is_truncated: false
+is_current_value_samples:
+- 'true'

@@ -6,14 +6,25 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.bq_table_schema_yaml import (
+    columns_for_mart_tables,
     columns_for_tables,
     default_discriminator_value,
+    load_mart_table_schema,
     load_table_schema,
+    value_samples_for_mart_tables,
     value_samples_for_tables,
+    year_column,
 )
 
+_MART_TABLE_RE = re.compile(
+    r"\b(?:fct|agg|dim|bridge)_[a-z0-9_]+\b",
+    re.IGNORECASE,
+)
 _STG_TABLE_RE = re.compile(r"\bstg_[a-z0-9_]+\b", re.IGNORECASE)
-_TABLE_HEADER_RE = re.compile(r"^Table:\s*[`\w.-]*\.?(\bstg_[a-z0-9_]+)", re.IGNORECASE | re.MULTILINE)
+_TABLE_HEADER_RE = re.compile(
+    r"^Table:\s*[`\w.-]*\.?((?:fct|agg|dim|bridge|stg)_[a-z0-9_]+)",
+    re.IGNORECASE | re.MULTILINE,
+)
 # FROM/JOIN target: backticked FQN or dotted/bare identifier (not a subquery paren).
 _FROM_JOIN_TABLE_RE = re.compile(
     r"\b(?:FROM|JOIN)\s+(?![\(\s])(`[^`]+`|(?:[A-Za-z_][\w-]*)(?:\.[A-Za-z_][\w-]*)*)",
@@ -68,6 +79,13 @@ _CORE_METRIC_DISCRIMINATORS = frozenset(
         "price_type",
         "measure_type",
         "treatment",
+        "metric",
+        "production_grain",
+        "price_source",
+        "trade_grain",
+        "climate_grain",
+        "input_grain",
+        "vegetation_grain",
     }
 )
 _GRAIN_METRIC_DISCRIMINATORS = frozenset(
@@ -195,7 +213,7 @@ def sql_retry_enabled() -> bool:
 
 
 def bare_table_ids_from_hints(hints: list[str]) -> set[str]:
-    """Extract stg_* table ids from packed YAML hint blocks."""
+    """Extract mart/staging table ids from packed YAML hint blocks."""
     out: set[str] = set()
     for hint in hints:
         text = str(hint or "")
@@ -203,6 +221,10 @@ def bare_table_ids_from_hints(hints: list[str]) -> set[str]:
             continue
         for match in _TABLE_HEADER_RE.finditer(text):
             out.add(match.group(1).lower())
+        for match in _MART_TABLE_RE.finditer(text):
+            name = match.group(0).lower()
+            if name.startswith(("fct_", "agg_", "dim_", "bridge_")):
+                out.add(name)
         for match in _STG_TABLE_RE.finditer(text):
             name = match.group(0).lower()
             if name.startswith("stg_"):
@@ -227,14 +249,44 @@ def referenced_tables(sql: str) -> set[str]:
     return out
 
 
+def referenced_mart_tables(sql: str) -> set[str]:
+    """Extract mart table names referenced in SQL."""
+    refs = referenced_tables(sql)
+    mart = {t for t in refs if t.startswith(("fct_", "agg_", "dim_", "bridge_"))}
+    if mart:
+        return mart
+    return {m.lower() for m in _MART_TABLE_RE.findall(sql or "")}
+
+
 def referenced_stg_tables(sql: str) -> set[str]:
-    """Extract stg_* table names referenced in SQL (hint/compat helper)."""
+    """Extract stg_* table names referenced in SQL (legacy tests)."""
     refs = referenced_tables(sql)
     stg = {t for t in refs if t.startswith("stg_")}
     if stg:
         return stg
-    # Fallback for odd SQL shapes that omit FROM/JOIN capture but still mention stg_*.
     return {m.lower() for m in _STG_TABLE_RE.findall(sql or "")}
+
+
+def _catalog_uses_mart(table_ids: set[str]) -> bool:
+    return any(t.startswith(("fct_", "agg_", "dim_", "bridge_")) for t in table_ids)
+
+
+def _columns_for_refs(refs: set[str]) -> dict[str, set[str]]:
+    if _catalog_uses_mart(refs):
+        return columns_for_mart_tables(refs)
+    return columns_for_tables(refs)
+
+
+def _samples_for_refs(refs: set[str]) -> dict[str, dict[str, list[str]]]:
+    if _catalog_uses_mart(refs):
+        return value_samples_for_mart_tables(refs)
+    return value_samples_for_tables(refs)
+
+
+def _load_schema_for_ref(bare: str):
+    if bare.startswith(("fct_", "agg_", "dim_", "bridge_")):
+        return load_mart_table_schema(bare)
+    return load_table_schema(bare)
 
 
 def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
@@ -242,7 +294,8 @@ def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
     Return an error message if SQL references tables outside ``allowed``.
 
     When ``allowed`` is non-empty, every FROM/JOIN table (including ``dim_*`` and
-    non-stg names) must be in the allowed set (typically reasoner-selected ``stg_*``).
+    ``bridge_*`` joins) must be in the allowed set (typically reasoner-selected
+    mart ``fct_*`` / ``agg_*`` tables plus explicit join dims).
     Empty ``allowed`` skips the check.
     """
     if not allowed:
@@ -252,8 +305,7 @@ def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
         return None
     refs = referenced_tables(sql)
     if not refs:
-        # No FROM/JOIN parse — still catch loose stg_* mentions outside the set.
-        refs = referenced_stg_tables(sql)
+        refs = referenced_mart_tables(sql) or referenced_stg_tables(sql)
     if not refs:
         return None
     extra = sorted(refs - allowed_lower)
@@ -261,7 +313,7 @@ def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
         return (
             f"SQL references tables not in the reasoner selection: {', '.join(extra)}. "
             f"Allowed: {', '.join(sorted(allowed_lower))}. "
-            "Do not invent dim_* or other warehouse tables; use only the allowed stg_* tables."
+            "Do not invent warehouse tables; use only the allowed mart/staging tables."
         )
     return None
 
@@ -309,9 +361,9 @@ def candidate_column_idents(sql: str) -> set[str]:
             continue
         if low in tables:
             continue
-        if low.startswith("stg_"):
+        if low.startswith("stg_") or low.startswith(("fct_", "agg_", "dim_", "bridge_")):
             continue
-        if low in {"proj", "project", "staging_dev", "raw_dev", "opentrace"}:
+        if low in {"proj", "project", "staging_dev", "mart_dev", "raw_dev", "opentrace"}:
             continue
         # Hyphen-split GCP project fragments (e.g. opentrace-prod-5ga4 → prod).
         if low in {"prod", "dev", "raw"} or low[:1].isdigit():
@@ -328,7 +380,7 @@ def _filtered_columns(sql: str) -> set[str]:
 
 def _required_metric_cols_for_table(bare: str, samples_by_col: dict[str, set[str]]) -> list[str]:
     """Return metric-discriminator columns that must be filtered for this table."""
-    schema = load_table_schema(bare) or {}
+    schema = _load_schema_for_ref(bare) or {}
     grain_raw = schema.get("grain")
     if not isinstance(grain_raw, str):
         grain_raw = ""
@@ -397,7 +449,7 @@ def inject_missing_metric_filters(
     if not refs:
         return text, []
 
-    samples_map = value_samples_for_tables(refs)
+    samples_map = _samples_for_refs(refs)
     if not samples_map:
         return text, []
 
@@ -430,6 +482,65 @@ def inject_missing_metric_filters(
 
     extra = " AND ".join(clauses)
     return _append_where_filters(text, extra), notes
+
+
+def _table_has_column(table_id: str, col_name: str) -> bool:
+    schema = load_mart_table_schema(table_id) or load_table_schema(table_id)
+    if not schema:
+        return False
+    target = col_name.lower()
+    for col in schema.get("columns") or []:
+        if str(col.get("name") or "").strip().lower() == target:
+            return True
+    return False
+
+
+def _sql_has_time_filter(sql: str) -> bool:
+    stripped = _strip_string_literals(sql or "").lower()
+    if re.search(r"\bas_of_date\b", stripped):
+        return True
+    if re.search(r"\byear\b", stripped) and re.search(
+        r"\b(?:=|between|>=|<=|>|<|in\s*\()",
+        stripped,
+    ):
+        return True
+    return False
+
+
+def inject_time_bounds(
+    sql: str,
+    decomposition: dict[str, Any] | None,
+    table_ids: set[str] | None = None,
+) -> tuple[str, list[str]]:
+    """
+    Inject partition-friendly time bounds when decomposition has dates and SQL lacks them.
+
+    Prefers ``as_of_date BETWEEN`` on mart facts; falls back to ``year BETWEEN``.
+    """
+    text = (sql or "").strip()
+    if not text or _sql_has_time_filter(text):
+        return text, []
+
+    decomp = decomposition or {}
+    ts = str(decomp.get("time_start") or "")[:10]
+    te = str(decomp.get("time_end") or "")[:10]
+    if not ts or not te:
+        return text, []
+
+    refs = _refs_for_sql_checks(text, table_ids)
+    if not refs:
+        return text, []
+
+    for bare in sorted(refs):
+        if _table_has_column(bare, "as_of_date"):
+            clause = f"as_of_date BETWEEN '{ts}' AND '{te}'"
+            return _append_where_filters(text, clause), [f"{bare}.as_of_date BETWEEN {ts} AND {te}"]
+        ycol = year_column(bare)
+        if ycol and ts[:4].isdigit() and te[:4].isdigit():
+            clause = f"{ycol} BETWEEN {ts[:4]} AND {te[:4]}"
+            return _append_where_filters(text, clause), [f"{bare}.{ycol} BETWEEN {ts[:4]} AND {te[:4]}"]
+
+    return text, []
 
 
 def broaden_empty_sql_once(
@@ -469,10 +580,13 @@ def _refs_for_sql_checks(sql: str, table_ids: set[str] | None = None) -> set[str
     Tables to validate against for metric/column/sample checks.
 
     Prefer tables actually referenced in the SQL. Only fall back to ``table_ids``
-    when the SQL has no parseable ``stg_*`` refs — never union plan-selected
+    when the SQL has no parseable mart/staging refs — never union plan-selected
     companions into a single-table statement (that falsely demands ASTI
     ``indicator`` filters on production SQL, etc.).
     """
+    refs = referenced_mart_tables(sql)
+    if refs:
+        return refs
     refs = referenced_stg_tables(sql)
     if refs:
         return refs
@@ -485,13 +599,13 @@ def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None
     """
     Require equality/IN filters on YAML metric-discriminator columns that have samples.
 
-    Applies to every referenced ``stg_*`` table (element, price_type, measure_type, …),
-    not only FAOSTAT.
+    Applies to every referenced mart/staging table (element, price_type, measure_type,
+    production_grain, price_source, …), not only FAOSTAT.
     """
     refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None
-    samples_map = value_samples_for_tables(refs)
+    samples_map = _samples_for_refs(refs)
     if not samples_map:
         return None
     filtered = _filtered_columns(sql)
@@ -529,7 +643,7 @@ def validate_sql_column_allowlist(sql: str, table_ids: set[str] | None = None) -
     refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None
-    col_map = columns_for_tables(refs)
+    col_map = _columns_for_refs(refs)
     if not col_map:
         return None
     allowed: set[str] = set()
@@ -572,7 +686,7 @@ def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> s
     refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None
-    samples_map = value_samples_for_tables(refs)
+    samples_map = _samples_for_refs(refs)
     if not samples_map:
         return None
     by_col: dict[str, set[str]] = {}

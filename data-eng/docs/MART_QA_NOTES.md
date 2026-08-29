@@ -382,3 +382,31 @@ WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
 ```
 
 **Note:** `int_admin0_africa` uses **geoBoundaries ADM0** polygons (loaded by `data/local/scripts/load_geoboundaries_admin0.py`). Replaces interim city-bbox envelopes from `stg_geo`.
+
+---
+
+## Mart column label dictionaries (RAG BQ reasoner)
+
+Live distinct values for **every column** on each `mart_dev` table (cap 500 labels per column; stats-only above that).
+
+**Run sequence** (after mart build):
+
+```powershell
+cd data-eng/dbt
+dbt build --target mart_dev_sa --select mart_dev.*
+
+cd ../..
+python data-eng/data/local/scripts/regenerate_mart_table_yamls.py
+```
+
+**Outputs**
+
+| Artifact | Path |
+|----------|------|
+| Per-table YAML (parallel to staging) | [`ml-eng/ml/rag/bq_mart_tables_yaml_files/`](../../ml-eng/ml/rag/bq_mart_tables_yaml_files/) |
+| BigQuery audit table | `{BQ_PROJECT}.mart_dev.audit_mart_column_labels` |
+| Human review (Markdown) | [`_mart_column_labels_raw.md`](./_mart_column_labels_raw.md) |
+
+**dbt source:** `mart_dev_audit.audit_mart_column_labels` in [`dbt/models/mart_dev/sources_audit.yml`](../dbt/models/mart_dev/sources_audit.yml) (populated by script, not `dbt run`).
+
+**RAG loader:** [`bq_table_schema_yaml.py`](../../ml-eng/ml/rag/chatbot/bq_table_schema_yaml.py) — `load_mart_table_schema()`, `list_mart_table_index()`, `pack_mart_table_hints()`; merge curated semantics after regen via [`patch_mart_yaml_semantics.py`](../../ml-eng/ml/rag/helpers/patch_mart_yaml_semantics.py).

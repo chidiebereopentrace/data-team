@@ -1,0 +1,56 @@
+table_name: opentrace-prod-5ga4.mart_dev.agg_prices_country_month
+description: National monthly price rollups by product, price type, and source.
+source:
+  layer: mart_dev
+grain: Country × product × month × price source
+entity_type: prices
+columns:
+- name: agg_prices_country_month_key
+  type: STRING
+  description: Surrogate key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography
+- name: date_key
+  type: STRING
+  description: YYYYMMDD observation anchor
+- name: country_name
+  type: STRING
+  description: Country label from dim_geography
+- name: product_key
+  type: STRING
+  description: FK to dim_product
+- name: price_type
+  type: STRING
+  description: Retail/wholesale/etc.
+- name: price_source
+  type: STRING
+  description: FEWS/FAOSTAT/WFP lineage
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: year
+  type: INT64
+  description: Calendar year
+- name: month
+  type: INT64
+  description: Calendar month
+- name: price_avg
+  type: FLOAT64
+  description: Average price in period
+- name: common_unit_price_avg
+  type: FLOAT64
+  description: Normalised unit price average
+- name: market_count
+  type: INT64
+  description: Number of markets rolled up
+- name: loaded_at
+  type: TIMESTAMP
+  description: Warehouse load timestamp
+price_source_value_samples:
+- faostat
+- fews
+- wfp
+price_type_value_samples:
+- retail
+- wholesale

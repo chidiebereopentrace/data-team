@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ml.rag.chatbot.bq_context_enrich import (
+    _table_from_sql,
     enrich_bq_results,
     format_row_prose,
     resolve_row_semantics,
@@ -204,6 +205,27 @@ def test_format_row_prose_fallback_omits_table_id() -> None:
     assert "FAOSTAT" not in prose
 
 
+def test_format_row_prose_includes_trend_line() -> None:
+    prose = format_row_prose(
+        {
+            "table_id": "fct_production",
+            "source_domain": "production",
+            "measure_label": "Production",
+            "measure_value": 1000,
+            "unit": "tonnes",
+            "geo": "Kenya",
+            "time": "2020",
+            "discriminators": {},
+            "not_this": [],
+            "table_description": "",
+            "grain": "",
+        },
+        direction="increasing",
+        magnitude=20.0,
+    )
+    assert "Trend: increasing (+20% change)" in prose
+
+
 def test_ranking_consolidation() -> None:
     sql = (
         "SELECT country_name, SUM(value) AS total "
@@ -388,3 +410,57 @@ def test_node_merge_puts_bq_first_for_ranking() -> None:
     merged = graph_mod.node_merge(state)["merged_context"]
     assert merged[0]["_context_kind"] == "bigquery"
     assert merged[1]["_context_kind"] == "news"
+
+
+def test_table_from_sql_detects_mart() -> None:
+    sql = (
+        "SELECT country_iso3, SUM(value) AS total "
+        "FROM `opentrace-prod-5ga4.mart_dev.fct_production` "
+        "WHERE production_grain = 'physical' AND year = 2020"
+    )
+    assert _table_from_sql(sql) == "fct_production"
+
+
+def test_fct_production_element_semantics() -> None:
+    row = {
+        "country_iso3": "ZAF",
+        "product_key": "maize",
+        "element": "Production",
+        "production_grain": "physical",
+        "year": 2020,
+        "unit": "tonnes",
+        "value": 45678901,
+    }
+    sem = resolve_row_semantics(
+        row,
+        table_id="fct_production",
+        sql=(
+            "SELECT country_iso3, SUM(value) AS total "
+            "FROM `proj.mart_dev.fct_production`"
+        ),
+    )
+    assert "production" in sem["measure_label"].lower()
+    assert sem["unit"] == "tonnes"
+    assert sem["geo"] == "ZAF"
+    assert "yield" in " ".join(sem["not_this"]).lower()
+
+
+def test_rank_consolidation_uses_country_iso3() -> None:
+    sql = (
+        "SELECT country_iso3, SUM(value) AS total "
+        "FROM `proj.mart_dev.fct_production` "
+        "WHERE element = 'Production' AND year = 2020 GROUP BY country_iso3"
+    )
+    items = [
+        _bq_item({"country_iso3": "NGA", "total": 100.0, "element": "Production", "year": 2020}, sql=sql),
+        _bq_item({"country_iso3": "ZAF", "total": 200.0, "element": "Production", "year": 2020}, sql=sql),
+    ]
+    out = enrich_bq_results(
+        items,
+        query="which country had the highest production in 2020",
+        plan={"selected_tables": ["fct_production"]},
+    )
+    assert len(out) == 1
+    ranked = out[0]["metadata"].get("ranked_rows") or []
+    assert ranked[0]["label"] == "ZAF"
+    assert out[0]["metadata"].get("bq_enrichment") == "ranked_table"

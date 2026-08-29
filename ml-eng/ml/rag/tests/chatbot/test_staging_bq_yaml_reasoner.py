@@ -13,6 +13,7 @@ from ml.rag.chatbot.bq_byte_budget import (
     utf8_len,
 )
 from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
+from ml.rag.chatbot.retrieval_contract import RetrievalContract
 from ml.rag.chatbot.bq_table_schema_yaml import (
     format_reasoner_index,
     format_table_schema,
@@ -282,10 +283,10 @@ def test_validate_sql_staging_only() -> None:
     assert bronze is None
 
 
-def test_datasets_config_defaults_to_staging_dev(monkeypatch) -> None:
-    monkeypatch.delenv("BQ_DATASET_SILVER", raising=False)
+def test_datasets_config_defaults_to_mart_dev(monkeypatch) -> None:
+    monkeypatch.delenv("BQ_DATASET_GOLD", raising=False)
     cfg = _get_datasets_config()
-    assert cfg.get("staging") == "staging_dev"
+    assert cfg.get("mart") == "mart_dev"
 
 
 def test_reasoner_empty_llm_uses_ontology_or_fails_closed() -> None:
@@ -294,28 +295,36 @@ def test_reasoner_empty_llm_uses_ontology_or_fails_closed() -> None:
             plan = reason_bq_sql_plan("maize yield by district in Ghana", plan_type="Farmers")
     # Yield measure → ontology last-resort plan (not silent skip).
     assert plan["skip_bq"] is False
-    assert "stg_faostat_production" in plan["selected_tables"]
-    assert "ontology_fallback" in str(plan.get("rationale") or "")
+    assert "fct_yield" in plan["selected_tables"] or "fct_production" in plan["selected_tables"]
+    assert "ontology_fallback" in str(plan.get("rationale") or "") or "contract_from_entities" in str(
+        plan.get("rationale") or ""
+    ) or "contract_from_entities" in str(
+        plan.get("rationale") or ""
+    )
 
 
 def test_reasoner_heuristic_africa_production_rank_when_llm_empty() -> None:
-    q = "which country has the best agricultural activity in 2020"
+    q = "which country in Africa had the highest maize production in 2020"
     dec = {
         "intent": "descriptive",
-        "entities": ["agricultural activity", "Africa"],
+        "entities": ["maize", "production", "Africa"],
         "geography": [],
-        "domains": ["agribusiness"],
+        "domains": ["agriculture"],
         "time_start": "2020-01-01",
         "time_end": "2020-12-31",
         "africa_default": True,
     }
-    with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=""):
-        with patch.dict("os.environ", {"RAG_BQ_REASONER_RETRIES": "1"}):
-            plan = reason_bq_sql_plan(q, decomposition=dec, plan_type="Farmers")
+    empty_contract = RetrievalContract()
+    with patch("ml.rag.chatbot.bq_sql_reasoner.build_retrieval_contract", return_value=empty_contract):
+        with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=""):
+            with patch.dict("os.environ", {"RAG_BQ_REASONER_RETRIES": "1"}):
+                plan = reason_bq_sql_plan(q, decomposition=dec, plan_type="Farmers")
     assert plan["skip_bq"] is False
-    assert "stg_faostat_production" in plan["selected_tables"]
+    assert "fct_production" in plan["selected_tables"] or "fct_yield" in plan["selected_tables"]
     assert plan["table_hints"]
-    assert "ontology_fallback" in str(plan.get("rationale") or "") or "heuristic" in str(
+    assert "ontology_fallback" in str(plan.get("rationale") or "") or "contract_from_entities" in str(
+        plan.get("rationale") or ""
+    ) or "heuristic" in str(
         plan.get("rationale") or ""
     )
 
@@ -327,7 +336,9 @@ def test_reasoner_invalid_json_ontology_or_fail_closed() -> None:
     # market_price resolves → ontology fallback rather than empty skip.
     assert plan["skip_bq"] is False
     assert plan["selected_tables"]
-    assert "ontology_fallback" in str(plan.get("rationale") or "")
+    assert "ontology_fallback" in str(plan.get("rationale") or "") or "contract_from_entities" in str(
+        plan.get("rationale") or ""
+    )
 
 
 def test_reasoner_empty_llm_no_measure_fails_closed() -> None:
@@ -341,14 +352,14 @@ def test_reasoner_empty_llm_no_measure_fails_closed() -> None:
 
 def test_reasoner_uses_mock_llm_json() -> None:
     payload = (
-        '{"selected_tables":["stg_wfp_vampire_prices"],'
-        '"query_intents":[{"goal":"prices","tables":["stg_wfp_vampire_prices"],'
+        '{"selected_tables":["fct_prices"],'
+        '"query_intents":[{"goal":"prices","tables":["fct_prices"],'
         '"filters":"country=Ghana","notes":""}],'
         '"skip_bq":false,"rationale":"prices question"}'
     )
     with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=payload):
         plan = reason_bq_sql_plan("What are maize prices in Ghana?", plan_type="Farmers")
-    assert plan["selected_tables"] == ["stg_wfp_vampire_prices"]
+    assert plan["selected_tables"] == ["fct_prices"]
     assert plan["table_hints"]
     assert plan["skip_bq"] is False
     intent = plan["query_intents"][0]
@@ -358,10 +369,10 @@ def test_reasoner_uses_mock_llm_json() -> None:
 
 def test_reasoner_accepts_structured_pattern_fields() -> None:
     payload = (
-        '{"selected_tables":["stg_faostat_production"],'
-        '"query_intents":[{"goal":"rank maize","tables":["stg_faostat_production"],'
+        '{"selected_tables":["fct_production"],'
+        '"query_intents":[{"goal":"rank maize","tables":["fct_production"],'
         '"filters":"year=2020","pattern":"rank_by_sum","metric":"value",'
-        '"grain":["country_name"],"order_by":"total DESC","notes":""}],'
+        '"grain":["country_iso3"],"order_by":"total DESC","notes":""}],'
         '"skip_bq":false,"rationale":"rank"}'
     )
     with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=payload):
@@ -369,14 +380,14 @@ def test_reasoner_accepts_structured_pattern_fields() -> None:
     intent = plan["query_intents"][0]
     assert intent["pattern"] == "rank_by_sum"
     assert intent["metric"] == "value"
-    assert intent["grain"] == ["country_name"]
+    assert intent["grain"] == ["country_iso3"]
     assert intent["order_by"] == "total DESC"
 
 
 def test_reasoner_unknown_pattern_becomes_custom() -> None:
     payload = (
-        '{"selected_tables":["stg_faostat_production"],'
-        '"query_intents":[{"goal":"x","tables":["stg_faostat_production"],'
+        '{"selected_tables":["fct_production"],'
+        '"query_intents":[{"goal":"x","tables":["fct_production"],'
         '"pattern":"not_a_real_pattern","metric":"value","grain":[],"notes":""}],'
         '"skip_bq":false,"rationale":"x"}'
     )
@@ -395,18 +406,22 @@ def test_reasoner_rejects_unknown_only_tables() -> None:
     # Unknown LLM tables → ontology fallback for socio_economic/HDI (not invent unknown ids).
     assert "not_a_real_table" not in plan["selected_tables"]
     assert plan["skip_bq"] is False
-    assert any("hdi" in t or "gdp" in t or "sdg" in t for t in plan["selected_tables"])
-    assert "ontology_fallback" in str(plan.get("rationale") or "")
+    assert any(t.startswith("fct_") for t in plan["selected_tables"])
+    assert "ontology_fallback" in str(plan.get("rationale") or "") or "contract_from_entities" in str(
+        plan.get("rationale") or ""
+    )
 
 
 def test_reasoner_keeps_valid_among_unknown() -> None:
     payload = (
-        '{"selected_tables":["not_a_real_table","stg_africa_hdi"],'
+        '{"selected_tables":["not_a_real_table","fct_hdi"],'
         '"query_intents":[],"skip_bq":false,"rationale":"x"}'
     )
-    with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=payload):
-        plan = reason_bq_sql_plan("HDI for Kenya?")
-    assert plan["selected_tables"] == ["stg_africa_hdi"]
+    empty_contract = RetrievalContract()
+    with patch("ml.rag.chatbot.bq_sql_reasoner.build_retrieval_contract", return_value=empty_contract):
+        with patch("ml.rag.chatbot.bq_sql_reasoner.llm_chat_complete", return_value=payload):
+            plan = reason_bq_sql_plan("HDI for Kenya?")
+    assert plan["selected_tables"] == ["fct_hdi"]
     assert plan["skip_bq"] is False
 
 

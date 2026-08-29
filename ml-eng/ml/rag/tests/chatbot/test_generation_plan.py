@@ -176,3 +176,34 @@ def test_ghana_rice_numeric_fact_bq_first() -> None:
     assert plan.evidence_priority[0] == "bigquery"
     assert plan.must_ground_in == "bigquery"
     assert plan.lead_with == "structured_value"
+
+
+def test_analytical_plan_has_report_sections() -> None:
+    from ml.rag.tests.chatbot.fixtures.generation_plan_matrix import mixed_bq_news_context
+
+    plan = build_generation_plan(
+        "Compare maize production Kenya vs Tanzania",
+        task_mode="analytical",
+        category="Government",
+        reranked_context=mixed_bq_news_context(),
+        measure_id="production",
+        decomposition={"intent": "compare", "geography": ["Kenya", "Tanzania"]},
+    )
+    assert plan.report_sections
+    assert plan.effective_category == "Government"
+    assert plan.category_source == "explicit"
+    assert any("Data notes" in s.title or "data notes" in s.title.lower() for s in plan.report_sections)
+
+
+def test_query_induced_category_on_plan() -> None:
+    from ml.rag.tests.chatbot.fixtures.generation_plan_matrix import mixed_bq_news_context
+
+    plan = build_generation_plan(
+        "What should I plant on my farm this season?",
+        task_mode="analytical",
+        plan_type="Integrated",
+        reranked_context=mixed_bq_news_context(),
+    )
+    assert plan.effective_category == "Farmers"
+    assert plan.category_source == "query"
+    assert plan.use_bullet_layout is True

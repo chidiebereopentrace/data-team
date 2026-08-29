@@ -1,0 +1,918 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_climate
+description: NASA POWER / ERA5 point climate and Climate Watch country indicators.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: point_obs | country_model
+entity_type: climate
+columns:
+- name: climate_key
+  type: STRING
+  description: climate key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (null if unmatched)
+- name: geo_level
+  type: STRING
+  description: geo level
+- name: country_iso3
+  type: STRING
+  description: ISO3 from dim or extractable geo even if key null
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: tier
+  type: INT64
+  description: Producer scale (1=global, 2=national ministry, 3=community survey)
+- name: data_level
+  type: STRING
+  description: Resolution of the number (warehouse row resolution)
+- name: geo_scope
+  type: STRING
+  description: national / sub_national / community / point (null when geography_key
+    null)
+- name: place_scope
+  type: ARRAY<STRING>
+  description: ARRAY of comparable place labels for ACF geo overlap
+- name: metric
+  type: STRING
+  description: Stable slug for the measure
+- name: source_id
+  type: STRING
+  description: Lineage key (= dim_source.source_key)
+- name: indicator_key
+  type: STRING
+  description: indicator key
+- name: climate_grain
+  type: STRING
+  description: climate grain
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: as_of_date
+  type: DATE
+  description: Observation date when known; else DATE(loaded_at)
+- name: as_of_date_basis
+  type: STRING
+  description: observation or loaded_at
+- name: date_key
+  type: STRING
+  description: date key
+- name: value
+  type: FLOAT64
+  description: Numeric measure
+- name: unit
+  type: STRING
+  description: Unit of measure
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+climate_key_value_stats:
+  distinct_count: 205886
+  null_count: 0
+  is_truncated: true
+  min_value: 00003d6a9f6ee16e092f8ecbbf41a3cb
+  max_value: fffec01388c6e1438e77ca215bc88967
+geography_key_value_stats:
+  distinct_count: 3278
+  null_count: 1564
+  is_truncated: true
+  min_value: 0001600623fef7fd72830124b253ced3
+  max_value: ffe04a83093866d63e5946dede21a358
+geo_level_value_samples:
+- country
+- city
+country_iso3_value_samples:
+- AGO
+- MAR
+- MDG
+- COD
+- ZAF
+- EGY
+- SOM
+- LBY
+- NAM
+- SDN
+- MOZ
+- DZA
+- TCD
+- ETH
+- SHN
+- NER
+- TZA
+- KEN
+- NGA
+- ZMB
+- SSD
+- CAF
+- BWA
+- SYC
+- GAB
+- MRT
+- COG
+- CMR
+- MLI
+- GNQ
+- ZWE
+- ERI
+- TUN
+- MUS
+- UGA
+- LBR
+- GHA
+- BEN
+- MWI
+- CIV
+- BFA
+- SEN
+- TGO
+- GIN
+- SLE
+- COM
+- STP
+- LSO
+- DJI
+- SWZ
+- MYT
+- BDI
+- REU
+- RWA
+- GNB
+- GMB
+source_key_value_samples:
+- 3d24478639172a60481c1873c530e9a2
+- 170021af7801d97143c26c6a9edadf2b
+- 0eabe8bee8678e5dbc8639651ed7c70c
+tier_value_samples:
+- '1'
+data_level_value_samples:
+- national
+- community
+- point
+geo_scope_value_samples:
+- national
+- community
+- point
+metric_value_samples:
+- temperature_2m
+- par_solar_at_noon
+- shortwave_irradiance_at_noon
+- biomass
+- buildings
+- energy_crops
+- f-gases
+- forest
+- fossil_fuel_consumption
+- fossil_fuels
+- fossil_w/o_ccs
+- freight
+- liquefied_biomass_w/_ccs
+- liquefied_coal_w/o_ccs
+- liquefied_fossil_fuels
+- liquefied_fossil_fuels_w/o_ccs
+- liquids
+- natural_gas
+- oc
+- oil_w/o_ccs
+- other_renewables
+- passenger
+- solar
+- solids
+- wind
+- biomass_w/o_ccs
+- biomass_w/_ccs
+- co
+- gases
+- global_warming
+- heat
+- hydrogen
+- industry
+- liquefied_biomass
+- liquefied_biomass_w/o_ccs
+- liquefied_coal
+- liquefied_gas_w/_ccs
+- liquid_derivative_of_crude_oil
+- bc
+- ch4
+- coal
+- coal_w/o_ccs
+- energy_supply
+- hydro
+- land_use_and_forestry
+- liquefied_coal_w/_ccs
+- liquefied_fossil_fuels_w/_ccs
+- liquefied_gas
+- oil
+- oil_w/_ccs
+- solid_biomass_w/o_ccs
+- sulfur
+- total
+- total_carbon_price
+- co2
+- coal_w/_ccs
+- cropland
+- electricity
+- energy_demand
+- fossil
+- fossil_w/_ccs
+- gas
+- gas_w/_ccs
+- gas_w/o_ccs
+- gdp_mer
+- geothermal
+- liquefied_gas_w/o_ccs
+- n2o
+- nox
+- nuclear
+- pasture
+- solid_biomass_w/_ccs
+- transportation
+source_id_value_samples:
+- 3d24478639172a60481c1873c530e9a2
+- 170021af7801d97143c26c6a9edadf2b
+- 0eabe8bee8678e5dbc8639651ed7c70c
+indicator_key_value_samples:
+- 0a02ab4a8484144dc18ef73ed7b98edf
+- a1e72ba9e588a88b086b3f7f2c02edb3
+- afb9e29f8d753aec5aa5d5823a6be42b
+- fb4dc27e689cb920847327c467eec2e4
+- 3dc183cf4b0ea0778a1819994ad6cf25
+- 5360af35bde9ebd8f01f492dc059593c
+- fb024832e51eb5f6da9113a745f1eb59
+- 8734d1f84a7f530773e1910b5f170204
+- c5af0543407a6e8ba11db6a69f792014
+- 4d70921065c00a293597936b693345aa
+- fbb44b4487415b134bce9c790a27fe5e
+- 641b2b00d03f9990007869f7cc5281e4
+- 37e9545acbf7afe63292d134de97d8b6
+- 3f0dd48c3ccc59638fedaa98a67a4273
+- 400a8f6716375443c853ae0dfd78b768
+- 657ba1cf02618c904684a5f85c55d793
+- 70fd3c5e4d0cf9d3c57aed1e834c2c8f
+- 7e25b972e192b01004b62346ee9975a5
+- a809c407e7dae6b10644836b98f3a782
+- ab3b6079c31e6dbd4b85f269737de802
+- d4ac1478a4d8a4f591d35e3d75f3de65
+- e2648fc474439e6c16e0f66eb43137c0
+- f89eaa7bd41f8201128cddf7afa3d66c
+- 36a10868cc128d144be42a064c97b6b3
+- 301b313ddaf068ad227ba9758d1ec309
+- 48fc9e14a44ce2e742df03d065af3ff2
+- 39e4d86c3d0b220065630b8e50eae4e7
+- bd2ad056056683306b5730e3f2e8ff13
+- 681c3491aff4d05b8ab626d57b5d055a
+- 7169476e1ca1b3b66537fdf8e9126b6e
+- a1b0311bca82400b4a60354551734dce
+- 3ee3610c5d928069e7658a07faacb839
+- 04ecccca55bd7d30a1edf83db7a84d16
+- 94074ce331b5db47060fd2d8009503a8
+- 0652a3b9bafd46fc3f20fb2a90373f66
+- 80f7eb6a82de23d7534ebeadeb02713e
+- 16699663b3f4d0ad6ce8bb9300f2d3c9
+- 5d6eb4f1340c4c66e3adff7fdab1c931
+- ad8d3b11981605034e31a06867671f9c
+- e2cf1817f9bb7713307949ada414cb68
+- 02d2cc5b4ec401f09755728b6bbff1f1
+- 1b7f3d5e5be55ccc25f6482a4a198093
+- 5f3e5790a6ffc1fca503c6e234340972
+- 624516799a4ac3974dacec4e1ee004bb
+- fee74eac0728a1bb5ff7d4666f8c4a88
+- 625da929479f7d1650ad6fd0f38586c5
+- 1bd52cbb37eb7b4ed2e0de467b8fec90
+- a3d96aa454aacce406c1174dd38dfaea
+- 5271e118dc81adb543b7856bb6ea0445
+- c0b71f598340fc0db9d31d4a6dc43c35
+- 34c51c598384aa03e137bd191a9b9c8f
+- 0ff66555f7028c5da372fbf8628939b1
+- 4e85eddf886882ca7cb893ddd3f07051
+- 52170819422722598d3cc9cfa2bd19b8
+- 649fe8f45e2819a08c0d88b1f1984817
+- 904fa0d9bfac311f6f5f7166d993ca5f
+- 2707e132aa7984e532f018b0f8a150ad
+- 7248064cd54bef68ee24245d0b810b71
+- 6d40db8c8d5d4decabdbe94444474d6a
+- 01e59f3908d0327400575e3dbd14909a
+- 3a0911c92ad94c250120aa96f2db081e
+- c93a3b929a3f9f5a5cf3320fbb7661e5
+- 1b551b798b65ef762c139c32599710fb
+- 73a9bf52aa8ea9e256ec469dfce6e022
+- f379cfd7a55b621577a8389d1817a102
+- 07f42d0260b014718dde3b0bae3786e7
+- ab6c040066603ef2519d512b21dce9ab
+- 39813d0cedffb05e0e47c326a84358bc
+- 048e58dc0bf887cbc6bc420dd7533cb3
+- 1b7a3aeca519c607185a2401af626427
+climate_grain_value_samples:
+- point_obs
+- country_model
+latitude_value_samples:
+- '3'
+- '23'
+- '17'
+- '-31'
+- '-1'
+- '-3'
+- '-9'
+- '-29'
+- '-7'
+- '-11'
+- '15'
+- '31'
+- '5'
+- '-19'
+- '-27'
+- '-13'
+- '13'
+- '33'
+- '7'
+- '-33'
+- '-5'
+- '-15'
+- '-23'
+- '-21'
+- '19'
+- '27'
+- '25'
+- '21'
+- '35'
+- '37'
+- '9'
+- '-25'
+- '-35'
+- '-17'
+- '11'
+- '29'
+- '1'
+- '19.75'
+- '31.5'
+- '6.25'
+- '-9.75'
+- '-9.5'
+- '6.5'
+- '-0.5'
+- '17.25'
+- '16'
+- '15.5'
+- '17.75'
+- '21.5'
+- '-3.25'
+- '-0.25'
+- '-31.5'
+- '-31.25'
+- '-18.75'
+- '-21.75'
+- '-17.25'
+- '4'
+- '-21.5'
+- '-6.75'
+- '-8.25'
+- '-8'
+- '-5.75'
+- '-8.5'
+- '-11.25'
+- '-28.5'
+- '-28.25'
+- '-30.75'
+- '-30.5'
+- '-18.25'
+- '-27.75'
+- '34.75'
+- '30.5'
+- '-10.25'
+- '29.5'
+- '-33.25'
+- '-27.25'
+- '37.5'
+- '-11.75'
+- '-24.25'
+- '36'
+- '10.5'
+- '3.25'
+- '-12.75'
+- '0.75'
+- '33.25'
+- '26.25'
+- '26.5'
+- '25.75'
+- '-33.5'
+- '-34'
+- '-34.25'
+- '-3.75'
+- '-4.25'
+- '31.75'
+- '30.25'
+- '10.25'
+- '13.75'
+- '28.25'
+- '4.25'
+- '36.75'
+- '24.25'
+- '23.75'
+- '23.5'
+- '-13.75'
+- '33.5'
+- '9.25'
+- '8.25'
+- '-25.75'
+- '11.75'
+- '11.25'
+- '-20.25'
+- '26'
+- '0.5'
+- '1.5'
+- '1.25'
+- '2.75'
+- '-12.5'
+- '-12.25'
+- '3.5'
+- '34.25'
+- '-4.75'
+- '-4.5'
+- '15.25'
+- '-1.75'
+- '-32.75'
+- '-32.5'
+- '14.5'
+- '-6.25'
+- '-23.5'
+- '0.25'
+- '16.75'
+- '20.75'
+- '22.75'
+- '21.25'
+- '20.5'
+- '18'
+- '-32'
+- '-18.5'
+- '-22.75'
+- '7.25'
+- '-20.75'
+- '-10'
+- '-26.5'
+- '-11.5'
+- '-12'
+- '-26.75'
+- '-18'
+- '-5.25'
+- '32.25'
+- '-27.5'
+- '38'
+- '-19.75'
+- '-20'
+- '-19.25'
+- '12.25'
+- '12.5'
+- '8.75'
+- '8.5'
+- '24.75'
+- '24.5'
+- '5.25'
+- '-34.75'
+- '-34.5'
+- '31.25'
+- '30.75'
+- '37.75'
+- '-29.75'
+- '-30.25'
+- '-15.5'
+- '-24.75'
+- '-25.25'
+- '14'
+- '13.5'
+- '-16.75'
+- '2'
+- '35.75'
+- '28.5'
+- '27.75'
+- '27.25'
+- '23.25'
+- '-14'
+- '3.75'
+- '9.5'
+- '9.75'
+- '-26'
+- '20'
+- '20.25'
+- '18.75'
+- '-24.5'
+- '32.75'
+- '-6'
+- '7.75'
+- '-13.25'
+- '-13.5'
+- '33.75'
+- '28.75'
+- '-15.25'
+- '10.75'
+- '35.25'
+- '35.5'
+- '-1.25'
+- '-1.5'
+- '6'
+- '-15.75'
+- '22'
+- '21.75'
+- '18.25'
+- '17.5'
+- '16.25'
+- '18.5'
+- '25.25'
+- '16.5'
+- '14.75'
+- '-32.25'
+- '6.75'
+- '-2'
+- '-7.25'
+- '-7.75'
+- '-7.5'
+- '-14.25'
+- '-5.5'
+- '7.5'
+- '-10.75'
+- '-10.5'
+- '30'
+- '32.5'
+- '28'
+- '27.5'
+- '2.25'
+- '-16.25'
+- '14.25'
+- '36.25'
+- '-4'
+- '-33.75'
+- '-30'
+- '13.25'
+- '12.75'
+- '-16.5'
+- '1.75'
+- '-14.5'
+- '4.5'
+- '4.75'
+- '24'
+- '-22'
+- '-25.5'
+- '11.5'
+- '12'
+- '-19.5'
+- '19.25'
+- '19.5'
+- '26.75'
+- '25.5'
+- '36.5'
+- '8'
+- '2.5'
+- '-23.75'
+- '-24'
+- '34'
+- '10'
+- '-16'
+- '-14.75'
+- '-9.25'
+- '-6.5'
+- '0'
+- '-0.75'
+- '-23.25'
+- '15.75'
+- '22.5'
+- '22.25'
+- '-29.25'
+- '-29.5'
+- '-31.75'
+- '-22.25'
+- '-22.5'
+- '-2.25'
+- '-17.5'
+- '-2.75'
+- '-2.5'
+- '-20.5'
+- '-3.5'
+- '5.75'
+- '5.5'
+- '-8.75'
+- '34.5'
+- '-21.25'
+- '-28.75'
+- '-28'
+- '32'
+- '-26.25'
+- '-17.75'
+- '29.75'
+- '37.25'
+- '29.25'
+longitude_value_samples:
+- '20'
+- '0'
+- '6'
+- '38'
+- '36'
+- '32'
+- '2'
+- '8'
+- '16'
+- '22'
+- '34'
+- '42'
+- '50'
+- '18'
+- '14'
+- '48'
+- '46'
+- '44'
+- '30'
+- '26'
+- '12'
+- '10'
+- '4'
+- '40'
+- '28'
+- '24'
+- '-18'
+- '-14'
+- '-8'
+- '-4'
+- '-2'
+- '-6'
+- '-16'
+- '-10'
+- '-12'
+- '45.5'
+- '54.25'
+- '35.75'
+- '29'
+- '15.25'
+- '17.75'
+- '17.5'
+- '27.5'
+- '27'
+- '15.5'
+- '15'
+- '39.25'
+- '32.75'
+- '11.75'
+- '32.25'
+- '9'
+- '8.75'
+- '36.5'
+- '26.75'
+- '26.25'
+- '10.75'
+- '29.25'
+- '18.5'
+- '18.25'
+- '45.25'
+- '55.75'
+- '2.75'
+- '51.75'
+- '3'
+- '0.75'
+- '43.25'
+- '50.25'
+- '1.25'
+- '58'
+- '51.25'
+- '0.25'
+- '52.75'
+- '7.25'
+- '2.5'
+- '1'
+- '45'
+- '47.25'
+- '51'
+- '59'
+- '44.5'
+- '47.75'
+- '48.25'
+- '43'
+- '8.5'
+- '52'
+- '45.75'
+- '59.75'
+- '5.25'
+- '7.75'
+- '53.25'
+- '3.5'
+- '49.25'
+- '54'
+- '57'
+- '39.75'
+- '12.75'
+- '30.25'
+- '22.5'
+- '34.25'
+- '28.75'
+- '36.25'
+- '31.75'
+- '14.25'
+- '14.5'
+- '21.75'
+- '29.75'
+- '38.75'
+- '33'
+- '38.5'
+- '33.5'
+- '33.75'
+- '33.25'
+- '36.75'
+- '37.75'
+- '29.5'
+- '11'
+- '11.25'
+- '24.5'
+- '9.75'
+- '19.5'
+- '19.75'
+- '20.5'
+- '20.25'
+- '13'
+- '13.5'
+- '6.75'
+- '3.25'
+- '40.75'
+- '5'
+- '56.25'
+- '57.25'
+- '54.75'
+- '52.5'
+- '40.5'
+- '8.25'
+- '51.5'
+- '6.5'
+- '55'
+- '52.25'
+- '49'
+- '46.5'
+- '56'
+- '60'
+- '9.25'
+- '44.75'
+- '7'
+- '41.25'
+- '4.75'
+- '47'
+- '50.75'
+- '56.5'
+- '58.5'
+- '3.75'
+- '42.25'
+- '42.5'
+- '40.25'
+- '39.5'
+- '12.5'
+- '13.75'
+- '28.25'
+- '23.25'
+- '23'
+- '35.25'
+- '28.5'
+- '17.25'
+- '22.25'
+- '21.5'
+- '21.25'
+- '15.75'
+- '16.5'
+- '39'
+- '38.25'
+- '27.75'
+- '14.75'
+- '32.5'
+- '26.5'
+- '31.25'
+- '25.25'
+- '31.5'
+- '25.5'
+- '37.25'
+- '25.75'
+- '37.5'
+- '25'
+- '24.75'
+- '10.25'
+- '23.5'
+- '9.5'
+- '19.25'
+- '20.75'
+- '46.75'
+- '1.5'
+- '55.25'
+- '0.5'
+- '2.25'
+- '48.5'
+- '7.5'
+- '59.25'
+- '59.5'
+- '4.25'
+- '1.75'
+- '6.25'
+- '53.5'
+- '57.5'
+- '41'
+- '44.25'
+- '41.5'
+- '47.5'
+- '56.75'
+- '5.5'
+- '49.5'
+- '46.25'
+- '55.5'
+- '50.5'
+- '48.75'
+- '42.75'
+- '53'
+- '57.75'
+- '49.75'
+- '41.75'
+- '53.75'
+- '54.5'
+- '4.5'
+- '43.75'
+- '5.75'
+- '58.25'
+- '43.5'
+- '58.75'
+- '12.25'
+- '13.25'
+- '31'
+- '30.5'
+- '22.75'
+- '35.5'
+- '34.75'
+- '34.5'
+- '27.25'
+- '16.25'
+- '16.75'
+- '30.75'
+- '10.5'
+- '11.5'
+- '37'
+- '17'
+- '24.25'
+- '21'
+- '18.75'
+- '19'
+- '23.75'
+- '35'
+as_of_date_value_samples:
+- '2023-06-15'
+- '2023-06-01'
+- '2025-01-01'
+- '2080-12-31'
+- '2040-12-31'
+- '2005-12-31'
+- '2100-12-31'
+- '2070-12-31'
+- '2050-12-31'
+- '2030-12-31'
+- '2060-12-31'
+- '2020-12-31'
+- '2010-12-31'
+- '2090-12-31'
+as_of_date_basis_value_samples:
+- observation
+date_key_value_samples:
+- '20230615'
+- '20230601'
+- '20250101'
+- '20200101'
+- '20800101'
+- '20300101'
+- '20900101'
+- '21000101'
+- '20500101'
+- '20600101'
+- '20400101'
+- '20700101'
+- '20050101'
+- '20100101'
+value_value_stats:
+  distinct_count: 31375
+  null_count: 0
+  is_truncated: true
+  min_value: '-52.98'
+  max_value: '630.27'
+unit_value_stats:
+  distinct_count: 0
+  null_count: 206466
+  is_truncated: false
+source_natural_key_value_samples:
+- Copernicus_ERA5
+- NASA_POWER_hourly
+- ClimateWatch_climate_health_impacts
+loaded_at_value_samples:
+- '2026-08-28 14:33:12.583815+00'
+indicator_classes:
+- CLIM
+filtering_guidance:
+- Filter climate_grain (point_obs vs country_model)
+- JOIN dim_indicator for named climate series
+sql_generation_hints:
+- Filter metric + as_of_date range for time series
+semantic_role:
+  primary_domain: climate
+  supports:
+  - climate
+  - CLIM

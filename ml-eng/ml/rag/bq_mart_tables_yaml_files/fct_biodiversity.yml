@@ -1,0 +1,411 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_biodiversity
+description: Species occurrence points.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: GBIF occurrence
+entity_type: spatial
+columns:
+- name: biodiversity_key
+  type: STRING
+  description: biodiversity key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (null if unmatched)
+- name: geo_level
+  type: STRING
+  description: geo level
+- name: country_iso3
+  type: STRING
+  description: ISO3 from dim or extractable geo even if key null
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: tier
+  type: INT64
+  description: Producer scale (1=global, 2=national ministry, 3=community survey)
+- name: data_level
+  type: STRING
+  description: Resolution of the number (warehouse row resolution)
+- name: geo_scope
+  type: STRING
+  description: national / sub_national / community / point (null when geography_key
+    null)
+- name: place_scope
+  type: ARRAY<STRING>
+  description: ARRAY of comparable place labels for ACF geo overlap
+- name: metric
+  type: STRING
+  description: Stable slug for the measure
+- name: source_id
+  type: STRING
+  description: Lineage key (= dim_source.source_key)
+- name: gbif_id
+  type: STRING
+  description: gbif id
+- name: scientific_name
+  type: STRING
+  description: scientific name
+- name: country_code
+  type: STRING
+  description: country code
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: individual_count
+  type: INT64
+  description: individual count
+- name: year
+  type: INT64
+  description: year
+- name: as_of_date
+  type: DATE
+  description: Observation date when known; else DATE(loaded_at)
+- name: as_of_date_basis
+  type: STRING
+  description: observation or loaded_at
+- name: value
+  type: FLOAT64
+  description: Numeric measure
+- name: unit
+  type: STRING
+  description: Unit of measure
+- name: rich_all
+  type: INT64
+  description: rich all
+- name: rar_all
+  type: INT64
+  description: rar all
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+biodiversity_key_value_stats:
+  distinct_count: 7445632
+  null_count: 0
+  is_truncated: true
+  min_value: 00000043c323260dba57b4f60f84f701
+  max_value: fffffee1c8202cbb18b6d048f3d427be
+geography_key_value_stats:
+  distinct_count: 5229
+  null_count: 75062
+  is_truncated: true
+  min_value: 0001600623fef7fd72830124b253ced3
+  max_value: ffe04a83093866d63e5946dede21a358
+geo_level_value_samples:
+- city
+- country
+country_iso3_value_samples:
+- ZAF
+- MDG
+- KEN
+- COD
+- NGA
+- CMR
+- GAB
+- TZA
+- REU
+- NAM
+- CIV
+- ETH
+- MAR
+- ZWE
+- MOZ
+- GHA
+- BWA
+- ZMB
+- BEN
+- MWI
+- DZA
+- EGY
+- LBR
+- UGA
+- AGO
+- STP
+- COG
+- GIN
+- SEN
+- RWA
+- BDI
+- CAF
+- TUN
+- MLI
+- TGO
+- GNQ
+- MUS
+- BFA
+- SDN
+- SYC
+- COM
+- SLE
+- NER
+- MYT
+- LSO
+- TCD
+- SWZ
+- CPV
+- GNB
+- GMB
+- LBY
+- SHN
+- SOM
+- SSD
+- ERI
+- MRT
+- DJI
+- ATF
+- ESH
+source_key_value_samples:
+- bc5b8e42df960180296be4aa35b13bd9
+tier_value_samples:
+- '1'
+data_level_value_samples:
+- community
+- national
+- point
+geo_scope_value_samples:
+- community
+- national
+- point
+metric_value_samples:
+- species_occurrence
+source_id_value_samples:
+- bc5b8e42df960180296be4aa35b13bd9
+gbif_id_value_stats:
+  distinct_count: 7534188
+  null_count: 0
+  is_truncated: true
+  min_value: '1000329'
+  max_value: '998005'
+scientific_name_value_stats:
+  distinct_count: 231347
+  null_count: 0
+  is_truncated: true
+  min_value: '? africana Cassin, 1865'
+  max_value: × Agropogon littoralis C.E.Hubb.
+country_code_value_samples:
+- ZA
+- MG
+- KE
+- CD
+- NG
+- CM
+- GA
+- TZ
+- None
+- RE
+- CI
+- ET
+- ZW
+- GH
+- MA
+- MZ
+- BW
+- ZM
+- BJ
+- DZ
+- MW
+- EG
+- LR
+- ES
+- AO
+- UG
+- ST
+- SN
+- GN
+- AQ
+- CF
+- RW
+- BI
+- TN
+- TG
+- ML
+- CG
+- MU
+- SD
+- GQ
+- BF
+- PT
+- SC
+- KM
+- SL
+- NE
+- YT
+- TD
+- CV
+- LY
+- GM
+- LS
+- SZ
+- GW
+- SO
+- MR
+- ER
+- ZZ
+- MD
+- SH
+- DJ
+- AF
+- YE
+- SS
+- TF
+- GB
+- FI
+- DE
+- MO
+- CN
+- EH
+- SE
+- PL
+- BA
+- EE
+- VN
+- MV
+- 'NO'
+- SV
+- FR
+- DK
+- BE
+- MX
+- UA
+- US
+- RU
+- LV
+- AU
+- HU
+- IE
+- NL
+- IT
+- LT
+- GR
+- OM
+- PK
+- TR
+- AT
+- IN
+- MH
+- PH
+- IL
+- CH
+- SY
+- PE
+- GF
+- SA
+- BR
+- KZ
+- MY
+- EC
+- NC
+- CR
+- CO
+- TW
+- RO
+- CZ
+- PG
+- TH
+- GL
+- ID
+- MM
+- HT
+- IM
+- CA
+- IR
+- KH
+- GE
+- CU
+- VE
+- SI
+- HR
+- LK
+- PY
+- AX
+- IS
+- BG
+- GY
+- JE
+- SR
+- LA
+- HN
+- BD
+- PR
+- LB
+- PA
+- BY
+- NZ
+- IO
+- DO
+- SK
+- TL
+- AE
+- MK
+- AD
+- TM
+- HM
+- BO
+- NI
+- BB
+- JO
+latitude_value_stats:
+  distinct_count: 220651
+  null_count: 1126768
+  is_truncated: true
+  min_value: '-90'
+  max_value: '74.466667'
+longitude_value_stats:
+  distinct_count: 222986
+  null_count: 1126768
+  is_truncated: true
+  min_value: '-114.85'
+  max_value: '153.399841'
+individual_count_value_stats:
+  distinct_count: 0
+  null_count: 7500000
+  is_truncated: false
+year_value_stats:
+  distinct_count: 0
+  null_count: 7500000
+  is_truncated: false
+as_of_date_value_stats:
+  distinct_count: 52776
+  null_count: 0
+  is_truncated: true
+  min_value: '1665-07-13'
+  max_value: '2026-08-28'
+as_of_date_basis_value_samples:
+- observation
+- loaded_at
+value_value_stats:
+  distinct_count: 0
+  null_count: 7500000
+  is_truncated: false
+unit_value_stats:
+  distinct_count: 0
+  null_count: 7500000
+  is_truncated: false
+rich_all_value_stats:
+  distinct_count: 0
+  null_count: 7500000
+  is_truncated: false
+rar_all_value_stats:
+  distinct_count: 0
+  null_count: 7500000
+  is_truncated: false
+source_natural_key_value_samples:
+- gbif_biodiversity_occurrence
+loaded_at_value_samples:
+- '2026-08-28 14:29:06.292668+00'
+filtering_guidance:
+- 'Grain: GBIF occurrence'
+- Species occurrence points.
+sql_generation_hints:
+- 'Join keys: geography_key, source_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: spatial
+  supports:
+  - spatial

@@ -1,0 +1,20 @@
+table_name: opentrace-prod-5ga4.mart_dev.bridge_project_organisation
+description: bridge project organisation
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: research_project_key
+  type: STRING
+  description: research project key
+- name: organisation_key
+  type: STRING
+  description: organisation key
+research_project_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+organisation_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false

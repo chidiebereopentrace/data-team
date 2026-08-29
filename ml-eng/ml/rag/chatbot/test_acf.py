@@ -18,8 +18,10 @@ from ml.rag.chatbot.acf_metadata import (
     derive_tier_and_data_level,
     enrich_acf_payload_fields,
     project_bq_row_acf,
+    stamp_temporal_direction,
     warehouse_row_to_acf_record,
 )
+from ml.rag.chatbot.bq_context_enrich import _stamp_acf_metadata
 from ml.rag.chatbot.acf_question import classify_acf_question
 
 
@@ -166,6 +168,28 @@ def test_project_bq_row_acf() -> None:
     assert meta["metric"] == "maize"
     assert "yield_raw_data" in meta["source_id"]
     assert meta["direction"] == "unknown"
+
+
+def test_project_bq_row_acf_preserves_warehouse_contract() -> None:
+    meta = project_bq_row_acf(
+        {
+            "tier": 1,
+            "data_level": "sub_national",
+            "place_scope": ["ETH", "Oromia"],
+            "country_iso3": "ETH",
+            "metric": "price_retail_maize",
+            "source_key": "faostat_prices_eth",
+            "as_of_date": "2024-06-30",
+            "as_of_date_basis": "observation",
+            "value": 42.5,
+        }
+    )
+    assert meta["tier"] == 1
+    assert meta["data_level"] == "sub_national"
+    assert meta["place_scope"] == ["ETH", "Oromia"]
+    assert meta["metric"] == "price_retail_maize"
+    assert meta["source_id"] == "faostat_prices_eth"
+    assert meta["as_of_date_basis"] == "observation"
 
 
 def test_warehouse_row_to_acf_record_prices() -> None:
@@ -377,3 +401,51 @@ def test_adapt_subnational_bq_with_region_uses_from_row() -> None:
     }
     claims = adapt_cited_claims([item])
     assert len(claims) == 1
+
+
+def test_stamp_temporal_direction_yoy_pair() -> None:
+    meta = stamp_temporal_direction({"total_curr": 120.0, "total_prev": 100.0})
+    assert meta["value"] == 120.0
+    assert meta["prior_value"] == 100.0
+    assert meta["direction"] == "increasing"
+    assert meta["magnitude"] == 20.0
+
+
+def test_project_bq_row_acf_maps_total_prev() -> None:
+    meta = project_bq_row_acf(
+        {
+            "country_iso3": "KEN",
+            "year": 2024,
+            "total_curr": 110.0,
+            "total_prev": 100.0,
+        },
+        table_hint="fct_production",
+    )
+    assert meta["direction"] == "increasing"
+    assert meta["value"] == 110.0
+    assert meta["prior_value"] == 100.0
+    assert meta["magnitude"] == 10.0
+
+
+def test_stamp_acf_metadata_preserves_place_scope() -> None:
+    raw = {
+        "country_iso3": "ETH",
+        "tier": 2,
+        "place_scope": ["ETH", "Oromia"],
+        "metric": "production_maize_physical",
+        "source_key": "faostat",
+        "as_of_date_basis": "observation",
+        "value": 1000,
+        "year": 2020,
+    }
+    meta = _stamp_acf_metadata(
+        {},
+        None,
+        sql="SELECT * FROM `p.mart_dev.fct_production` WHERE year = 2020",
+        decomposition=None,
+        row=raw,
+    )
+    assert meta["place_scope"] == ["ETH", "Oromia"]
+    assert meta["source_key"] == "faostat"
+    assert meta["as_of_date_basis"] == "observation"
+    assert meta["metric"] == "production_maize_physical"

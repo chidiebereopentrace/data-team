@@ -1,0 +1,773 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_animal_health
+description: ILRI livestock health status.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Household × species
+entity_type: animal_health
+columns:
+- name: animal_health_key
+  type: STRING
+  description: animal health key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (null if unmatched)
+- name: geo_level
+  type: STRING
+  description: geo level
+- name: country_iso3
+  type: STRING
+  description: ISO3 from dim or extractable geo even if key null
+- name: household_key
+  type: STRING
+  description: household key
+- name: livestock_key
+  type: STRING
+  description: livestock key
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: tier
+  type: INT64
+  description: Producer scale (1=global, 2=national ministry, 3=community survey)
+- name: data_level
+  type: STRING
+  description: Resolution of the number (warehouse row resolution)
+- name: geo_scope
+  type: STRING
+  description: national / sub_national / community / point (null when geography_key
+    null)
+- name: place_scope
+  type: ARRAY<STRING>
+  description: ARRAY of comparable place labels for ACF geo overlap
+- name: metric
+  type: STRING
+  description: Stable slug for the measure
+- name: source_id
+  type: STRING
+  description: Lineage key (= dim_source.source_key)
+- name: as_of_date
+  type: DATE
+  description: Observation date when known; else DATE(loaded_at)
+- name: as_of_date_basis
+  type: STRING
+  description: observation or loaded_at
+- name: value
+  type: FLOAT64
+  description: Numeric measure
+- name: unit
+  type: STRING
+  description: Unit of measure
+- name: sub_county
+  type: STRING
+  description: sub county
+- name: village_name
+  type: STRING
+  description: village name
+- name: farmer_sex
+  type: STRING
+  description: farmer sex
+- name: education_level
+  type: STRING
+  description: education level
+- name: housing_type
+  type: STRING
+  description: housing type
+- name: breed_type
+  type: STRING
+  description: breed type
+- name: animals_sold
+  type: FLOAT64
+  description: animals sold
+- name: cash_received
+  type: FLOAT64
+  description: cash received
+- name: clinical_disease_score
+  type: FLOAT64
+  description: clinical disease score
+- name: positive_cases
+  type: FLOAT64
+  description: positive cases
+- name: incidence_rate
+  type: FLOAT64
+  description: incidence rate
+- name: treatment_cost
+  type: FLOAT64
+  description: treatment cost
+- name: average_herd_size
+  type: FLOAT64
+  description: average herd size
+- name: mortality_count
+  type: FLOAT64
+  description: mortality count
+- name: species
+  type: STRING
+  description: species
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+animal_health_key_value_stats:
+  distinct_count: 1046
+  null_count: 0
+  is_truncated: true
+  min_value: 0041158566326c82fd73a7ef243a38ed
+  max_value: fff0e5a61aa5876d6304f07e72a1716f
+geography_key_value_samples:
+- f14bb4203a7073edd04952936c354fca
+- 73abae1655254baa0c8f2d1cdbf350da
+- bc4e633d80099b0051a833c117696ad5
+- 629f6ee5a903f4bcce1aa6a327392f4a
+geo_level_value_samples:
+- country
+- admin1
+country_iso3_value_samples:
+- KEN
+- ETH
+- UGA
+household_key_value_stats:
+  distinct_count: 0
+  null_count: 1045
+  is_truncated: false
+livestock_key_value_samples:
+- bd5f4b0419caa97dd2f9b4d3238ff92f
+- f74c6af46a78becb2f1bd3f95bbd5858
+- c5401e70c8d2b58bb4e6cf4a879a946b
+- 0e7ca3358e8cb5e835db2ff49904a173
+- 6efbf37bd6d979f3de4bd3079bc41082
+- 7923ec5c33d6ff0b5a1cf55179d9c031
+- 5ba48b6e5a7c4d4930fda256f411e55b
+- 3c5f3d5f09855ba95e1937d8d8c001e4
+- 3f24b130f30dfc8700d9ad0cb6e1f8d5
+- 7873020de08b7121a7bcb585bb67f454
+- 3adb3890a5f84c0cd138bede490adddd
+- a2d9b33304a1222854cafaf96187e00d
+- 7413caa19ad8630b591cbe40b428ef04
+- 79acb423bddb496e98057979cae1a24e
+- 93d2cbab367a2d7250068360d39cdf94
+- 96625a2fad5267b20df56bc74bde5e97
+- 423f73bd6939f6cbfc8f341642c970e8
+- 7f73a0cd5f4436a4d4bd185b1e773bee
+- 740d2e54b58629dd68a9b2b9f62237f7
+- c91c741873ed32f60906917ad6278821
+- c7ff585b95c5499be61b06a0b31cef48
+- c81e728d9d4c2f636f067f89cc14862c
+- fe480203b9d3f5f3088cb17ba2152029
+- 624e32aec1b7ffa01608cd28eeb1c5e1
+- 449114edee6a97086a14991a22a596f5
+- 4019e019ceaa17d6606465e79d4dee2d
+- 9717b4fdb5b0910622a3918ee3a895b0
+- 31371f199688ae40ba84c37a303411be
+- c4ca4238a0b923820dcc509a6f75849b
+source_key_value_samples:
+- 5995cd267e9ac5a337d69d4c070ddc52
+- 057e39286a7cf96b34af09ea2c6f3e7c
+- 69ede85e4ef9ac93f8334cf6ed00be5c
+tier_value_samples:
+- '3'
+data_level_value_samples:
+- national
+- sub_national
+geo_scope_value_samples:
+- national
+- sub_national
+metric_value_samples:
+- animal_health_cattle
+- animal_health_pig
+- animal_health_1 3 5 6
+- animal_health_1 2 3 5 6
+- animal_health_1 2 3 6
+- animal_health_1 2 3 5
+- animal_health_1 2 3
+- animal_health_1 2 3 5 7
+- animal_health_1 2 3 5 6 7
+- animal_health_1 2 6
+- animal_health_1 3 5
+- animal_health_2 3
+- animal_health_2 3 6
+- animal_health_1 2 3 7
+- animal_health_1 2 5
+- animal_health_1 3 6
+- animal_health_1 2 3 6 7
+- animal_health_2 3 5 6
+- animal_health_2 3 5
+- animal_health_1 3
+- animal_health_1 2 5 6
+- animal_health_2
+- animal_health_1 6
+- animal_health_1 5 6
+- animal_health_1 2 4 5 6 7
+- animal_health_2 3 7
+- animal_health_2 5 6
+- animal_health_1 2
+- animal_health_1
+source_id_value_samples:
+- 5995cd267e9ac5a337d69d4c070ddc52
+- 057e39286a7cf96b34af09ea2c6f3e7c
+- 69ede85e4ef9ac93f8334cf6ed00be5c
+as_of_date_value_samples:
+- '2026-08-26'
+as_of_date_basis_value_samples:
+- loaded_at
+value_value_samples:
+- '5'
+- '4'
+- '6'
+- '3'
+- '7'
+- '8'
+- '2'
+- '10'
+- '9'
+- '12'
+- '11'
+- '1'
+- '15'
+- '14'
+- '13'
+- '20'
+- '17'
+- '19'
+- '16'
+- '2.5'
+- '2.6'
+- '1.5'
+- '3.3'
+- '2.33'
+- '21'
+- '2.66'
+- '3.375'
+- '2.54'
+- '5.4'
+- '9.75'
+- '2.82'
+- '6.2'
+- '10.36'
+- '1.71'
+- '5.66'
+- '18'
+- '5.33'
+- '3.2'
+- '2.622'
+- '6.88'
+- '7.75'
+- '5.57'
+- '14.62'
+- '8.4'
+- '6.6'
+- '5.5'
+- '25'
+- '9.63'
+- '3.5'
+- '6.58'
+- '2.28'
+- '4.9'
+- '16.77'
+- '6.1'
+- '7.38'
+- '9.3'
+- '12.42'
+- '30.5'
+- '4.5'
+- '21.7'
+- '3.85'
+- '2.3'
+- '6.47'
+- '7.2'
+- '40'
+- '138.88'
+- '15.23'
+- '23'
+- '8.72'
+- '27.25'
+- '4.76'
+- '16.87'
+- '34.5'
+- '6.3'
+- '31'
+- '85'
+- '5.18'
+- '8.75'
+unit_value_stats:
+  distinct_count: 0
+  null_count: 1045
+  is_truncated: false
+sub_county_value_samples:
+- '1'
+- Nandi
+- ElgeyoMarakwet
+- '2'
+- UasinGishu
+- Adekokwok
+- Railways
+- Ngetta
+- Central Div
+- Sub.county
+village_name_value_samples:
+- '7'
+- '3'
+- Bilwaqe
+- Dida Yabello
+- Keyafer
+- Dharito
+- Ade Galichati
+- '6'
+- Hidale
+- Tseteka
+- Telela
+- Akuriwoo
+- Ayago
+- Awangdiang
+- Ogengo
+- Opelo
+- Boke Agali
+- Opila
+- Te Obira
+- Ayago East
+- Araki
+- Ginnery
+- Agali B
+- Core A
+- Bar Opuu
+- Ocukuru A
+- Central Park
+- Agengo
+- Dida yabello
+- Akitenino
+- Ojwina
+- Omito
+- 'Village '
+farmer_sex_value_samples:
+- '1'
+- '2'
+- '0'
+- Sex
+education_level_value_samples:
+- '1'
+- '3'
+- '4'
+- '2'
+- '7'
+- '0'
+- '6'
+- Educ_level
+housing_type_value_samples:
+- '1'
+- '0'
+- House_type
+breed_type_value_samples:
+- '1'
+- '0'
+- Breed
+animals_sold_value_samples:
+- '0'
+- '2'
+- '1'
+- '3'
+- '5'
+- '7'
+- '9'
+- '11'
+- '10'
+- '13'
+- '6'
+- '4'
+- '37'
+- '135'
+- '18'
+- '15'
+- '8'
+- '40'
+cash_received_value_samples:
+- '0'
+- '200'
+- '100'
+- '400'
+- '1200'
+- '340'
+- '360'
+- '230'
+- '600'
+- '320'
+- '160'
+- '460'
+- '280'
+- '250'
+- '1480'
+- '700'
+- '630'
+- '2170'
+- '705'
+- '1100'
+- '1065'
+- '860'
+- '520'
+- '1590'
+- '60'
+- '120'
+- '270'
+- '1650'
+- '900'
+- '1060'
+- '310'
+- '190'
+- '110'
+- '2010'
+- '1075'
+- '5340'
+- '500'
+- '260'
+- '430'
+- '180'
+- '29972.5'
+- '300'
+- '1040'
+- '930'
+- '1525'
+- '3235'
+- '350'
+- '1870'
+- '1990'
+- '1540'
+- '10235'
+clinical_disease_score_value_samples:
+- '0'
+- '1'
+- '0.5'
+positive_cases_value_samples:
+- '2'
+- '0'
+- '8'
+- '4'
+- '3'
+- '6'
+- '1'
+- '5'
+- '10'
+- '7'
+- '11'
+- '9'
+- '12'
+- '13'
+- '18'
+- '20'
+- '32'
+- '37'
+- '28'
+incidence_rate_value_samples:
+- '0'
+- '0.25'
+- '0.375'
+- '0.083333333333333329'
+- '0.33333333333333331'
+- '0.5'
+- '0.1111111111111111'
+- '0.75'
+- '0.16666666666666666'
+- '0.41666666666666669'
+- '0.14285714285714285'
+- '0.55555555555555558'
+- '0.071428571428571425'
+- '0.2'
+- '0.58333333333333337'
+- '0.4'
+- '0.22727272727272727'
+- '0.7'
+- '0.2857142857142857'
+- '0.66666666666666663'
+- '1'
+- '0.27777777777777779'
+- '0.31818181818181818'
+- '0.18181818181818182'
+- '0.45454545454545453'
+- '0.3'
+- '0.40625'
+- '0.125'
+- '0.53333333333333333'
+- '0.13333333333333333'
+- '0.1'
+- '0.36274509803921567'
+- '0.3235294117647059'
+- '0.0625'
+- '0.36363636363636365'
+- '0.31578947368421051'
+- '0.038461538461538464'
+- '0.45'
+- '0.69230769230769229'
+- '0.4375'
+- '0.20833333333333334'
+treatment_cost_value_samples:
+- '150'
+- '200'
+- '0'
+- '100'
+- '6000'
+- '120'
+- '300'
+- '180'
+- '160'
+- '60'
+- '170'
+- '250'
+- '75'
+- '40'
+- '50'
+- '350'
+- '90'
+- '80'
+- '140'
+- '500'
+- '400'
+- '210'
+- '240'
+- '4800'
+- '30'
+- '1000'
+- '175'
+- '3000'
+- '20'
+- '450'
+- '12'
+- '5000'
+- '270'
+- '125'
+- '7.5'
+- '360'
+- '10'
+- '85'
+- '110'
+- '6'
+- '220'
+- '999'
+- '8.7'
+- '55'
+- '1800'
+- '3'
+- '3600'
+- '480'
+- '2000'
+- '1200'
+- '48'
+- '4.5'
+- '15'
+- '4500'
+- '520'
+- '4200'
+- '4000'
+- '2400'
+- '380'
+- '600'
+- '113'
+- '3800'
+- '225'
+- '112'
+- '72.5'
+- '550'
+- '95'
+- '660'
+- '165'
+- '290'
+- '45'
+- '720'
+- '470'
+- '1120'
+- '66'
+- '330'
+- '530'
+- '3200'
+- '70'
+- '238'
+- '700'
+- '167'
+- '275'
+- '99'
+- '65'
+- '190'
+- '1300'
+- '5400'
+- '1440'
+- '630'
+- '130'
+- '800'
+- '1.44'
+- '1.2'
+- '9.46'
+- '33.8'
+- '13.6'
+- '540'
+- '21.3'
+- '6.3'
+- '23.91'
+- '15.66'
+- '16.41'
+- '9.1'
+- '14.1'
+- '6.8'
+- '9.14'
+- '3.75'
+- '12.6'
+- '5.2'
+- '6.16'
+- '15.2'
+- '8.1'
+- '7'
+- '9'
+- '2.5'
+- '2.6'
+- '5'
+- '30.8'
+- '8'
+- '1'
+- '30.6'
+- '13.4'
+- '9.8'
+- '102.51'
+- '4.6'
+- '7.2'
+- '12.13'
+- '42.2'
+- '28.8'
+- '22.16'
+- '11.25'
+- '23.2'
+- '4.8'
+- '27'
+average_herd_size_value_samples:
+- '5'
+- '4'
+- '6'
+- '3'
+- '7'
+- '8'
+- '2'
+- '10'
+- '9'
+- '12'
+- '11'
+- '1'
+- '15'
+- '14'
+- '13'
+- '20'
+- '17'
+- '19'
+- '16'
+- '2.5'
+- '2.6'
+- '1.5'
+- '3.3'
+- '2.33'
+- '21'
+- '2.66'
+- '3.375'
+- '2.54'
+- '5.4'
+- '9.75'
+- '2.82'
+- '6.2'
+- '10.36'
+- '1.71'
+- '5.66'
+- '18'
+- '5.33'
+- '3.2'
+- '2.622'
+- '6.88'
+- '7.75'
+- '5.57'
+- '14.62'
+- '8.4'
+- '6.6'
+- '5.5'
+- '25'
+- '9.63'
+- '3.5'
+- '6.58'
+- '2.28'
+- '4.9'
+- '16.77'
+- '6.1'
+- '7.38'
+- '9.3'
+- '12.42'
+- '30.5'
+- '4.5'
+- '21.7'
+- '3.85'
+- '2.3'
+- '6.47'
+- '7.2'
+- '40'
+- '138.88'
+- '15.23'
+- '23'
+- '8.72'
+- '27.25'
+- '4.76'
+- '16.87'
+- '34.5'
+- '6.3'
+- '31'
+- '85'
+- '5.18'
+- '8.75'
+mortality_count_value_samples:
+- '0'
+- '2'
+- '1'
+- '3'
+- '4'
+- '5'
+- '10'
+- '18'
+- '8'
+- '17'
+- '7'
+species_value_samples:
+- cattle
+- pig
+- 1 3 5 6
+- 1 2 3 5 6
+- 1 2 3 6
+- 1 2 3 5
+- 1 2 3
+- 1 2 3 5 7
+- 1 2 3 5 6 7
+- 1 2 6
+- 1 3 5
+- 2 3
+- 2 3 6
+- 1 2 3 7
+- 1 2 5
+- 1 3 6
+- 1 2 3 6 7
+- 2 3 5 6
+- 2 3 5
+- 1 3
+- 1 2 5 6
+- '2'
+- 1 6
+- 1 5 6
+- 1 2 4 5 6 7
+- 2 3 7
+- 2 5 6
+- 1 2
+- '1'
+source_natural_key_value_samples:
+- ilri_acaricide_use_final_analysis_dataverse
+- ilri_amuse_eth_data
+- ilri_impact_assessment_data_lira_uganda_nov25
+loaded_at_value_samples:
+- '2026-08-26 01:17:57.168044+00'
+filtering_guidance:
+- 'Grain: Household × species'
+- ILRI livestock health status.
+sql_generation_hints:
+- 'Join keys: geography_key, household_key, livestock_key, source_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: animal_health
+  supports:
+  - animal_health

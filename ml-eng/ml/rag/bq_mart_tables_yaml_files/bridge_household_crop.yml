@@ -1,0 +1,20 @@
+table_name: opentrace-prod-5ga4.mart_dev.bridge_household_crop
+description: bridge household crop
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: household_key
+  type: STRING
+  description: household key
+- name: product_key
+  type: STRING
+  description: product key
+household_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+product_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false

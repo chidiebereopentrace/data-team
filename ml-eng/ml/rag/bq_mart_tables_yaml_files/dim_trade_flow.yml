@@ -1,0 +1,39 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_trade_flow
+description: dim trade flow
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: trade_flow_key
+  type: STRING
+  description: trade flow key
+- name: flow_type
+  type: STRING
+  description: flow type
+- name: trade_type
+  type: STRING
+  description: trade type
+- name: description
+  type: STRING
+  description: description
+trade_flow_key_value_samples:
+- c3318885df9741a35c421ee5ed06a7c7
+- 767be716b58109af4420da4b7ae706b3
+- e0e800353e1e3766e9737140681fffb7
+- 08878d9fe8e633ac3d5b454481e91965
+- a5dfb4015acf5043c2a33c7274e7fc77
+flow_type_value_samples:
+- REEXPORT
+- IMPORT
+- REIMPORT
+- EXPORT
+- CROSS_BORDER
+trade_type_value_samples:
+- Bilateral
+- Cross-Border
+description_value_samples:
+- Re-exports from reporting country
+- Imports into reporting country
+- Re-imports into reporting country
+- Exports from reporting country
+- Informal cross-border trade flows

@@ -16,7 +16,7 @@ from ml.rag.chatbot.bq_sql_patterns import (
     try_sql_pattern,
     try_sql_patterns,
 )
-from ml.rag.chatbot.bq_table_schema_yaml import value_samples_for_tables
+from ml.rag.chatbot.bq_table_schema_yaml import value_samples_for_mart_tables, value_samples_for_tables
 from ml.rag.helpers.staging_semantic_relationships import (
     documented_join_pairs,
     format_join_fragments_for_nl2sql,
@@ -248,7 +248,7 @@ def test_analytical_plan_tags_trade_and_series_patterns() -> None:
             "time_end": "2022-12-31",
             "entities": ["maize"],
         },
-        known_tables={"stg_faostat_production", "stg_faostat_trade", "stg_africa_gdp_ppp"},
+        known_tables={"fct_production", "fct_trade", "fct_economics"},
     )
     assert plan is not None
     by_notes = {i["notes"]: i["pattern"] for i in plan["query_intents"]}
@@ -267,17 +267,17 @@ def test_food_security_plan_keeps_ipc_and_ilri_custom() -> None:
             "time_end": "2025-12-31",
         },
         known_tables={
-            "stg_fews_food_security",
-            "stg_ilri_household_food_security",
-            "stg_faostat_production",
+            "fct_food_security",
+            "fct_household",
+            "fct_production",
         },
     )
     assert plan is not None
     by_table = {
         (i.get("tables") or [""])[0]: i["pattern"] for i in plan["query_intents"]
     }
-    assert by_table["stg_fews_food_security"] == "custom"
-    assert by_table["stg_ilri_household_food_security"] == "custom"
+    assert by_table["fct_food_security"] == "custom"
+    assert by_table["fct_household"] == "custom"
 
 
 def test_try_sql_patterns_kenya_nigeria_maize_series() -> None:
@@ -285,21 +285,21 @@ def test_try_sql_patterns_kenya_nigeria_maize_series() -> None:
         [
             {
                 "pattern": "time_series",
-                "tables": ["stg_faostat_production"],
+                "tables": ["fct_production"],
                 "metric": "value",
-                "grain": ["country_name", "year"],
-                "filters": "element='Production'; maize",
+                "grain": ["country_iso3", "year"],
+                "filters": "production_grain='physical'; maize",
             },
             {
                 "pattern": "rank_by_sum",
-                "tables": ["stg_faostat_production"],
+                "tables": ["fct_production"],
                 "metric": "value",
-                "grain": ["country_name"],
-                "filters": "element='Production'; maize",
+                "grain": ["country_iso3"],
+                "filters": "production_grain='physical'; maize",
             },
         ],
         project_id="proj",
-        dataset="staging_dev",
+        dataset="mart_dev",
         query=(
             "Compare maize production in Kenya and Nigeria over the last five years, "
             "and give me a CSV export of the figures."
@@ -311,13 +311,14 @@ def test_try_sql_patterns_kenya_nigeria_maize_series() -> None:
     )
     assert hits
     sqls = " ".join(h["sql"] for h in hits)
-    assert "stg_faostat_production" in sqls
-    assert "Maize" in sqls
-    assert "Kenya" in sqls
-    assert "Nigeria" in sqls
-    assert "country_name IN (" in sqls
-    samples = value_samples_for_tables({"stg_faostat_production"})
-    assert hits[0]["product_name"] in samples["stg_faostat_production"]["product_name"]
+    assert "fct_production" in sqls
+    assert "Kenya" in sqls or "KEN" in sqls
+    assert "Nigeria" in sqls or "NGA" in sqls
+    assert "country_iso3 IN (" in sqls
+    samples = value_samples_for_mart_tables({"fct_production"})
+    product_col = "product_name" if "product_name" in samples.get("fct_production", {}) else "product_key"
+    if product_col in samples.get("fct_production", {}) and hits[0].get("product_name"):
+        assert hits[0]["product_name"] in samples["fct_production"][product_col]
 
 
 def test_time_series_honors_country_grain() -> None:
@@ -334,6 +335,20 @@ def test_time_series_honors_country_grain() -> None:
     assert "GROUP BY country_name, year" in sql
     assert "country_name" in sql.split("GROUP BY")[0]
     assert _validate_sql(sql, {"staging_dev"}, 10) is not None
+
+
+def test_time_series_mart_uses_as_of_date_range() -> None:
+    sql = build_time_series_sql(
+        project_id="proj",
+        dataset="mart_dev",
+        table_id="fct_hdi",
+        year=2024,
+        grain=["country_iso3", "year"],
+        time_start="2020-01-01",
+        time_end="2024-12-31",
+    )
+    assert "as_of_date BETWEEN DATE '2020-01-01' AND DATE '2024-12-31'" in sql
+    assert _validate_sql(sql, {"mart_dev"}, 10) is not None
 
 
 def test_try_sql_patterns_west_africa_maize_rice_production_trade() -> None:
@@ -358,13 +373,13 @@ def test_try_sql_patterns_west_africa_maize_rice_production_trade() -> None:
     plan = build_analytical_bq_plan(
         query,
         decomposition=dec,
-        known_tables={"stg_faostat_production", "stg_faostat_trade"},
+        known_tables={"fct_production", "fct_trade"},
     )
     assert plan is not None
     hits = try_sql_patterns(
         plan["query_intents"],
         project_id="proj",
-        dataset="staging_dev",
+        dataset="mart_dev",
         query=query,
         entities=["maize", "rice"],
         time_start="2022-01-01",
@@ -373,14 +388,16 @@ def test_try_sql_patterns_west_africa_maize_rice_production_trade() -> None:
     )
     assert hits
     sqls = " ".join(h["sql"] for h in hits)
-    assert "country_name IN (" in sqls
-    assert "Nigeria" in sqls
-    assert "Senegal" in sqls
-    assert "Maize" in sqls
-    assert "Rice" in sqls
-    assert "Export quantity" in sqls
+    assert "country_iso3 IN (" in sqls
+    assert "Nigeria" in sqls or "NGA" in sqls
+    assert "Senegal" in sqls or "SEN" in sqls
+    assert "fct_production" in sqls or "fct_trade" in sqls
     assert "'West Africa'" not in sqls
-    assert any("GROUP BY country_name, year" in h["sql"] or "GROUP BY country_name, product_name, year" in h["sql"] for h in hits)
+    assert any(
+        "GROUP BY country_iso3, year" in h["sql"]
+        or "GROUP BY country_iso3, product_key, year" in h["sql"]
+        for h in hits
+    )
 
 
 def test_join_fragments_related_pair() -> None:

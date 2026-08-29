@@ -10,8 +10,11 @@ Business glossary (catalog) vs physical dbt mart (`mart_dev`). Use this when nam
 | [MART_DEV_OTA_ANALYST_GUIDE.docx](./MART_DEV_OTA_ANALYST_GUIDE.docx) | DOCX playbook for analysts writing OTA insights |
 | [MART_DEV_OTA_ANALYST_GUIDE.md](./MART_DEV_OTA_ANALYST_GUIDE.md) | Markdown twin of the OTA guide |
 | [mart_entity_dictionary_seed.yaml](./mart_entity_dictionary_seed.yaml) | Curated seed used to regenerate the workbook |
+| [bq_mart_tables_yaml_files/](../../ml-eng/ml/rag/bq_mart_tables_yaml_files/) | Per-table mart_dev YAML with live `{column}_value_samples` (RAG BQ catalog) |
 
-Regenerate: `python scripts/build_mart_entity_dictionary.py` and `python scripts/build_mart_ota_analyst_guide_docx.py` from `data-eng/`.
+Regenerate entity docs: `python scripts/build_mart_entity_dictionary.py` and `python scripts/build_mart_ota_analyst_guide_docx.py` from `data-eng/`.
+
+Regenerate mart column YAMLs (after `dbt build mart_dev`): `python data-eng/data/local/scripts/regenerate_mart_table_yamls.py` — see [MART_QA_NOTES.md](./MART_QA_NOTES.md).
 
 | Catalog concept | Mart object | Notes |
 |-----------------|-------------|-------|
@@ -57,11 +60,13 @@ Every `fct_*` exposes columns so cited BigQuery rows map to ACF without adapter 
 | `as_of_date_basis` | `observation` or `loaded_at` | `observation` |
 | `geo_scope` | national / sub_national / community / point | `national` |
 
+**Column label dictionaries:** live distinct values for every mart column are profiled into per-table YAML under [`bq_mart_tables_yaml_files/`](../../ml-eng/ml/rag/bq_mart_tables_yaml_files/) (regenerate via [`regenerate_mart_table_yamls.py`](../data/local/scripts/regenerate_mart_table_yamls.py)). Load with [`bq_table_schema_yaml.load_mart_table_schema()`](../../ml-eng/ml/rag/chatbot/bq_table_schema_yaml.py) when extending the mart BQ reasoner.
+
 **Naming:** warehouse `data_level` is row resolution. It is **not** Qdrant coverage-class `geo_scope` (`country|multi_country|regional|global`). ACF place overlap uses `place_scope` → adapter `geo_scope` list.
 
 **Unscorable rows:** historically null `as_of_date` on household/animal_health/NDVI/iSDA/protected/germplasm — Phase 2 fills via `DATE(loaded_at)` with `as_of_date_basis='loaded_at'`. Adapter still treats `loaded_at` basis as pipeline time, not observation freshness.
 
-**Direction:** warehouse v1 omits YoY pairs; adapter sets `direction='unknown'` unless `prior_value` is present.
+**Direction:** warehouse v1 rows are **snapshots** — adapter sets `direction='unknown'` unless a temporal pair is present. Direction (D) is derived from: (1) `value` + `prior_value` on the row (including `yoy_delta` shapes `total_curr`/`total_prev`), (2) ranked-table **trend companion** on `fct_production` (Y−1 vs Y+1 bracketing years), or (3) vector claim extract on news/research. **Alignment (A)** requires multiple **cited** claims with distinct `source_id`s at generation time (`acf_scoring.score_cited_evidence`); uncited BQ rows do not affect the score.
 
 Macros: `acf_data_level`, `acf_place_scope`, `acf_row_data_level` in `data-eng/dbt/macros/acf_contract.sql`.
 

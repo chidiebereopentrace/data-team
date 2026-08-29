@@ -1,54 +1,43 @@
-"""Lightweight FAOSTAT trend lookup for ranked-table ACF direction (Y-1 vs Y+1)."""
+"""Lightweight mart production trend lookup for ranked-table ACF direction (Y-1 vs Y+1)."""
 from __future__ import annotations
 
 import os
 import re
 from typing import Any
 
+from ml.rag.chatbot.acf_metadata import metric_direction
 from ml.rag.chatbot.bq_sql_templates import _sql_literal
 
-_TREND_STABLE_THRESHOLD = 0.02
+_MART_PRODUCTION_RE = re.compile(r"\b(?:fct_production|agg_production_annual)\b", re.IGNORECASE)
+_RANK_TEMPLATES = frozenset({"faostat_country_rank", "faostat_production_rank", "mart_production_rank"})
 
 
-def build_faostat_trend_companion_sql(
+def build_mart_production_trend_companion_sql(
     *,
     project_id: str,
     dataset: str,
-    country_name: str,
+    country_iso3: str,
     focal_year: int,
-    product_name: str | None = None,
+    product_key: str | None = None,
 ) -> str:
-    """Production + yield totals for bracketing years around a focal year."""
+    """Production + national yield totals for bracketing years around a focal year."""
     year_prior = int(focal_year) - 1
     year_after = int(focal_year) + 1
-    fqn = f"`{project_id}.{dataset}.stg_faostat_production`"
+    fqn = f"`{project_id}.{dataset}.fct_production`"
     product_clause = ""
-    if product_name:
-        product_clause = f"AND product_name = {_sql_literal(product_name)} "
+    if product_key:
+        product_clause = f"AND product_key = {_sql_literal(product_key)} "
     return (
         f"SELECT element, year, SUM(value) AS total "
         f"FROM {fqn} "
-        f"WHERE country_name = {_sql_literal(country_name)} "
+        f"WHERE country_iso3 = {_sql_literal(country_iso3)} "
+        f"AND production_grain = 'physical' "
         f"AND year IN ({year_prior}, {year_after}) "
         f"AND element IN ('Production', 'Yield') "
         f"{product_clause}"
         f"GROUP BY element, year "
         f"ORDER BY element, year"
     )
-
-
-def _metric_direction(prior: float | None, after: float | None) -> tuple[str, float | None]:
-    if prior is None or after is None:
-        return "unknown", None
-    if prior == 0:
-        return "unknown", None
-    pct = (after - prior) / abs(prior)
-    magnitude = pct * 100.0
-    if abs(pct) <= _TREND_STABLE_THRESHOLD:
-        return "stable", magnitude
-    if after > prior:
-        return "increasing", magnitude
-    return "decreasing", magnitude
 
 
 def parse_trend_companion_rows(rows: list[dict[str, Any]], *, focal_year: int) -> dict[str, Any]:
@@ -72,7 +61,7 @@ def parse_trend_companion_rows(rows: list[dict[str, Any]], *, focal_year: int) -
         vals = by_element.get(element, {})
         prior = vals.get(year_prior)
         after = vals.get(year_after)
-        direction, magnitude = _metric_direction(prior, after)
+        direction, magnitude = metric_direction(prior, after)
         out[element.lower()] = {
             "prior_value": prior,
             "value": after,
@@ -118,11 +107,11 @@ def align_trend_directions(trend: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def fetch_faostat_trend_companion(
+def fetch_mart_production_trend_companion(
     *,
-    country_name: str,
+    country_iso3: str,
     focal_year: int,
-    product_name: str | None = None,
+    product_key: str | None = None,
     project_id: str | None = None,
     dataset: str | None = None,
 ) -> dict[str, Any] | None:
@@ -130,13 +119,13 @@ def fetch_faostat_trend_companion(
     pid = (project_id or os.environ.get("BQ_PROJECT") or "").strip()
     if not pid:
         return None
-    ds = (dataset or os.environ.get("BQ_DATASET_SILVER") or "staging_dev").strip()
-    sql = build_faostat_trend_companion_sql(
+    ds = (dataset or os.environ.get("BQ_DATASET_GOLD") or "mart_dev").strip()
+    sql = build_mart_production_trend_companion_sql(
         project_id=pid,
         dataset=ds,
-        country_name=country_name,
+        country_iso3=country_iso3,
         focal_year=focal_year,
-        product_name=product_name,
+        product_key=product_key,
     )
     try:
         from google.cloud import bigquery
@@ -154,8 +143,40 @@ def fetch_faostat_trend_companion(
 
 
 def _product_from_sql(sql: str) -> str | None:
-    m = re.search(r"product_name\s*=\s*['\"]([^'\"]+)['\"]", sql or "", re.IGNORECASE)
-    return m.group(1).strip() if m else None
+    text = sql or ""
+    for pattern in (
+        r"product_key\s*=\s*['\"]([^'\"]+)['\"]",
+        r"product_name\s*=\s*['\"]([^'\"]+)['\"]",
+        r"metric\s*=\s*['\"]([^'\"]+)['\"]",
+    ):
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def _country_iso3_from_ranked(meta: dict[str, Any]) -> str:
+    ranked_rows = meta.get("ranked_rows")
+    if not isinstance(ranked_rows, list) or not ranked_rows:
+        return ""
+    top = ranked_rows[0]
+    if not isinstance(top, dict):
+        return ""
+    raw = top.get("raw_row")
+    if isinstance(raw, dict):
+        iso = str(raw.get("country_iso3") or "").strip()
+        if iso:
+            return iso
+    label = str(top.get("label") or "").strip()
+    if len(label) == 3 and label.isalpha():
+        return label.upper()
+    return label
+
+
+def _is_production_rank_context(*, sql: str, template: str) -> bool:
+    if str(template or "") in _RANK_TEMPLATES:
+        return True
+    return bool(_MART_PRODUCTION_RE.search(sql or ""))
 
 
 def maybe_attach_ranking_trend(
@@ -164,12 +185,11 @@ def maybe_attach_ranking_trend(
     sql: str,
     template: str,
 ) -> dict[str, Any]:
-    """Attach trend direction to ranked_table metadata when FAOSTAT rank template applies."""
+    """Attach trend direction to ranked_table metadata when mart production rank applies."""
     if meta.get("bq_enrichment") != "ranked_table":
         return meta
-    if str(template or "") not in ("faostat_country_rank", "faostat_production_rank"):
-        if "stg_faostat_production" not in (sql or "").lower():
-            return meta
+    if not _is_production_rank_context(sql=sql, template=template):
+        return meta
     ranked_rows = meta.get("ranked_rows")
     if not isinstance(ranked_rows, list) or not ranked_rows:
         return meta
@@ -180,14 +200,14 @@ def maybe_attach_ranking_trend(
         focal_year = int(focal_year)
     except (TypeError, ValueError):
         return meta
-    top_country = str(ranked_rows[0].get("label") or "").strip()
-    if not top_country:
+    country_iso3 = _country_iso3_from_ranked(meta)
+    if not country_iso3:
         return meta
 
-    trend = fetch_faostat_trend_companion(
-        country_name=top_country,
+    trend = fetch_mart_production_trend_companion(
+        country_iso3=country_iso3,
         focal_year=focal_year,
-        product_name=_product_from_sql(sql),
+        product_key=_product_from_sql(sql),
     )
     if not trend:
         return meta
@@ -211,8 +231,8 @@ def maybe_attach_ranking_trend(
 
 __all__ = [
     "align_trend_directions",
-    "build_faostat_trend_companion_sql",
-    "fetch_faostat_trend_companion",
+    "build_mart_production_trend_companion_sql",
+    "fetch_mart_production_trend_companion",
     "maybe_attach_ranking_trend",
     "parse_trend_companion_rows",
 ]

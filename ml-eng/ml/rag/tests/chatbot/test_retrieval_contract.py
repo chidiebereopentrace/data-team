@@ -4,18 +4,12 @@ from __future__ import annotations
 from ml.rag.chatbot.agri_measure_ontology import resolve_measure, resolve_measures
 from ml.rag.chatbot.corpus_catalog import select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
+from ml.rag.chatbot.bq_table_schema_yaml import list_mart_table_index
 from ml.rag.chatbot.retrieval_contract import build_retrieval_contract
 from ml.rag.chatbot.task_mode import needs_clarify, resolve_task_mode
 
 
-_KNOWN = {
-    "stg_fews_food_security",
-    "stg_fews_market_prices",
-    "stg_faostat_production",
-    "stg_ilri_household_food_security",
-    "stg_faostat_trade",
-    "stg_faostat_investment_asti",
-}
+_KNOWN = {r["table_id"] for r in list_mart_table_index()}
 
 
 def test_resolve_measures_maize_kenya_yield() -> None:
@@ -42,7 +36,7 @@ def test_contract_maize_kenya_includes_production_tables() -> None:
     }
     contract = build_retrieval_contract(q, decomposition=dec, known_tables=_KNOWN)
     assert "yield" in contract.primary_measures or "production" in contract.primary_measures
-    assert "stg_faostat_production" in contract.bq_tables
+    assert "fct_yield" in contract.bq_tables or "fct_production" in contract.bq_tables
     assert any("Production" in t or "production" in t.lower() for t in contract.corpus_domain_tags) or any(
         "Yield" in t or "Production" in t for t in contract.corpus_domain_tags
     )
@@ -61,9 +55,9 @@ def test_contract_sahel_food_security_multi_table() -> None:
     }
     contract = build_retrieval_contract(q, decomposition=dec, known_tables=_KNOWN)
     assert "food_security_ipc" in contract.primary_measures
-    assert "stg_fews_food_security" in contract.bq_tables
-    assert "stg_faostat_production" in contract.bq_tables
-    assert "stg_faostat_investment_asti" not in contract.bq_tables
+    assert "fct_food_security" in contract.bq_tables
+    assert "fct_production" in contract.bq_tables
+    assert "fct_research_expenditure" not in contract.bq_tables
     assert len(contract.bq_intents) >= 2
 
 

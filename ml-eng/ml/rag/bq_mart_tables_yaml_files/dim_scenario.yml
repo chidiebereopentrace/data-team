@@ -1,0 +1,47 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_scenario
+description: dim scenario
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: scenario_key
+  type: STRING
+  description: scenario key
+- name: scenario_code
+  type: STRING
+  description: scenario code
+- name: scenario_name
+  type: STRING
+  description: scenario name
+- name: description
+  type: STRING
+  description: description
+- name: is_current
+  type: BOOL
+  description: is current
+scenario_key_value_samples:
+- dd7512f5e0289cddce66b0f8bca0c280
+- 9b14fd50dc7c262c5871fd91c3902f31
+- dcbf22a6f267a31d8a6fdc07d1fd2772
+- d01fd9b01e9dde8bd3dc247afbfb7218
+- 8d7e99c73cd5a10adaaf4c9f9a520368
+scenario_code_value_samples:
+- PROJ
+- OW
+- BAU
+- ML
+- CS
+scenario_name_value_samples:
+- Projection
+- Optimistic/Worst
+- Business As Usual
+- Most Likely
+- Current Situation
+description_value_samples:
+- Forward-looking scenario
+- IPC projected optimistic or worst-case scenario
+- Baseline no-intervention trajectory
+- IPC projected most-likely scenario
+- IPC current-period scenario
+is_current_value_samples:
+- 'true'

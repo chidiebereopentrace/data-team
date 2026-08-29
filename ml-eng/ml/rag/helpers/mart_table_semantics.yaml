@@ -1,0 +1,222 @@
+version: "2026.8"
+# Curated reasoner semantics for mart_dev tables (merged into bq_mart_tables_yaml_files by patch_mart_yaml_semantics.py).
+# P0 = full curation; remaining tables get auto-baseline from mart_entity_dictionary_seed.yaml.
+
+tables:
+  fct_production:
+    indicator_classes: [PROD]
+    semantic_role:
+      primary_domain: production
+      supports: [production, faostat, PROD]
+    indicator_families:
+      - id: faostat_country_year_physical
+        filters: "production_grain='physical'; filter metric or element for volume"
+      - id: faostat_index_gross_value
+        filters: "production_grain in ('index','gross_value')"
+    business_questions_supported:
+      - What is national crop production by country and year?
+      - Which country produced the most maize in a given year?
+    filtering_guidance:
+      - Always filter production_grain — never mix physical, index, gross_value in one SUM
+      - Default volume questions to production_grain='physical'
+      - Filter country_iso3 or join dim_geography for country names; never filter place_scope ARRAY with =
+      - Filter as_of_date or year for time-bounded questions
+      - Prefer metric slug when present; else filter element exactly
+      - Never UNION with fct_yield — different grain
+    sql_generation_hints:
+      - "National ranking: production_grain='physical'; GROUP BY country_iso3, year; SUM(production_qty) or value column"
+      - LEFT JOIN dim_geography g ON f.geography_key = g.geography_key WHEN filtering by country name
+      - Prefer agg_production_annual for national annual rollups
+    semantic_relationships:
+      joins_with:
+        - {table: dim_geography, on: [geography_key], how: LEFT}
+        - {table: dim_product, on: [product_key], how: LEFT}
+      do_not_join:
+        - {table: fct_yield, reason: Different grain — compare only}
+
+  fct_yield:
+    indicator_classes: [PROD]
+    semantic_role:
+      primary_domain: production
+      supports: [yield, PROD]
+    indicator_families:
+      - id: fnid_season_yield
+        filters: season_key / harvest_year; subnational FNID grain
+    business_questions_supported:
+      - What is maize yield by season and FNID?
+    filtering_guidance:
+      - Subnational seasonal grain — not comparable to fct_production national totals
+      - Filter harvest_year, season_key, country_iso3
+    sql_generation_hints:
+      - Yield = production / area when computing from components; use yield column when present
+    semantic_relationships:
+      do_not_join:
+        - {table: fct_production, reason: FAOSTAT national vs FNID-season}
+
+  fct_prices:
+    indicator_classes: [PRC, FVC]
+    semantic_role:
+      primary_domain: prices
+      supports: [prices, market_price, PRC]
+    indicator_families:
+      - id: fews_market
+        filters: "price_source='fews'"
+      - id: wfp_market
+        filters: "price_source='wfp'"
+      - id: faostat_national
+        filters: "price_source='faostat'"
+    business_questions_supported:
+      - What is the retail maize price in a market/country/month?
+    filtering_guidance:
+      - Always filter price_source (fews/wfp/faostat) — do not blend
+      - Filter price_type (Retail/Wholesale/Producer) when question specifies
+      - common_unit_price null on WFP/FAOSTAT is expected
+      - Month must be calendar 1-12
+    sql_generation_hints:
+      - JOIN dim_market for market names; dim_geography for country labels
+      - Prefer agg_prices_country_month for country monthly rollups
+
+  fct_trade:
+    indicator_classes: [FVC]
+    semantic_role:
+      primary_domain: trade
+      supports: [trade, FVC]
+    filtering_guidance:
+      - Always filter trade_grain before analysis
+      - FEWS border month vs FAOSTAT country-year — never blend silently
+    sql_generation_hints:
+      - Filter trade_grain='fews_border_month' or 'faostat_country_year' per question
+
+  fct_food_security:
+    indicator_classes: [FS]
+    semantic_role:
+      primary_domain: food_security
+      supports: [food_security, ipc, FS]
+    indicator_families:
+      - id: ipc_population
+        filters: "measure_type='population'"
+      - id: ipc_classification
+        filters: "measure_type='classification'"
+    business_questions_supported:
+      - How many people are in IPC phase 3+?
+      - What is the IPC classification for a district?
+    filtering_guidance:
+      - Population vs classification rows — never UNION
+      - Filter scenario_name for outlook vs current
+      - JOIN dim_classification for phase labels
+    sql_generation_hints:
+      - Prefer agg_food_security_monthly for national monthly rollups
+
+  fct_food_balance:
+    indicator_classes: [FS, FVC]
+    semantic_role:
+      primary_domain: food_balance
+      supports: [food_balance, FS, FVC]
+    filtering_guidance:
+      - Filter element_code for food vs feed vs losses
+      - Losses are SUA disappearance not farm-gate waste
+
+  fct_climate:
+    indicator_classes: [CLIM]
+    semantic_role:
+      primary_domain: climate
+      supports: [climate, CLIM]
+    filtering_guidance:
+      - Filter climate_grain (point_obs vs country_model)
+      - JOIN dim_indicator for named climate series
+    sql_generation_hints:
+      - Filter metric + as_of_date range for time series
+
+  fct_employment:
+    indicator_classes: [EL, GYI]
+    semantic_role:
+      primary_domain: employment
+      supports: [employment, EL, GYI]
+    filtering_guidance:
+      - JOIN dim_indicator for indicator_name labels
+      - Do not mix unit='%' with headcount in one SUM
+      - Filter sex when question specifies gender
+
+  fct_economics:
+    indicator_classes: [EL, FVC, HDI]
+    semantic_role:
+      primary_domain: economics
+      supports: [economics, gdp, EL, HDI]
+    filtering_guidance:
+      - Filter measurement_form (share_of_gdp vs current USD)
+      - country_iso3 + year for national macro
+
+  fct_hdi:
+    indicator_classes: [HDI]
+    semantic_role:
+      primary_domain: hdi
+      supports: [hdi, HDI]
+    filtering_guidance:
+      - Country-year only; skip null geography_key rows for mapped insights
+      - Prefer agg_hdi_latest for snapshots
+
+  fct_household:
+    indicator_classes: [EL, GYI, FS]
+    semantic_role:
+      primary_domain: household
+      supports: [household, FS, GYI]
+    filtering_guidance:
+      - Survey sample — not national census
+      - Never union with fct_gender_inclusion SDG rows
+
+  agg_production_annual:
+    indicator_classes: [PROD]
+    semantic_role:
+      primary_domain: production
+      supports: [production, PROD]
+    filtering_guidance:
+      - Prefer for national annual production rollups
+      - production_grain='physical' for volume questions
+    sql_generation_hints:
+      - JOIN dim_geography, dim_product, dim_source on FK keys
+
+  agg_food_security_monthly:
+    indicator_classes: [FS]
+    semantic_role:
+      primary_domain: food_security
+      supports: [food_security, ipc, FS]
+    filtering_guidance:
+      - Country monthly IPC rollups; filter measure_type
+
+  dim_geography:
+    indicator_classes: []
+    semantic_role:
+      primary_domain: geography
+      supports: [geography, join_dim]
+    sql_generation_hints:
+      - Join target for country_name, admin labels; filter geo_level, country_iso3
+
+  dim_product:
+    indicator_classes: []
+    semantic_role:
+      primary_domain: product
+      supports: [product, join_dim]
+    sql_generation_hints:
+      - Join target for product_name labels on product_key
+
+  dim_indicator:
+    indicator_classes: [EL, CLIM, RES]
+    semantic_role:
+      primary_domain: indicator
+      supports: [indicator, join_dim, EL, CLIM, RES]
+    filtering_guidance:
+      - Lookup table for indicator_name; join on indicator_key from facts
+    sql_generation_hints:
+      - LEFT JOIN dim_indicator i ON f.indicator_key = i.indicator_key; filter i.indicator_name
+
+  dim_source:
+    indicator_classes: []
+    semantic_role:
+      primary_domain: source
+      supports: [source, join_dim]
+
+  dim_market:
+    indicator_classes: [PRC]
+    semantic_role:
+      primary_domain: market
+      supports: [market, prices, join_dim]
