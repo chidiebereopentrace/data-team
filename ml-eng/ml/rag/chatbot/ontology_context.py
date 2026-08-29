@@ -15,6 +15,7 @@ class IndicatorClassContext:
     primary_facts: list[str] = field(default_factory=list)
     example_claims: list[str] = field(default_factory=list)
     do_not_mix_notes: list[str] = field(default_factory=list)
+    public_examples: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -69,12 +70,17 @@ def _load_class_context(code: str) -> IndicatorClassContext | None:
             reason = str(pair.get("reason") or "").strip()
             if reason:
                 notes.append(reason)
+    public_examples: list[str] = []
+    raw_public = spec.get("public_examples")
+    if isinstance(raw_public, list):
+        public_examples = [str(q).strip() for q in raw_public if str(q).strip()]
     return IndicatorClassContext(
         code=code.upper(),
         name=str(spec.get("name") or code),
         primary_facts=[str(t).split(".")[-1] for t in (spec.get("primary_facts") or [])],
         example_claims=claims,
         do_not_mix_notes=notes,
+        public_examples=public_examples,
     )
 
 
@@ -187,6 +193,17 @@ def sanitize_decomposition_for_bq(
     return dec
 
 
+def list_public_capability_contexts() -> list[IndicatorClassContext]:
+    """Indicator classes with public_examples, in user-facing display order."""
+    order = ("PROD", "FS", "PRC", "CLIM", "EL", "ENV")
+    by_code: dict[str, IndicatorClassContext] = {}
+    for code in order:
+        ctx = _load_class_context(code)
+        if ctx and ctx.public_examples:
+            by_code[code] = ctx
+    return [by_code[code] for code in order if code in by_code]
+
+
 def list_indicator_class_contexts(max_classes: int = 12) -> list[IndicatorClassContext]:
     """Load indicator class contexts for UX catalog rendering."""
     out: list[IndicatorClassContext] = []
@@ -212,5 +229,6 @@ __all__ = [
     "OntologyContext",
     "build_ontology_context",
     "list_indicator_class_contexts",
+    "list_public_capability_contexts",
     "sanitize_decomposition_for_bq",
 ]

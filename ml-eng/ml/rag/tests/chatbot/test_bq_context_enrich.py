@@ -206,6 +206,33 @@ def test_format_row_prose_fallback_omits_table_id() -> None:
     assert "FAOSTAT" not in prose
 
 
+def test_format_row_prose_agg_yield_raw_data_shows_fews_net() -> None:
+    prose = format_row_prose(
+        {
+            "table_id": "agg_production_annual",
+            "source_domain": "production",
+            "source_name": "yield_raw_data",
+            "measure_label": "Crop production volume",
+            "measure_value": 12_000_000,
+            "unit": "tonnes",
+            "geo": "Nigeria",
+            "time": "2022",
+            "discriminators": {
+                "country_name": "Nigeria",
+                "product_name": "Maize",
+                "source_name": "yield_raw_data",
+            },
+            "not_this": [],
+            "table_description": "agg production annual",
+            "grain": "",
+        }
+    )
+    assert prose.startswith("FEWS NET")
+    assert "yield_raw_data" not in prose
+    assert "source_name=" not in prose
+    assert "Nigeria" in prose
+
+
 def test_format_row_prose_includes_trend_line() -> None:
     prose = format_row_prose(
         {

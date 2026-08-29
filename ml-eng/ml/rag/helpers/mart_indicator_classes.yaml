@@ -4,6 +4,9 @@ classes:
   EL:
     code: EL
     name: Economic and livelihood
+    public_examples:
+      - What share of agricultural employment is held by women in Ghana?
+      - How does farm income compare to off-farm income for smallholders in Kenya?
     aliases:
       - employment
       - agricultural employment
@@ -93,6 +96,9 @@ classes:
   FS:
     code: FS
     name: Food security and nutrition
+    public_examples:
+      - How many people are in IPC Phase 3 or above in Ethiopia?
+      - What is the food security outlook for the Sahel this year?
     aliases:
       - food security
       - food insecurity
@@ -127,6 +133,9 @@ classes:
   PROD:
     code: PROD
     name: Agricultural production
+    public_examples:
+      - What was maize production in Nigeria in 2022?
+      - How has rice output in Kenya changed since 2015?
     aliases:
       - production
       - harvest
@@ -164,6 +173,9 @@ classes:
   PRC:
     code: PRC
     name: Prices and markets
+    public_examples:
+      - How have rice prices changed in Senegal over the last five years?
+      - What are retail maize prices in urban markets in Malawi?
     aliases:
       - price
       - prices
@@ -192,6 +204,9 @@ classes:
   CLIM:
     code: CLIM
     name: Climate and weather
+    public_examples:
+      - How much rainfall did the Sahel receive last season?
+      - Were there drought conditions in East Africa in 2023?
     aliases:
       - climate
       - weather
@@ -269,6 +284,9 @@ classes:
   ENV:
     code: ENV
     name: Environment and emissions
+    public_examples:
+      - What are agricultural greenhouse gas emissions in Nigeria?
+      - How do livestock emissions compare across countries in East Africa?
     aliases:
       - emissions
       - ghg

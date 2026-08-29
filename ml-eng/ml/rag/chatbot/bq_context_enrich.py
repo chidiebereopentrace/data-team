@@ -501,6 +501,10 @@ def resolve_row_semantics(
         "source_domain": src.get("source_domain") or "",
         "source_layer": src.get("source_layer") or "mart_dev",
         "grain": src.get("grain") or "",
+        "source_name": _s(row.get("source_name")),
+        "source_natural_key": _s(row.get("source_natural_key")),
+        "organisation_name": _s(row.get("organisation_name")),
+        "price_source": _s(row.get("price_source")),
         "not_this": _not_this_list(bare, row, measure_col),
     }
 
@@ -508,7 +512,10 @@ def resolve_row_semantics(
 def _format_discriminator_lines(semantics: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     table_id = str(semantics.get("table_id") or "")
+    skip_cols = {"source_name", "source_natural_key", "source_key"}
     for col, val in (semantics.get("discriminators") or {}).items():
+        if col in skip_cols:
+            continue
         desc = column_description(table_id, str(col))
         snippet = desc[:120] if desc else ""
         if snippet:
@@ -542,9 +549,16 @@ def format_row_prose(
     """Build human-readable context prose from resolved semantics."""
     table_id = _s(semantics.get("table_id"))
     domain = _s(semantics.get("source_domain"))
-    source_name = _public_source_label(table_id, {"source_domain": domain})
-    if source_name:
-        title = source_name
+    label_meta = {
+        "source_domain": domain,
+        "source_name": semantics.get("source_name"),
+        "source_natural_key": semantics.get("source_natural_key"),
+        "organisation_name": semantics.get("organisation_name"),
+        "price_source": semantics.get("price_source"),
+    }
+    institution = _public_source_label(table_id, label_meta)
+    if institution:
+        title = institution
     else:
         title = _BQ_PUBLIC_LABEL
         if domain and "stg_" not in domain.lower():
