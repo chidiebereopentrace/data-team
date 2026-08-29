@@ -34,6 +34,7 @@ _ADMIN_KEYS = (
 _COUNTRY_KEYS = (
     "geo_country_primary",
     "country",
+    "country_iso3",
     "country_name",
     "area",
     "adm0_name",
@@ -71,7 +72,101 @@ _METRIC_KEYS = (
 
 _UNIT_KEYS = ("unit", "Unit of measure", "UNIT_Short", "unit_of_measure")
 
-_VALUE_KEYS = ("value", "OBS_VALUE", "yield", "production", "mp_price", "ipc_phase_value")
+_VALUE_KEYS = ("value", "OBS_VALUE", "yield", "production", "mp_price", "ipc_phase_value", "total")
+
+_PRIOR_VALUE_KEYS = (
+    "prior_value",
+    "previous_value",
+    "prior_year_value",
+    "total_prev",
+    "prev_total",
+    "prior_total",
+)
+
+_TREND_STABLE_THRESHOLD = 0.02
+
+
+def _first_numeric(meta: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        raw = meta.get(key)
+        if raw is None:
+            continue
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def metric_direction(
+    prior: float | None,
+    after: float | None,
+) -> tuple[str, float | None]:
+    """Derive trend direction from a prior/current value pair."""
+    if prior is None or after is None:
+        return "unknown", None
+    if prior == 0:
+        return "unknown", None
+    pct = (after - prior) / abs(prior)
+    magnitude = pct * 100.0
+    if abs(pct) <= _TREND_STABLE_THRESHOLD:
+        return "stable", magnitude
+    if after > prior:
+        return "increasing", magnitude
+    return "decreasing", magnitude
+
+
+def stamp_temporal_direction(meta: dict[str, Any]) -> dict[str, Any]:
+    """Map YoY SQL shapes and value/prior pairs into ACF direction fields."""
+    out = dict(meta)
+    try:
+        curr = out.get("total_curr")
+        prev = out.get("total_prev")
+        if curr is not None and prev is not None:
+            value = float(curr)
+            prior_value = float(prev)
+            out["value"] = value
+            out["prior_value"] = prior_value
+            direction, magnitude = metric_direction(prior_value, value)
+            out["direction"] = direction
+            if magnitude is not None:
+                out["magnitude"] = magnitude
+            return out
+    except (TypeError, ValueError):
+        pass
+
+    if out.get("prior_value") is None:
+        for key in _PRIOR_VALUE_KEYS:
+            if key == "prior_value":
+                continue
+            raw = out.get(key)
+            if raw is None:
+                continue
+            try:
+                out["prior_value"] = float(raw)
+                break
+            except (TypeError, ValueError):
+                continue
+
+    if out.get("value") is None:
+        val = _first_numeric(out, _VALUE_KEYS)
+        if val is not None:
+            out["value"] = val
+
+    value = out.get("value")
+    prior_value = out.get("prior_value")
+    if value is not None and prior_value is not None and out.get("direction") is None:
+        try:
+            direction, magnitude = metric_direction(float(prior_value), float(value))
+            out["direction"] = direction
+            if magnitude is not None:
+                out["magnitude"] = magnitude
+        except (TypeError, ValueError):
+            pass
+    elif out.get("direction") is None and value is not None and prior_value is None:
+        out["direction"] = "unknown"
+
+    return out
 
 
 def _s(value: Any) -> str:
@@ -239,17 +334,6 @@ def derive_unit(meta: dict[str, Any]) -> str | None:
     return None
 
 
-def _first_numeric(meta: dict[str, Any], keys: tuple[str, ...]) -> float | None:
-    for key in keys:
-        if key not in meta or meta[key] is None:
-            continue
-        try:
-            return float(meta[key])
-        except (TypeError, ValueError):
-            continue
-    return None
-
-
 def enrich_acf_payload_fields(meta: dict[str, Any]) -> dict[str, Any]:
     """Stamp tier / data_level / as_of_date / region / source_id onto metadata (ingest)."""
     out = dict(meta or {})
@@ -363,6 +447,8 @@ def warehouse_row_to_acf_record(row: dict[str, Any]) -> dict[str, Any] | None:
         record["value"] = meta["value"]
         if meta.get("prior_value") is not None:
             record["prior_value"] = meta["prior_value"]
+        else:
+            record["direction"] = "unknown"
     else:
         record["direction"] = "unknown"
 
@@ -497,6 +583,7 @@ def context_item_to_acf_record(item: dict[str, Any]) -> dict[str, Any] | None:
 def project_bq_row_acf(row: dict[str, Any], *, table_hint: str | None = None) -> dict[str, Any]:
     """Project a BigQuery row dict into ACF-oriented metadata fields (merged into item metadata)."""
     meta = dict(row)
+    warehouse = _is_warehouse_contract(meta)
     # Infer table from SQL if present
     table = table_hint or ""
     sql = _s(meta.get("sql"))
@@ -520,43 +607,67 @@ def project_bq_row_acf(row: dict[str, Any], *, table_hint: str | None = None) ->
     if country:
         meta.setdefault("geo_country_primary", country)
         meta.setdefault("geo_countries", country)
-        meta.setdefault("geo_scope", "country" if not admin else "country")
+        if not warehouse:
+            meta.setdefault("geo_scope", "country" if not admin else "country")
 
-    if admin:
-        meta["tier"] = 3
-        meta["data_level"] = "community" if _LOCAL_MARKERS.search(admin) else "sub_national"
-    elif country:
-        meta["tier"] = 2
-        meta["data_level"] = "national"
-    else:
-        meta["tier"] = 1
-        meta["data_level"] = "global"
-        meta.setdefault("geo_scope", "global")
+    if not warehouse:
+        if admin:
+            meta["tier"] = 3
+            meta["data_level"] = "community" if _LOCAL_MARKERS.search(admin) else "sub_national"
+        elif country:
+            meta["tier"] = 2
+            meta["data_level"] = "national"
+        else:
+            meta["tier"] = 1
+            meta["data_level"] = "global"
+            meta.setdefault("geo_scope", "global")
 
     as_of = derive_as_of_date(meta)
     if as_of:
         meta["as_of_date"] = as_of
 
-    metric = derive_metric(meta)
-    meta["metric"] = metric
+    if warehouse:
+        if not _s(meta.get("metric")):
+            meta["metric"] = derive_metric(meta)
+    else:
+        meta["metric"] = derive_metric(meta)
     unit = derive_unit(meta)
     if unit:
         meta["unit"] = unit
 
-    # Grain key for durable source_id
-    grain_parts = [table or "bq"]
-    for key in ("country", "country_name", "area", "region", "geographic_unit_name", "product", "item", "year", "harvest_year", "TIME_PERIOD", "mp_year", "mp_month"):
-        val = _s(meta.get(key))
-        if val:
-            grain_parts.append(f"{key}={val}")
-    meta["source_id"] = ":".join(grain_parts)[:256]
+    if warehouse:
+        if not _s(meta.get("source_id")):
+            source_key = _s(meta.get("source_key"))
+            if source_key:
+                meta["source_id"] = source_key
+    else:
+        # Grain key for durable source_id
+        grain_parts = [table or "bq"]
+        for key in (
+            "country",
+            "country_name",
+            "area",
+            "region",
+            "geographic_unit_name",
+            "product",
+            "item",
+            "year",
+            "harvest_year",
+            "TIME_PERIOD",
+            "mp_year",
+            "mp_month",
+        ):
+            val = _s(meta.get(key))
+            if val:
+                grain_parts.append(f"{key}={val}")
+        meta["source_id"] = ":".join(grain_parts)[:256]
 
     # value / prior_value when both present under common names
     val = _first_numeric(meta, _VALUE_KEYS)
     if val is not None:
         meta.setdefault("value", val)
     if meta.get("prior_value") is None:
-        for key in ("prior_value", "previous_value", "prior_year_value"):
+        for key in _PRIOR_VALUE_KEYS:
             if meta.get(key) is not None:
                 try:
                     meta["prior_value"] = float(meta[key])
@@ -564,8 +675,4 @@ def project_bq_row_acf(row: dict[str, Any], *, table_hint: str | None = None) ->
                     pass
                 break
 
-    if meta.get("direction") is None and meta.get("value") is not None and meta.get("prior_value") is None:
-        # Single snapshot — unknown direction (prose-equivalent)
-        meta["direction"] = "unknown"
-
-    return meta
+    return stamp_temporal_direction(meta)

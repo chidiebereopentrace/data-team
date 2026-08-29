@@ -1,0 +1,744 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_unit
+description: Quantity and currency units.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Unit code × type
+entity_type: reference
+columns:
+- name: unit_key
+  type: STRING
+  description: unit key
+- name: unit_code
+  type: STRING
+  description: unit code
+- name: unit_type
+  type: STRING
+  description: unit type
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+unit_key_value_samples:
+- 41cc99bf9e5420e7b63bcef4c0e76f87
+- c7db146ef0998e65103b12559bae2f95
+- 6e108ac43743a2ce86dc0d6bd55869b5
+- 75fed3ec677611f775fd6f6375d6a7a3
+- e4dbfe120e102a8010fcb85df7564556
+- 32190f0a738bea63c845000f1f69a366
+- 3efed738e7bacb6fcc64d8913e982bd4
+- e50c71188b19eba2f51748d6a65b7acf
+- eda12347b1eb938e941c865c949ee68f
+- 287a1df4944a30387b33756057b6aaf6
+- 81e82488c689ac7efe055c0fbc9dfe9b
+- 82069ccbdfe7f2e259b4909c5574d84b
+- e2926d4aeda3870c62bf6d3ee46984e6
+- 1aa440f7934e33babdec8d262d3f28b0
+- 23d8a4ec72ab063af60f775eaf366187
+- 79ccadc484a0269029ffc296ecfa85ef
+- d22b23ea8d1559cf3834143f4240d896
+- ba9d7a0e86305467d20de57c2ca91cf6
+- 200759bfe6df2b1386bccdeb341c0a0d
+- b4e7801ac5ea54d531ff7d1369f20f69
+- 28190efb6ae245f1ddbfb8bb4fd28d07
+- 076e57ac637e8729f101d7b007b32f84
+- 124179599b413e5f01073517c8c9851d
+- 49e1d8a06a9524139e9e3e269e882a50
+- c32f88ab14e1412f896de8339003b34b
+- b3a19d993b8640c0b76d3d0e24aafeb0
+- 04dae76b28937bf73f025efa1fce6120
+- 8471c5369cd3f27e2f12fa1ec40180fe
+- d9aa90f1de1be8cacf5b0de9866c3152
+- cadaea8f90d29648eb287e90575c4dc2
+- 6bb223a8af437ac3bbac27d0ada96323
+- ceabc3d39f4abf039dc14c06830a8db8
+- d509374fb1c7216afbbd18c4dc21fb64
+- 876185711650a1bdc59d99cba4aca4dc
+- f7ea9f94b7b92efceae0e9d15afcccd9
+- c57a4cfe4f331105bd709be7c0316e13
+- 829a9eceee47e8f805f1d8d876b8f001
+- f8ef6a5901f315e22734cc6d4c0b57d2
+- 057e05082b7fa2aa047ea46546eef7a3
+- 549c1616d92478455053fa695d84aa4e
+- 636dd4817fafe9f2a17996ef3447b877
+- e2e5d023f9ef0586e0c491075c3674c2
+- d81b97420a634710e2741e5323efa7ea
+- 33a51a11baa2320be4b6fc81ef83aa8e
+- 0cb42f0a9c918a5e57f8cb97ae1b57ec
+- 1563886d6fab68e70e7ae800e3188ec8
+- 0f0f25b12a602c04bc19b3805c8b73ba
+- c6fae32b68cad4b07ca806b3abd5808c
+- e90736b8db10088afa6ebefecc747855
+- 1065902e1b0097691c0fa08b9ac38647
+- 4e5c74558d0d71a24910bcc22ba6c361
+- 1af181d8b92c2cbf23b408b4448ef5b7
+- 2dbd9e6502cc1761dbffc796713350fd
+- 64cd930e2936b4e8266d9b6b10b6e202
+- 71e3392a7663ba289ab7dba1a63a04fc
+- 10597f312ee0d24f30d0c0cdc109fd12
+- 7b78fd23af89fe3eab2ed1e5f4fff2c7
+- e6156025d15eaa669aaed32bb43d5a65
+- a9979049c90d01694dde039a3b17656e
+- 0bbdd5d861ec5e582ca6adba0b08576f
+- a341ded1f6bc81742465b2fdc355f91d
+- b48977ddff66116021666e2ed89fab4c
+- 6e765d0407634f19d176a36ece45c477
+- e76150d2a1ade4bb7a5463a4fb1f2d61
+- 01c6f02a6091f8dc38d983fbfc4b3b9f
+- d71e3db54de960bd8906f740757ce41a
+- aeaf81420f3e47ed81344d73460d5cec
+- ab25179a2e1f4f66896bcc53554ff9c2
+- 6c11fd4d3335cba8ca075e05c9ca255d
+- 3a08a8f9fe2cadee9da2bba04eba95d5
+- e224cb3c1ca11a1381a52b87b6cc9540
+- 61bb5c108fd03ac9a8a4943ff39fe801
+- 8e9f89cf58a5191930646a7d6dcc9fa0
+- 0a8e98c9318183f4cb4e32bf5b8bd02c
+- 70b5db7aa7e3dd5f967928a2c8a6e491
+- 5b1d2abaecbb6e6f9e8148ee363c6a5a
+- e50ab43fef6b5a36568ff481e25d10f7
+- c188e05edf20a2114efcef26de44b713
+- 394e188a96c6e8589c1e9774afe9701f
+- 24d40a2e56b4834fc85405fba73f51da
+- 2cd6159ac086f6cc3dfab9cbca03f227
+- 671f3cf5ed05117c57f4bb20907a7484
+- e4264d48aecbac5081e711360f00dda3
+- 9f494e5b01383e3a5bc700ec603ead9e
+- eeb88d19c9ef8f21da77a25bc28b90d2
+- f70c1a8190319f67b880dce5f8524e06
+- 942f5898ae4da9e27e19aa9a524ed1d5
+- 0fc0a026c0b31f0e9008bbb39b0b4e77
+- 5ff2227bab5a74456cf96a8373dca3cc
+- 5928b438b5e30616be38b8a1ffcbad15
+- e23d26e7df8d0b6fb66a1bac8eb9f38f
+- c45b77830d2a89cabcaffaaddb4db00a
+- e10b0b81b4454b6594bc6a8894ae3f8c
+- 789da2ed47ffe8a1fd25dcd386506a5c
+- 1d235099a4b3f8ba534dd9aa71543ba5
+- ad3333088d72ed8433284ea97c502d91
+- bccac969b29acfc3e31e5f2e8c7de5c9
+- 1adaaee9c9fa65ab9592c5553f4ae1d7
+- 3b9d6a75b0dc6a0a9d33768ea71231ec
+- 218539b84b82b8e78582472b3f5f5f6e
+- 4bfe7ffb8cd2a392887f76e6541cd48b
+- 5546a2b55229dee32e7f3b1216874d71
+- 2c991b399a6575769d657b0d4f5c62d7
+- fca2fd432abd5f60e957db6e52971f74
+- 91b5b216700d9bc80056b2e077e9b7c1
+- 10609028bd2a7112d568f2cc4d90b620
+- 04990fb452855cca9818c568e8b3e0ab
+- f5c36c509410f2b4dac35df6e76e0e82
+- 394644d035e871bdf28b4bbb91ad619c
+- 8f8e6abf33a6d34e8db261b03a05cfa3
+- 5f7199b77b29602dd8aa3fcf2fd3f139
+- 7163072d83ec592c545967dca227c26b
+- 513231e5d7f56d0d4008d63760b2994b
+- 3b0d3d3d7634a3134b0c854c512c3768
+- b2d9068777f495714945786daa2b64bc
+- e5cf45622fe845b21ce5460ff8058861
+- 828fca9962bc8a9567f488de0bfc9b6d
+- 0bae5f8a9d0c58f7882908529857d196
+- 81ba13ee8b8f506cb718481ac6031ae7
+- 4994ed89b4a40e86a47686d6def82889
+- 1263aabce2da141d66a54cba8b4a4dbd
+- 460ebde70b1c0c7a9e0f4810ca0257ec
+- 8f614136f37dd910c4b49dc3775b6ba3
+- 0649b467fbffdde7d43a035bca1df9f3
+- 56b5334ac8d0e495d4e88a865e3137e0
+- 59c1b2ebdf07e74efaf0b931c9871772
+- 6115f7e00b9738b0fe226ade269fa433
+- 4d9c774c6e42d5ab8bbdc9147c3189ab
+- bc59c160f01dc32b7c93fd5f133cd387
+- f7c994ce96100ad7c7a6fc50fb0357b7
+- c73839100c082217b759299935a1c347
+- 862308a4d53dcce4ca3dccd510263e7a
+- a03b1822c234c5c00de2e5e9022851ac
+- 0e1991bdc66881c6ff5328e232f640e2
+- 81c9cccf88e1067ef08d275cd6b53119
+- 77b09e677e9fc5f6507318ef574d8b57
+- 2cdf4afb62a6a8da1896524974cd5931
+- f5bc86eb5fd43ffd2911fa3e9aca84b9
+- 2f53a4a638238862f5ec6b2d19b9d1af
+- d55b8082f881e50453e0a9be7f06d4aa
+- 9a10c91167d90497558fc3c221934163
+- 4af83a0097ed8c33544a17a30e557125
+- b6f436da3afcbce1022ea0c1cfcac876
+- 0b0364ccc3410386b6e04957c21af7b5
+- c21fd0b7df1c3c1cb81c475594bdcdb1
+- e4474e25d33e6a5b913199b614d7bcc0
+- cef7df4301be235093fd40d81ab2afee
+- 393ac1624a92fdf30aac4e6bbebdaf42
+- 7b69e9629496338bb0b99590586ee97a
+- e9d3671cb90480dee93c65a28a302502
+- 433de1e2cdc778244f20b3cedb6dffd1
+- ee8170811444dbbd05986df02b37ffd5
+- c765e4e44ccaa86d5b76ec53f91affbf
+- 5fb22c18486b4e6b61c01a2e7fe47202
+- 7b3c4fc03a62cf0f56eabefbc8243bf3
+- 25e855d5e5d6d01957cccf9448802834
+- 9b2f48728f55ebb5a8b9d9894933e069
+- f22186632c1c852c0bbaf9dbe03f24c1
+- 09508cd36c81d0029dd2a2af81539f07
+- 729491a5bf782f873f173094614a0696
+- 28d0f79f063369ec2648d494e5759cca
+- a0474543cc418bd820a34c9fd8fa33d0
+- 4508d93883b80923da05d645e71de583
+- 64db325877d3c053aac7b2263580a9ca
+- 77231dfa074434a29ddf9726359bd4af
+- b08dc49c6548b046d683c87cc01e5fa3
+- b05c7241b7d687f9593c3b036acc8b35
+- 95c2de628767cda575c272062f2c5b4c
+- e63d6e716de4bfd352c5f1f55200e6e8
+- c6d6244dcf6d29cfa0546cde22ec6f37
+- d17d3e58c4cc4d0b0df60907bd600334
+- 048804503ea5372e46cf661c133a1bed
+- 0ab1f76e5a3a8c1116b40b2bf70ec57a
+- 78067f6a20ab3a9eb6b46964ca4a38a1
+- df2e23facdc883fef1677bd429963c35
+- 5de8e52028e981c469995b2452db6bac
+- 5df4dfa875cec4a2b816de54843a42de
+- f77960369283a3f492d8d04987d5acc3
+- da78e6690e09545a6d5f01c4f4451d47
+- 77b661fac2944001a151a9510304eda7
+- b810236d32d2d6f50db78f928efc1190
+- 047e2c54b2b5283e249c4391fd0fb071
+- 8b80c399154b78cc0c5b92a084f378ff
+- 554ae8ce910e13d835e4d7c563b5e609
+- 7b9acf083c4785762b07ab9478f1cca0
+- fd01e0d205f13e2f6d5ac0944992968a
+- 8e8dc68597a55c4d687806e6615fce69
+- 415d4fa8f93dca100349bc86ee6067c2
+- e465508f7c212ac2a7a5eb3e221a6372
+- dc8c931806ac59fb14fa18f58396f45a
+- a2ecf2c6c0470c8127f190384bf7fad2
+- 86811f6411a639ec44f00a768ba49511
+- de58f4f64c1ae59ec44cf3ba83b0194f
+- a3bbc176ae38aca58871551a509f36d6
+- 0424f708b42309e4f81a47b49ddf30e4
+- f5a532ae6032eac8265d98fd92346b40
+- bdcfc69d1a3025b682b27a0895c3fc29
+- 10851b5568b2fc3c087d260111558e0c
+- d3e0c1b89a316b997dc32eee11f4e74f
+- 204022b6bc7ccadbe294f746f4c8b4de
+- e22971057ccfffc39834f52201e31ec7
+- 06668d8bc24149b12045ee2108b2ba8e
+- e6c3063a1b5170384f468ffedd138396
+- 8136511ffcc8845b1377e7f81285f655
+- e97f75022a5011089a2e86ad21c47f5c
+- 583ad73eb12bc64cdd4db3ad50c59767
+- 5cdb6074e0061569ea0fb471278b24e7
+- cfa1b327201f0b7e7767162d1aa63351
+- 5c088c56654e7986c37ebfbd08bfcf9f
+- 3ba7d964d86260caaad9f3fd66e0d9fc
+- 359de94566c0cfd7bde8c266a3e9dc41
+- 321d90c4cac2130e0f96ea3eb5466ba7
+- 025cc8fa9013c8a700bf0397c036ae33
+- 06c2c094d3a5a88b803b5ad56f249182
+- 8d8e863e698c8fea71bc8ecfb617c839
+- fef7d84a38caf7465da3e3ae02ba8058
+- 9796b73ec43ba11a7f555dde8bbe71ba
+- a3cea25969335197bc416a349fc6e8b4
+- e2a737a15b4e70ae6da414b5756ef584
+- 45443045ac0fe69a223c0152601d0794
+- 066ccae772f82e9223e93c103a821ff3
+- 432854f26d40f40b856774e2d3a1a5c5
+- 18b077b4c9862dcc93561a3ae93fe8e9
+- 10d869093d121f4e8638e8ed3175b656
+- 7151d02bca4ca2442146259f6acfca4c
+- 18844e496b10065e5d57d11cfb7c3d2f
+- 3c642c34ad494a4e3c9019024005af16
+- 0037f24d4f04f9ab0ba91dafb28ec12a
+- 2c7a19d9f914f6e5b02489be0e67e701
+- 2c8e92e0f2dce851529e770c2b0cb737
+- 44df579195a7a4baf54810bfd0356d1c
+- 4ddb9c9c49e52073cc211c85eb8d15dd
+- 8e1904b6a2612e3c7e2d14208cb17d30
+- c5e152f8f584dba05c3e76e7eae097d4
+- 52a3cc2305c6e66bae64d724d4218482
+- e659d5d9112965d370161346e45ad870
+- 381c2040d43e7c164ed58a0c938fd5b0
+- 8f87a04c1f5ab62a6b893ed0fafa6619
+- f0b7d6e2d2ace4cd9fcaec389d160145
+- 7b8e3132bdabe55a6f267fe965013332
+- a36d6991a796ddff592c1c777ae71445
+- 3f93f74708fbf36e2e5f1830d011f38e
+- 7da949c9050d62c0399dd6752612803f
+- 8afb746e7c4002533611de18e942be85
+- fbda986edc6bc48a2928888467ec1808
+- 5cd88c550667842ed400c311336ea007
+- abff05eee33c4d61798f394d616c2e5c
+- 3a398a1855a70bc2365e6c52ee3bce42
+- d7d5bec87bb70f312d78d1d4e23b40aa
+- d641bf88281c0a18b1324f37e77b8297
+- 33cd4d19c6be7d7a9f462d504e0869ab
+- a874777018b8526c646e06d63378a006
+- 2cbb7fe476aacbed9546c80c53a7d21d
+- 3aba275ac6777a355b4d8c338c9e4f70
+- 4145aed33fafe9ffe0342da661f75a0a
+- c81edf2dc0dfe9a93487622407a67251
+- 6ba22fc4b47069d942e7fd38ecaa3b46
+- 4ceaf26792aa435a24aad53412ff737f
+- ad0a65ed2e6f049d65e846da25e57db8
+- 2e669dd28670eb954ac2228ecaad5b4b
+- 9ec318a91f81d5a18f92f8fbdf4555f6
+- 9f708f18cfaa122752af88484301d898
+- bf5666fc3e2529f473377d7d184fd780
+- b6801ff6d5ed3f90738e03bcbcc4637c
+- 331440c275e5c54a91988b1a9366a78d
+- 60949bab52dc4d037db5c456bf2f595d
+- c265d09858a74346e5d2cb5bc624b8c7
+- 1659b00a4ab1ac4906764b932b2d2e6a
+- 8b154372f265b17cfb213e790aae06ae
+- 482a9801f105e863d17ac70454ba83bf
+- b40d1ebefcdb20b2b98e0008dc23e60e
+- e836f55a64b0363408b73b3b92823de5
+- d71f97cbe9a2756b81815544fad2adf9
+- 49b3386efc1fa975386ed73fa87f5b79
+- 312ffb6e8788e128af6b53452d6b3383
+- c85b8ec3ae20083d79550b0af9634e19
+- 5b8f516136f9f7515cf2ae82ed37af18
+- 57bf5d9f28e768d4ba3b9e3212c2c980
+- 4d202e524ef77a2c48b3d891622700a0
+- 9a7352b678b8742b628d18373cc3f52f
+- eed6c3fa2161c27ad5b64fc83bb6b521
+- a8efddefaaf5bff57be9067451248dcc
+- c4bba89a0e26a85710fe191d01c02ded
+- eddd4c8b54259a555e10dbf89a97eace
+- 8ecfc167098812a20dd7b0c7a52a5463
+- 4c3a54919b42941641acc4c9b36a49f9
+- 36f94dd1deb7738a1b70d628528373ab
+- 28e0190f919f577a1f258a81788ad82d
+- 44d77d89bfb2b5e4765bd2de6504f71d
+- 41322c0c99686338d6bf44b352ca2c2d
+- 38144c04bbae9d32287ec1ae16166e7c
+- 9b15ce4daedafd6bcb11759475229d4c
+- c92a794f0053681231a56c39442bef5f
+- d64123c74e279816bd0b083fca6c1934
+- 060e88eda331468a1d6e4aa1a62e8ba4
+- 7df164902c6e5ec25f691e9a0c892cc8
+- 4e59701eca79c78cf33bc050421af70c
+- 54c70d19f389b565b0e1ee186d114b4b
+- 977147429c354f93fded845002749a1c
+- fec48dc16792c5cb4882f5d8cbe729d2
+- eec15670c9438853a77d7ffa787717fb
+- 8e08e258a9789118b40690bf653767b3
+- ce2a9704ef400e1d5f2b2cd03fba3357
+- 9d7e36d36d31418dd535b413cfccca88
+- 79039887c6c3fb77c662782bc8f0f808
+- f148df0b9f45ef443dd56d819eb5b0da
+- 603ba478e930ff08331629c5ce71a347
+- 8b4cfcb07c4ee50a5bdab9b767498e0f
+- 6b1ca044805100e888279c7a19621151
+- 3268f1501d56a906806367faa33df902
+- d90700fd2cd0e5bb689f1809084d0bbd
+- 380f0c001ef548b1cd5c3027efff1146
+- ea16766d9bc44a88573de4624c6fdb52
+- ac002bbcd9c919527f47736d1165cf01
+- e82bb2e14d5096321563e2ffcc2850e2
+- d78373fcd19561afdbcb14086639874c
+- ba736ca74a7dc5e92b296fbb154e580d
+- 0067a5294bd9931bd4146d0f92e8808c
+- 5b3d08b8716a4a9c43a53129e7aa478e
+- 343694726e6189e755d4598125982ad2
+- 59ce15693e7690acdc443374d624a2e7
+- 3ad8bb4e74700f51757a4cd80d75efe4
+- aca2c4d18d07a11b1ab73a16ffea7005
+- 6bdb16f64716e3a4b7eb4f99392a6eb7
+- 5ab35a1efa7e1a133cff6835e5b5ad07
+- f95ad0f36194e072e6ed5cb26ef7dcf2
+- 8f59465d656993a9473aa066d43f287e
+- 998af3a4980a508fc649822ff91ffdf3
+- 5cec27828105390318d7df2e87a3f769
+- 8d8770106143ebaab1e9357a66d71ab4
+- bebfcb68667899d673bdc9f695de83fa
+- 370773017ab2b35368ada24540aee6fb
+- 8efa3bbf2f65ca84fecc9fe901a13676
+- 74a8cd56f4224c20e3ea15403c75e498
+- 2d14377825c484f684ac53f544a46aa4
+- f68b135c471e7bea0404b40e7f44212e
+- 4e82c444f2ace9586b1e0d5ff5a1b1d0
+- 15734d67d769482639ca78dcf6ee9be8
+- 4bf8defa6a27c5d7597fc10b11add871
+- b9a727463e363b9f5b7390d545a6c783
+- 76db983c34325b5ee48956073945f359
+- 5eb6380345c5ff4bc3740d470a807dd9
+- 424776a86532ae700b5f6b9ded94fe5b
+- 6b0e920bd518114be79e5a879b00690b
+- b797d85d80ab1eb1c6d1439964ab6dde
+- f87170bbacf3035e6cd8ae34a689b0a6
+- 63cfced0daad6fbc6c2ddbd234cc1a72
+- cc49eed825c80fcb8e5b5aa4377c037f
+- 4b67c09ab8d55c42944c958d852bfa95
+- fa81873d4ac5d38bfc61d90613a8b606
+- 9329f8b5509c0590ab3bc31fc0174e72
+- df4aa488d83ae4f7b50a802f2a230bea
+- b486973863587838c98b1759ff289dac
+- 2b8e7a9ef9e7299c44a15ef4894f4d07
+unit_code_value_samples:
+- USD
+- KZT
+- 900_g
+- LKR
+- VEF
+- Kwanza
+- GEL
+- BDT
+- Seychelles Rupee
+- New Zaire
+- Somali Shilling
+- MZN
+- Cabo Verde Escudo
+- SDG
+- Malagasy Ariary
+- NIS
+- ZAR
+- GNF
+- IQD
+- STE
+- SSP
+- CDF
+- Liberian dollar
+- LSL
+- Zambian Kwacha
+- IRR
+- Kenyan Shilling
+- Guinea Franc
+- TZS
+- IDR
+- YER
+- MGA
+- Ghana Cedi
+- Malagasy Franc
+- New Leone
+- JOD
+- Euro
+- Loti
+- RUB
+- Madagascar and Comores CFA Franc
+- INR
+- Mali Franc
+- Ethiopian Dollar
+- NGN
+- TJS
+- MWK
+- AOA
+- Naira
+- XAF
+- Burundi Franc
+- Rhodesian Dollar
+- Kwanza readjusted
+- Zimbabwe Dollar (old)
+- SZL
+- BWP
+- AMD
+- Congolese Franc
+- Lilangeni
+- AZN
+- BYR
+- Malawi Kwacha
+- Mozambique Escudo
+- Financial Rand
+- PKR
+- Rand
+- ZMW
+- Namibia Dollar
+- Syli
+- AFN
+- UGX
+- Egyptian Pound
+- THB
+- MDL
+- HNL
+- Leone
+- Dalasi
+- Mauritius Rupee
+- MRU
+- Ghana Revalued Cedi
+- KGS
+- NAD
+- KES
+- DOP
+- Comoro Franc
+- XOF
+- South Sudanese Pound
+- UAH
+- MRO
+- Algerian Dinar
+- Dobra
+- Tanzanian Shilling
+- Affars and Issas Franc
+- CVE
+- KHR
+- JPY
+- Libyan Dinar
+- Guinea-Bissau Peso
+- ERN
+- DJF
+- MMK
+- Uganda Shilling
+- BIF
+- ARS
+- PYG
+- Angolan Escudo
+- CNY
+- SYP
+- GMD
+- MXN
+- Zaire
+- COP
+- PHP
+- New Kwanza
+- Zimbabwe Dollar
+- Second Zimbabwe Dollar 
+- SLL
+- BTN
+- Sudanese Pound
+- Portuguese Escudo
+- MNT
+- HTG
+- US Dollar
+- PAB
+- Djibouti Franc
+- ZWL
+- Cedi
+- RWF
+- GTQ
+- GHS
+- French Franc
+- NIO
+- Zimbabwe Gold
+- Pound Sterling
+- Moroccan Dirham
+- NPR
+- Ouguiya
+- TRY
+- EGP
+- ZWL_cash
+- Pula
+- Nakfa
+- Tunisian Dinar
+- SOS
+- DZD
+- CFA Franc BCEAO
+- VND
+- Ethiopian Birr
+- LAK
+- SLS
+- PEN
+- ETB
+- Rwanda Franc
+- CFA Franc BEAC
+- Mozambique Metical
+- BOB
+- LYD
+- LRD
+- Sudanese Dinar
+- Libyan Pound
+- LBP
+- 99_kg
+- An
+- 1.8 L
+- 125 G
+- Cart load
+- SLC
+- '%'
+- 73 KG
+- 160 KG
+- Heap
+- 20 G
+- 2 KG
+- 5_L
+- Pound
+- 10 KG
+- Packet
+- 400 G
+- 125_g
+- 115 G
+- 500_g
+- kg/ha
+- MT
+- 11.5 KG
+- 800 G
+- Head
+- 1.2 KG
+- 360 pcs
+- 100_kg
+- 100 Pounds
+- Unit
+- 12.5 KG
+- 750_ml
+- 250 KG
+- 500 ML
+- ea_18
+- 750 ML
+- 650 G
+- 150 G
+- USD/LCU
+- 160 G
+- 100 ML
+- 385 G
+- 500_ml
+- LCU/3.5kg
+- 45_kg
+- 52 KG
+- One_way_trip
+- Month
+- Pile
+- 200_L
+- 350 G
+- 185 G
+- 168 G
+- 700 G
+- 100 KG
+- t/ha
+- 200 ML
+- Pair
+- 0.5_L
+- Marmite
+- Sack
+- 500 G
+- cum
+- 28 pcs
+- 109_kg
+- ea_40
+- 12_kg
+- 1.4 KG
+- Cuartilla
+- 109 KG
+- 93_kg
+- 3.4 KG
+- Libra
+- 20 L
+- 12 KG
+- 20_kg
+- 18 KG
+- ea_6
+- ea_12
+- 98_kg
+- Bundle
+- Cubic meter
+- 3.1 KG
+- 380 G
+- 3.5 KG
+- 12.5_kg
+- ea
+- Gallon
+- LCU
+- 50 ML
+- tonnes
+- 1000 An
+- Bar
+- 20 KG
+- 0.8 KG
+- 5 KG
+- 6_kg
+- 5 pcs
+- 3.5_kg
+- ''
+- 800_g
+- 200_kwh
+- 1.5 KG
+- 90 KG
+- 20_L
+- 93 KG
+- Loaf
+- L
+- Brush
+- 100 L
+- 2_L
+- g/An
+- 2.25 KG
+- 25 KG
+- 1.8 KG
+- 46 KG
+- 50 pcs
+- 10_kg
+- Cylinder
+- KG
+- 1 GB
+- 1 piece
+- 900 ML
+- 10 pcs
+- 11 KG
+- cup
+- 'No'
+- Package
+- 5_kg
+- 15_kg
+- 50 Pounds
+- 110_kg
+- 2.1 KG
+- 100_g
+- 170 G
+- 100_tubers
+- Course
+- 90_kg
+- ea_80
+- 91_kg
+- 27 KG
+- 900 G
+- 70 G
+- 30 pcs
+- 200 G
+- 5 L
+- Bunch
+- 250 G
+- 60 KG
+- 68 KG
+- kWh
+- Day
+- 250_g
+- 150 ml
+- 2270_g
+- 2_kg
+- 3 L
+- 250_kg
+- ha
+- 700_g
+- 1.5 L
+- 84 KG
+- 100 Tubers
+- t
+- 16 KG
+- 1000 No
+- 85 G
+- 91 KG
+- 3 KG
+- 120 KG
+- Dozen
+- 2.5_kg
+- 15 KG
+- 1.6 KG
+- 50 KG
+- ea_30
+- gal
+- 1000_L
+- 100 pcs
+- 0.5 KG
+- kg/An
+- 750 G
+- 4 pcs
+- 45 KG
+- No/An
+- 300 G
+- 1.1 KG
+- Plate
+- 1.3 KG
+- 250 ML
+- 50_kg
+- 2.5 KG
+- Malawi Pound
+unit_type_value_samples:
+- quantity
+- currency
+loaded_at_value_samples:
+- '2026-08-25 23:48:08.507193+00'
+filtering_guidance:
+- 'Grain: Unit code × type'
+- Quantity and currency units.
+sql_generation_hints:
+- 'Join keys: unit_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: reference
+  supports:
+  - reference

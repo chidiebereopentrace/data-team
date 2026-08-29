@@ -1,0 +1,82 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_person
+description: OpenAIRE persons/authors.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Person/author id
+entity_type: research
+columns:
+- name: person_key
+  type: STRING
+  description: person key
+- name: person_id
+  type: STRING
+  description: person id
+- name: given_name
+  type: STRING
+  description: given name
+- name: family_name
+  type: STRING
+  description: family name
+- name: biography
+  type: STRING
+  description: biography
+- name: coauthor_count
+  type: INT64
+  description: coauthor count
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+person_key_value_stats:
+  distinct_count: 6362524
+  null_count: 0
+  is_truncated: true
+  min_value: 00000296cf68ae6e5249b85e73c3b76d
+  max_value: fffffb46b6ab06dc66f5d7b9a5392c5a
+person_id_value_stats:
+  distinct_count: 6376561
+  null_count: 0
+  is_truncated: true
+  min_value: orcid_______::0000017cd9b1bcfbdbb6f7aa5e42cb3e
+  max_value: orcid_______::83c3aa214115547fb48a6f01868ead0d
+given_name_value_stats:
+  distinct_count: 1416017
+  null_count: 0
+  is_truncated: true
+  min_value: '"Elsie" Xu'
+  max_value: 🦢
+family_name_value_stats:
+  distinct_count: 1930824
+  null_count: 292312
+  is_truncated: true
+  min_value: '!'
+  max_value: 🌸
+biography_value_stats:
+  distinct_count: 384310
+  null_count: 0
+  is_truncated: true
+  min_value: ''
+  max_value: 🩺 Medical doctor with a passion for internal medicine & medical research.
+coauthor_count_value_stats:
+  distinct_count: 502
+  null_count: 0
+  is_truncated: true
+  min_value: '0'
+  max_value: '501'
+source_natural_key_value_samples:
+- openaire_persons
+loaded_at_value_samples:
+- '2026-08-24 14:23:02.692114+00'
+filtering_guidance:
+- 'Grain: Person/author id'
+- OpenAIRE persons/authors.
+sql_generation_hints:
+- 'Join keys: person_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: research
+  supports:
+  - research

@@ -5,11 +5,11 @@ import ast
 import re
 from typing import Any
 
-from ml.rag.chatbot.acf_metadata import project_bq_row_acf
+from ml.rag.chatbot.acf_metadata import project_bq_row_acf, stamp_temporal_direction
 from ml.rag.chatbot.bq_table_schema_yaml import (
     column_description,
     discriminator_columns,
-    load_table_schema,
+    load_mart_table_schema,
     measure_columns,
     table_source_meta,
 )
@@ -25,6 +25,7 @@ _YEAR_SQL_RE = re.compile(r"\byear\s*=\s*(\d{4})\b", re.IGNORECASE)
 _ELEMENT_SQL_RE = re.compile(r"\belement\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
 
 _STG_TABLE_RE = re.compile(r"\bstg_[a-z0-9_]+\b", re.IGNORECASE)
+_MART_TABLE_RE = re.compile(r"\b(?:fct|agg|dim)_[a-z0-9_]+\b", re.IGNORECASE)
 _SELECT_ALIAS_RE = re.compile(
     r"\b(?:SUM|AVG|MIN|MAX|COUNT)\s*\([^)]+\)\s+AS\s+([A-Za-z_][A-Za-z0-9_]*)",
     re.IGNORECASE,
@@ -72,6 +73,7 @@ _BQ_PROVENANCE_KEYS = frozenset(
 )
 
 _GEO_KEYS = (
+    "country_iso3",
     "country_name",
     "country",
     "geographic_unit_name",
@@ -90,7 +92,15 @@ _TIME_KEYS = (
     "mp_year",
     "mp_month",
 )
-_LABEL_KEYS = ("country_name", "country", "geographic_unit_name", "market_name", "product_name", "product")
+_LABEL_KEYS = (
+    "country_iso3",
+    "country_name",
+    "country",
+    "geographic_unit_name",
+    "market_name",
+    "product_name",
+    "product",
+)
 _RANK_VALUE_KEYS = ("total", "sum_value", "value", "gdp_per_capita_ppp", "hdi_value", "production", "yield")
 
 
@@ -101,7 +111,11 @@ def _s(value: Any) -> str:
 
 
 def _table_from_sql(sql: str) -> str:
-    m = _STG_TABLE_RE.search(sql or "")
+    text = sql or ""
+    m = _MART_TABLE_RE.search(text)
+    if m:
+        return m.group(0).lower()
+    m = _STG_TABLE_RE.search(text)
     return m.group(0).lower() if m else ""
 
 
@@ -159,18 +173,27 @@ def _format_number(value: Any) -> str:
 
 def _measure_kind(table_id: str, row: dict[str, Any]) -> str:
     bare = table_id.lower()
-    if "gdp" in bare:
+    if bare in ("fct_economics",) or "economics" in bare:
         return "macro_gdp"
-    if bare.endswith("_hdi") or "hdi" in bare:
+    if bare in ("fct_hdi", "agg_hdi_latest") or bare.endswith("_hdi") or "hdi" in bare:
         return "macro_hdi"
-    if "fews_food_security" in bare:
+    if bare in ("fct_food_security", "agg_food_security_monthly") or "fews_food_security" in bare:
         return "fews_food_security"
-    if "fews_market_prices" in bare or "vampire_prices" in bare:
+    if bare in ("fct_prices", "agg_prices_country_month") or "market_prices" in bare or "vampire_prices" in bare:
         return "fews_market_price"
-    if "yield_raw_data" in bare:
+    if bare == "fct_yield" or "yield_raw_data" in bare:
         return "subnational_yield"
+    if bare in ("fct_production", "agg_production_annual"):
+        grain = _s(row.get("production_grain"))
+        if grain:
+            return f"mart_production_{grain}"
+        return "mart_production"
+    if bare == "fct_climate":
+        return "mart_climate"
     if bare.startswith("stg_faostat_"):
         return f"faostat_{bare.replace('stg_faostat_', '')}"
+    if bare.startswith(("fct_", "agg_", "dim_")):
+        return bare
     return bare.replace("stg_", "")
 
 
@@ -256,12 +279,17 @@ def _resolve_measure_label(
     element = _s(row.get("element"))
     if element:
         return _element_measure_label(element)
-    if "fews_food_security" in bare:
+    if bare in ("fct_food_security", "agg_food_security_monthly") or "fews_food_security" in bare:
         return _fews_measure_label(row)
-    if "market_prices" in bare or "vampire_prices" in bare:
+    if bare in ("fct_prices", "agg_prices_country_month") or "market_prices" in bare or "vampire_prices" in bare:
         return _price_measure_label(row)
+    if bare in ("fct_economics",) or "economics" in bare:
+        if measure_col == "gdp_per_capita_ppp":
+            return "GDP per capita at purchasing power parity"
     if measure_col == "gdp_per_capita_ppp":
         return "GDP per capita at purchasing power parity"
+    if bare in ("fct_hdi", "agg_hdi_latest") or measure_col == "hdi_value":
+        return "Human Development Index score"
     if measure_col == "hdi_value":
         return "Human Development Index score"
     if measure_col == "yield":
@@ -282,20 +310,20 @@ def _not_this_list(table_id: str, row: dict[str, Any], measure_col: str) -> list
     mt = _s(row.get("measure_type")).lower()
     out: list[str] = []
 
-    if "gdp" in bare or measure_col == "gdp_per_capita_ppp":
+    if "gdp" in bare or bare == "fct_economics" or measure_col == "gdp_per_capita_ppp":
         out.extend(["agricultural production volume", "crop yield", "food security IPC phase", "market retail price"])
-    elif "hdi" in bare or measure_col == "hdi_value":
+    elif "hdi" in bare or bare in ("fct_hdi", "agg_hdi_latest") or measure_col == "hdi_value":
         out.extend(["agricultural production", "crop yield", "GDP", "market price"])
-    elif "fews_food_security" in bare:
+    elif bare in ("fct_food_security", "agg_food_security_monthly") or "fews_food_security" in bare:
         if mt == "population":
             out.extend(["crop production tonnes", "GDP", "retail market price", "IPC area classification map"])
         elif mt == "classification":
             out.extend(["population headcount", "crop production tonnes", "GDP", "market price"])
         else:
             out.extend(["crop production tonnes", "GDP"])
-    elif "market_prices" in bare or "vampire_prices" in bare:
+    elif bare in ("fct_prices", "agg_prices_country_month") or "market_prices" in bare or "vampire_prices" in bare:
         out.extend(["production volume", "crop yield", "GDP", "food security phase population"])
-    elif "yield_raw_data" in bare:
+    elif bare == "fct_yield" or "yield_raw_data" in bare:
         if measure_col == "yield":
             out.extend(["total production volume", "GDP", "food security phase"])
         elif measure_col == "production":
@@ -357,7 +385,7 @@ def resolve_row_semantics(
     """Return structured value semantics for prose and metadata stamping."""
     bare = table_id.lower()
     if not schema:
-        schema = load_table_schema(bare) or {}
+        schema = load_mart_table_schema(bare) or {}
     src = table_source_meta(bare)
     measure_col, measure_val = _pick_measure_column(row, table_id=bare, sql=sql)
     measure_label = _resolve_measure_label(bare, row, measure_col)
@@ -384,7 +412,7 @@ def resolve_row_semantics(
         "table_id": bare,
         "table_description": src.get("description") or "",
         "source_domain": src.get("source_domain") or "",
-        "source_layer": src.get("source_layer") or "staging_dev",
+        "source_layer": src.get("source_layer") or "mart_dev",
         "grain": src.get("grain") or "",
         "not_this": _not_this_list(bare, row, measure_col),
     }
@@ -403,11 +431,26 @@ def _format_discriminator_lines(semantics: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _format_trend_line(direction: Any, magnitude: Any) -> str | None:
+    d = _s(direction)
+    if not d or d.lower() == "unknown":
+        return None
+    mag_part = ""
+    if magnitude is not None:
+        try:
+            mag_part = f" ({float(magnitude):+.0f}% change)"
+        except (TypeError, ValueError):
+            pass
+    return f"Trend: {d}{mag_part}"
+
+
 def format_row_prose(
     semantics: dict[str, Any],
     *,
     sql_source: str = "",
     template: str = "",
+    direction: Any = None,
+    magnitude: Any = None,
 ) -> str:
     """Build human-readable context prose from resolved semantics."""
     table_id = _s(semantics.get("table_id"))
@@ -456,6 +499,13 @@ def format_row_prose(
     not_this = semantics.get("not_this") or []
     if not_this:
         lines.append(f"What this is NOT: {', '.join(str(x) for x in not_this)}.")
+
+    trend = _format_trend_line(
+        direction if direction is not None else semantics.get("direction"),
+        magnitude if magnitude is not None else semantics.get("magnitude"),
+    )
+    if trend:
+        lines.append(trend)
 
     # template / sql_source stay in metadata only — do not surface internal
     # pipeline vocabulary into the LLM context.
@@ -560,9 +610,10 @@ def _stamp_acf_metadata(
         out["as_of_date"] = as_of
 
     sem_raw = semantics if isinstance(semantics, dict) else out.get("value_semantics")
+    warehouse_metric = _s(raw.get("metric"))
     if isinstance(sem_raw, dict):
         measure_label = _s(sem_raw.get("measure_label"))
-        if measure_label:
+        if measure_label and not warehouse_metric:
             out["metric"] = measure_label
         unit = _s(sem_raw.get("unit"))
         if unit:
@@ -571,7 +622,7 @@ def _stamp_acf_metadata(
             out["value"] = sem_raw.get("measure_value")
 
     element = _element_from_sql(sql) or _s(raw.get("element"))
-    if element and not _s(out.get("metric")):
+    if element and not _s(out.get("metric")) and not warehouse_metric:
         out["metric"] = element
 
     ranked_rows = out.get("ranked_rows")
@@ -588,24 +639,36 @@ def _stamp_acf_metadata(
                 out["unit"] = _s(top.get("unit"))
         out["coverage_strength"] = min(1.0, len(ranked_rows) / 10.0)
 
+    merged = stamp_temporal_direction({**raw, **out})
+    out.update({k: v for k, v in merged.items() if v is not None})
+
     projected = project_bq_row_acf({**raw, **out}, table_hint=_s(out.get("table_id")))
     for key in (
         "tier",
         "data_level",
         "as_of_date",
+        "as_of_date_basis",
         "region",
         "source_id",
+        "source_key",
         "metric",
         "unit",
         "geo_scope",
+        "place_scope",
         "geo_country_primary",
         "geo_countries",
         "value",
         "prior_value",
         "direction",
+        "magnitude",
     ):
         if projected.get(key) is not None:
             out[key] = projected[key]
+    if warehouse_metric:
+        out["metric"] = warehouse_metric
+    for key in ("place_scope", "source_key", "as_of_date_basis"):
+        if raw.get(key) is not None and out.get(key) is None:
+            out[key] = raw[key]
     return out
 
 
@@ -711,6 +774,10 @@ def _consolidate_ranking_batch(
         template=template,
     )
 
+    trend = _format_trend_line(out_meta.get("direction"), out_meta.get("magnitude"))
+    if trend:
+        content = content + "\n" + trend
+
     return {
         "content": content,
         "source": "bigquery",
@@ -747,6 +814,8 @@ def _enrich_single_item(
         semantics,
         sql_source=_s(meta.get("sql_source")),
         template=_s(meta.get("template")),
+        direction=meta.get("direction"),
+        magnitude=meta.get("magnitude"),
     )
     return {**item, "content": content, "metadata": meta}
 

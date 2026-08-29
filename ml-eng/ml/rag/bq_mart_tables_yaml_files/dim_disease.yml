@@ -1,0 +1,60 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_disease
+description: Foodborne hazard / disease labels.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Hazard/disease name
+entity_type: food_security
+columns:
+- name: disease_key
+  type: STRING
+  description: disease key
+- name: disease_or_hazard
+  type: STRING
+  description: disease or hazard
+- name: disease_family
+  type: STRING
+  description: disease family
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+disease_key_value_samples:
+- 1bea47907fb8d18a9d0813679d00666b
+- 02422165190d7d1400a7075f707dd945
+- 605b0412db202bf9995c0d70a191345e
+- 0f377c085ccd516f16df4bb3c2f200b2
+- d68625ffcac481f756cd04655a2c57a8
+- 5fddd10608c2599b2c676144361d297f
+- dfa16d993c5cc8ed35215f13552d0c2d
+- 6ada4e97d8bd283df1866a93a971fbbd
+- c138b8feca793b5677c5be7bed449f4a
+- 823fad050f22d0b3396c2c752a31ce91
+- 2acf407e384227a5af7c628976d379a2
+- 29f30b20113fb4b1e5cee637e2c6bfde
+disease_or_hazard_value_samples:
+- EIEC
+- Aspergillus spp
+- E.coli
+- 'EPEC '
+- 'Staphylococus '
+- 'ETEC '
+- 'EAEC '
+- 'STEC '
+- salmonella
+- Fusarium spp
+- Mycotoxins
+- Penicillium spp
+disease_family_value_samples:
+- foodborne
+loaded_at_value_samples:
+- '2026-08-24 14:22:54.196250+00'
+filtering_guidance:
+- 'Grain: Hazard/disease name'
+- Foodborne hazard / disease labels.
+sql_generation_hints:
+- 'Join keys: disease_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: food_security
+  supports:
+  - food_security

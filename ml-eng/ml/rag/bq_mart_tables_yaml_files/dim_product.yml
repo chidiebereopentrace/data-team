@@ -1,0 +1,59 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_product
+description: Product dimension for production, prices, food balance, trade.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Crop/commodity product identity
+entity_type: production
+columns:
+- name: product_key
+  type: STRING
+  description: product key
+- name: item_code
+  type: STRING
+  description: item code
+- name: product_name
+  type: STRING
+  description: product name
+- name: cpcv2
+  type: STRING
+  description: cpcv2
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+product_key_value_stats:
+  distinct_count: 2242
+  null_count: 0
+  is_truncated: true
+  min_value: 0073033c8d7889b37373e8646cff0e92
+  max_value: ffdf5ced4479d19b73228a3c9735a722
+item_code_value_stats:
+  distinct_count: 1307
+  null_count: 939
+  is_truncated: true
+  min_value: '''0111'
+  max_value: S93199AA
+product_name_value_stats:
+  distinct_count: 1989
+  null_count: 0
+  is_truncated: true
+  min_value: Abaca, manila hemp, raw
+  max_value: hydrogenated oils and fats
+cpcv2_value_stats:
+  distinct_count: 993
+  null_count: 1063
+  is_truncated: true
+  min_value: '''0111'
+  max_value: S93199AA
+loaded_at_value_samples:
+- '2026-08-26 01:20:03.802558+00'
+filtering_guidance:
+- 'Grain: Crop/commodity product identity'
+- Product dimension for production, prices, food balance, trade.
+sql_generation_hints:
+- Join target for product_name labels on product_key
+semantic_role:
+  primary_domain: product
+  supports:
+  - product
+  - join_dim

@@ -9,6 +9,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from ml.rag.chatbot.mart_indicator_classes import class_for_query, facts_for_classes
+
 RecencyTier = Literal["live", "near_term", "historical_ok", "point_in_time"]
 TaskModeName = Literal[
     "clarify",
@@ -36,6 +38,7 @@ class MeasureSpec:
     recency_tier: RecencyTier = "historical_ok"
     companions: tuple[str, ...] = ()
     notes: str = ""
+    indicator_classes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -59,16 +62,16 @@ MEASURES: dict[str, MeasureSpec] = {
             "produce the most",
         ),
         corpus_domains=("Agricultural Production & Yield", "agriculture"),
-        bq_index_domains=("faostat", "production"),
+        bq_index_domains=("production", "faostat"),
         candidate_tables=(
-            "stg_faostat_production",
-            "stg_faostat_food_balances",
-            "stg_yield_raw_data",
+            "fct_production",
+            "agg_production_annual",
         ),
-        filter_hints="element='Production'; filter product_name/item; country_name; year",
+        filter_hints="production_grain='physical'; filter metric/element; country_iso3; year; never mix with fct_yield",
         crop_required=True,
         default_task_mode="fact_lookup",
         recency_tier="historical_ok",
+        indicator_classes=("PROD",),
     ),
     "yield": MeasureSpec(
         id="yield",
@@ -81,12 +84,13 @@ MEASURES: dict[str, MeasureSpec] = {
             "tons per hectare",
         ),
         corpus_domains=("Agricultural Production & Yield",),
-        bq_index_domains=("faostat", "production"),
-        candidate_tables=("stg_faostat_production", "stg_yield_raw_data"),
-        filter_hints="element='Yield' (NOT Production); product_name; country_name; year",
+        bq_index_domains=("production",),
+        candidate_tables=("fct_yield",),
+        filter_hints="fct_yield FNID-season grain; harvest_year/season_key; never fct_production for subnational yield",
         crop_required=True,
         default_task_mode="fact_lookup",
         recency_tier="historical_ok",
+        indicator_classes=("PROD",),
     ),
     "trade": MeasureSpec(
         id="trade",
@@ -101,12 +105,13 @@ MEASURES: dict[str, MeasureSpec] = {
             "import volume",
         ),
         corpus_domains=("Agricultural International Trade (Exports & Imports)",),
-        bq_index_domains=("faostat", "fews"),
-        candidate_tables=("stg_faostat_trade", "stg_fews_cross_border_trade"),
-        filter_hints="use trade tables; Import/Export quantity or value — never stg_faostat_production for export",
+        bq_index_domains=("trade", "fvc"),
+        candidate_tables=("fct_trade",),
+        filter_hints="filter trade_grain; Import/Export — use fct_trade not fct_production",
         crop_required=True,
         default_task_mode="fact_lookup",
         recency_tier="historical_ok",
+        indicator_classes=("FVC",),
     ),
     "market_price": MeasureSpec(
         id="market_price",
@@ -125,16 +130,16 @@ MEASURES: dict[str, MeasureSpec] = {
             "Agricultural Food Systems & Value Chain",
             "Agricultural Market Access & Infrastructure",
         ),
-        bq_index_domains=("fews", "market_prices", "faostat"),
+        bq_index_domains=("prices", "fvc"),
         candidate_tables=(
-            "stg_fews_market_prices",
-            "stg_wfp_vampire_prices",
-            "stg_faostat_prices",
+            "fct_prices",
+            "agg_prices_country_month",
         ),
-        filter_hints="retail→stg_fews_market_prices price_type=Retail; producer→stg_faostat_prices",
+        filter_hints="filter price_source (fews/wfp/faostat) and price_type; country_iso3; month 1-12",
         crop_required=True,
         default_task_mode="fact_lookup",
         recency_tier="near_term",
+        indicator_classes=("PRC", "FVC"),
     ),
     "food_security_ipc": MeasureSpec(
         id="food_security_ipc",
@@ -151,18 +156,18 @@ MEASURES: dict[str, MeasureSpec] = {
             "Agricultural Nutrition & Food Security",
             "Agricultural Humanitarian & Agricultural Emergency",
         ),
-        bq_index_domains=("fews", "ilri", "faostat"),
+        bq_index_domains=("food_security", "fews"),
         candidate_tables=(
-            "stg_fews_food_security",
-            "stg_fews_market_prices",
-            "stg_faostat_production",
-            "stg_ilri_household_food_security",
+            "fct_food_security",
+            "agg_food_security_monthly",
+            "fct_humanitarian",
         ),
-        filter_hints="IPC / FEWS spine; companions: retail prices, staple production, ILRI; crop not required",
+        filter_hints="measure_type population vs classification — never union; IPC/FEWS spine",
         crop_required=False,
         default_task_mode="briefing",
         recency_tier="live",
         companions=("market_price", "production"),
+        indicator_classes=("FS",),
     ),
     "climate": MeasureSpec(
         id="climate",
@@ -177,15 +182,12 @@ MEASURES: dict[str, MeasureSpec] = {
         ),
         corpus_domains=("Agricultural Environmental & Climate",),
         bq_index_domains=("climate",),
-        candidate_tables=(
-            "stg_nasa_power",
-            "stg_copernicus_era5",
-            "stg_climatewatch_health",
-        ),
-        filter_hints="climate/weather tables; geography required; crop optional",
+        candidate_tables=("fct_climate",),
+        filter_hints="filter climate_grain; JOIN dim_indicator for named series; country_iso3",
         crop_required=False,
         default_task_mode="fact_lookup",
         recency_tier="near_term",
+        indicator_classes=("CLIM",),
     ),
     "soil": MeasureSpec(
         id="soil",
@@ -201,16 +203,15 @@ MEASURES: dict[str, MeasureSpec] = {
         corpus_domains=("Land Use & Soil Health",),
         bq_index_domains=("soil_and_land",),
         candidate_tables=(
-            "stg_isric_africa_soil",
-            "stg_isda_soil_enriched",
-            "stg_cifor_icraf",
-            "stg_unccd_land_degradation",
-            "stg_s4a_field_surveys",
+            "fct_soil_health",
+            "fct_land_degradation",
+            "fct_land_inputs",
         ),
-        filter_hints="ISRIC/iSDA soil; crop not required",
+        filter_hints="iSDA vs ISRIC source_key; input_grain on land_inputs",
         crop_required=False,
         default_task_mode="fact_lookup",
         recency_tier="historical_ok",
+        indicator_classes=("SOIL", "INP"),
     ),
     "socio_economic": MeasureSpec(
         id="socio_economic",
@@ -224,17 +225,18 @@ MEASURES: dict[str, MeasureSpec] = {
             "population",
         ),
         corpus_domains=("Agricultural Economics", "Agricultural Policy & Institutional"),
-        bq_index_domains=("socio_economic", "faostat"),
+        bq_index_domains=("socio_economic", "hdi"),
         candidate_tables=(
-            "stg_africa_gdp_ppp",
-            "stg_africa_hdi",
-            "stg_faostat_sdg_hdi",
-            "stg_faostat_population_employment",
+            "fct_hdi",
+            "fct_economics",
+            "fct_employment",
+            "agg_hdi_latest",
         ),
-        filter_hints="GDP/HDI/population; crop not required",
+        filter_hints="GDP/HDI/employment; JOIN dim_indicator for employment series; country_iso3 + year",
         crop_required=False,
         default_task_mode="analytical",
         recency_tier="historical_ok",
+        indicator_classes=("EL", "HDI"),
     ),
     "investment": MeasureSpec(
         id="investment",
@@ -249,12 +251,13 @@ MEASURES: dict[str, MeasureSpec] = {
             "Agricultural Investment Readiness & Enterprise",
             "Agricultural Technology & Innovation",
         ),
-        bq_index_domains=("faostat",),
-        candidate_tables=("stg_faostat_investment_asti",),
-        filter_hints="ASTI investment; crop optional",
+        bq_index_domains=("research",),
+        candidate_tables=("fct_research_expenditure", "fct_investment", "fct_researchers"),
+        filter_hints="ASTI/research expenditure; JOIN dim_indicator",
         crop_required=False,
         default_task_mode="analytical",
         recency_tier="near_term",
+        indicator_classes=("RES",),
     ),
     "investor_best_country": MeasureSpec(
         id="investor_best_country",
@@ -276,14 +279,14 @@ MEASURES: dict[str, MeasureSpec] = {
             "Agricultural International Trade (Exports & Imports)",
             "Agricultural Market Access & Infrastructure",
         ),
-        bq_index_domains=("faostat", "socio_economic", "fews"),
+        bq_index_domains=("production", "socio_economic", "trade", "prices"),
         candidate_tables=(
-            "stg_faostat_production",
-            "stg_faostat_trade",
-            "stg_africa_gdp_ppp",
-            "stg_faostat_investment_asti",
-            "stg_fews_market_prices",
-            "stg_fews_food_security",
+            "fct_production",
+            "fct_trade",
+            "fct_economics",
+            "fct_research_expenditure",
+            "fct_prices",
+            "fct_food_security",
         ),
         filter_hints=(
             "multi-signal continental country ranking; crop optional; "
@@ -303,6 +306,7 @@ MEASURES: dict[str, MeasureSpec] = {
             "food_security_ipc",
         ),
         notes="Composite investment attractiveness across African countries",
+        indicator_classes=("PROD", "EL", "FVC", "FS", "RES"),
     ),
     "land_inputs": MeasureSpec(
         id="land_inputs",
@@ -314,12 +318,13 @@ MEASURES: dict[str, MeasureSpec] = {
             "inputs",
         ),
         corpus_domains=("Land Use & Soil Health", "Agricultural Production & Yield"),
-        bq_index_domains=("faostat",),
-        candidate_tables=("stg_faostat_land_inputs",),
-        filter_hints="land/fertilizer inputs",
+        bq_index_domains=("faostat", "inputs"),
+        candidate_tables=("fct_land_inputs", "fct_fertilizer", "fct_pesticide", "fct_machinery"),
+        filter_hints="input_grain for fertilizer use vs trade; country_iso3",
         crop_required=False,
         default_task_mode="fact_lookup",
         recency_tier="historical_ok",
+        indicator_classes=("INP", "SOIL"),
     ),
     "emissions": MeasureSpec(
         id="emissions",
@@ -330,12 +335,13 @@ MEASURES: dict[str, MeasureSpec] = {
             "carbon from agriculture",
         ),
         corpus_domains=("Agricultural Environmental & Climate",),
-        bq_index_domains=("faostat",),
-        candidate_tables=("stg_faostat_emissions",),
-        filter_hints="FAOSTAT emissions",
+        bq_index_domains=("emissions",),
+        candidate_tables=("fct_emissions",),
+        filter_hints="filter element total vs intensity; source_key",
         crop_required=False,
         default_task_mode="fact_lookup",
         recency_tier="historical_ok",
+        indicator_classes=("ENV",),
     ),
     "livestock": MeasureSpec(
         id="livestock",
@@ -353,21 +359,18 @@ MEASURES: dict[str, MeasureSpec] = {
             "Agricultural Nutrition & Food Security",
             "Agricultural Food Systems & Value Chain",
         ),
-        bq_index_domains=("ilri", "production"),
+        bq_index_domains=("livestock",),
         candidate_tables=(
-            "stg_ilri_animal_health",
-            "stg_ilri_dairy_genetics",
-            "stg_ilri_vegetation_feed",
-            "stg_ilri_i4i_livestock_insurance",
-            "stg_ilri_household_food_security",
-            "stg_ilri_food_hazards",
-            "stg_ilri_vendor_consumer",
-            "stg_ilri_other_surveys",
+            "fct_animal_health",
+            "fct_food_hazards",
+            "fct_insurance",
+            "fct_household",
         ),
-        filter_hints="ILRI livestock suite; crop not required",
+        filter_hints="ILRI/animal health mart facts; farm CDS vs study prevalence",
         crop_required=False,
         default_task_mode="research",
         recency_tier="historical_ok",
+        indicator_classes=("AH",),
     ),
     "spatial_vegetation": MeasureSpec(
         id="spatial_vegetation",
@@ -384,17 +387,18 @@ MEASURES: dict[str, MeasureSpec] = {
             "Land Use & Soil Health",
             "Agricultural Environmental & Climate",
         ),
-        bq_index_domains=("spatial",),
+        bq_index_domains=("spatial", "vegetation"),
         candidate_tables=(
-            "stg_vegetation_ndvi",
-            "stg_germplasm",
-            "stg_biodiversity",
-            "stg_protected_areas",
+            "fct_vegetation",
+            "fct_germplasm",
+            "fct_biodiversity",
+            "fct_protected_areas",
         ),
-        filter_hints="spatial/NDVI/biodiversity",
+        filter_hints="vegetation_grain ndvi_grid vs ilri_site; occurrence vs index",
         crop_required=False,
         default_task_mode="analytical",
         recency_tier="near_term",
+        indicator_classes=("VEG", "BIO"),
     ),
     "research_meta": MeasureSpec(
         id="research_meta",
@@ -411,17 +415,17 @@ MEASURES: dict[str, MeasureSpec] = {
         ),
         bq_index_domains=("research",),
         candidate_tables=(
-            "stg_openaire_projects",
-            "stg_openaire_organisations",
-            "stg_openaire_persons",
-            "stg_openaire_product_links",
-            "stg_openaire_data_sources",
+            "dim_research_project",
+            "dim_organisation",
+            "dim_person",
+            "fct_investment",
         ),
-        filter_hints="OpenAIRE bibliographic/project facts; prefer PDF corpus for synthesis",
+        filter_hints="Research dims + ASTI facts; prefer PDF corpus for synthesis",
         crop_required=False,
         geography_required=False,
         default_task_mode="research",
         recency_tier="near_term",
+        indicator_classes=("RES",),
     ),
     "news_briefing": MeasureSpec(
         id="news_briefing",
@@ -473,8 +477,8 @@ MEASURES: dict[str, MeasureSpec] = {
             "every african country",
         ),
         corpus_domains=("Agricultural Production & Yield",),
-        bq_index_domains=("faostat",),
-        candidate_tables=("stg_faostat_production",),
+        bq_index_domains=("production",),
+        candidate_tables=("fct_production", "agg_production_annual"),
         filter_hints="full African country panel export; inherits child measure tables when resolved",
         crop_required=False,
         geography_required=False,
@@ -757,11 +761,18 @@ def reasoner_scope(hit: MeasureHit) -> dict[str, Any]:
     domains = list(spec.bq_index_domains)
     if child:
         domains = list(dict.fromkeys([*child.bq_index_domains, *domains]))
+    iclasses = list(spec.indicator_classes)
+    if child and child.indicator_classes:
+        iclasses = list(dict.fromkeys([*child.indicator_classes, *iclasses]))
+    class_tables = facts_for_classes(iclasses) if iclasses else []
+    if class_tables:
+        tables = list(dict.fromkeys([*tables, *[t for t in class_tables if t.startswith("fct_") or t.startswith("agg_")]]))[:8]
     return {
         "measure_id": spec.id,
         "child_measure_id": hit.child_measure_id,
         "candidate_tables": tables,
         "index_domains": domains,
+        "indicator_classes": iclasses,
         "filter_hints": effective_filter_hints(hit),
         "crop_required": effective_crop_required(hit),
         "geography_required": spec.geography_required,
@@ -782,7 +793,7 @@ def fallback_plan(
     task_mode: str = "fact_lookup",
 ) -> dict[str, Any] | None:
     """Last-resort forced plan from MeasureSpec after reasoner retries fail."""
-    from ml.rag.chatbot.bq_table_schema_yaml import pack_selected_table_hints
+    from ml.rag.chatbot.bq_table_schema_yaml import pack_mart_table_hints
 
     tables = [t for t in effective_tables(hit) if t in known_tables]
     if not tables and hit.measure.candidate_tables:
@@ -804,9 +815,9 @@ def fallback_plan(
     africa_panel = bool(decomposition.get("africa_panel")) or wants_africa_panel(query)
     africa_default = bool(decomposition.get("africa_default"))
     if africa_panel or (hit.measure.country_is_answer and not countries):
-        geo_filter = "Africa continental panel GROUP BY country_name (~54 countries)"
+        geo_filter = "Africa continental panel GROUP BY country_iso3 (~54 countries)"
     elif countries:
-        geo_filter = f"country_name in ({', '.join(countries[:16])})"
+        geo_filter = f"country_iso3 in ({', '.join(countries[:16])})"
     else:
         geo_filter = "geography from question"
 
@@ -831,9 +842,9 @@ def fallback_plan(
                 else "custom"
             ),
             "metric": "value",
-            "grain": ["country_name"]
+            "grain": ["country_iso3"]
             if (africa_default or africa_panel or hit.measure.country_is_answer or len(countries) != 1)
-            else ["country_name", "year"],
+            else ["country_iso3", "year"],
             "order_by": "value DESC",
         }
     ]
@@ -848,9 +859,9 @@ def fallback_plan(
                     "tables": [tid],
                     "filters": f"{geo_filter}; recent years; {hints}",
                     "notes": f"ontology_fallback_investor_{tid}",
-                    "pattern": "rank_by_sum" if "faostat_production" in tid or "trade" in tid else "custom",
+                    "pattern": "rank_by_sum" if "fct_production" in tid or "fct_trade" in tid else "custom",
                     "metric": "value",
-                    "grain": ["country_name"],
+                    "grain": ["country_iso3"],
                     "order_by": "value DESC",
                 }
             )
@@ -858,10 +869,10 @@ def fallback_plan(
     # FEWS / IPC food security — spine + cross-domain companions (not production-only pad).
     if hit.measure.id == "food_security_ipc":
         ordered = [
-            "stg_fews_food_security",
-            "stg_fews_market_prices",
-            "stg_faostat_production",
-            "stg_ilri_household_food_security",
+            "fct_food_security",
+            "fct_prices",
+            "fct_production",
+            "fct_household",
         ]
         ordered_present = [t for t in ordered if t in tables] or tables[:6]
         intents = []
@@ -872,24 +883,29 @@ def fallback_plan(
                     "tables": [tid],
                     "filters": (
                         f"{hints}; {geo_filter}; year≈{year_hint}"
-                        + ("; price_type='Retail'" if "market_prices" in tid else "")
+                        + ("; price_source='fews'" if tid == "fct_prices" else "")
                         + (
-                            "; element='Production'"
-                            if "faostat_production" in tid
+                            "; production_grain='physical'"
+                            if tid == "fct_production"
+                            else ""
+                        )
+                        + (
+                            "; measure_type='population'"
+                            if tid == "fct_food_security"
                             else ""
                         )
                     ),
                     "notes": f"ontology_fallback_food_security_{tid}",
                     "pattern": (
                         "rank_by_sum"
-                        if "faostat_production" in tid
+                        if tid == "fct_production"
                         and (africa_default or africa_panel or len(countries) != 1)
                         else "custom"
                     ),
                     "metric": "value",
-                    "grain": ["country_name"]
+                    "grain": ["country_iso3"]
                     if (africa_default or africa_panel or len(countries) != 1)
-                    else ["country_name", "year"],
+                    else ["country_iso3", "year"],
                     "order_by": "value DESC",
                 }
             )
@@ -904,7 +920,7 @@ def fallback_plan(
                 "notes": "ontology_fallback_export",
                 "pattern": "custom",
                 "metric": "value",
-                "grain": ["country_name", "year"],
+                "grain": ["country_iso3", "year"],
                 "order_by": "year ASC",
             }
         )
@@ -921,7 +937,7 @@ def fallback_plan(
         "max_sql_queries": max(3, len(intents)),
     }
     terms = [query[:80], item_hint, *countries[:5], hit.measure.id]
-    packed, hints_truncated = pack_selected_table_hints(selected, query_terms=terms)
+    packed, hints_truncated = pack_mart_table_hints(selected, query_terms=terms)
     plan["table_hints"] = packed
     plan["index_truncated"] = False
     plan["hints_truncated"] = hints_truncated

@@ -674,22 +674,29 @@ def test_build_prompt_structured_bq_unavailable_guard() -> None:
     assert "never mention bigquery" in sys_msg.lower()
 
 
-def test_build_prompt_analytical_brief_mode_headings() -> None:
+def test_build_prompt_analytical_uses_dynamic_outline_not_fixed_headings() -> None:
+    from ml.rag.chatbot.generation_plan import build_generation_plan
+    from ml.rag.tests.chatbot.fixtures.generation_plan_matrix import mixed_bq_news_context
+
+    plan = build_generation_plan(
+        "West Africa maize and rice report 2022",
+        task_mode="analytical",
+        category="Government",
+        reranked_context=mixed_bq_news_context(),
+        measure_id="production",
+    )
     messages = _build_prompt(
         "West Africa maize and rice report 2022",
         context_block="[News] policy chunk",
         analytical_mode=True,
+        generation_plan=plan.to_dict(),
     )
     sys_msg = messages[0]["content"]
-    assert "ANALYTICAL BRIEF MODE" in sys_msg
-    assert "ANALYTICAL BRIEFING MODE" not in sys_msg
-    assert "ANALYTICAL REPORT MODE" not in sys_msg
-    assert "## Key Findings" in sys_msg
-    assert "## Regional & Country Picture" in sys_msg
-    assert "## Production, Trade & Markets" in sys_msg
-    assert "## Drivers & Context" in sys_msg
-    assert "## Data Notes" in sys_msg
-    assert "## Data gaps" not in sys_msg
+    assert "ANALYTICAL VOICE RULES" in sys_msg
+    assert "ANALYTICAL BRIEF MODE" not in sys_msg
+    assert "REPORT OUTLINE" in sys_msg
+    assert "## Regional & Country Picture" not in sys_msg
+    assert "## Production, Trade & Markets" not in sys_msg
     assert "2–4 short paragraphs" not in sys_msg
     assert "brief limits or gaps" not in sys_msg
 

@@ -6,6 +6,9 @@ from unittest.mock import MagicMock, patch
 from ml.rag.chatbot.bq_sql_validate import (
     bare_table_ids_from_hints,
     dry_run_sql,
+    inject_missing_metric_filters,
+    inject_time_bounds,
+    referenced_mart_tables,
     referenced_stg_tables,
     referenced_tables,
     validate_sql_table_allowlist,
@@ -70,6 +73,63 @@ def test_bare_table_ids_from_hints() -> None:
     ids = bare_table_ids_from_hints(hints)
     assert "stg_faostat_production" in ids
     assert "stg_yield_raw_data" in ids
+
+
+def test_bare_table_ids_from_hints_mart() -> None:
+    hints = [
+        "Table: opentrace-prod-5ga4.mart_dev.fct_prices\nColumns:\n- country_iso3",
+        "Table: mart_dev.fct_production",
+    ]
+    ids = bare_table_ids_from_hints(hints)
+    assert "fct_prices" in ids
+    assert "fct_production" in ids
+
+
+def test_referenced_mart_tables() -> None:
+    sql = (
+        "SELECT country_iso3, SUM(value) AS total FROM `proj.mart_dev.fct_production` "
+        "WHERE year = 2022 GROUP BY country_iso3 LIMIT 10"
+    )
+    refs = referenced_mart_tables(sql)
+    assert refs == {"fct_production"}
+
+
+def test_inject_missing_metric_filters_mart_production_grain() -> None:
+    sql = (
+        "SELECT country_iso3, SUM(value) AS total FROM `proj.mart_dev.fct_production` "
+        "WHERE year = 2022 GROUP BY country_iso3 LIMIT 10"
+    )
+    patched, notes = inject_missing_metric_filters(sql, {"fct_production"})
+    assert "production_grain" in patched.lower()
+    assert notes
+
+
+def test_inject_time_bounds_mart_as_of_date() -> None:
+    sql = (
+        "SELECT country_iso3, AVG(value) AS avg_hdi FROM `proj.mart_dev.fct_hdi` "
+        "WHERE country_iso3 = 'KEN' GROUP BY country_iso3 LIMIT 10"
+    )
+    patched, notes = inject_time_bounds(
+        sql,
+        {"time_start": "2020-01-01", "time_end": "2024-12-31"},
+        {"fct_hdi"},
+    )
+    assert "as_of_date BETWEEN '2020-01-01' AND '2024-12-31'" in patched
+    assert notes
+
+
+def test_inject_time_bounds_skips_when_year_present() -> None:
+    sql = (
+        "SELECT country_iso3, value FROM `proj.mart_dev.fct_hdi` "
+        "WHERE year BETWEEN 2020 AND 2024 LIMIT 10"
+    )
+    patched, notes = inject_time_bounds(
+        sql,
+        {"time_start": "2020-01-01", "time_end": "2024-12-31"},
+        {"fct_hdi"},
+    )
+    assert patched == sql
+    assert not notes
 
 
 def test_dry_run_sql_success() -> None:

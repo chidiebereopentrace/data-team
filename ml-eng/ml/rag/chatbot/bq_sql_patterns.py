@@ -9,6 +9,7 @@ from ml.rag.chatbot.bq_sql_templates import _year_from_context
 from ml.rag.chatbot.bq_table_schema_yaml import (
     discriminator_equality_filters,
     geo_column,
+    load_mart_table_schema,
     match_product_samples,
     measure_sql_aggregation,
     product_column,
@@ -144,6 +145,40 @@ def _year_col(table_id: str) -> str:
     return year_column(table_id) or "year"
 
 
+def _partition_date_col(table_id: str) -> str | None:
+    schema = load_mart_table_schema(table_id)
+    if not schema:
+        return None
+    for col in schema.get("columns") or []:
+        name = str(col.get("name") or "").strip()
+        if name.lower() == "as_of_date":
+            return name
+    return None
+
+
+def _time_window_clause(
+    table_id: str,
+    *,
+    year: int | None,
+    time_start: str | None = None,
+    time_end: str | None = None,
+    point_year: bool = False,
+) -> str:
+    ts = (time_start or "")[:10]
+    te = (time_end or "")[:10]
+    pcol = _partition_date_col(table_id)
+    if pcol and ts and te:
+        return f"AND {pcol} BETWEEN DATE '{ts}' AND DATE '{te}' "
+    ycol = _year_col(table_id)
+    if ts and te and ts[:4].isdigit() and te[:4].isdigit():
+        return f"AND {ycol} BETWEEN {int(ts[:4])} AND {int(te[:4])} "
+    if point_year and year is not None:
+        return f"AND {ycol} = {int(year)} "
+    if year is not None:
+        return f"AND {ycol} >= {int(year) - 10} AND {ycol} <= {int(year)} "
+    return ""
+
+
 def build_rank_by_sum_sql(
     *,
     project_id: str,
@@ -160,6 +195,8 @@ def build_rank_by_sum_sql(
     blob: str = "",
     geo_clause: str = "",
     aggregation: str = "sum",
+    time_start: str | None = None,
+    time_end: str | None = None,
 ) -> str:
     lim = max(1, min(int(limit or 20), 100))
     metric_col = _safe_ident(metric, default="value")
@@ -168,13 +205,22 @@ def build_rank_by_sum_sql(
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s+(ASC|DESC)$", order, re.IGNORECASE):
         order = "total DESC"
     ycol = _year_col(table_id)
+    time_clause = _time_window_clause(
+        table_id,
+        year=year,
+        time_start=time_start,
+        time_end=time_end,
+        point_year=True,
+    )
+    year_clause = "WHERE 1=1 " if time_clause.strip() else f"WHERE {ycol} = {int(year)} "
     select_cols = ", ".join(group_cols)
     disc_blob = blob or (element or "")
     product_list = products or ([product_name] if product_name else None)
     return (
         f"SELECT {select_cols}, {_agg_expr(aggregation, metric_col)} AS total "
         f"FROM {_fqn(project_id, dataset, table_id)} "
-        f"WHERE {ycol} = {int(year)} "
+        f"{year_clause}"
+        f"{time_clause}"
         f"{geo_clause}"
         f"{_discriminator_clause(table_id, disc_blob)}"
         f"{_product_clause(table_id, product_list)}"
@@ -199,6 +245,8 @@ def build_time_series_sql(
     geo_clause: str = "",
     aggregation: str = "sum",
     grain: list[str] | None = None,
+    time_start: str | None = None,
+    time_end: str | None = None,
 ) -> str:
     ycol = _year_col(table_id)
     extra = _safe_idents(
@@ -207,7 +255,12 @@ def build_time_series_sql(
     )
     lim = max(1, min(int(limit or 50), 200 if extra else 100))
     metric_col = _safe_ident(metric, default="value")
-    year_filter = f"AND {ycol} >= {int(year) - 10} AND {ycol} <= {int(year)} " if year else ""
+    year_filter = _time_window_clause(
+        table_id,
+        year=year,
+        time_start=time_start,
+        time_end=time_end,
+    )
     disc_blob = blob or (element or "")
     product_list = products or ([product_name] if product_name else None)
     if extra:
@@ -390,6 +443,8 @@ def try_sql_pattern(
             grain=grain,
             order_by=order_by,
             limit=limit,
+            time_start=time_start,
+            time_end=time_end,
         )
     elif pattern == "time_series":
         sql = build_time_series_sql(
@@ -397,6 +452,8 @@ def try_sql_pattern(
             year=year,
             grain=grain,
             limit=max(limit, 50),
+            time_start=time_start,
+            time_end=time_end,
         )
     elif pattern == "yoy_delta":
         assert year is not None

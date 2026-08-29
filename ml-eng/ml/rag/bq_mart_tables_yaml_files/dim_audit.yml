@@ -1,0 +1,59 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_audit
+description: dim audit
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: audit_key
+  type: STRING
+  description: audit key
+- name: ingestion_timestamp
+  type: TIMESTAMP
+  description: ingestion timestamp
+- name: source_system
+  type: STRING
+  description: source system
+- name: source_file_name
+  type: STRING
+  description: source file name
+- name: batch_id
+  type: STRING
+  description: batch id
+- name: pipeline_run_id
+  type: STRING
+  description: pipeline run id
+- name: processed_at
+  type: TIMESTAMP
+  description: processed at
+- name: record_hash
+  type: STRING
+  description: record hash
+- name: is_deleted
+  type: BOOL
+  description: is deleted
+audit_key_value_samples:
+- 382916a2abfbed1a10e93bcabbb4ecc9
+ingestion_timestamp_value_samples:
+- '2026-08-07 08:54:28.189062+00'
+source_system_value_samples:
+- open_trace_dbt
+source_file_name_value_stats:
+  distinct_count: 0
+  null_count: 1
+  is_truncated: false
+batch_id_value_stats:
+  distinct_count: 0
+  null_count: 1
+  is_truncated: false
+pipeline_run_id_value_stats:
+  distinct_count: 0
+  null_count: 1
+  is_truncated: false
+processed_at_value_samples:
+- '2026-08-07 08:54:28.189062+00'
+record_hash_value_stats:
+  distinct_count: 0
+  null_count: 1
+  is_truncated: false
+is_deleted_value_samples:
+- 'false'

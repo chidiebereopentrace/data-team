@@ -1,0 +1,89 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_livestock
+description: Livestock species for animal health.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Species
+entity_type: animal_health
+columns:
+- name: livestock_key
+  type: STRING
+  description: livestock key
+- name: species
+  type: STRING
+  description: species
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+livestock_key_value_samples:
+- c7ff585b95c5499be61b06a0b31cef48
+- 96625a2fad5267b20df56bc74bde5e97
+- 31371f199688ae40ba84c37a303411be
+- c81e728d9d4c2f636f067f89cc14862c
+- 0e7ca3358e8cb5e835db2ff49904a173
+- 3adb3890a5f84c0cd138bede490adddd
+- 624e32aec1b7ffa01608cd28eeb1c5e1
+- 7923ec5c33d6ff0b5a1cf55179d9c031
+- bd5f4b0419caa97dd2f9b4d3238ff92f
+- fe480203b9d3f5f3088cb17ba2152029
+- c4ca4238a0b923820dcc509a6f75849b
+- 7413caa19ad8630b591cbe40b428ef04
+- 93d2cbab367a2d7250068360d39cdf94
+- 5ba48b6e5a7c4d4930fda256f411e55b
+- c5401e70c8d2b58bb4e6cf4a879a946b
+- 3f24b130f30dfc8700d9ad0cb6e1f8d5
+- 6efbf37bd6d979f3de4bd3079bc41082
+- f74c6af46a78becb2f1bd3f95bbd5858
+- 7f73a0cd5f4436a4d4bd185b1e773bee
+- 3c5f3d5f09855ba95e1937d8d8c001e4
+- 423f73bd6939f6cbfc8f341642c970e8
+- c91c741873ed32f60906917ad6278821
+- 7873020de08b7121a7bcb585bb67f454
+- 740d2e54b58629dd68a9b2b9f62237f7
+- 79acb423bddb496e98057979cae1a24e
+- 449114edee6a97086a14991a22a596f5
+- a2d9b33304a1222854cafaf96187e00d
+- 4019e019ceaa17d6606465e79d4dee2d
+- 9717b4fdb5b0910622a3918ee3a895b0
+species_value_samples:
+- 1 2 5 6
+- 1 3 6
+- 1 2
+- '2'
+- 1 2 3 5 6
+- 1 3 5
+- 1 5 6
+- 1 2 3 5
+- cattle
+- 1 6
+- '1'
+- 2 3 6
+- 1 2 5
+- 1 2 3
+- 1 3 5 6
+- 1 2 3 5 6 7
+- 1 2 3 6
+- pig
+- 2 3 5 6
+- 1 2 3 5 7
+- 1 2 3 6 7
+- 1 3
+- 1 2 6
+- 2 3 5
+- 1 2 3 7
+- 1 2 4 5 6 7
+- 2 3
+- 2 3 7
+- 2 5 6
+loaded_at_value_samples:
+- '2026-08-24 14:23:00.239004+00'
+filtering_guidance:
+- 'Grain: Species'
+- Livestock species for animal health.
+sql_generation_hints:
+- 'Join keys: livestock_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: animal_health
+  supports:
+  - animal_health

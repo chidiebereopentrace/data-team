@@ -14,6 +14,11 @@ from ml.rag.chatbot.generator import (
     is_usable_context_item,
 )
 from ml.rag.chatbot.retrieval_contract import RetrievalContract
+from ml.rag.chatbot.stakeholder_prompts import (
+    CategorySource,
+    format_outline_for_persona,
+    resolve_effective_category,
+)
 
 AnswerShape = Literal[
     "numeric_fact",
@@ -63,6 +68,10 @@ _MEASURE_EVIDENCE_PRIORITY: dict[str, tuple[str, ...]] = {
 }
 
 
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 @dataclass(frozen=True)
 class GenerationPlanOntology:
     measure_id: str = ""
@@ -75,6 +84,16 @@ class GenerationPlanOntology:
 
 
 @dataclass(frozen=True)
+class ReportSection:
+    title: str
+    guidance: str
+    optional: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"title": self.title, "guidance": self.guidance, "optional": self.optional}
+
+
+@dataclass(frozen=True)
 class GenerationPlan:
     answer_shape: AnswerShape
     evidence_priority: tuple[str, ...]
@@ -84,10 +103,15 @@ class GenerationPlan:
     synthesis_notes: tuple[str, ...]
     deprioritize_kinds: tuple[str, ...]
     rationale: str
+    report_sections: tuple[ReportSection, ...] = field(default_factory=tuple)
+    effective_category: str = ""
+    category_source: CategorySource = "none"
+    use_bullet_layout: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         raw = asdict(self)
         raw["ontology"] = asdict(self.ontology)
+        raw["report_sections"] = [s.to_dict() for s in self.report_sections]
         return raw
 
 
@@ -326,6 +350,287 @@ def _deprioritize_kinds(priority: tuple[str, ...], counts: dict[str, int]) -> tu
     return tuple(k for k, n in counts.items() if n > 0 and k not in top)
 
 
+_COMPANION_SECTION_TITLES: dict[str, str] = {
+    "production": "Production and trade",
+    "market_price": "Markets and prices",
+    "trade": "Trade flows",
+    "food_security_ipc": "Food security pressure",
+    "socio_economic": "Economics and development",
+    "investment": "Investment and research",
+    "climate": "Climate context",
+}
+
+
+def _section(title: str, guidance: str, *, optional: bool = False) -> ReportSection:
+    return ReportSection(title=title, guidance=guidance, optional=optional)
+
+
+def build_analytical_report_outline(
+    *,
+    query: str,
+    task_mode: str,
+    answer_shape: AnswerShape,
+    ontology: GenerationPlanOntology,
+    has_bq: bool,
+    decomposition: dict[str, Any] | None,
+    category: str | None = None,
+) -> tuple[tuple[ReportSection, ...], bool]:
+    """Build dynamic report sections from retrieval fingerprint and question shape."""
+    mode = (task_mode or "chat").strip().lower()
+    if answer_shape == "gap_ack":
+        return (), False
+    if mode != "analytical" and answer_shape not in ("comparison", "trend", "ranking"):
+        return (), False
+
+    sections: list[ReportSection] = []
+    mid = ontology.measure_id
+    multi_geo = len(ontology.geography) != 1
+    companions = list(ontology.companion_measure_ids or [])
+
+    if answer_shape == "ranking":
+        sections.append(
+            _section(
+                "Lead findings",
+                "Open with the top-ranked entity and value from structured Context when present.",
+            )
+        )
+        sections.append(
+            _section(
+                "Ranked detail",
+                "List ranked countries or entities with values, units, and years from Context.",
+            )
+        )
+        if has_bq:
+            sections.append(
+                _section(
+                    "Trend note",
+                    "Note direction or bracketing-year trend when Context includes it.",
+                    optional=True,
+                )
+            )
+    elif answer_shape == "trend":
+        sections.append(
+            _section(
+                "Trend summary",
+                "State direction, magnitude, and period using structured or narrative Context.",
+            )
+        )
+        sections.append(
+            _section(
+                "Historical context",
+                "Place the trend in recent years or seasons supported by Context.",
+                optional=not has_bq,
+            )
+        )
+        sections.append(
+            _section(
+                "Drivers",
+                "Explain drivers only where Context supports them; do not invent causation.",
+                optional=True,
+            )
+        )
+        sections.append(
+            _section(
+                "Monitoring",
+                "What to watch next based on available evidence.",
+                optional=True,
+            )
+        )
+    elif answer_shape == "comparison" or multi_geo:
+        sections.append(
+            _section(
+                "Executive summary",
+                "One-paragraph planning or decision takeaway with the strongest contrast from Context.",
+            )
+        )
+        sections.append(
+            _section(
+                "Geographic comparison",
+                "Compare countries or regions with structured figures when BQ rows are present.",
+            )
+        )
+    else:
+        sections.append(
+            _section(
+                "Key findings",
+                "Lead with the strongest decision-relevant conclusions supported by Context.",
+            )
+        )
+        sections.append(
+            _section(
+                "Regional picture",
+                "Synthesise geographic patterns when Context provides regional material.",
+                optional=not multi_geo,
+            )
+        )
+
+    if mid == "investor_best_country":
+        sections = [
+            _section(
+                "Investment signal",
+                "Lead with relative country strength on available multi-signal evidence.",
+            ),
+            _section(
+                "Production and trade",
+                "Summarise production and trade signals from Context.",
+                optional=not has_bq,
+            ),
+            _section(
+                "Economics and prices",
+                "Cover GDP, prices, or macro signals when present in Context.",
+                optional=True,
+            ),
+            _section(
+                "Food security risk",
+                "Note IPC or food-security downside when Context includes it.",
+                optional=True,
+            ),
+        ]
+    elif mid == "food_security_ipc":
+        sections = [
+            _section(
+                "Situation",
+                "Summarise the food-security picture from IPC/FEWS or narrative Context.",
+            ),
+            _section(
+                "Affected populations",
+                "Who and where is most affected using geography and population figures in Context.",
+            ),
+            _section(
+                "Market and production context",
+                "Cross-domain companions: prices and staple production when Context includes them.",
+                optional=True,
+            ),
+            _section(
+                "Program implications",
+                "Operational targeting or monitoring cues for program staff.",
+                optional=True,
+            ),
+        ]
+    else:
+        seen_titles = {s.title.lower() for s in sections}
+        for cid in companions[:4]:
+            title = _COMPANION_SECTION_TITLES.get(cid, cid.replace("_", " ").title())
+            if title.lower() in seen_titles:
+                continue
+            seen_titles.add(title.lower())
+            sections.append(
+                _section(
+                    title,
+                    f"Cover {cid.replace('_', ' ')} evidence from Context when present.",
+                    optional=True,
+                )
+            )
+
+    sections.append(
+        _section(
+            "Data notes",
+            "Short neutral bullets on coverage limits only — never lead with gaps.",
+            optional=False,
+        )
+    )
+
+    sections = sections[:10]
+    raw = [s.to_dict() for s in sections]
+    formatted, use_bullets = format_outline_for_persona(category, raw)
+    out = tuple(
+        ReportSection(
+            title=str(s.get("title") or ""),
+            guidance=str(s.get("guidance") or ""),
+            optional=bool(s.get("optional")),
+        )
+        for s in formatted
+    )
+    return out, use_bullets
+
+
+ANALYTICAL_VOICE_RULES = (
+    "ANALYTICAL VOICE RULES:\n"
+    "Write as an external intelligence analyst, not as a system explaining limitations.\n"
+    "- Lead with the strongest available findings. Never open with gaps or caveats.\n"
+    "- Put coverage limits only in the final data-notes section (or a brief closing line for bullets).\n"
+    "- Never write that structured data is unavailable, that OpenTrace lacks data, or that this is a data gap.\n"
+    "- In data notes use neutral wording such as: "
+    "'Coverage for [year/region/commodity] remains limited in available sources.'\n"
+    "- Do not invent production totals, rankings, yields, or year values not in Context.\n"
+    "- Tone: clear, decisive, concise. No academic padding or restating the question."
+)
+
+
+def format_template_for_shape(shape: str, *, use_bullets: bool = False) -> str:
+    """Compact format contract for non-analytical chat modes."""
+    if use_bullets:
+        return (
+            "FORMAT: Use 3–6 plain bullet points — what is happening, what it means, "
+            "and one next step when evidence supports it. No ## headings."
+        )
+    templates: dict[str, str] = {
+        "numeric_fact": (
+            "FORMAT: One lead sentence with value, unit, geography, and year; "
+            "optional one-sentence context. No headings."
+        ),
+        "ranking": (
+            "FORMAT: Lead sentence naming #1; then numbered list "
+            "'1. Country — value unit (year)'."
+        ),
+        "comparison": (
+            "FORMAT: Use ## Comparison with structured figures or a small table when Context supports it."
+        ),
+        "trend": (
+            "FORMAT: Use ## Trend for direction and magnitude when in Context; "
+            "## Context for drivers from narrative sources."
+        ),
+    }
+    return templates.get(shape, "")
+
+
+def analytical_outline_addendum(
+    plan: GenerationPlan | dict[str, Any] | None,
+) -> str:
+    """Render dynamic report outline for analytical generation."""
+    if plan is None:
+        return ""
+    sections: list[ReportSection] = []
+    use_bullets = False
+    if isinstance(plan, dict):
+        use_bullets = bool(plan.get("use_bullet_layout"))
+        for raw in plan.get("report_sections") or []:
+            if isinstance(raw, dict):
+                sections.append(
+                    ReportSection(
+                        title=str(raw.get("title") or ""),
+                        guidance=str(raw.get("guidance") or ""),
+                        optional=bool(raw.get("optional")),
+                    )
+                )
+    else:
+        sections = list(plan.report_sections)
+        use_bullets = plan.use_bullet_layout
+
+    if not sections:
+        return ""
+
+    if use_bullets:
+        lines = [
+            "REPORT OUTLINE (bullet layout — cover these topics in order; "
+            "skip optional topics with no supporting Context):",
+        ]
+        for sec in sections:
+            opt = " (optional)" if sec.optional else ""
+            lines.append(f"- {sec.title}{opt}: {sec.guidance}")
+        return "\n".join(lines)
+
+    lines = [
+        "REPORT OUTLINE (use these ## headings in order; "
+        "skip optional sections with no supporting Context):",
+    ]
+    for sec in sections:
+        opt = " [optional]" if sec.optional else ""
+        lines.append(f"## {sec.title}{opt}")
+        lines.append(f"- {sec.guidance}")
+    return "\n".join(lines)
+
+
 def build_generation_plan(
     query: str,
     *,
@@ -339,7 +644,12 @@ def build_generation_plan(
     measure_id: str | None = None,
 ) -> GenerationPlan:
     """Deterministic post-retrieval strategy for generation."""
-    _ = plan_type, category  # tone handled elsewhere; reserved for future rules
+    effective_category, category_source = resolve_effective_category(
+        category=category,
+        plan_type=plan_type,
+        query=query,
+        decomposition=decomposition,
+    )
     usable = filter_context_items(list(reranked_context or []))
     counts = _context_kind_counts(usable)
     has_bq = _has_usable_bq(usable)
@@ -393,6 +703,16 @@ def build_generation_plan(
     notes = _synthesis_notes(shape, has_bq=has_bq, ontology=ontology, priority=priority)
     deprior = _deprioritize_kinds(priority, counts)
 
+    report_sections, use_bullets = build_analytical_report_outline(
+        query=query,
+        task_mode=task_mode,
+        answer_shape=shape,
+        ontology=ontology,
+        has_bq=has_bq,
+        decomposition=decomposition,
+        category=effective_category,
+    )
+
     return GenerationPlan(
         answer_shape=shape,
         evidence_priority=priority,
@@ -402,6 +722,10 @@ def build_generation_plan(
         synthesis_notes=notes,
         deprioritize_kinds=deprior,
         rationale=rationale,
+        report_sections=report_sections,
+        effective_category=effective_category or "",
+        category_source=category_source,
+        use_bullet_layout=use_bullets,
     )
 
 
@@ -411,7 +735,7 @@ def generation_plan_addendum(plan: GenerationPlan | dict[str, Any] | None) -> st
         return ""
     if isinstance(plan, dict):
         try:
-            ont_raw = plan.get("ontology") if isinstance(plan.get("ontology"), dict) else {}
+            ont_raw = _dict_or_empty(plan.get("ontology"))
             plan_obj = GenerationPlan(
                 answer_shape=str(plan.get("answer_shape") or "policy_narrative"),  # type: ignore[arg-type]
                 evidence_priority=tuple(plan.get("evidence_priority") or ()),
@@ -429,6 +753,18 @@ def generation_plan_addendum(plan: GenerationPlan | dict[str, Any] | None) -> st
                 synthesis_notes=tuple(plan.get("synthesis_notes") or ()),
                 deprioritize_kinds=tuple(plan.get("deprioritize_kinds") or ()),
                 rationale=str(plan.get("rationale") or ""),
+                report_sections=tuple(
+                    ReportSection(
+                        title=str(s.get("title") or ""),
+                        guidance=str(s.get("guidance") or ""),
+                        optional=bool(s.get("optional")),
+                    )
+                    for s in (plan.get("report_sections") or [])
+                    if isinstance(s, dict)
+                ),
+                effective_category=str(plan.get("effective_category") or ""),
+                category_source=str(plan.get("category_source") or "none"),  # type: ignore[arg-type]
+                use_bullet_layout=bool(plan.get("use_bullet_layout")),
             )
         except (TypeError, ValueError):
             return ""

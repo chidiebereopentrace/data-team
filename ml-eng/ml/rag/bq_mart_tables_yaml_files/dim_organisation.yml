@@ -1,0 +1,544 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_organisation
+description: Research and ASTI organisations.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Organisation identity (OpenAIRE/ASTI)
+entity_type: research
+columns:
+- name: organisation_key
+  type: STRING
+  description: organisation key
+- name: organisation_id
+  type: STRING
+  description: organisation id
+- name: legal_name
+  type: STRING
+  description: legal name
+- name: short_name
+  type: STRING
+  description: short name
+- name: website_url
+  type: STRING
+  description: website url
+- name: country_code
+  type: STRING
+  description: country code
+- name: country_name
+  type: STRING
+  description: country name
+- name: org_source
+  type: STRING
+  description: org source
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+organisation_key_value_stats:
+  distinct_count: 330919
+  null_count: 0
+  is_truncated: true
+  min_value: 00004b9e86f7fcc4ae4c77c6b717e15e
+  max_value: ffffdcdfebea743da6d20d1fcf90ad7b
+organisation_id_value_stats:
+  distinct_count: 330176
+  null_count: 1
+  is_truncated: true
+  min_value: aka_________::74be16979710d4c4e7c6647856088456
+  max_value: wt__________::fab93f2aa517ddfd254d67749824ce48
+legal_name_value_stats:
+  distinct_count: 299603
+  null_count: 1135
+  is_truncated: true
+  min_value: ' Al-Kindi Center for Research and Development'
+  max_value: 中粮工科（西安）国际工程有限公司
+short_name_value_stats:
+  distinct_count: 288530
+  null_count: 9233
+  is_truncated: true
+  min_value: ' Al-Kindi Center for Research and Development'
+  max_value: 内蒙古科尔沁先众食品有限公司
+website_url_value_stats:
+  distinct_count: 69877
+  null_count: 259889
+  is_truncated: true
+  min_value: a
+  max_value: www.openaire.eu
+country_code_value_samples:
+- UNKNOWN
+- US
+- FR
+- DE
+- GB
+- ES
+- IT
+- NL
+- TR
+- BE
+- PL
+- CH
+- GR
+- SE
+- FI
+- AT
+- PT
+- RO
+- DK
+- HU
+- 'NO'
+- CZ
+- BG
+- IE
+- ID
+- SI
+- LT
+- HR
+- SK
+- CA
+- EE
+- IL
+- RS
+- LV
+- CN
+- RU
+- BR
+- CY
+- UA
+- IN
+- MK
+- AU
+- IS
+- JP
+- IR
+- LU
+- EG
+- AR
+- ZA
+- MT
+- BA
+- CO
+- MX
+- KR
+- TN
+- MA
+- AL
+- GE
+- KE
+- CL
+- PK
+- DZ
+- PE
+- TW
+- VN
+- NZ
+- ME
+- IQ
+- MD
+- NG
+- KZ
+- EC
+- AM
+- XK
+- UG
+- MY
+- GH
+- TH
+- UZ
+- SN
+- LB
+- SG
+- PH
+- CU
+- BY
+- JO
+- ET
+- NP
+- TZ
+- HK
+- AZ
+- BD
+- LI
+- PS
+- BF
+- KG
+- CR
+- CI
+- BO
+- LK
+- CM
+- KH
+- UY
+- MG
+- RW
+- MZ
+- MN
+- SA
+- PY
+- VE
+- TJ
+- MW
+- CD
+- BJ
+- NI
+- AE
+- ZW
+- ZM
+- GL
+- PA
+- FO
+- RE
+- NC
+- MQ
+- ML
+- CV
+- SV
+- LY
+- GP
+- GY
+- GT
+- MM
+- NA
+- GA
+- TG
+- TM
+- DO
+- PF
+- SY
+- EU
+- MU
+- HN
+- BW
+- QA
+- NE
+- LA
+- YE
+- HT
+- BI
+- GN
+- AF
+- SD
+- PG
+- AO
+- JM
+- SL
+- MC
+- BT
+- MV
+- TT
+- GM
+- CG
+- SZ
+- AW
+- CW
+- BH
+- LR
+- SR
+- OM
+- KW
+- SS
+- BQ
+- SO
+- TD
+- BB
+- BN
+- MR
+- PR
+- SB
+- LS
+- CF
+- TL
+- GW
+- VA
+- VU
+- JE
+- ST
+- BS
+- FJ
+- VG
+- SM
+- MH
+- SX
+- KM
+- GI
+- SC
+- AN
+- MO
+- DJ
+- WS
+- AI
+- OC
+- KP
+- GU
+- GQ
+- TF
+- CK
+- AD
+- DM
+- GF
+- BM
+- FM
+- ER
+- MS
+- YT
+- NF
+- WF
+- PW
+- GD
+- LC
+- PM
+- VC
+- SJ
+- TO
+- KN
+- BZ
+- YU
+- AX
+country_name_value_samples:
+- Unknown
+- United States
+- France
+- Germany
+- United Kingdom
+- Spain
+- Italy
+- Netherlands
+- Turkey
+- Belgium
+- Poland
+- Switzerland
+- Greece
+- Sweden
+- Finland
+- Austria
+- Portugal
+- Romania
+- Denmark
+- Hungary
+- Norway
+- Czech Republic
+- Bulgaria
+- Ireland
+- Indonesia
+- Slovenia
+- Lithuania
+- Croatia
+- Slovakia
+- Canada
+- Estonia
+- Israel
+- Serbia
+- Latvia
+- China (People's Republic of)
+- Russian Federation
+- Brazil
+- Cyprus
+- Ukraine
+- India
+- Former Yugoslav Republic of Macedonia
+- Australia
+- Iceland
+- Japan
+- Iran (Islamic Republic of)
+- Luxembourg
+- Egypt
+- Argentina
+- South Africa
+- Malta
+- Bosnia and Herzegovina
+- Colombia
+- Mexico
+- Korea (Republic of)
+- Tunisia
+- Morocco
+- Albania
+- Georgia
+- Kenya
+- Chile
+- Pakistan
+- Algeria
+- Peru
+- Taiwan
+- Viet Nam
+- New Zealand
+- Montenegro
+- Iraq
+- Moldova (Republic of)
+- Nigeria
+- Kazakhstan
+- Ecuador
+- Armenia
+- Kosovo * UN resolution
+- Uganda
+- Malaysia
+- Ghana
+- Thailand
+- Uzbekistan
+- Senegal
+- Lebanon
+- Singapore
+- Philippines
+- Cuba
+- Belarus
+- Jordan
+- Ethiopia
+- Nepal
+- Tanzania (United Republic of)
+- Hong Kong
+- Azerbaijan
+- Bangladesh
+- Liechtenstein
+- Palestinian-administered areas
+- Burkina Faso
+- Kyrgyzstan
+- Costa Rica
+- Cote d'Ivoire
+- Bolivia
+- Sri Lanka
+- Cameroon
+- Cambodia
+- Uruguay
+- Madagascar
+- Rwanda
+- Mozambique
+- Mongolia
+- Saudi Arabia
+- Paraguay
+- Venezuela
+- Tajikistan
+- Malawi
+- Congo (Democratic Republic of)
+- Benin
+- Nicaragua
+- United Arab Emirates
+- Zimbabwe
+- Zambia
+- Greenland
+- Panama
+- Faroe Islands
+- Réunion
+- New Caledonia
+- Martinique
+- Mali
+- Cape Verde
+- El Salvador
+- Libyan Arab Jamahiriya
+- Guadeloupe
+- Guyana
+- Guatemala
+- Myanmar
+- Namibia
+- Gabon
+- Togo
+- Turkmenistan
+- Dominican Republic
+- French Polynesia
+- Syrian Arab Republic
+- European Union
+- Mauritius
+- Honduras
+- Botswana
+- Qatar
+- Niger
+- Lao (People's Democratic Republic)
+- Yemen
+- Haiti
+- Burundi
+- Guinea
+- Afghanistan
+- Sudan
+- Papua New Guinea
+- Angola
+- Jamaica
+- Sierra Leone
+- Monaco
+- Bhutan
+- Maldives
+- Trinidad and Tobago
+- Gambia
+- Congo
+- Swaziland
+- Aruba
+- Curaçao
+- Bahrain
+- Liberia
+- Suriname
+- Oman
+- Kuwait
+- South Sudan
+- Bonaire, Sint Eustatius and Saba
+- Somalia
+- Chad
+- Barbados
+- Brunei Darussalam
+- Mauritania
+- Puerto Rico
+- Solomon Islands
+- Lesotho
+- Central African Republic
+- Timor-Leste
+- Guinea-Bissau
+- Holy See (Vatican City State)
+- Vanuatu
+- Jersey
+- São Tomé and Príncipe
+- Bahamas
+- Fiji
+- Virgin Islands (British)
+- San Marino
+- Marshall Islands
+- Sint Maarten (Dutch Part)
+- Comoros
+- Gibraltar
+- Seychelles
+- Netherlands Antilles
+- Macao
+- Djibouti
+- Samoa
+- Anguilla
+- Oceania
+- Korea, Democratic People's Republic of
+- Guam
+- Equatorial Guinea
+- French Southern Territories
+- Cook Islands
+- Andorra
+- Dominica
+- French Guiana
+- Bermuda
+- Micronesia, Federated States of
+- Eritrea
+- Montserrat
+- Mayotte
+- Norfolk Island
+- Wallis and Futuna
+- Palau
+- Grenada
+- Saint Lucia
+- Saint Pierre and Miquelon
+- Saint Vincent and the Grenadines
+- Svalbard and Jan Mayen
+- Tonga
+- Saint Kitts and Nevis
+- Belize
+- Yugoslavia
+- Åland Islands
+org_source_value_samples:
+- openaire
+- asti
+source_natural_key_value_samples:
+- openaire_organisations
+- Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Expenditures
+loaded_at_value_samples:
+- '2026-08-24 14:23:00.147300+00'
+filtering_guidance:
+- 'Grain: Organisation identity (OpenAIRE/ASTI)'
+- Research and ASTI organisations.
+sql_generation_hints:
+- 'Join keys: organisation_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: research
+  supports:
+  - research

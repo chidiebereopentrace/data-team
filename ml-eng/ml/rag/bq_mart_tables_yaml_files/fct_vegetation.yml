@@ -1,0 +1,240 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_vegetation
+description: NDVI and ILRI site vegetation/carrying capacity.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: ndvi_grid | ilri_site
+entity_type: vegetation
+columns:
+- name: vegetation_key
+  type: STRING
+  description: vegetation key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (null if unmatched)
+- name: geo_level
+  type: STRING
+  description: geo level
+- name: country_iso3
+  type: STRING
+  description: ISO3 from dim or extractable geo even if key null
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: tier
+  type: INT64
+  description: Producer scale (1=global, 2=national ministry, 3=community survey)
+- name: data_level
+  type: STRING
+  description: Resolution of the number (warehouse row resolution)
+- name: geo_scope
+  type: STRING
+  description: national / sub_national / community / point (null when geography_key
+    null)
+- name: place_scope
+  type: ARRAY<STRING>
+  description: ARRAY of comparable place labels for ACF geo overlap
+- name: metric
+  type: STRING
+  description: Stable slug for the measure
+- name: source_id
+  type: STRING
+  description: Lineage key (= dim_source.source_key)
+- name: vegetation_grain
+  type: STRING
+  description: vegetation grain
+- name: grid_id
+  type: STRING
+  description: grid id
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: as_of_date
+  type: DATE
+  description: Observation date when known; else DATE(loaded_at)
+- name: as_of_date_basis
+  type: STRING
+  description: observation or loaded_at
+- name: value
+  type: FLOAT64
+  description: Numeric measure
+- name: unit
+  type: STRING
+  description: Unit of measure
+- name: quantity_trees
+  type: STRING
+  description: quantity trees
+- name: quantity_shrubs
+  type: STRING
+  description: quantity shrubs
+- name: quantity_grass
+  type: STRING
+  description: quantity grass
+- name: palatability_trees
+  type: STRING
+  description: palatability trees
+- name: palatability_shrubs
+  type: STRING
+  description: palatability shrubs
+- name: palatability_grass
+  type: STRING
+  description: palatability grass
+- name: currently_grazing
+  type: STRING
+  description: currently grazing
+- name: lifeform_mix
+  type: STRING
+  description: lifeform mix
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+vegetation_key_value_stats:
+  distinct_count: 112479
+  null_count: 0
+  is_truncated: true
+  min_value: 0000f9c8d92fdf01b4968fd219149f45
+  max_value: ffff4a6c3829a853ad18138a2c352969
+geography_key_value_samples:
+- 27039e65dfc53679c43c54e817d9f88a
+- 33e69584fe265d59e9953272db50ee4c
+- 537b450564c9b3fbc57c40c98c3445b7
+- c813f26dd8284618e82442f95f1994de
+- e43d2f7285620ad176b17d6e50e3381f
+- 08fe0e8017a52b702db7b32840bc7944
+- 82f02b51c7d5811da76162916d3d4794
+- bc44efe4b9425ab3ebff1d5937a785d1
+- ef8c67548a4cd221ebec6e084917a4fb
+- 2d0321beed1fc565bc7f5a310a86339d
+- b5bc72e7177eff3202e795f27c043f00
+- 574e402ab537930f87c32eedb2615b60
+- ccf2281209b535b1ab9937a94a0572e0
+- 693248ead8d606c6314c522e9d386547
+geo_level_value_samples:
+- city
+country_iso3_value_samples:
+- KEN
+- ZAF
+source_key_value_samples:
+- 52540e85bf65db18f07812fb4efdec1a
+- a73bdde0f938c625d9de8ae83affc877
+tier_value_samples:
+- '3'
+- '2'
+data_level_value_samples:
+- community
+geo_scope_value_samples:
+- community
+metric_value_samples:
+- carrying_capacity
+- ndvi_mean
+source_id_value_samples:
+- 52540e85bf65db18f07812fb4efdec1a
+- a73bdde0f938c625d9de8ae83affc877
+vegetation_grain_value_samples:
+- ilri_site
+- ndvi_grid
+grid_id_value_stats:
+  distinct_count: 1665
+  null_count: 110301
+  is_truncated: true
+  min_value: A-1
+  max_value: Z-9
+latitude_value_stats:
+  distinct_count: 82687
+  null_count: 0
+  is_truncated: true
+  min_value: '-34.007580612695783'
+  max_value: '1.4791633'
+longitude_value_stats:
+  distinct_count: 63005
+  null_count: 0
+  is_truncated: true
+  min_value: '18.357592078603382'
+  max_value: '38.095978'
+as_of_date_value_samples:
+- '2026-08-25'
+as_of_date_basis_value_samples:
+- loaded_at
+value_value_stats:
+  distinct_count: 1649
+  null_count: 0
+  is_truncated: true
+  min_value: '-0.03751721816859202'
+  max_value: '3'
+unit_value_stats:
+  distinct_count: 0
+  null_count: 111966
+  is_truncated: false
+quantity_trees_value_samples:
+- Low density
+- High density
+- ''
+quantity_shrubs_value_samples:
+- Low density
+- High density
+- ''
+quantity_grass_value_samples:
+- ''
+- Low density
+- High density
+palatability_trees_value_samples:
+- Goats|Camels
+- Camels
+- ''
+- Goats
+- Goats|Cattle|Camels
+- Goats|Cattle
+- Camels|Cattle
+- Cattle
+palatability_shrubs_value_samples:
+- Goats|Camels
+- Goats
+- ''
+- Goats|Cattle|Camels
+- Goats|Cattle
+- Camels
+- Cattle
+- Camels|Cattle
+palatability_grass_value_samples:
+- ''
+- Goats|Cattle
+- Cattle
+- Goats
+- Goats|Camels
+- Goats|Cattle|Camels
+- Camels
+- Camels|Cattle
+currently_grazing_value_samples:
+- ''
+- Goats
+- Goats|Camels
+- Goats|Cattle
+- Cattle
+- Camels
+- Goats|Cattle|Camels
+- Camels|Cattle
+lifeform_mix_value_samples:
+- shrub_dominant
+- grass_dominant
+- tree_dominant
+source_natural_key_value_samples:
+- ilri_vegetation_survey_v1
+- arcgis_vegetation_ndvi
+loaded_at_value_samples:
+- '2026-08-27 15:11:53.394467+00'
+filtering_guidance:
+- 'Grain: ndvi_grid | ilri_site'
+- NDVI and ILRI site vegetation/carrying capacity.
+sql_generation_hints:
+- 'Join keys: geography_key, source_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: vegetation
+  supports:
+  - vegetation

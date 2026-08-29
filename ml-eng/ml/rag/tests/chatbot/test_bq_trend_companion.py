@@ -1,26 +1,30 @@
-"""Unit tests for FAOSTAT trend companion direction alignment."""
+"""Unit tests for mart production trend companion direction alignment."""
 from __future__ import annotations
 
 from ml.rag.chatbot.bq_trend_companion import (
     align_trend_directions,
-    build_faostat_trend_companion_sql,
+    build_mart_production_trend_companion_sql,
+    maybe_attach_ranking_trend,
     parse_trend_companion_rows,
 )
 
 
-def test_build_faostat_trend_companion_sql() -> None:
-    sql = build_faostat_trend_companion_sql(
+def test_build_mart_production_trend_companion_sql() -> None:
+    sql = build_mart_production_trend_companion_sql(
         project_id="proj",
-        dataset="staging_dev",
-        country_name="Nigeria",
+        dataset="mart_dev",
+        country_iso3="NGA",
         focal_year=2020,
     )
-    assert "stg_faostat_production" in sql
-    assert "Nigeria" in sql
+    assert "fct_production" in sql
+    assert "mart_dev" in sql
+    assert "NGA" in sql
     assert "2019" in sql
     assert "2021" in sql
+    assert "production_grain = 'physical'" in sql
     assert "'Production'" in sql
     assert "'Yield'" in sql
+    assert "country_iso3" in sql
 
 
 def test_production_and_yield_both_increasing() -> None:
@@ -49,3 +53,41 @@ def test_mixed_production_yield_signals() -> None:
     aligned = align_trend_directions(parsed)
     assert aligned["direction"] == "unknown"
     assert aligned["trend_mixed"] is True
+
+
+def test_maybe_attach_ranking_trend_uses_country_iso3(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    def _fake_fetch(**kwargs):
+        captured["country_iso3"] = kwargs["country_iso3"]
+        return {
+            "direction": "increasing",
+            "value": 120.0,
+            "prior_value": 100.0,
+            "magnitude": 20.0,
+            "sql": "SELECT 1",
+        }
+
+    monkeypatch.setattr(
+        "ml.rag.chatbot.bq_trend_companion.fetch_mart_production_trend_companion",
+        _fake_fetch,
+    )
+    meta = {
+        "bq_enrichment": "ranked_table",
+        "year": 2020,
+        "ranked_rows": [
+            {
+                "label": "NGA",
+                "value": 5000,
+                "raw_row": {"country_iso3": "NGA", "total": 5000},
+            }
+        ],
+    }
+    out = maybe_attach_ranking_trend(
+        meta,
+        sql="SELECT country_iso3, SUM(value) AS total FROM `p.mart_dev.fct_production`",
+        template="faostat_production_rank",
+    )
+    assert captured["country_iso3"] == "NGA"
+    assert out["direction"] == "increasing"
+    assert out["magnitude"] == 20.0

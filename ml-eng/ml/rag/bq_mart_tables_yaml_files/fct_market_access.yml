@@ -1,0 +1,394 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_market_access
+description: fct market access
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: market_access_key
+  type: STRING
+  description: market access key
+- name: geo_key
+  type: STRING
+  description: geo key
+- name: time_key
+  type: INT64
+  description: time key
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: market_key
+  type: STRING
+  description: market key
+- name: audit_key
+  type: STRING
+  description: audit key
+- name: access_index
+  type: FLOAT64
+  description: access index
+- name: distance_to_market
+  type: NUMERIC
+  description: distance to market
+- name: travel_time_minutes
+  type: NUMERIC
+  description: travel time minutes
+- name: purchase_frequency
+  type: STRING
+  description: purchase frequency
+- name: outlet_choice_cleanliness
+  type: INT64
+  description: outlet choice cleanliness
+- name: outlet_choice_hygiene
+  type: INT64
+  description: outlet choice hygiene
+- name: outlet_choice_quality
+  type: INT64
+  description: outlet choice quality
+- name: outlet_choice_price
+  type: INT64
+  description: outlet choice price
+- name: years_operating
+  type: INT64
+  description: years operating
+- name: operating_days_per_week
+  type: INT64
+  description: operating days per week
+- name: avg_daily_sales_volume
+  type: NUMERIC
+  description: avg daily sales volume
+- name: primary_supply_source
+  type: STRING
+  description: primary supply source
+- name: source_record_id
+  type: STRING
+  description: source record id
+market_access_key_value_stats:
+  distinct_count: 6708
+  null_count: 0
+  is_truncated: true
+  min_value: 00136a221e1aa41ee6737b7af8cee6e3
+  max_value: ffe47da408a7cec0eab3ddb81048aba5
+geo_key_value_samples:
+- ac7bfdf0827ec19888fd61602d608455
+- 00dc09a1f680e513f3f6df2be6ee1daf
+- 2a12b7ea3f2dec8fc2ae6fd3ebc4dcb4
+- 6e22616f17e21308ca0f83ccb10c41e9
+- 3813716fe4d7de7f41b37c43815da559
+- eb8b40c45f2c7a5134f807a64295dcf9
+- d44140d6044cef73c7dfd55cf9b4d1e6
+- 3c0f466424e8d972d776945c067c60fa
+- 20aa2539ac8c3b2b9c27db2792138e57
+- 2560dbff581f0504dbb841a022e1f4a0
+- 43296d60b3cefbb8f057b8e49d891217
+- c3d2fecb1e011d22a88f16e7a6450054
+- 575b6209dbbdc9a29d3675353d6a8c56
+- edc4538ceec315047ffa8097680f99af
+- a6c4fd7f4551ef2c616183286d851dff
+- 3eab97691ec910451917646e14eb94b4
+- 370765d644b8537c9e7edcca681c94ab
+- faaa2e59d0997cc725eb355450f4e63a
+- ad91f74ad77aba929c6b1b7a93e0d3c8
+- 2f4009b9f98c624f65435d14255a83ce
+- 6f8434a124f1f21190cdc95affa84217
+- 3755485519625d7edc1f24ae874419ea
+- 168158128f4b3a17538bb3cb9e8fbad2
+- 711336e8c292684d3acbcf5c59979f42
+- ed5a8613a906aeca3d7a38aa5e40ff75
+- 568440a6681225ae2c02d3ceafccd71a
+- b8fdd67ff923f9ad263aecefe4e2cdf7
+- d11f2100d87f58164b93f63857242ce0
+- 550c828ce2c07d8951b0885fca71c5d2
+- 4abe1026b82620e54a4ab8f52790b251
+- 37ed1e19df2ccdfd8888d40a89997daa
+- 142f09908c77df31716faf5a20ad4831
+- d4201d948d903f3c8ef449c540227b5c
+- b69c263a247255c6274b456048345a16
+- 644f2edcdffe77b1fe8fede9a2d8aa6b
+- deb7b60451339b04e56b575ac83cade6
+- 605d41a36ae37729bd6e649d6de0e075
+- 686a4efef78f96f941ba1be75dea170d
+- cdc863c1306940e7b9405500d9f66d55
+- c64d49b60f90516642a67fa95596eab5
+- 3abc0bb1bea23ac7aaada80e4f3b53bd
+- bdb0a8029ac55432bdc52bd158ac40e5
+- 762811b562b956b100eaa57ff48a19a1
+- 6c2d4ab1efec27da9636a5b2c546bced
+- 6c54337f447b193f826399e2c9b7b4d2
+- e0cdf707f1d33bf3de03fa0e27117ace
+- cb03d974c0394ff47224a1c25898d427
+- c66989ce6e933113d442e7bdec4f8ee6
+- 90e5fcc3e25ffeb561cb45be48311d55
+- e1ca180b46690d0e5c594673814b55a2
+- 3bd9552b16fa7b8f59de937ef2fd5ab6
+- 48116fefc192de48d6e73863507a1a3e
+- 995cb7eed42f61e674067254a58285dc
+- 13f09bbcbccb36cec4109655f3076ff8
+- adf023d506b4f0ef64504ed2d87b8c16
+- ff3770fc996f1df44afd0c42682b3dc9
+- da2de207c9074efa8a155453ce333086
+- 6b362a34555b6da69e767bc4bc27df0c
+- b5a778834cb78f3fbb11435ea8451d9e
+- fdf48a8cef92655218accd852b0c49b8
+- cfb2d0361dbf11fb5bbefaca8a89d43c
+- f0c719890b38edc6cbdb252ca9b578df
+- cb6bfc367a5ffaab6787594674f95962
+- c6fc445c8557a9e2ab676a01bf240b6b
+- 8e92732af31a625609d69512ea7e43a8
+- c43221cc1a9a9ee065af7b827a645fd3
+- 8de4728b88f34a149a1e3d986b667f30
+- 45ca800769039644da27117bdbaa0c21
+- 449e10134f9e14afed761fb1608ee636
+- a2725ac83e29ad70d5d1636114b8d159
+- 8a68a023b4c44094cecfda87b290803a
+- 1aa867875740a6ee357815b0958c9de5
+- 335f71e5b67b47141b167c50ccdf79a4
+- 8bd8b049040d28e5bcc5d38d7dff4dc6
+- 1dbe57069d8f3a4ce7d7c7a26f121fa5
+- 0fae6b8d739e83d1bc6dc489853fa6e4
+- 5c416483f475cc2f43fe387b9d775d2a
+- 2d698feaff4ae4b18f22711174e0cc41
+- af562fde15abb5ac9e7d8b1954e72bda
+- cc72ecb61c8d8227ac9a2fd9606d3110
+- 61b180cae04f07279dbfbfa7de533144
+- 62b0f19e5306ef7ea4e765ec9d54e59f
+- 768cc329d02c9ea15021d1a8abf1860c
+- a1b0dcb35c757bf64a9b86776fdae1d2
+- f348a822d741f20ffe21e0cde6c95e73
+- b1077421ca7cc02a51cbd8cfe434f834
+- a098d6e436b758dfe63b49ea39e28548
+- ea0d68e58ae4dcc2d3301aec02c60490
+- 4dacadfb19dbd307aca13f0232ce389e
+- 783b5f5861f5af40372d75670dda82f6
+- be54dd217118bbb411417f0c77e8da49
+- 703cf28e95956f210a4f35ac8e451b59
+- d4487ff9c6d775da1f66c15fd9d6d85d
+- 61b96007a68a738579f598595b8b06bd
+- 37974514548dd76db9502b28dc32c58e
+- a938b0336a5e5dda50f8b956077d4dc6
+- 9a7b443c2bffe117d36a18c97958212f
+- 221d37f316c1859aab4965afd167b508
+- 7545cce6d0d4d35958b458491d654259
+- baec8b1abfe63bec0b9977f3517b21cb
+- c3ab58c5e13922a095a605ba85efbe87
+- 61554ee9cf8d42668a4ddaae1dd99725
+- 87e64c6610f555476f3f2ae008fabad1
+- 83bd87c30941cce781c25ee1cebc46c1
+- 96c4a42b86145538ac958fb1302b16a9
+- abcac9696c5fb9762681fc5f8a518cf3
+- 980d7ceac875d1e009af57221f4fffdf
+- 55bb593a6b72c07ba5293233a706331c
+- b19bfd3b50d8f07e04c10183104a7b0f
+- c0148192cb2398a2c80c7638c2e3bade
+- 1395a1d5d820a86a699c875913140901
+- 054bcd944f0e7431f05b33800d1a2ad6
+- cce9f28d2f36323294a803f572cfa814
+- e45a60c5cfbd2fd788cb1eff42640454
+- d7123bf8b818a8ab54426725040c8d63
+- 7d58730993fa02804fb7e2b799966f46
+- 58735af629e3f8bd26f9b95dce9a5b86
+- fedb96b35c059d3620175bb055f62ae9
+- 220e5edbcf4caa73c3e3819a837897c2
+- af1d3d6f495e8f344de2569d6c472c17
+- 5dc8e6ac9724f3f63361713daf5fd04b
+- 8af0c0f13a0fa73ef26dd186b1af93a1
+- 5f0e6b3190c396214c3c209d1caf328b
+- 30bca07df71d676895c0aac325003541
+- a42d58d89321ec8e69f44158abf7310e
+- b74d5010fb7199e0df556f18c1055be8
+- c1c5553cddf165cc81c2fe22279d7099
+- 5903a5c04791031c807374fdf8bcd9f1
+- 89700f2090237938c2460c4a6aee594e
+- 0a75de9da1f113c4787414c9c0efd421
+- 179089ff524fa7e774893569bd4b912c
+- 1a5b55c057586e7733e9b618ff41c3cb
+- 3673e56da53c64fcdbd0ebdbf54d43d1
+- ee5cc1de806808f42e983f7a145fff40
+- 8fdbaabc719b77694aa1eb183b8e3bda
+- 28eacd8b4ff62a5d399b70d03970a941
+- 0696351ad4970dd8556d3f9ce855e239
+- a2dcfa024121728aba2253ba2886e7d1
+- cff99698bca203ccce88e8c5680faadc
+- 6a30804ca8663d1f573d122089de5423
+- 731cc81a1e4f616cd60849b360b1db05
+- 41f7e76697bc71328a78490abd201db9
+- 41b1612f3dec3dfba46891273acffd5c
+- 30cf52d707e75bdd3aa1c95b5d34bf55
+- e8ca2cf34ea07cdf2fa42eb62e17606c
+- 26e9da3aa159f71f3846003d6c701b68
+- 4208b7b5c92d7f4131ae8af6c23cdd39
+- 0e3d963751767788286313ce919003b4
+- 44fa667b977909ac384b0fc7bbd95118
+- b720da0fa9062a3c682d24972f82c3a2
+- 5c0ae8b7495795253f205675edd4d324
+- 1fc89d23f91e13f50d79b441676838d4
+- 30101da42a587377a2b84fa0a4774cb8
+- abd5a20e238a2b33cdf74f43b72036e2
+- 3267928843381af455efd3696565677e
+- cb13a6f1b51ff8f13aba1fdc7a5ce414
+- 1ce74fd180815fb774a1edfb18793d64
+- 6e51926b38495ac5bf959be564b1a7be
+- f72f51bbf3c80c64b9ec9a30a46bba71
+- 2328930473639697cfae0ea686d1d9af
+- f5c6909ae4c83d0542bbf53f5f8d0b7f
+- 60e881bc535df56f46d4027226f89ea1
+- afbc2e6478997be5c930ab48fcb3af17
+- d7bd621ee6f35ec08ff587d0c55190f7
+- 936b33ff44eb4fe01dffd1425d5bbb4f
+- 6f0e9ccbbb8d4576a6a609c684f7d701
+- 787178c50259a3add498c084630f370a
+- eef5863b1ced72827dd7d5fbd6bc2d0a
+- e3e667991741286d73f3a8bc8999e85f
+- 665bf82da359d92b50bec3f8d6e931c6
+- b58f138504409d7e6e37d97a952116ad
+- 4b8809dbfc5a29160fbd85d7ec09c2fe
+- 977b30f2fd7e5acfddbf334343988d2c
+- 3af02280b7efa4e66a3788a52b7b6f9c
+- 0c9e6dbe69b9a6cae6adb9cbf7700e3f
+- dd5cd658a67ff1d8237aa79ce6e432af
+- 175d96c5d0ac5c3292be007cfd186cc9
+- ebd438beab19fefda2bf303ffc8671d0
+- a8cee39db580fbfb36bab618468394b7
+- 29b6b70b62b6476b418dc2405e0b7a7d
+- d04ca347c2232bb7c88450c560fd2cd0
+- eef257fd74ef092f6b9cc9474798db8a
+- 641e04c50678c641709c41051412a9f0
+- 6f7c934d9d6d76d7deb033c3fa08d7ca
+- 4b25f0bae798e5181d6551ed6d9479a1
+- 546d59deb31709d66f8c9a3054abd0f3
+- f242b87e81d286d263000df05e1f22f7
+- d12d6fc1d9655d7d52247f45c93ca9ca
+- c588eeab723c1c7126fb29f9f94373af
+- dff877394acff6853459734c54c1b8ce
+- a6a85f4b0af23973b1c1056b2a90f347
+- f6b7add9ae0517e5f04688aedb162df7
+- 64b3629d4a2933f343adab557ae412d8
+time_key_value_samples:
+- '2022'
+- '2021'
+- '2019'
+- '2020'
+- '2018'
+- '2017'
+- '2016'
+- '2015'
+- '2014'
+- '2023'
+- '2013'
+- '2012'
+- '2011'
+- '2010'
+- '2009'
+- '2008'
+- '2007'
+- '2006'
+- '2005'
+- '2004'
+- '2003'
+- '2002'
+- '2001'
+- '2000'
+- '1998'
+- '1999'
+- '1997'
+- '1996'
+- '1995'
+- '1985'
+- '1990'
+- '1992'
+- '1994'
+- '1970'
+- '1984'
+- '1980'
+- '1986'
+- '1989'
+- '1988'
+- '1987'
+- '1991'
+- '1993'
+- '1981'
+- '1973'
+- '1972'
+- '1983'
+- '1977'
+- '1976'
+- '1978'
+- '1979'
+- '1982'
+- '1975'
+- '1974'
+- '1971'
+- '1967'
+- '1963'
+- '1964'
+- '1960'
+- '1962'
+- '1965'
+- '1969'
+- '1966'
+- '1968'
+- '1961'
+source_key_value_samples:
+- f33c4639421e90f1208bd87d9db2f959
+market_key_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+audit_key_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+access_index_value_stats:
+  distinct_count: 92321
+  null_count: 0
+  is_truncated: true
+  min_value: '0.00047619'
+  max_value: '26300000'
+distance_to_market_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+travel_time_minutes_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+purchase_frequency_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+outlet_choice_cleanliness_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+outlet_choice_hygiene_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+outlet_choice_quality_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+outlet_choice_price_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+years_operating_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+operating_days_per_week_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+avg_daily_sales_volume_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+primary_supply_source_value_stats:
+  distinct_count: 0
+  null_count: 562499
+  is_truncated: false
+source_record_id_value_stats:
+  distinct_count: 6708
+  null_count: 0
+  is_truncated: true
+  min_value: 00136a221e1aa41ee6737b7af8cee6e3
+  max_value: ffe47da408a7cec0eab3ddb81048aba5

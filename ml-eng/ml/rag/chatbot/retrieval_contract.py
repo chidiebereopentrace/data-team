@@ -11,8 +11,14 @@ from ml.rag.chatbot.agri_measure_ontology import (
     resolve_measures,
 )
 from ml.rag.chatbot.analytical_bq_plan import build_food_security_bq_plan
-from ml.rag.chatbot.bq_table_schema_yaml import pack_selected_table_hints
+from ml.rag.chatbot.bq_table_schema_yaml import (
+    list_mart_table_index,
+    load_mart_table_schema,
+    pack_mart_table_hints,
+    year_column,
+)
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
+from ml.rag.chatbot.mart_indicator_classes import class_for_query, do_not_mix_tables
 
 
 @dataclass
@@ -54,6 +60,30 @@ def _geo_list(decomposition: dict[str, Any]) -> list[str]:
     return [str(g).strip() for g in raw if str(g).strip()]
 
 
+def _time_bounds_filter(
+    table_id: str,
+    *,
+    time_start: str,
+    time_end: str,
+    year_hint: str,
+) -> str:
+    ts = (time_start or "")[:10]
+    te = (time_end or "")[:10]
+    if ts and te:
+        schema = load_mart_table_schema(table_id)
+        names = {
+            str(c.get("name") or "").strip().lower()
+            for c in (schema or {}).get("columns") or []
+            if str(c.get("name") or "").strip()
+        }
+        if "as_of_date" in names:
+            return f"as_of_date BETWEEN '{ts}' AND '{te}'"
+        ycol = year_column(table_id) or "year"
+        if ts[:4].isdigit() and te[:4].isdigit():
+            return f"{ycol} BETWEEN {ts[:4]} AND {te[:4]}"
+    return f"year≈{year_hint}"
+
+
 def _intent_for_table(
     table_id: str,
     *,
@@ -61,21 +91,35 @@ def _intent_for_table(
     geo_filter: str,
     year_hint: str,
     multi_country: bool,
+    time_start: str = "",
+    time_end: str = "",
 ) -> dict[str, Any]:
-    filters = f"{geo_filter}; year≈{year_hint}"
+    time_filter = _time_bounds_filter(
+        table_id,
+        time_start=time_start,
+        time_end=time_end,
+        year_hint=year_hint,
+    )
+    filters = f"{geo_filter}; {time_filter}"
     pattern = "custom"
-    grain = ["country_name"] if multi_country else ["country_name", "year"]
+    grain = ["country_iso3"] if multi_country else ["country_iso3", "year"]
     order_by = "value DESC"
-    if "faostat_production" in table_id:
-        filters = f"element='Production'; {filters}"
+    if table_id == "fct_production" or "agg_production" in table_id:
+        filters = f"production_grain='physical'; {filters}"
         pattern = "rank_by_sum" if multi_country else "custom"
         order_by = "total DESC" if multi_country else "value DESC"
-    elif "market_prices" in table_id:
-        filters = f"price_type='Retail'; {filters}"
-    elif "faostat_trade" in table_id:
-        filters = f"{filters}; trade element from question"
+    elif table_id == "fct_prices":
+        filters = f"price_source from question; {filters}"
+    elif table_id == "fct_trade":
+        filters = f"trade_grain from question; {filters}"
         pattern = "rank_by_sum" if multi_country else "custom"
         order_by = "total DESC" if multi_country else "value DESC"
+    elif table_id == "fct_food_security":
+        filters = f"measure_type from question (population vs classification); {filters}"
+    elif table_id == "fct_yield":
+        filters = f"season_key/harvest_year; {filters}"
+    elif table_id == "fct_employment":
+        filters = f"JOIN dim_indicator; unit=% vs headcount; {filters}"
     return {
         "goal": f"{measure_id} signal from {table_id}",
         "tables": [table_id],
@@ -86,6 +130,45 @@ def _intent_for_table(
         "grain": grain,
         "order_by": order_by,
     }
+
+
+def choose_agg_vs_fact(
+    table_id: str,
+    *,
+    query: str,
+    multi_country: bool,
+    year_hint: str,
+) -> str:
+    """Prefer agg_* for national annual rollups when question scope fits."""
+    q = (query or "").lower()
+    national = multi_country or "national" in q or "country" in q
+    annual = "month" not in q and "season" not in q and "fnid" not in q
+    if table_id == "fct_production" and national and annual:
+        return "agg_production_annual"
+    if table_id == "fct_food_security" and national and "month" in q:
+        return "agg_food_security_monthly"
+    if table_id == "fct_prices" and national and "market" not in q:
+        return "agg_prices_country_month"
+    return table_id
+
+
+def _validate_table_bundle(tables: list[str], *, analytical: bool = False) -> tuple[list[str], str]:
+    """Drop do-not-mix pairs unless analytical comparison mode."""
+    if analytical or len(tables) < 2:
+        return tables, ""
+    kept: list[str] = []
+    notes: list[str] = []
+    for tid in tables:
+        conflict = False
+        for existing in kept:
+            reason = do_not_mix_tables(existing, tid)
+            if reason:
+                notes.append(f"{existing}+{tid}: {reason}")
+                conflict = True
+                break
+        if not conflict:
+            kept.append(tid)
+    return kept, "; ".join(notes)
 
 
 def build_retrieval_contract(
@@ -109,10 +192,19 @@ def build_retrieval_contract(
     year_hint = (te or ts or "")[:4] or "year from question"
     multi = len(geo) != 1
     geo_filter = (
-        f"country_name in ({', '.join(geo[:16])})"
+        f"country_iso3 in ({', '.join(geo[:16])})"
         if geo
-        else "geography from question"
+        else "geography from question (country_iso3 or join dim_geography)"
     )
+
+    indicator_classes = class_for_query(query)
+    analytical = str(enriched.get("task_mode") or "") == "analytical"
+
+    bq_hits = [
+        h
+        for h in hits
+        if h.measure.candidate_tables or h.measure.bq_index_domains
+    ]
 
     primary_ids: list[str] = []
     companion_ids: list[str] = []
@@ -122,43 +214,48 @@ def build_retrieval_contract(
         for h in hits[1:]:
             if h.measure.id in declared or h.matched_alias.startswith("companion_of_"):
                 companion_ids.append(h.measure.id)
-            else:
-                primary_ids.append(h.measure.id)
 
-    # Prefer specialized multi-intent builder when food_security is activated.
+    # Prefer specialized multi-intent builder when food_security is the top activated measure.
     bq_tables: list[str] = []
     bq_intents: list[dict[str, Any]] = []
-    if "food_security_ipc" in {h.measure.id for h in hits}:
+    if hits and hits[0].measure.id == "food_security_ipc":
         fs = build_food_security_bq_plan(query, decomposition=enriched, known_tables=known)
         if fs is not None and not fs.get("skip_bq"):
             bq_tables = [str(t) for t in (fs.get("selected_tables") or []) if str(t).strip()]
             bq_intents = list(fs.get("query_intents") or [])
 
-    if not bq_intents:
+    if not bq_intents and bq_hits:
         seen_tables: set[str] = set()
-        for h in hits:
-            if not h.measure.candidate_tables and not h.measure.bq_index_domains:
-                continue
+        for h in bq_hits[:1]:
             for tid in effective_tables(h):
-                if known and tid not in known:
+                routed = choose_agg_vs_fact(
+                    tid, query=query, multi_country=multi, year_hint=year_hint
+                )
+                if known and routed not in known:
                     continue
-                if tid in seen_tables:
+                if routed in seen_tables:
                     continue
-                seen_tables.add(tid)
-                bq_tables.append(tid)
+                seen_tables.add(routed)
+                bq_tables.append(routed)
                 bq_intents.append(
                     _intent_for_table(
-                        tid,
+                        routed,
                         measure_id=h.measure.id,
                         geo_filter=geo_filter,
                         year_hint=year_hint,
                         multi_country=multi,
+                        time_start=ts,
+                        time_end=te,
                     )
                 )
                 if len(bq_tables) >= 6:
                     break
             if len(bq_tables) >= 6:
                 break
+
+    bq_tables, mix_note = _validate_table_bundle(bq_tables, analytical=analytical)
+    if mix_note and not analytical:
+        bq_intents = [i for i in bq_intents if i.get("tables", [None])[0] in bq_tables]
 
     corpus_tags: list[str] = []
     seen_tags: set[str] = set()
@@ -180,13 +277,15 @@ def build_retrieval_contract(
             seen_tags.add(tl.lower())
             corpus_tags.append(tl)
 
-    skip_bq = not bq_tables
-    if hits and all(not h.measure.candidate_tables for h in hits):
-        skip_bq = True
+    skip_bq = bool(hits) and not bq_hits
 
     rationale = "contract_from_entities"
+    if mix_note:
+        rationale = f"{rationale}; do_not_mix={mix_note[:120]}"
+    if indicator_classes:
+        rationale = f"{rationale}; classes={','.join(indicator_classes[:4])}"
     if primary_ids:
-        rationale = f"contract_from_entities:{','.join(primary_ids[:4])}"
+        rationale = f"{rationale}:{','.join(primary_ids[:4])}"
 
     return RetrievalContract(
         primary_measures=primary_ids,
@@ -229,7 +328,7 @@ def contract_to_bq_plan(
     for e in (decomposition.get("entities") or [])[:6]:
         if str(e).strip():
             terms.append(str(e).strip())
-    hints, hints_truncated = pack_selected_table_hints(contract.bq_tables, query_terms=terms)
+    hints, hints_truncated = pack_mart_table_hints(contract.bq_tables, query_terms=terms)
     return {
         "selected_tables": list(contract.bq_tables),
         "query_intents": list(contract.bq_intents),
@@ -249,5 +348,6 @@ def contract_to_bq_plan(
 __all__ = [
     "RetrievalContract",
     "build_retrieval_contract",
+    "choose_agg_vs_fact",
     "contract_to_bq_plan",
 ]

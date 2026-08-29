@@ -43,7 +43,7 @@ def test_resolve_yield_not_production() -> None:
     hit = resolve_measure("What was maize yield in Kenya in 2020?", {"entities": ["maize"], "geography": ["Kenya"]})
     assert hit is not None
     assert hit.measure.id == "yield"
-    assert "element='Yield'" in hit.measure.filter_hints
+    assert "fct_yield" in hit.measure.filter_hints or hit.measure.candidate_tables == ("fct_yield",)
 
 
 def test_resolve_investor_best_country() -> None:
@@ -84,8 +84,8 @@ def test_retail_price_tables() -> None:
     assert hit is not None
     assert hit.measure.id == "market_price"
     tables = effective_tables(hit)
-    assert "stg_fews_market_prices" in tables
-    assert tables[0] != "stg_faostat_production"
+    assert "fct_prices" in tables
+    assert tables[0] != "fct_production"
 
 
 def test_africa_panel_scope() -> None:
@@ -109,7 +109,7 @@ def test_which_country_ranking_africa_default() -> None:
 
 
 def test_fact_plan_yield_element() -> None:
-    known = {"stg_faostat_production", "stg_yield_raw_data"}
+    known = {"fct_production", "fct_yield"}
     plan = build_fact_bq_plan(
         "What was maize yield in Kenya in 2020?",
         decomposition={
@@ -123,15 +123,13 @@ def test_fact_plan_yield_element() -> None:
     assert plan is not None
     assert plan["skip_bq"] is False
     blob = str(plan["query_intents"])
-    assert "Yield" in blob
-    assert "element='Production'" not in blob or "element='Yield'" in blob
+    assert "fct_yield" in str(plan["query_intents"])
 
 
 def test_fact_plan_trade_not_production() -> None:
     known = {
-        "stg_faostat_production",
-        "stg_faostat_trade",
-        "stg_fews_cross_border_trade",
+        "fct_production",
+        "fct_trade",
     }
     plan = build_fact_bq_plan(
         "Uganda coffee export volume 2019",
@@ -145,8 +143,8 @@ def test_fact_plan_trade_not_production() -> None:
     )
     assert plan is not None
     selected = plan["selected_tables"]
-    assert "stg_faostat_trade" in selected
-    assert selected[0] != "stg_faostat_production"
+    assert "fct_trade" in selected
+    assert selected[0] != "fct_production"
 
 
 def test_clarify_ux_not_maize_nigeria_only() -> None:
@@ -185,7 +183,7 @@ def test_reasoner_ontology_fallback_on_empty_llm() -> None:
                 task_mode="chat",
             )
     assert plan.get("skip_bq") is False
-    assert "stg_faostat_production" in (plan.get("selected_tables") or [])
+    assert "fct_production" in (plan.get("selected_tables") or []) or "fct_yield" in (plan.get("selected_tables") or [])
     rationale = str(plan.get("rationale") or "")
     assert (
         "ontology_fallback" in rationale
@@ -199,12 +197,12 @@ def test_investor_analytical_plan_multi_table() -> None:
     from ml.rag.chatbot.analytical_bq_plan import build_analytical_bq_plan
 
     known = {
-        "stg_faostat_production",
-        "stg_faostat_trade",
-        "stg_africa_gdp_ppp",
-        "stg_faostat_investment_asti",
-        "stg_fews_market_prices",
-        "stg_fews_food_security",
+        "fct_production",
+        "fct_trade",
+        "fct_economics",
+        "fct_research_expenditure",
+        "fct_prices",
+        "fct_food_security",
     }
     q = "Which African country is best for agricultural investment?"
     plan = build_analytical_bq_plan(
@@ -247,26 +245,26 @@ def test_sahel_food_security_no_clarify_and_fews_plan() -> None:
     assert hit is not None
     assert hit.measure.id == "food_security_ipc"
     known = {
-        "stg_fews_food_security",
-        "stg_fews_market_prices",
-        "stg_ilri_household_food_security",
-        "stg_faostat_production",
-        "stg_faostat_investment_asti",
+        "fct_food_security",
+        "fct_prices",
+        "fct_household",
+        "fct_production",
+        "fct_research_expenditure",
     }
     plan = build_food_security_bq_plan(q, decomposition=dec, known_tables=known)
     assert plan is not None
     selected = plan["selected_tables"]
-    assert "stg_fews_food_security" in selected
-    assert "stg_fews_market_prices" in selected
-    assert "stg_faostat_production" in selected
-    assert "stg_ilri_household_food_security" in selected
-    assert "stg_faostat_investment_asti" not in selected
+    assert "fct_food_security" in selected
+    assert "fct_prices" in selected
+    assert "fct_production" in selected
+    assert "fct_household" in selected
+    assert "fct_research_expenditure" not in selected
     assert plan["rationale"] == "analytical_forced_food_security_ipc"
     assert plan["skip_bq"] is False
     assert plan.get("measure_id") == "food_security_ipc"
     intent_tables = [t for i in plan["query_intents"] for t in (i.get("tables") or [])]
-    assert "stg_fews_food_security" in intent_tables
-    assert "stg_faostat_production" in intent_tables
+    assert "fct_food_security" in intent_tables
+    assert "fct_production" in intent_tables
     assert any(
         "production_companion" in str(i.get("notes") or "") for i in plan["query_intents"]
     )

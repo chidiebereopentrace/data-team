@@ -32,6 +32,7 @@ from ml.rag.chatbot.export_intent import want_inline_citations
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
+from ml.rag.chatbot.stakeholder_prompts import prose_register_addendum
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
 
@@ -1074,11 +1075,30 @@ def _build_prompt(
     if intent_tone:
         system = system + intent_tone
 
+    effective_category = (category or "").strip()
+    answer_shape = ""
+    use_bullet_layout = False
+    if generation_plan and isinstance(generation_plan, dict):
+        ec = str(generation_plan.get("effective_category") or "").strip()
+        if ec:
+            effective_category = ec
+        answer_shape = str(generation_plan.get("answer_shape") or "")
+        use_bullet_layout = bool(generation_plan.get("use_bullet_layout"))
+
+    register_block = prose_register_addendum(
+        effective_category or None,
+        task_mode=mode,
+        answer_shape=answer_shape,
+        inline_citations=inline_citations,
+    )
+    if register_block:
+        system = system + "\n\n" + register_block
+
     cat_tone = instruction_for_category(
-        category or None,
+        effective_category or None,
         measure_id=measure_id,
         recency_tier=recency_tier,
-    ) if (category or measure_id or recency_tier) else ""
+    ) if (effective_category or measure_id or recency_tier) else ""
     if cat_tone:
         system = system + "\n\n" + cat_tone
     plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
@@ -1090,52 +1110,19 @@ def _build_prompt(
         gen_plan_addendum = generation_plan_addendum(generation_plan)
         if gen_plan_addendum:
             system = system + "\n\n" + gen_plan_addendum
+
+    from ml.rag.chatbot.generation_plan import (
+        ANALYTICAL_VOICE_RULES,
+        analytical_outline_addendum,
+        format_template_for_shape,
+    )
+
     if analytical_mode or mode == "analytical":
         if not export_intent:
-            system = (
-                system
-                + "\n\nANALYTICAL BRIEF MODE (mandatory structure and voice):\n"
-                "You are writing a short professional agricultural intelligence brief for decision-makers "
-                "(government, agribusiness, finance, policy). Write as an external analyst, not as a system "
-                "explaining its own limitations.\n\n"
-                "Required structure (use exactly these markdown headings, in this order, and nothing else):\n"
-                "## Key Findings\n"
-                "## Regional & Country Picture\n"
-                "## Production, Trade & Markets\n"
-                "## Drivers & Context\n"
-                "## Data Notes\n\n"
-                "Section guidance:\n"
-                "## Key Findings — Open with the strongest, most decision-relevant conclusions supported "
-                "by the Context. Lead with substance. Never open with gaps or caveats. Be specific "
-                "(numbers, years, countries, crops) whenever the Context supports it.\n"
-                "## Regional & Country Picture — Synthesise geographic patterns. Compare or contrast "
-                "countries/regions only when the Context provides the necessary material.\n"
-                "## Production, Trade & Markets — Focus on production volumes, yields, trade flows, "
-                "prices, or market conditions as supported by the Context. Prefer institutional sources "
-                "(FAOSTAT, FEWS NET, and similar) when they are present and definitive. When the source "
-                "is not definitive, treat the figures as Structured data — OpenTrace agricultural data.\n"
-                "## Drivers & Context — Explain mechanisms, policy actions, climate or pest pressures, "
-                "or other drivers only to the extent the Context supports them. Distinguish correlation "
-                "from causation. Do not invent causal claims.\n"
-                "## Data Notes — This is the only place where limitations may appear. Keep it to 2–5 "
-                "short bullets. Use neutral professional language only. Never expand gaps into narrative "
-                "discussion. Never mention internal system behaviour or BigQuery.\n"
-                "Rules:\n"
-                "- Lead the entire answer with the strongest available findings. Never open with gaps, "
-                "missing data, or statements about what OpenTrace does or does not have.\n"
-                "- In Key Findings, Regional & Country Picture, Production/Trade/Markets, and Drivers: "
-                "write only positive synthesis from the Context.\n"
-                "- Put ALL limitations, missing series, incomplete coverage, or thin evidence exclusively "
-                "in the final ## Data Notes section.\n"
-                "- Never write that structured data is unavailable, that a query returned no rows, "
-                "that OpenTrace lacks the data, that no reliable trend can be made, or that this is a "
-                "data gap. In Data Notes use: "
-                "\"Coverage for [year/region/commodity] remains limited in available sources.\"\n"
-                "- Do not invent production totals, rankings, yields, or year values that are not in Context.\n"
-                "- Keep country and regional claims aligned with geography present in Context.\n"
-                "- Tone: clear, decisive, concise. No academic padding, no thesis-style openings, "
-                "no restating the question."
-            )
+            outline_block = analytical_outline_addendum(generation_plan)
+            if outline_block:
+                system = system + "\n\n" + outline_block
+            system = system + "\n\n" + ANALYTICAL_VOICE_RULES
     elif mode == "fact_lookup":
         system = (
             system
@@ -1158,11 +1145,18 @@ def _build_prompt(
         )
     elif mode == "data_export_only":
         system = system + _EXPORT_CAPTION_BLOCK.replace("ARTIFACT EXPORT MODE", "DATA EXPORT MODE")
+    elif answer_shape:
+        shape_fmt = format_template_for_shape(
+            answer_shape,
+            use_bullets=use_bullet_layout,
+        )
+        if shape_fmt:
+            system = system + "\n\n" + shape_fmt
     if export_intent and mode != "data_export_only":
         system = system + _EXPORT_CAPTION_BLOCK
     # Keep category plainness/precision when answering in a named non-English language
     # (avoids English academic bleed on e.g. Igbo + Farmers).
-    if category and cat_tone and not is_english_answer_lang(lang) and lang not in ("unknown", ""):
+    if effective_category and cat_tone and not is_english_answer_lang(lang) and lang not in ("unknown", ""):
         system = (
             system
             + "\n\nAnswer in the user's language while keeping the category audience rules "

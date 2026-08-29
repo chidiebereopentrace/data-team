@@ -1,0 +1,1032 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_prices
+description: Harmonised market prices (FAOSTAT/FEWS/WFP).
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Market × product × month × source
+entity_type: prices
+columns:
+- name: price_key
+  type: STRING
+  description: price key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (null if unmatched)
+- name: geo_level
+  type: STRING
+  description: geo level
+- name: country_iso3
+  type: STRING
+  description: ISO3 from dim or extractable geo even if key null
+- name: market_key
+  type: STRING
+  description: market key
+- name: product_key
+  type: STRING
+  description: product key
+- name: unit_key
+  type: STRING
+  description: unit key
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: tier
+  type: INT64
+  description: Producer scale (1=global, 2=national ministry, 3=community survey)
+- name: data_level
+  type: STRING
+  description: Resolution of the number (warehouse row resolution)
+- name: geo_scope
+  type: STRING
+  description: national / sub_national / community / point (null when geography_key
+    null)
+- name: place_scope
+  type: ARRAY<STRING>
+  description: ARRAY of comparable place labels for ACF geo overlap
+- name: metric
+  type: STRING
+  description: Stable slug for the measure
+- name: source_id
+  type: STRING
+  description: Lineage key (= dim_source.source_key)
+- name: price_type
+  type: STRING
+  description: price type
+- name: price_source
+  type: STRING
+  description: price source
+- name: year
+  type: INT64
+  description: year
+- name: month
+  type: INT64
+  description: month
+- name: month_code
+  type: STRING
+  description: month code
+- name: date_key
+  type: STRING
+  description: date key
+- name: as_of_date
+  type: DATE
+  description: Observation date when known; else DATE(loaded_at)
+- name: as_of_date_basis
+  type: STRING
+  description: observation or loaded_at
+- name: value
+  type: FLOAT64
+  description: Numeric measure
+- name: unit
+  type: STRING
+  description: Unit of measure
+- name: common_unit_price
+  type: FLOAT64
+  description: common unit price
+- name: common_currency_price
+  type: FLOAT64
+  description: common currency price
+- name: currency
+  type: STRING
+  description: currency
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+price_key_value_stats:
+  distinct_count: 1956105
+  null_count: 0
+  is_truncated: true
+  min_value: 00001782c224459639a6386f37fa20dd
+  max_value: ffffff2be8e98563904d27919fc296ea
+geography_key_value_samples:
+- b4f3325b4dff86fd532a100b328770a4
+- da5416d0b7eb15e076fd031e9a0b2e22
+- 6b6a33d1b12ec418b4d84ea86d5ee2f1
+- e2a7da7be69c9efab479954c7fc62683
+- 82dc51dcf101cb11ff4c3346a530efbc
+- f879de6d2aff3bb8e6336e65db2e4cb3
+- c7afa8e5dc75eaed3f865becb594623a
+- 643b7e5a6012349b12e2a7d8b9f9b12f
+- fc36cac904ae8ed303bd472e14279601
+- 6f8c5d76bea0a5e7b6408e80dd147dfc
+- 8a9d2f38657b41d1beee71987b789584
+- d081c90ab6801ddb32bedd266ed0bc9e
+- fafb8c280b3839e5bb2cf04e4982d459
+- 4873407b6dcd3d440b964ca0e6285ec2
+- 97b9d0ff0519f52da36b9897dbc109d8
+- 14cd64b93250222ef8109668740e33c9
+- 3e162de530565ea7fd832dcf8d5d8e00
+- c3b34f1c114c01b1ac1f59b7cc1199a3
+- 414e80f7a6cec83f4a5fa1139fc707bf
+- 896ec125e415d43f6917dafc7bdbe109
+- ab2429540904106e58c159d4b66c714c
+- e1490c9d435658d25b0069edb3330168
+- dd04f7f59838b1d21a1bba89caf08518
+- 42fc637e79bb98d1e905f28e55fca77a
+- 8b2130007752cc4fd2bc50ce5f2ce31b
+- b93642c9546b0ad7c4b50b1edd34b641
+- 41a9071812831bd833b31a0015a7fc21
+- f14bb4203a7073edd04952936c354fca
+- 813e1dfd9941f45a5c4665d686c3ca61
+- 869dbec7886b8171527c101f0aafa9d7
+- bfcc5273fd7dce595c475531c8db844a
+- 76326f2587df129db38f63c357da9aff
+- ff2abe6b8f87b63b0a4d12a3dc2fb900
+- 6ea50c3f60608e6b97361ff706e9bd3d
+- 2c1ec0c4a605badc0f5086972068dbe1
+- 547d52a13b878d359e6e0e930b5fed18
+- d363e64625c8569f7c85f19006f728ba
+- 939117deefb921f24dcb765b8ae3027d
+- dad3f956104596ff2fd5ccc98d2ac7c8
+- 5bc627a0d29b7f3139dc80e54ab2fe76
+- 90981025684cb2f3d9a43b191edb5862
+- dd2eb23623d3cfe1d69e6d1ef080baa4
+- 7f4e1c93fa0ec34f371db0ceafe3a203
+- ab513aae543acd1b8e99736cb6e41062
+- b9a6c3cfa0ba81a70106dd8e6007df4e
+- cd78bcb0db0de559248f3379d241b60f
+- 51e8ea2c8bde27ce8b8e817433544b5a
+- 6258dc0299b2e5beaec7f3d0e69cd89f
+- 514d63591d4d149773d80aac5c002246
+- 73abae1655254baa0c8f2d1cdbf350da
+- 64c358108a042ca9f2774009424a7360
+- d61616dfbbdae5dd3002ee348225e7cf
+- 629f6ee5a903f4bcce1aa6a327392f4a
+- a551b6bd616d5ef39cc44491a91df819
+- 39151cc9d3af09545bc3d5d36a2e10fe
+- 034019495af0989d84cd37e54cf360dc
+- 0d79f534a26d3d703c0b5a23b5763c49
+- e36a49cf9440c0469a0b80d3dc94e83e
+- c3f06c968f66f87351b1e9aae5fefdb0
+- 1e1bb26745564fc1e5c8b03667e8593a
+- 704d29eefee41c6be1200423df6f3f1e
+- bd95eade958e01bba5ec24d2aab695ee
+- 3bd6cdd0fb668f436940d87239b09f5c
+- 356ee71c491c65a0ebd9bd4af60a7814
+- 7983355c6a0eec66672b0567717d9b7d
+- ade21a031509a61c941e11ba9397bd30
+- 18bc7951054e661bb15cdfe66b98fc64
+- 8a6973d8ba686f5a6c7618896e9e9a6a
+- b1c2b8c19a752f2a60c84bd217e8dd18
+- ec7437dac6b677268f738803c348a944
+- a861fc69a36e1d305551f023169dca5c
+- 07f1b7bb7586e9caef6bf1dba01a34f2
+- 6db6e12dd7e46387291f27213b884179
+- 7fec6d7bb31bf9dee385afd2e63b754a
+- d8e7902a1aab9ce87cb3a10af9e19e8e
+- 79fc6d6216f882270b5245330bd2b588
+- f37a5f606dfe9b81225f2fee07156109
+- 531049180f614010ef9d190f6343db87
+- 6d11a2f5a696cb728445b7947264596e
+- c579643ca51e33388507cec4ce1dc928
+- caabf8e59e96c9806dd79ded964857de
+- 785e4f11bc769b5b515ad99cfe05e9a9
+- c728da13fbaf3f4591bb7662589b8d15
+- d7a1256d278e26c2fc39df6d13fe7f95
+- e8e7c6a1b7a0b752614681242fc01bfb
+- c8d604f51a60aa16f4f40c3ed1e77008
+- 82533bcf1d2275baadeab94166482969
+- 8ae09f637882916f62d535b1c76f680c
+- 8b7d90efaf1fd4236419e59f1e1be0f8
+- 2920404bc9e590a0c3078dd4c7973688
+- 13fdff37d532eda9c88ecd2811c514d0
+- 76fb1ec5c292404de5d1392bbe7c50c9
+- 892a355abdf11cbe7576f17e90203474
+- feab5ac67de3d9e89579edf4488b2c98
+- b257bf0de59181201d44d0a871ef0798
+- e06752126ff796d0bfd12fb5a3f93e52
+- 10da75bcfed39004bfb8edcb1dff5026
+- 9b670c83e05e19619260345efd84aa3f
+- d646dbcb3e1973f108678f27b631dfa3
+- c7d29865a5b12fb476ebffae701fa11f
+- 5cc111ed6ab7ce162ea3af43c3ef52ff
+- 0a77094a6850887c37d1463ce54c9db0
+- e57db3b0fca44368101432ce1ad60b88
+- f26fcd1249bccc5de753b9ef405c84ea
+- 7cbddedb64985d114040998e595c369b
+- 1fab441f849ab9198152bc816f58c6c2
+- c386a99d2f4db663414a6442a8f146be
+- 4d9142fd531731495f9f581296425df2
+- 8ad814b64e5bf4b1e8b7fc6a5fa0e2ee
+- bf7bde0b12a9ed5cc8f4dbf707da5c82
+- e2e7220258577b7bf5917652b1a0c882
+- 08d5d1fbcfbc008d33905868ea7a2dd7
+- bf2a8f0c11d7c46eae8f377b86f9d006
+- e8498557fac00bf9746c61c3070b1bf4
+- 80c1cfa75a62b6732f07643cc1e20fe2
+- 96a41cc70b4b99b5b238b479e6274f4c
+- 75bb2b5f78b2677745d6727c88a27e11
+- caf47ea21b9260784ac07f29ab2c5a7f
+- ff494f6d1039cd4ef26de8e28fa88482
+- 8a81363f4b23efb98d1f2cf9b4cea8d8
+- 275cc5adbe9cb0f6c26fae42905e01db
+- 7439cbe6b25c8ad7f9c9db2ce1e10d03
+- 883c6424a3caf638f37530227fce8b09
+- 4eaceaaedb729151a832f5830c2093a6
+- 867d6054ebc452a8f7f4e1384b8bdc12
+- ce592494aa89894b2eeae1126c64b96f
+- c4d73c3cbca10a6042eb9af5dc7b6506
+- 20115e8347fb98d2e809672f6da1a75d
+- 32bd97dcd6af6fcdb896dfffdb79ea8d
+- 6b2fde6029ac09e929947c9257718b98
+- 4bddb5728b78b2d6c89c0365d4f04bba
+- edea4f2722b218fe5a2cc77b006a0aee
+- 0f962baea3c8a3f758261cc687975f61
+- 6709ac8f44f4c3af49046fd90e558cdf
+- 03dd98ed7fdb2860541967c193f055c1
+- d4782c5eeb0f2819d903098209ed8cb7
+- 63c4e283d5a72aa210a876048b4f5d8c
+- dd7df4b1a59c1cd4432cadc404e8ad4a
+- 2f0659d0250397ae9c7171f0c19e9b5f
+- 7f24cf6c5ae4ae2c13e4a3cd9da9563d
+- f7fa6ed65c202f6f421e84b3b2ef4103
+- 8d2977ea05cfc771252b5dd2e3456353
+- 567d72da5ee4afec8b04693c74770f03
+- a3b4764d22c09576d75c4e900f25da66
+- 2cf11a9e9b688141f9d24f66a819de4e
+- ce8f74eb3e22acfd3b51e53ab04a99d7
+- f31f8da7b1d25abbd8e3428a4e36a710
+- 8fdd65bc015f999ef22a924baf8e4980
+- 3c1f640e16ce13495d0363f9dc05b03a
+- 95c4a168919537784a89fb96769bf062
+- b83e3987c4ac6309baacbcba1f64b579
+- 38bf160965113788deae45f37a35b03f
+- f3e4b2c44321e8e2be792a93799d7577
+- b0c0fedd6db030ed5865ca95e20fef5f
+- f3290b42783e384e4d50645ba64c66a0
+- 02acf6d34f0552aac6c86c5f45ba9285
+- e6d066a72c89d5625ea266d5e1890e46
+- a4fb55cc7876c0241b6897a96432d3ff
+- 23b931c41a6ed7ed069d8df2ee419eab
+- bce571fcc0fbe68025e9a880739e5edd
+- 71def9c07161e3612d02a11987fbbf6b
+- e2cba10947d5e38aeb087d8da44bf2d0
+- 7b0b85c8c29580455506ad61a29842a9
+- 9d4aa810ebada9729d18a2783bf5097e
+- bc4e633d80099b0051a833c117696ad5
+- 8c16394dade555e74dfb75e3bdbdc5ba
+- 2ce1740e9ddfb830b5325856afa892db
+- 75909e553bec43a2e7fc28daf560fbcd
+- cbce83be3db13e1edeee165fca95bab1
+- f804e4faa97675db007ed98fb260946c
+- 10def711a60f8e7a10c98afecc0084e6
+- 629af6c7a725a22c284b4e45ab391e88
+- f73b9fe995874638e36e5bd11f8866e4
+- a6e8e346d6af83b8c59d62fab5ab0fae
+- 61342a1c31f1a637723e0a83bf6271f4
+- 23079e5ca48a5d965a337b223fad6968
+- 3df143fd9566309beb12d0d4e4e221e0
+- 3129de585671e8fbb1de4047bf9426c2
+- ef14a09a744bd3ef4cef4e3632d78998
+- fa528be83331cc1784df9d27c042825b
+- 13ed751cbc60ab1f2fa4d1fa9429ddae
+- ab410d82fab9e46b96fa0595a35ca81c
+- e1f30e02cde93d5614e25c7bd5f29fb3
+- 2e978f4bca14af58a6627d4923b9dad3
+- eee26091caa3d108f8508efcfb35cb7e
+- 9941610e28b67a59c318c149bf523fba
+- 8bbb6e04873bc0fa3157ce24c3d2c6b2
+- b65c74945b61c053847903488d17cff3
+- 7739f0dafe4de41cbeccdedfd739ddd5
+- d9d450c67f6136e1c7e3d18a106c6213
+- e88a18dbfd8f22f604a69fb43ff80c3c
+- 324af0f39f43d7b029937fbc45088a09
+- 5a33fa28e1a8eb3f82a58ca6e1ec4c82
+- 2baa82c7641222ea8cf38eef2effbea3
+- 8609ad7efec07846ff91f89499edd62e
+- 008f3e39b7ba51275eb1d03abd0eabf2
+- dda27e0835a8d77ea4f890d5f7d8d44c
+- 5b182dcafd1ed04d5bc8f68a6f349868
+- e7bcfb99215fefc438abd36e9eecb489
+- 1a62f5e75c10f81c5a8a00668304babc
+- bd5c8ab38254c0e269bd20c6352e8bdd
+- 59cda4506546cdd472c85470c2c6848b
+- c082613c56893c3043619b6aebf81f25
+- 4847c56d634dd8f64844c13e06fc3050
+- 51e5d6faf6a38420260a105a70be0f4f
+- 57d1f0d006964652588b4bcd0a5f738a
+- 1c75d1483ad01af9f868eb7efcf6ba41
+- 09870c0482529e0740a2d667da7b4e87
+- d95be66a7a34c39c89d991ef8010768a
+- 24a10e20ec6f7e28ac48c0ec20ef4cb1
+- 15a568700b6044ba197571e66c7f16f6
+- 88cbafba86882436dc44143392016461
+- fccac219a0af7f6e310bb181e7c709e0
+- cdb4c89696d45097587020d9c09861d9
+- 0a0441b57f37ba6fcab0014f30073fe0
+- 22f36ce08b6b4e010c6a5f6df6bc383b
+- e4a0dce445a5a01c56a8255a5a5c6c25
+- 9ec2636437a95bd30d75c1d5a80f72d8
+- 11cecf88a2782775fb8cb093597d6a2e
+- 7bc5a9b0a6d6969e4a08662a5b6c78b1
+- 435c231fc89059532f67dfcf956ebb6b
+- a2c2ba996b7a555f46304f307a74b21f
+- abc5fe39e9f3d3d5a1757422eb77dcc7
+- ff2e51deb0187041cdcaebd87061dff0
+- d511c22af0577c94006e836287aedd77
+- 5c27d69d975f002f2ff376a121c74fc9
+- 8060b138c8c6f78df793309ca2e3a41a
+- 301e438595efe4174dc026b06ea35189
+- 635fc087ce5d6089c816de9c5f165eb7
+- 435046eb0704780d3e18fe02f6c16124
+- 240de68d1e63bba0ad7bb77b4fc97dde
+geo_level_value_samples:
+- country
+- admin1
+country_iso3_value_samples:
+- BDI
+- RWA
+- NGA
+- SOM
+- MLI
+- GMB
+- NER
+- ETH
+- TZA
+- MWI
+- MOZ
+- COD
+- BEN
+- ZMB
+- TCD
+- MRT
+- LBY
+- KEN
+- BFA
+- SEN
+- SSD
+- GHA
+- CMR
+- ZWE
+- SDN
+- GIN
+- ZAF
+- GNB
+- MDG
+- LBR
+- SLE
+- LSO
+- TGO
+- CIV
+- NAM
+- EGY
+- UGA
+- CPV
+- CAF
+- DZA
+- MUS
+- MAR
+- COG
+- DJI
+- TUN
+- SWZ
+- AGO
+- BWA
+- ERI
+- SYC
+- GNQ
+- GAB
+- STP
+- COM
+- REU
+- ATF
+- MYT
+market_key_value_stats:
+  distinct_count: 2318
+  null_count: 321816
+  is_truncated: true
+  min_value: 0006a06dc743367798d6e52e0100933d
+  max_value: fffdab84332ddadab262bb00bf7043f9
+product_key_value_stats:
+  distinct_count: 927
+  null_count: 37058
+  is_truncated: true
+  min_value: 00af54407e525b2f9da85ee60c81db0f
+  max_value: ffdf5ced4479d19b73228a3c9735a722
+unit_key_value_samples:
+- 9a7352b678b8742b628d18373cc3f52f
+- 1659b00a4ab1ac4906764b932b2d2e6a
+- d7d5bec87bb70f312d78d1d4e23b40aa
+- abff05eee33c4d61798f394d616c2e5c
+- 8d8e863e698c8fea71bc8ecfb617c839
+- 2e669dd28670eb954ac2228ecaad5b4b
+- b08dc49c6548b046d683c87cc01e5fa3
+- fec48dc16792c5cb4882f5d8cbe729d2
+- 415d4fa8f93dca100349bc86ee6067c2
+- dc8c931806ac59fb14fa18f58396f45a
+- b05c7241b7d687f9593c3b036acc8b35
+- b6801ff6d5ed3f90738e03bcbcc4637c
+- f68b135c471e7bea0404b40e7f44212e
+- df4aa488d83ae4f7b50a802f2a230bea
+- ea16766d9bc44a88573de4624c6fdb52
+- 7b9acf083c4785762b07ab9478f1cca0
+- 54c70d19f389b565b0e1ee186d114b4b
+- fbda986edc6bc48a2928888467ec1808
+- 432854f26d40f40b856774e2d3a1a5c5
+- 5df4dfa875cec4a2b816de54843a42de
+- ad0a65ed2e6f049d65e846da25e57db8
+- d3e0c1b89a316b997dc32eee11f4e74f
+- fa81873d4ac5d38bfc61d90613a8b606
+- 3a398a1855a70bc2365e6c52ee3bce42
+- 3ba7d964d86260caaad9f3fd66e0d9fc
+- 6b1ca044805100e888279c7a19621151
+- 8d8770106143ebaab1e9357a66d71ab4
+- 79039887c6c3fb77c662782bc8f0f808
+- f5a532ae6032eac8265d98fd92346b40
+- 0037f24d4f04f9ab0ba91dafb28ec12a
+- 77b661fac2944001a151a9510304eda7
+- a2ecf2c6c0470c8127f190384bf7fad2
+- 0ab1f76e5a3a8c1116b40b2bf70ec57a
+- 8efa3bbf2f65ca84fecc9fe901a13676
+- 066ccae772f82e9223e93c103a821ff3
+- c265d09858a74346e5d2cb5bc624b8c7
+- fd01e0d205f13e2f6d5ac0944992968a
+- 8b4cfcb07c4ee50a5bdab9b767498e0f
+- 331440c275e5c54a91988b1a9366a78d
+- 5cd88c550667842ed400c311336ea007
+- 44d77d89bfb2b5e4765bd2de6504f71d
+- 5ab35a1efa7e1a133cff6835e5b5ad07
+- ba736ca74a7dc5e92b296fbb154e580d
+- 15734d67d769482639ca78dcf6ee9be8
+- 5cec27828105390318d7df2e87a3f769
+- a36d6991a796ddff592c1c777ae71445
+- f148df0b9f45ef443dd56d819eb5b0da
+- 6bdb16f64716e3a4b7eb4f99392a6eb7
+- 3c642c34ad494a4e3c9019024005af16
+- e22971057ccfffc39834f52201e31ec7
+- 86811f6411a639ec44f00a768ba49511
+- 2c8e92e0f2dce851529e770c2b0cb737
+- 7df164902c6e5ec25f691e9a0c892cc8
+- 4c3a54919b42941641acc4c9b36a49f9
+- 4ceaf26792aa435a24aad53412ff737f
+- 9796b73ec43ba11a7f555dde8bbe71ba
+- 4e59701eca79c78cf33bc050421af70c
+- 76db983c34325b5ee48956073945f359
+- 9ec318a91f81d5a18f92f8fbdf4555f6
+- 41322c0c99686338d6bf44b352ca2c2d
+- 5c088c56654e7986c37ebfbd08bfcf9f
+- 60949bab52dc4d037db5c456bf2f595d
+- 18b077b4c9862dcc93561a3ae93fe8e9
+- 3aba275ac6777a355b4d8c338c9e4f70
+- d17d3e58c4cc4d0b0df60907bd600334
+- c92a794f0053681231a56c39442bef5f
+- 7b8e3132bdabe55a6f267fe965013332
+- df2e23facdc883fef1677bd429963c35
+- c81edf2dc0dfe9a93487622407a67251
+- 8b154372f265b17cfb213e790aae06ae
+- 2cbb7fe476aacbed9546c80c53a7d21d
+- 52a3cc2305c6e66bae64d724d4218482
+- 7151d02bca4ca2442146259f6acfca4c
+- 9b15ce4daedafd6bcb11759475229d4c
+- eddd4c8b54259a555e10dbf89a97eace
+- 9d7e36d36d31418dd535b413cfccca88
+- 59ce15693e7690acdc443374d624a2e7
+- 9329f8b5509c0590ab3bc31fc0174e72
+- 4e82c444f2ace9586b1e0d5ff5a1b1d0
+- 57bf5d9f28e768d4ba3b9e3212c2c980
+- 44df579195a7a4baf54810bfd0356d1c
+- 8ecfc167098812a20dd7b0c7a52a5463
+- 5b3d08b8716a4a9c43a53129e7aa478e
+- 63cfced0daad6fbc6c2ddbd234cc1a72
+- 64db325877d3c053aac7b2263580a9ca
+- eec15670c9438853a77d7ffa787717fb
+- 28d0f79f063369ec2648d494e5759cca
+- de58f4f64c1ae59ec44cf3ba83b0194f
+- 06c2c094d3a5a88b803b5ad56f249182
+- f77960369283a3f492d8d04987d5acc3
+- ce2a9704ef400e1d5f2b2cd03fba3357
+- e659d5d9112965d370161346e45ad870
+- 2b8e7a9ef9e7299c44a15ef4894f4d07
+- 7da949c9050d62c0399dd6752612803f
+- 381c2040d43e7c164ed58a0c938fd5b0
+- cc49eed825c80fcb8e5b5aa4377c037f
+- 4ddb9c9c49e52073cc211c85eb8d15dd
+- e6c3063a1b5170384f468ffedd138396
+- bf5666fc3e2529f473377d7d184fd780
+- 583ad73eb12bc64cdd4db3ad50c59767
+- d71f97cbe9a2756b81815544fad2adf9
+- b40d1ebefcdb20b2b98e0008dc23e60e
+- aca2c4d18d07a11b1ab73a16ffea7005
+- a3bbc176ae38aca58871551a509f36d6
+- 8136511ffcc8845b1377e7f81285f655
+- 5cdb6074e0061569ea0fb471278b24e7
+- d90700fd2cd0e5bb689f1809084d0bbd
+- c5e152f8f584dba05c3e76e7eae097d4
+- 8e08e258a9789118b40690bf653767b3
+- 95c2de628767cda575c272062f2c5b4c
+- f95ad0f36194e072e6ed5cb26ef7dcf2
+- e63d6e716de4bfd352c5f1f55200e6e8
+- d78373fcd19561afdbcb14086639874c
+- 38144c04bbae9d32287ec1ae16166e7c
+- ac002bbcd9c919527f47736d1165cf01
+- 5de8e52028e981c469995b2452db6bac
+- 482a9801f105e863d17ac70454ba83bf
+- 0424f708b42309e4f81a47b49ddf30e4
+- a8efddefaaf5bff57be9067451248dcc
+- 8f87a04c1f5ab62a6b893ed0fafa6619
+- 025cc8fa9013c8a700bf0397c036ae33
+- 4bf8defa6a27c5d7597fc10b11add871
+- 9f708f18cfaa122752af88484301d898
+- d64123c74e279816bd0b083fca6c1934
+- 74a8cd56f4224c20e3ea15403c75e498
+- 4b67c09ab8d55c42944c958d852bfa95
+- 3ad8bb4e74700f51757a4cd80d75efe4
+- 77231dfa074434a29ddf9726359bd4af
+- c6d6244dcf6d29cfa0546cde22ec6f37
+- 6ba22fc4b47069d942e7fd38ecaa3b46
+- 047e2c54b2b5283e249c4391fd0fb071
+- e97f75022a5011089a2e86ad21c47f5c
+- f0b7d6e2d2ace4cd9fcaec389d160145
+- 28e0190f919f577a1f258a81788ad82d
+- e2a737a15b4e70ae6da414b5756ef584
+- bebfcb68667899d673bdc9f695de83fa
+- 554ae8ce910e13d835e4d7c563b5e609
+- b486973863587838c98b1759ff289dac
+- 18844e496b10065e5d57d11cfb7c3d2f
+- 048804503ea5372e46cf661c133a1bed
+- 977147429c354f93fded845002749a1c
+source_key_value_samples:
+- 5b7d02443deeb1ede39fcd70628837e4
+- f33c4639421e90f1208bd87d9db2f959
+- a30a354ef9ea4cc3f23ea2de63edb5a3
+- c99f4f49cbd0b5291cb40cb571d19405
+- 02bd78b6d416ebf2facb6567d75454e6
+- c37dfac0c0cb060834a2e54c4444959e
+tier_value_samples:
+- '1'
+data_level_value_samples:
+- national
+- sub_national
+geo_scope_value_samples:
+- national
+- sub_national
+metric_value_stats:
+  distinct_count: 1518
+  null_count: 0
+  is_truncated: true
+  min_value: price_export_coal
+  max_value: price_wholesale_yams
+source_id_value_samples:
+- 5b7d02443deeb1ede39fcd70628837e4
+- f33c4639421e90f1208bd87d9db2f959
+- a30a354ef9ea4cc3f23ea2de63edb5a3
+- c99f4f49cbd0b5291cb40cb571d19405
+- 02bd78b6d416ebf2facb6567d75454e6
+- c37dfac0c0cb060834a2e54c4444959e
+price_type_value_samples:
+- Retail
+- Wholesale
+- Producer Price Index (2014-2016 = 100)
+- Producer Price (LCU/tonne)
+- Value
+- Local currency units per USD
+- Producer Price (SLC/tonne)
+- Producer Price (USD/tonne)
+- Value US$, 2015 prices
+- Value Standard Local Currency, 2015 prices
+- Wage
+- Standard local currency units per USD
+- Export
+- Spot
+- Producer
+price_source_value_samples:
+- wfp
+- fews
+- faostat
+year_value_samples:
+- '2020'
+- '2019'
+- '2021'
+- '2018'
+- '2017'
+- '2015'
+- '2016'
+- '2014'
+- '2013'
+- '2012'
+- '2011'
+- '2022'
+- '2010'
+- '2009'
+- '2008'
+- '2023'
+- '2007'
+- '2006'
+- '2005'
+- '2004'
+- '2003'
+- '2002'
+- '2001'
+- '2024'
+- '2000'
+- '1998'
+- '1999'
+- '1997'
+- '1996'
+- '1995'
+- '1994'
+- '1993'
+- '1992'
+- '1991'
+- '2025'
+- '1990'
+- '1980'
+- '1973'
+- '1985'
+- '1986'
+- '1984'
+- '1989'
+- '1978'
+- '1988'
+- '1979'
+- '1987'
+- '1977'
+- '1970'
+- '1974'
+- '1975'
+- '1971'
+- '1976'
+- '1981'
+- '1982'
+- '1983'
+- '1972'
+- '2026'
+- '1963'
+- '1967'
+- '1968'
+- '1965'
+- '1962'
+- '1966'
+- '1961'
+- '1964'
+- '1969'
+- '1960'
+month_value_samples:
+- '5'
+- '6'
+- '3'
+- '2'
+- '1'
+- '4'
+- '7'
+- '8'
+- '10'
+- '11'
+- '9'
+- '12'
+month_code_value_samples:
+- '7021'
+- '5'
+- '6'
+- '3'
+- '2'
+- '1'
+- '4'
+- '7'
+- '8'
+- '10'
+- '11'
+- '9'
+- '12'
+- '7001'
+- '7003'
+- '7002'
+- '7004'
+- '7007'
+- '7008'
+- '7009'
+- '7005'
+- '7006'
+- '7011'
+- '7012'
+- '7010'
+date_key_value_stats:
+  distinct_count: 765
+  null_count: 0
+  is_truncated: true
+  min_value: '19600101'
+  max_value: '20260101'
+as_of_date_value_stats:
+  distinct_count: 819
+  null_count: 0
+  is_truncated: true
+  min_value: '1960-01-01'
+  max_value: '2026-12-31'
+as_of_date_basis_value_samples:
+- observation
+value_value_stats:
+  distinct_count: 312538
+  null_count: 0
+  is_truncated: true
+  min_value: '-24.982988'
+  max_value: '69078379717'
+unit_value_samples:
+- KG
+- kg
+- L
+- LCU
+- ea
+- 100 KG
+- ''
+- SLC
+- USD
+- 100_kg
+- Unit
+- '%'
+- 90 KG
+- 50 KG
+- 50_kg
+- Head
+- 90_kg
+- day
+- 3.5 KG
+- 500 G
+- 400 G
+- 3.5_kg
+- USD/LCU
+- 1.3 KG
+- Gallon
+- 200_L
+- 250 G
+- 3 KG
+- 30 pcs
+- 750 ML
+- 1.4 KG
+- 500_g
+- 12.5 KG
+- 5_L
+- Day
+- 2.5_kg
+- Sack
+- 1.2 KG
+- 20_L
+- 12.5_kg
+- Bunch
+- 5_kg
+- t
+- 2_kg
+- gal
+- 91 KG
+- 200 G
+- 100 Tubers
+- bundle
+- 12_kg
+- 100 ML
+- 750_ml
+- 109 KG
+- 100_tubers
+- cup
+- 5 pcs
+- Loaf
+- 200 ML
+- Course
+- loaf
+- 0.5 KG
+- 800_g
+- 15_kg
+- 93 KG
+- pile
+- cum
+- 20 KG
+- 20 G
+- 2.1 KG
+- 98_kg
+- 10 KG
+- 5 KG
+- Brush
+- Bar
+- 12 KG
+- 110_kg
+- 109_kg
+- 10 pcs
+- 70 G
+- 700_g
+- 250 ML
+- ea_30
+- 10_kg
+- 93_kg
+- 11 KG
+- 250_kg
+- 300 G
+- 125 G
+- 91_kg
+- 99_kg
+- 250 KG
+- 700 G
+- 900 G
+- 900_g
+- 20_kg
+- 125_g
+- 3.1 KG
+- 18 KG
+- 1.1 KG
+- 3.4 KG
+- 500_ml
+- 1.5 KG
+- 52 KG
+- 2.25 KG
+- 2_L
+- Bundle
+- 84 KG
+- bunch
+- 500 ML
+- LCU/3.5kg
+- One_way_trip
+- 68 KG
+- 20 L
+- 27 KG
+- 73 KG
+- 16 KG
+- 160 KG
+- 50 Pounds
+- 2270_g
+- 250_g
+- Packet
+- 100 L
+- 1 piece
+- ea_18
+- ea_6
+- Pile
+- 168 G
+- 200_kwh
+- 1000_L
+- 100_g
+- 15 KG
+- Plate
+- 1.5 L
+- Cart load
+- 6_kg
+- Heap
+- 45_kg
+- MT
+- ea_12
+- Package
+- 0.5_L
+- 120 KG
+- 800 G
+- 2.5 KG
+- ea_40
+- 2 KG
+- ea_80
+common_unit_price_value_stats:
+  distinct_count: 101659
+  null_count: 1422826
+  is_truncated: true
+  min_value: '0.00068027142857142854'
+  max_value: '26300000'
+common_currency_price_value_stats:
+  distinct_count: 282022
+  null_count: 1430294
+  is_truncated: true
+  min_value: '9.5307903446e-05'
+  max_value: '13227.11613'
+currency_value_samples:
+- XOF
+- BIF
+- RWF
+- NGN
+- XAF
+- SOS
+- GMD
+- CDF
+- TZS
+- ETB
+- ZMW
+- MZN
+- MWK
+- LYD
+- SSP
+- SDG
+- KES
+- GHS
+- MRU
+- GNF
+- USD
+- LRD
+- LSL
+- SLL
+- MGA
+- NAD
+- MRO
+- UGX
+- SLS
+- ZWL
+- DJF
+- SZL
+- CVE
+- ZWL_cash
+- CFA Franc BCEAO
+- ZAR
+- AOA
+- EGP
+- CFA Franc BEAC
+- BWP
+- DZD
+- Rand
+- Euro
+- Ethiopian Birr
+- Tunisian Dinar
+- Burundi Franc
+- Seychelles Rupee
+- Algerian Dinar
+- Moroccan Dirham
+- Kenyan Shilling
+- Mauritius Rupee
+- Lilangeni
+- Zambian Kwacha
+- Uganda Shilling
+- Libyan Dinar
+- Dalasi
+- Rwanda Franc
+- Malawi Kwacha
+- Ouguiya
+- Cabo Verde Escudo
+- Tanzanian Shilling
+- Liberian dollar
+- Pula
+- Djibouti Franc
+- Dobra
+- Leone
+- Naira
+- Egyptian Pound
+- Loti
+- Mozambique Metical
+- Guinea Franc
+- Kwanza
+- Comoro Franc
+- Namibia Dollar
+- Sudanese Pound
+- Nakfa
+- Congolese Franc
+- Somali Shilling
+- Cedi
+- Zimbabwe Dollar (old)
+- Malagasy Ariary
+- Ghana Cedi
+- Zaire
+- Guinea-Bissau Peso
+- Sudanese Dinar
+- Syli
+- Mali Franc
+- Ethiopian Dollar
+- South Sudanese Pound
+- Mozambique Escudo
+- Rhodesian Dollar
+- New Leone
+- Ghana Revalued Cedi
+- US Dollar
+- Portuguese Escudo
+- ERN
+- Affars and Issas Franc
+- Zimbabwe Dollar
+- Angolan Escudo
+- Madagascar and Comores CFA Franc
+- New Kwanza
+- New Zaire
+- Kwanza readjusted
+- Malagasy Franc
+- Second Zimbabwe Dollar 
+- French Franc
+- Financial Rand
+- Zimbabwe Gold
+- Malawi Pound
+- Libyan Pound
+- STE
+- Pound Sterling
+source_natural_key_value_samples:
+- WFP_VAMPIRE_global_food_prices
+- FEWS_NET_market_Prices
+- Unpivoted_FAOstat_africa_Prices_Producer_Prices
+- Unpivoted_FAOstat_africa_Prices_Consumer_Price_Indices
+- Unpivoted_FAOstat_africa_Prices_Exchange_rates
+- Unpivoted_FAOstat_africa_Prices_Deflators
+loaded_at_value_samples:
+- '2026-08-27 22:09:47.759942+00'
+indicator_families:
+- id: fews_market
+  filters: price_source='fews'
+- id: wfp_market
+  filters: price_source='wfp'
+- id: faostat_national
+  filters: price_source='faostat'
+business_questions_supported:
+- What is the retail maize price in a market/country/month?
+indicator_classes:
+- PRC
+- FVC
+filtering_guidance:
+- Always filter price_source (fews/wfp/faostat) — do not blend
+- Filter price_type (Retail/Wholesale/Producer) when question specifies
+- common_unit_price null on WFP/FAOSTAT is expected
+- Month must be calendar 1-12
+sql_generation_hints:
+- JOIN dim_market for market names; dim_geography for country labels
+- Prefer agg_prices_country_month for country monthly rollups
+semantic_role:
+  primary_domain: prices
+  supports:
+  - prices
+  - market_price
+  - PRC

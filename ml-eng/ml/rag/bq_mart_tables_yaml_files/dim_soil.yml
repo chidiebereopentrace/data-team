@@ -1,0 +1,56 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_soil
+description: dim soil
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: soil_key
+  type: STRING
+  description: soil key
+- name: depth_layer
+  type: STRING
+  description: depth layer
+- name: depth_min_cm
+  type: INT64
+  description: depth min cm
+- name: depth_max_cm
+  type: INT64
+  description: depth max cm
+- name: description
+  type: STRING
+  description: description
+soil_key_value_samples:
+- d39a6d54dc182043b57daf79b1d758de
+- e59253548ffcb090ecc0cd0944afd27f
+- 33d58674cc8c5c482981ad614ddf0936
+- 44539f42cbcb8913f1f938a77c0ae5f2
+- c4a17f8ef4ab4022cec425a2e748ecfe
+- 492c575493e4d30c107936465a4b955b
+depth_layer_value_samples:
+- 15-30
+- 0-5
+- 5-15
+- 60-100
+- 100-200
+- 30-60
+depth_min_cm_value_samples:
+- '15'
+- '0'
+- '5'
+- '60'
+- '100'
+- '30'
+depth_max_cm_value_samples:
+- '30'
+- '5'
+- '15'
+- '100'
+- '200'
+- '60'
+description_value_samples:
+- Subsoil upper (15–30 cm)
+- Surface layer (0–5 cm)
+- Topsoil (5–15 cm)
+- Deep soil (60–100 cm)
+- Very deep soil (100–200 cm)
+- Subsoil lower (30–60 cm)

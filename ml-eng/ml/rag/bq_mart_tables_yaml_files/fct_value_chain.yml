@@ -1,0 +1,62 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_value_chain
+description: fct value chain
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: value_chain_key
+  type: STRING
+  description: value chain key
+- name: geo_key
+  type: STRING
+  description: geo key
+- name: time_key
+  type: INT64
+  description: time key
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: product_key
+  type: STRING
+  description: product key
+- name: unit_key
+  type: STRING
+  description: unit key
+- name: value_share
+  type: FLOAT64
+  description: value share
+- name: source_record_id
+  type: STRING
+  description: source record id
+value_chain_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+geo_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+time_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+source_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+product_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+unit_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+value_share_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+source_record_id_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false

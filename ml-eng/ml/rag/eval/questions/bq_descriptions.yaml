@@ -1,0 +1,25 @@
+# Mart table routing expectations for BQ description / catalog eval (G2 stub).
+- query: "Kenya maize physical production 2020"
+  expect_tables:
+    - fct_production
+  note: "PROD class — production_grain physical on fct_production"
+
+- query: "IPC phase 3 population in Ethiopia 2024"
+  expect_tables:
+    - fct_food_security
+  note: "FS class — measure_type population on fct_food_security"
+
+- query: "Human development index trends in Kenya 2015-2023"
+  expect_tables:
+    - fct_hdi
+  note: "HDI class — socio_economic measure routes to fct_hdi"
+
+- query: "National retail maize prices by month Nigeria"
+  expect_tables:
+    - agg_prices_country_month
+  note: "National monthly price rollup — agg_prices_country_month"
+
+- query: "Rainfall anomaly Nigeria 2020-2024"
+  expect_tables:
+    - fct_climate
+  note: "CLIM class — climate measure on fct_climate"

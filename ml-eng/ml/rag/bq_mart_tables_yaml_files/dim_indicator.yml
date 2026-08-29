@@ -1,0 +1,852 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_indicator
+description: Indicator catalogue (employment, Climate Watch, ASTI, …).
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Indicator name
+entity_type: socio_economic
+columns:
+- name: indicator_key
+  type: STRING
+  description: indicator key
+- name: indicator_name
+  type: STRING
+  description: indicator name
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+indicator_key_value_samples:
+- 1103194b75121e06aa7f3c179513fea7
+- ecdd880fb05792275f772eb4fa36606f
+- 94128074264bedaf96feddb06586a610
+- ef67769b7d69915540c422f83f59fe00
+- 94a2b47cb2df5e00db7687eec711b251
+- c1f749da5ff361e0f2e7c740cfe1f933
+- 88fa5b04ff14e3c44f9b03233e1a8ed5
+- 0358848c0b5d6b9b7cd066ec637dcf51
+- 974c59f055ea55eabc08020fe5206e45
+- 0725a19c85570f42318675b0331cf641
+- 01863d82b3066e0482a509f6fa1927b6
+- 10c6ac987f04f7d9a8994f6ddf5a7c34
+- fee5c86294793398b8a6df1bce9314b8
+- e95a74e37ccb8f9b177b26a40fabf264
+- bf701b078b9b57011310eaed9e40fff5
+- deaffdd662dcb2e4d5599d910e6508e1
+- 46c205816a7e03553ddb61d6d340ac51
+- f89eaa7bd41f8201128cddf7afa3d66c
+- 32efef24d751360a4c6906cc1b17d877
+- 5fe2c246246a032430cbcbe0b20ece8c
+- df2375cd0f7593835392e2ecf79ab2b0
+- 865f020c58415bcf9f1a409433bc25bf
+- a89b1ec671c0997e44cf0e0d24403db2
+- fde48bddc798456d8adb5889f2f9e552
+- daca9775c4623609a31077beae3efe32
+- ab409ca3ce5981ffb837ce341a4e89f5
+- 239bdd87da5ea1db9a9c4c4b5218f1b2
+- 536e31d31944d9a60c2a8a2208bfe127
+- 2b53b358cc06bff89e05456becfa5cbb
+- d4d90dfe3798c86e2ba0afbf417c6267
+- ddecebdea58b5f264d27f1f7909bab74
+- f88ca1de8c6cca3d8bbd42b83dc5d120
+- 4b3417280163bcc7080ded7e79f17b98
+- 7afe507cc69b246bd8b57539b9ed37c7
+- 625da929479f7d1650ad6fd0f38586c5
+- c52c93896fc7c86aa1ba2e61d43c90c4
+- a13d1bf3208ef94ecd647cf3cc44ccfc
+- e2648fc474439e6c16e0f66eb43137c0
+- 8734d1f84a7f530773e1910b5f170204
+- a9831b64ec29d45168e81cd62d9969c9
+- 95205c7e65ffecd6196a4614c8f42c35
+- 8190e68688594a12dd2e3c3df0d70eff
+- 73a9bf52aa8ea9e256ec469dfce6e022
+- 39e4d86c3d0b220065630b8e50eae4e7
+- eb6cec0991991cb7ab874e158477a7d5
+- bfa3d9fbabdad610672e56550a6e2a31
+- 9e6ae092765e94b36ee58c71d53d74e9
+- cb15e32f389b7af9b285a63ca1044651
+- ac4dfc08e8b025489fc46af956dab66c
+- 657ba1cf02618c904684a5f85c55d793
+- 07f42d0260b014718dde3b0bae3786e7
+- 26965ac479e290a35c51d47e42200531
+- dde00a6a4b10b79a31ce36f2f986912e
+- 3ee3610c5d928069e7658a07faacb839
+- 1a029519f6e1dbb1b5b376d919aba8d7
+- 54e30c6541f484780ebe0c2fb886c15a
+- 5f52ebf2a283870512282693b32619d6
+- fe375c4b23d21443e1fccadff84b63bf
+- f12d7078dac03b5c385be0ea8a9a5300
+- 1bd52cbb37eb7b4ed2e0de467b8fec90
+- 3084d8662a7ff772338964ac2cd45ac2
+- 4dedd4cb090348a46a3b93cc3e119164
+- ab791d111f26084e1b13bae0a933edf4
+- 0884c075ada640e0e1288e8e10495114
+- d6133df06cc36899fdc040c51b7d22e9
+- 3fa01f6e3fff6f188921481eeb2ee2db
+- 74af468dc8e57be8ee8b259b0df8a14a
+- 70dc3ae0ddb5b243efdad0a4be90ca0b
+- 22326c03701fb04115a9ad55ca43b0de
+- 0728b52da42498dcba1c6762d94f4671
+- 1f2ecca9039dc2e9926feb761ae5aa53
+- 1c7ae7a4f8ee9dce6ad60f85bf68777a
+- 15096c5b0980c5c5addcff36736f2740
+- 9db2ec2ccdcf2d74e43d2fe580c1f758
+- 0a02ab4a8484144dc18ef73ed7b98edf
+- af24178c7413dbfad6c46f3ff3f204d7
+- 91e01a491033cbff122a7962062ba414
+- 400a8f6716375443c853ae0dfd78b768
+- 05ff0da1a869b9505ce7a43b430aff73
+- f379cfd7a55b621577a8389d1817a102
+- 5250b754d1c04d268c1d50469c18ff41
+- e6a5ef0dcdc7bb763a66e248a552583a
+- e3fdda152d378bfd4d14261f8bbe5e93
+- ac72c5158d0d05add49cba4c7c52fbd6
+- f13938731aed13c7e465d9e94d94a448
+- d66367bd28847934119c880685e28b25
+- d59c2253b0164ed97b440e620e21094e
+- eb90f95ded2f843226dfb6e08b5a56f5
+- 1b5fc1c8c4ef246585f7f1dff06e6bf0
+- 85219a0851d1959e03582b617028fc20
+- d4ac1478a4d8a4f591d35e3d75f3de65
+- c3f7d219e34a2e214d639f2d3337c293
+- 5e644a6204eab4d6a9f0aab43622bfd9
+- a5398c1f2c06e64472015d6b17d41f71
+- 624516799a4ac3974dacec4e1ee004bb
+- bd2ad056056683306b5730e3f2e8ff13
+- 9584b54c3512083fff308daac754da8f
+- 60d93623ad08035d9529eecd47f6a4c8
+- a836ce97f7ab21ff9c2db30346043a63
+- cb9742e45b1ce6bbbdf320097a77be35
+- e2cf1817f9bb7713307949ada414cb68
+- f7cf340277c4892d9380cfb038b886e4
+- 4e735a916c669e7af49b0551e6a594fe
+- 4f0b66afb72dc162d379c86abd68608d
+- 681c3491aff4d05b8ab626d57b5d055a
+- 4ded9cc28a7be9e8acc3eb544cc3cfaa
+- 56bb5580c09ea8f33f7217873c4736f6
+- 34125495a19af04459566e5533d606eb
+- 0ff66555f7028c5da372fbf8628939b1
+- e6a78e574a72eebd3672f1178f13f9fe
+- 6a4db1b5390bd83d5c43f66bd6b25010
+- 08d1c288e596b2fd079703587c919a53
+- 20b65e3704b685fd8e7f8c054f5728e5
+- 3f0dd48c3ccc59638fedaa98a67a4273
+- e5571e0eeab46471e53a715cac1e2ec7
+- c136ceae025fc2d34ed99272dc7f30af
+- 55b9e721bab1138c10a1580210f97ed8
+- 5271e118dc81adb543b7856bb6ea0445
+- d1695f71599f0e74c4498e12309058df
+- fdf39a491663413bba7f044234fd94fa
+- dccb77054e43ab218545abaf5fa9fee5
+- 0652a3b9bafd46fc3f20fb2a90373f66
+- 148d07b9af3a80ebeabdff1d32720fbc
+- ee4a1d3c08786f7fe785d977e045bac5
+- 904fa0d9bfac311f6f5f7166d993ca5f
+- fb024832e51eb5f6da9113a745f1eb59
+- 028c79eaeb9360abc01b83a80faf148b
+- 96490900bacda4c0cd025aabdd98f603
+- 02408123caf6bb364630361db9b81f7e
+- c0e72e276ba7495baec9b7694c10f99a
+- 7f96f0a39fd10aed67f54b87fcb6b12d
+- a832cdfb8c47d1a7161d6bb27a77840a
+- c5af0543407a6e8ba11db6a69f792014
+- 014cbc833c6dd8bdad7dbe99678280ab
+- 27ecb6a4f0d69d9b966b275ace6ef51e
+- 2d3816c34134c1cfe897f6f459c318a6
+- 4526d3105a79ef2d8ef74d594c17913b
+- 15c4f3b130d14e4559b30b4e79e3de94
+- 666346558ef23241d633f5666b811523
+- 8bbb4193974172666d41fcdc4d68f1b7
+- 5e098d09afd9aed1cceff6a6c6d41f61
+- 3d74559fffae6957216df8502fcc8885
+- 7e15d85f98b503d16fcb15bf522e363b
+- f12ebf9adc12dc7d1cf8d41f1ec79517
+- 9140a7dab970a3f2a553c8408df93983
+- 3575ce10fba1f51556776a59201d5f39
+- 04ecccca55bd7d30a1edf83db7a84d16
+- ad43d263c6badeb8f86664089136f86e
+- 92ebca96c59727be34c7570867534ed3
+- ec03609ffb83fa0590ff4f3c0c0034f1
+- fc2b4e918521a58896a7bb39e8d27456
+- 21a7b23b64d5b042a75e48a0a398d1a5
+- 964909856c8976e765784301c4fd754b
+- bbb49e06857cb0cfdf69feb64ffbb5a6
+- f42e178c552f690878ec5478bd2aeed0
+- 01e59f3908d0327400575e3dbd14909a
+- 60061e43342e63b77a6743fa106c429c
+- 3e71b68023c9ea38b8c7d290bb0bb1df
+- b4acba7d90fdface241ee7d09eacf434
+- 363a45c32151117544c02097d4b3f796
+- c7bffe43a882815f1d28c61b9cc51b4b
+- 5360af35bde9ebd8f01f492dc059593c
+- fd80efc0ace63f4e5064913cc1734839
+- f5f449f45f0444c6982df6c37bc47915
+- 65a2818a02ef4f85d5da4671b1f56c91
+- a1b0311bca82400b4a60354551734dce
+- cf8be61096bdad6a0c41354ada78bb69
+- 47229991ede12e1abc5837411e9a2a66
+- de4224de3bbd03edfd26dd85378e110c
+- afb9e29f8d753aec5aa5d5823a6be42b
+- dab561ee04d428ed43d87022e7734d5a
+- e94f64d18ef441556d7c20972011a6dd
+- 6776397db915d7d7ba7f173e35daffe4
+- 276c352d7faa44345466d9d7667108fc
+- 503393e4226b4be715cc70b6122c554e
+- b62088c775b9e9f6079e52a3a36d2716
+- 28de29ba372624bcf1809f7161cc1bcd
+- 71982e501fb12c8e583958ce125a5bd6
+- e606a9945b671cf2e342db258087fcbb
+- 792e5dce80b4067446351fc2f8f6d81d
+- 76b3310e0b860f60f3517ce3adc42b68
+- c20f7dc064ea5111afba5eec9a16811b
+- c2453681eccae8e5f1d9d4eca2c9a670
+- ab3b6079c31e6dbd4b85f269737de802
+- fdf9d47d35505c2b36d18d5d9c56aa2e
+- 12719521aec275b7a05bb30c27b69247
+- f1f3d642c3fc2cab8dd6b17dffa5d9ba
+- fe9db8e4af203bd77e138a6b4fb7f2b7
+- 19a1983ca972e5a976c26c2f90a3ea0a
+- 9aa73d8a580ecfd3a3bb700eb5dc3ab0
+- ee6b99b09a27b3f869e76a1b89dd24a1
+- 1b7a3aeca519c607185a2401af626427
+- cac7ce6eeabd23a701b7ce2f27217fee
+- 75e43835702dc045b97d5b409407dd16
+- de43e2fc06ae092c6244b4012a2659c1
+- 764133277fa0f236dd243bb6bd78b6fc
+- 61ddf5f92c30744d80a6f01eb0904ae8
+- e92f156a1899d366b865f4a5b2cd2415
+- 15370b212b215b2743f59c5a798af422
+- 90544be66ff51d7df1d4623dcec937a3
+- 99f76d0bfbd8eb824f93597ae5246ae8
+- 641b2b00d03f9990007869f7cc5281e4
+- d0fa35952ce5d58353304c334f6ab2cc
+- 795f3202b17cb6bc3d4b771d8c6c9eaf
+- 34c51c598384aa03e137bd191a9b9c8f
+- a5c6de867f84de323e8c3d4fac7debbc
+- 75e718a01a8a3748ac2a0d6babdccbe9
+- 9460370bb0ca1c98a779b1bcc6861c2c
+- 4e85eddf886882ca7cb893ddd3f07051
+- 2707e132aa7984e532f018b0f8a150ad
+- 3bb90243aa21babf76b3904bc4b118e2
+- 545ab23d9f91e357242dc5fc7ff1d971
+- 5d3be45671b68cad95d69b5b2fcc341a
+- 4d3bc56a6d4313b341430e19cc1c94c1
+- ffbd29115eb1c5a017f6795b1c5d180e
+- 8d106a989ff1c86d123122dd394d8284
+- acc5d5de66d90811371d4098295c9ac0
+- 1e415330a2cced603e044c9bfe72cba9
+- fbb44b4487415b134bce9c790a27fe5e
+- 46e59572dde27f1eddc7be9082aa8a5c
+- 05d62dfb788978e651576702c511540e
+- 1af3c43e0f320e9510a162b4b1af124b
+- a9ea45101beb7df58b088b9ed5d822fa
+- 84b39b89e5d3d289fd1df35c72730e0c
+- 7e25b972e192b01004b62346ee9975a5
+- 4648cc31a91a634161f68591fc56f860
+- f6a611176a9c6d80aac8f5b06bbd98a4
+- 4acc1d9e24a87465250bf47ab1180240
+- d093fc0f97a19bcfd93900f3f8cf6b00
+- 5f3e5790a6ffc1fca503c6e234340972
+- 170948356dd443718e17dea155c6deb5
+- a6878bf5d858367643a1ef2871d36f47
+- c21fa1169e5d8bd870117972dffd7cf0
+- da642f2dad81e976c332c7c4d3dce9a2
+- cc75278b6b58b65b89f3aea7d4c135d6
+- 46171865ec562e74993b7dde419a7b85
+- fb4dc27e689cb920847327c467eec2e4
+- 94074ce331b5db47060fd2d8009503a8
+- ce4dc09cab6bbdbe040ce7ee15451d88
+- 3dc183cf4b0ea0778a1819994ad6cf25
+- ab6c040066603ef2519d512b21dce9ab
+- 06850a5cc75c6d123ed17f68725ffc53
+- 6243ec36b3df7aa8210b9f768cfdc1ad
+- 3184f670ccd4cf410d3b621880c866dc
+- ff1d1e22f1213670497a924bc671be08
+- ab2eab77a06c6e60aae5395867e9424e
+- 26175f71699dbcbcc71c456ebcce1447
+- d298817371cf72c4afad2e1f77c19f96
+- 0ff9f1c3a7ec4bec96e94bb3ae1b763c
+- 46cdac19003b64f2224e33866408f7c5
+- 80f7eb6a82de23d7534ebeadeb02713e
+- b2b9cfeef92cc3518799ffe0835a6200
+- 1b551b798b65ef762c139c32599710fb
+- 135b8135689b57183fd4d20ec61117fd
+- 52170819422722598d3cc9cfa2bd19b8
+- 7c2e2114072d80d63597e494f585add7
+- 2653b57933db3a79b62700f95c6728ab
+- 7c598a5a2ca2f3240ba4b4a8ca65f6c2
+- e7221bae125cb7b954c1d8e238fb1064
+- 8d8901b835b5e605d31720c69a6bb64f
+- b0e530badaa57cead0588a958b08b51c
+- b66ea45a6d571441b484e85a34942589
+- 1c54b1dd4abf8f23dd1d00cbd3bccbeb
+- aa1e6aa1ffb5266d8782f5583368d69a
+- 065c22a8f5504c7a814e6a1d5ec52298
+- 9a3ae5b6cac1219c4f70a23ae5e75856
+- 8402b03644096574427dff6ef123919d
+- dcd8e0b646ccc724126c6cb4dc985fce
+- 16699663b3f4d0ad6ce8bb9300f2d3c9
+- bccfaa2698026825230de2816448d817
+- 8edb39645efacdfd6a391fe753475a4d
+- 316b2eb19988020fd1107a7b92887260
+- 9b9f931f14e6e7bc7119ea279cfa13fa
+- 93c3c2ada11b960d9adfbf0404997214
+- 6307a144797c8f87ac66457719642b00
+- 634158ae60c96b68a1cf2f3ecae38738
+- 197cd9d8362a094717d3e4823e1bd609
+- 4aac7fbae1eba6c384256faf9e73398c
+- 2960b7d1056730ec75e5d59b4fb9476f
+- bebbcae0cc22c51cff591dbf0567740d
+- 7395c0bd4c7336080c4e1910068b89f0
+- 5bde9cddae26b33d120531462f844268
+- 285c4d26897b0d09021ae1a0d5512fee
+- dfafa4ff491c7f7ebe67e4746a0a4141
+- 7248064cd54bef68ee24245d0b810b71
+- dd1f04f091cec5b9fdf21168e42f039f
+- 77450da78c6baf6b01fdf6f92d9bf2e1
+- f8ea9e07f542c0cdf0805e5f30c76cb6
+- 4dd1b313ad46bd73d7b5a280eb295ab0
+- d3d5b484e151561bc4f07da56fbc48c3
+- 39813d0cedffb05e0e47c326a84358bc
+- efc0586e361005309f9faa2501b8dafe
+- b8a6f295dcd9d2ed0fb889371bf63b7a
+- a16c18577a86940bd3a300bb869f4d10
+- c483862e1d6983ca4cdf620b069d69a9
+- e3dcdd59896ca1f08676140231d8946b
+- e966b7b60b28e09d75b03dd6768e4292
+- edff97014298304329c2e27a903b3aa6
+- fead496d4772dc3abeaec2b76b098fcf
+- 9a1b25ebf7710a7dbe70f7daebd54ed1
+- 0f1e04e5857652eeefdbdec5fdc0faca
+- 2b9cddbbbea13e54a36004a2f904714c
+- 2dcf74a37b21975f57cd311547135597
+- d10cbf940641afe3b455b757ee2db6a0
+- 1059c062f8b142219dc36db88e26bf2e
+- 4d70921065c00a293597936b693345aa
+- 1f55f5d2991c3a4f3e6442012ff62f18
+- 4ea8117666ff333b168af7daaae4a2c2
+- 6d40db8c8d5d4decabdbe94444474d6a
+- 48f784679868a5a73c1fa337c21c82c6
+- 93cdd6f92d464d2d49beb7c79b556418
+- d57dca30425323abfa9ae3674b979d30
+- 3c09ba20f986cabb32b65aeb8dd765e4
+- d83ce404309e2738f0f973dd278810a9
+- 62fecac2e1381714fd8b1513a9928cd6
+- 1b7f3d5e5be55ccc25f6482a4a198093
+- a949f4dac1b35b51d9b04620cf1b22dc
+- d220002a35ab3c524ec6e3fe38fef4e8
+- 37e9545acbf7afe63292d134de97d8b6
+- e030ac10e474bb758c49b3b15beda8b2
+- ba1daf05dc09e4386dbc66f0127b3c08
+- 99987d82a35e498050778a3e6a32ca33
+- 6c6a04f352a0d1f7db44d51d95e59ec4
+- 48fc9e14a44ce2e742df03d065af3ff2
+- 66b67cf48eb78f0e0ae9902bc70d9e9a
+- 058aa8846aa04c2576ef95f9c13d24ca
+- 5d6eb4f1340c4c66e3adff7fdab1c931
+- 301b313ddaf068ad227ba9758d1ec309
+- 475157fc15e65ea076120691d861638f
+- b329f324cc17d6221a385ea1afb3a289
+- 09f25110ad937a16bf6c2d35b6805b4a
+- b008e72b6c3fb5821ef18c3d2b9fa3e1
+- 1f48329d147500fdaca0438ada38a66d
+- 076f9c8f08fed43cdc9158e23e73741b
+- 037cb1d11e2b5567ed082a962c0b24b5
+- d8f3b69e9e24442c2cb9140538f6edd1
+- c2f17c322a3f35a643cce2819b403ee7
+- fe5da87668d4b1ebe01eedc6cc8f0cc9
+- d38c8765db1e7f0cafacff0dd41d4813
+- ad8d3b11981605034e31a06867671f9c
+- 4c5edf5e78921f08785e18b5746b82b3
+- b0c33791ec6e42c691956bcda86d1df6
+- a809c407e7dae6b10644836b98f3a782
+- 4c9184f37cff01bcdc32dc486ec36961
+- 8144ae2ca7c7fce8bdd9b5cbfea28fef
+- 140e1e33c89fad83bb447088518fb2ef
+- 0a096e5d458faf2d8f1401e3538c8e86
+- c0b71f598340fc0db9d31d4a6dc43c35
+- 68070a95653988a3a705cc12c5e048dc
+- befa1d475cbabb7b8dd7a82d838be515
+- a08b3b6dbb0fc44bd4308479056bbc65
+- 898b03b44bc00aa24c7ee3b62f874e4c
+- 88caa9911f88ab82493a596f1102ed1f
+- 887e3e4898cc20c35761184a18568af6
+- 04a249113c3726d9e37ee1114cc9bd22
+- bddbee7e9356e8d0345ea877caf73ffe
+- e779e5b702fbe5e63ba784cbf4e927b1
+- 73b681ffd0726aeb260d5b5ce487770b
+- edcf54094869b7179957ae90f6601591
+- ca144db09c675e922ccf770c0bca1389
+- 70036b7bb753dee338a8a6baa67e2103
+- c6d3456c520962cda69fa1f1415b6ee5
+- 9ef223b2c94dc80009f64e69575018c9
+- 0f27db3016a2cc6d966417071e894965
+- da9ef8fa9403f7987d521d53d16b42fa
+- c92e73b0ab71087048eb6b96fa1b5259
+- 678647495d09ab6df886b370fc5310e0
+- 7169476e1ca1b3b66537fdf8e9126b6e
+- a1e72ba9e588a88b086b3f7f2c02edb3
+- 80f5341801b20b8cde78b0f3aebeef8d
+- 62da46e7afc84dd5956ca629d01bf3cf
+- 02d2cc5b4ec401f09755728b6bbff1f1
+- 36a10868cc128d144be42a064c97b6b3
+- d7bd0531e8424b75e51476aa1c0132a2
+- 0555503f60276c4be008d9fb02393195
+- 31cf10c0e19b298eb7b8d2a57f95779a
+- c1e40ca33b7d703324faecd29095acf7
+- 8d6fab5d79cb71474b6d48dbd017b9ad
+- 70fd3c5e4d0cf9d3c57aed1e834c2c8f
+- a2fba8ea5c0dbb66cb12ca4025cf2f4d
+- baf3a52c1d15c3d0ebcadb6fb4ce37eb
+- 73ff4fc4e0f28027646359388d9d859e
+- 9ffcbd13035bf053b10ca0f5b9a9deb5
+- a3d96aa454aacce406c1174dd38dfaea
+- a97857690887015fb8dcc8bf6485c148
+- 649fe8f45e2819a08c0d88b1f1984817
+- 3a0911c92ad94c250120aa96f2db081e
+- d676565765a61af628dc6ddb47e33202
+- 165545519a2fb6b5fa01f161e5445716
+- b56354c6ad6cee46d3583ef2cb80efe5
+- b5ceabce17f1e63101c935679c8e2bee
+- 3c68cbe461787ba38509df85e731f1a6
+- fee74eac0728a1bb5ff7d4666f8c4a88
+- 454a823cf24bb285461a47dbca8bbd4d
+- 2835c841c4157c99b89465c5d46a6c24
+- 1c4ff3e7d2c9fdf882dd115baa8c1c6e
+- de52bb94df4d586480a374f57a5eca47
+- f485d97e8b9ea2b603b43a2a17a2eec5
+- 9a7c4f6f7b886d9492808d3113a70496
+- 6f1e02dff39d0f7cdeacebe65ebfe4d4
+- 6ca0a216bcb02bb22296befcf37afd48
+- 1247bb8703dd8364278499030f93b59d
+- 2ac60f74d792ed1e4f0e57504f64f695
+- 5297192910c750b1f7136f685955b2fc
+- 048e58dc0bf887cbc6bc420dd7533cb3
+- 4caa7f90675be853737a8816b1db8c5c
+- c93a3b929a3f9f5a5cf3320fbb7661e5
+indicator_name_value_samples:
+- Share of non-agricultural AFS employment in total employment
+- Total Outlays
+- Natural gas (residential buildings sector)
+- Carbon price for industry sector
+- Imported Oil
+- Share of AFS employment in total employment
+- Total employment in agrifood systems (AFS)
+- Petroleum
+- Carbon price for electricity sector
+- Heating (urban residential)
+- Change in Cash Flow for Natural Gas and Petroleum Suppliers
+- Battery electric vehicle
+- Petroleum Diesel
+- Natural gas (electricity sector sector)
+- Change electricity imports
+- Imported Biomass
+- Oil and Natural Gas w/o CCS
+- Liquefied Coal w/ CCS
+- Cropland management
+- Ships fuel economy standards
+- Commercial
+- AG_LND_DGRD
+- Carbon capture and sequestration
+- Imported Gas
+- Natural gas (industry sector)
+- Reduce F-gases
+- Natural gas vehicle
+- Change in subsidies on petroleum gasoline
+- Methane destruction
+- Electricity (residential buildings sector)
+- Storage
+- Retrofitting building cooling
+- Building Technologies
+- GDP PPP
+- Global Warming
+- Share of employment by status of employment, total, rural areas
+- Waste management industry energy efficiency standards
+- Total carbon price
+- Solid Biomass w/ CCS
+- Urban residential heating energy energy efficiency standards
+- Passenger aircraft
+- Imported Coal
+- Sulfur
+- F-gases
+- Excluding LULUCF
+- High Efficiency Ice Vehicles
+- Petroleum Products
+- Waste
+- Subsidiy on electric passenger LDVs
+- Other Renewables
+- Fossil w/o CCS
+- LDVs
+- Natural gas nonpeaker
+- CH4
+- Convert non-CHP district heat to CHP
+- Land area affected by forest restoration
+- Aged 65 and over
+- Conventional Ice Vehicles
+- Liquid Derivative of Crude Oil w/o CCS
+- Oil w/o CCS
+- Change in transmission capacity
+- Appliances (urban residential)
+- Gaseous Biomass
+- Share of employment in agriculture in total employment - ILO Modelled Estimates
+- Diesel engine vehicle
+- Gasoline LDVs fuel economy standards
+- Combined Heat and Power
+- Total Fossil Fuels
+- Employment by age, 65+, rural areas
+- Labour force participation rate by age, 65+, rural areas
+- Biofuel Gasoline
+- Cement clinker substitution
+- Employment in agriculture by age, 25 to 54
+- Employment-to-population ratio by age, 15 to 24, rural areas
+- Biomass w/ CCS
+- Employment in agriculture by age, 15 to 24
+- PM10
+- Natural gas
+- Petroleum gasoline (electricity sector sector)
+- Forest
+- Capital, Fuel, and O&M Expenditures
+- Change in downtime of new offshore wind
+- Gasoline engine vehicle
+- Rural residential other components energy efficiency standards
+- Industrial hard coal to natural gas switching
+- Subsidy for electricity production from offshore wind
+- Rural residential cooling energy efficiency standards
+- Passenger LDVs sales mandate
+- VOC
+- Livestock measures
+- Hydrogen
+- Employment in agriculture by status of employment, total
+- Hard coal (electricity sector sector)
+- Commercial lighting energy efficiency standards
+- Gas w/o CCS
+- Fossil
+- Iron and steel industry energy efficiency standards
+- International Aviation
+- Savings from energy efficiency measures
+- Employment in agriculture - ILO modelled estimates
+- Solar
+- Petroleum gasoline (commercial buildings sector)
+- Commercial appliances energy efficiency standards
+- Employment by age, 55 to 64, rural areas
+- N2O
+- Other Efficiency
+- Vehicles
+- Carbon Capture and Storage
+- freight
+- Employment-to-population ratio by age, 55 to 64, rural areas
+- Subsidy for electricity production from onshore wind
+- Solar PV (distributed)
+- High Efficiency and Electric Building Technologies
+- Liquefied Fossil Fuels w/ CCS
+- Retrofitting other building components
+- Natural gas (nonpeaker)
+- Industrial natural gas to electricity switching
+- Coal
+- Human lives saved from reduced particulate pollution
+- Conventional Building Technologies
+- Oil and Natural Gas Steam w/o CCS
+- Fossil Fuels
+- Agricultural Researchers (FTE) per 100 000 Agricultural Workers
+- Employment in fishing and aquaculture
+- Hydro
+- OC
+- PM2.5
+- Petroleum diesel (residential buildings sector)
+- Diesel
+- Freight rail
+- Capital, Fuel, and O&M Expenditures (revenue-neutral carbon tax)
+- Freight motorbikes
+- Oil
+- Power Plants
+- Labour force participation rate by age, 15 to 24, rural areas
+- Share of employment in crop and animal production, hunting and related service activities
+- Change in Cash Flow for Coal and Mineral Suppliers
+- Change in downtime of new solar pv
+- SF6
+- Petroleum Gasoline
+- Rice cultivation measures
+- Pulp and paper
+- Total Expenditure in Agricultural R&D (US$ PPP, 2015 prices)
+- Agriculture value added per worker (constant 2015 US$)
+- Subsidy for electricity production from nuclear
+- Freight aircraft
+- Pasture
+- Aviation
+- Global Warming High Estimate
+- Petroleum gasoline (residential buildings sector)
+- Urban residential appliances energy efficiency standards
+- EV perks
+- Mining industry energy efficiency standards
+- Employment by status of employment, workers not classified, rural areas
+- Plug-in hybrid vehicle
+- Biomass
+- Petroleum gasoline (transportation sector)
+- Residential
+- Rail fuel economy standards
+- Electric and Hydrogen Fuel Cell Vehicles
+- Related to Vehicles
+- BC
+- Total Outlays (revenue-neutral carbon tax)
+- Cement industry energy efficiency standards
+- Agriculture industry energy efficiency standards
+- Buildings
+- Liquid w/o CCS
+- Natural gas (transportation sector)
+- Hard coal (residential buildings sector)
+- Energy Crops
+- Change in downtime of new onshore wind
+- Electricity (transportation sector)
+- Solar PV
+- Employment in crop and animal production, hunting and related service activities
+- Change in transmission and distribution losses
+- Chemicals industry energy efficiency standards
+- Subsidy for electricity production from biomass
+- Land area affected by improved forest management
+- Employment in forestry and logging
+- SOx
+- Early retirement of nuclear power plants
+- Petroleum gasoline (industry sector)
+- Early retirement of petroleum power plants
+- Liquefied Gas w/ CCS
+- Employment by age, 15 to 24, rural areas
+- Share of female employees in total employees in agriculture
+- Employment by status of employment, self-employed, rural areas
+- Share of non-agricultural AFS employment in total AFS employment
+- Petroleum diesel (industry sector)
+- Avoid deforestation
+- Improved forest management
+- Energy Supply
+- Rural residential appliances energy efficiency standards
+- Hard coal (transportation sector)
+- Renewables
+- Environmental Heat
+- Afforestation and reforestation
+- Petroleum diesel (transportation sector)
+- Freight HDVs sales mandate
+- Total Expenditure in Agricultural R&D (US$, 2015 prices)
+- Share of employees in agriculture in total employees
+- Electricity
+- Petroleum diesel (commercial buildings sector)
+- Other
+- Energy Demand
+- Change electricity exports
+- Rural residential heating energy energy efficiency standards
+- Water
+- passenger
+- Liquefied Gas w/o CCS
+- Domestic Water
+- Domestic Biomass
+- Agricultural Researchers (FTE)
+- Employment in agriculture by status of employment, self-employed
+- Lignite (electricity sector sector)
+- Land area affected by forest set-asides
+- International Water
+- Change in Cash Flow for Other Industries
+- Total
+- Onshore Wind
+- District heat hard coal to natural gas switching
+- Share of agricultural employment in total AFS employment
+- Productive
+- Change in grid battery electricity storage
+- Wind
+- Iron and Steel
+- Employment by status of employment, total, rural areas
+- District heat
+- Building component labeling
+- Gases
+- Change in downtime of preexisting natural gas nonpeaker
+- Imports
+- Biofuels
+- Natural gas and petroleum industry energy efficiency standards
+- Solid Biomass
+- Total Expenditure in Agricultural R&D (Standard Local Currency)
+- Geothermal
+- Industry
+- Domestic Oil
+- Nuclear
+- CO
+- Change in subsidies on natural gas
+- Electricity (electricity sector sector)
+- Petroleum diesel (electricity sector sector)
+- Total Expenditure in Agricultural R&D (Standard Local Currency, 2015 prices)
+- Employment-to-population ratio by age, total (15+), rural areas
+- Peatland restoration
+- Early retirement of lignite power plants
+- Worker training
+- Urban residential other components energy efficiency standards
+- CO2
+- Lignite
+- Liquids
+- PFCs
+- Liquefied Biomass
+- Change in Cash Flow for Electricity Suppliers
+- Hard coal (industry sector)
+- Improved industrial facility design
+- Nuclear Power Plants
+- Domestic Coal
+- Change in subsidies on Nuclear
+- Including LULUCF
+- Land area affected by peatland restoration
+- Renewable Power Plants
+- Synthetic Fuels
+- Share of employment by status of employment, employees, rural areas
+- Land area affected by avoided deforestation
+- Early retirement of hard coal power plants
+- Fossil w/ CCS
+- Passenger ships
+- Change in Cash Flow for Biomass and Biofuel Suppliers
+- Liquid Biomass
+- Share of females in total employment in agriculture
+- Natural gas (commercial buildings sector)
+- Monetized social benefits
+- Subsidy for electricity production from solar pv
+- Global Warming Low Estimate
+- Renewable Power Plans
+- Jet Fuel
+- Rural residential lighting energy efficiency standards
+- TDM package implementation for freight
+- Hard coal (commercial buildings sector)
+- Labour force participation rate by age, total (15+), rural areas
+- Freight ships
+- Liquefied Fossil Fuels
+- Passenger LDVs
+- Employment in agriculture by status of employment, workers not classified
+- Agriculture
+- Urban residential cooling energy efficiency standards
+- Aircraft fuel economy standards
+- Land Use and Forestry
+- Fossil Power Plants w/ CCS
+- Retrofitting building appliances
+- Employment-to-population ratio by age, 25 to 54, rural areas
+- Carbon tax for commercial buildings sector
+- Lignite (industry sector)
+- Change in low carbon fuel standard (additional to BAU)
+- Aged 16 and over
+- Share of employment in agriculture in total employment
+- Solar Thermal
+- Change in Cash Flow for Consumers
+- Subsidy for electricity production from solar thermal
+- Urban residential building component electrification
+- Mean weekly hours actually worked per employee in agriculture
+- Share of employment by status of employment, workers not classified, rural areas
+- Transportation
+- Hard coal
+- Freight HDVs
+- Solid Biomass w/o CCS
+- Employment in agriculture by age, total (15+)
+- Labour force participation rate by age, 55 to 64, rural areas
+- Forest set-asides
+- Natural gas (peaker)
+- Early retirement of industrial facilities
+- Biofuel Diesel
+- Liquefied Coal w/o CCS
+- Passenger motorbikes
+- Change in subsidies on petroleum diesel
+- Fossil Fuel Consumption
+- Fugitive Emissions from Fuels
+- NF3
+- Employment in agriculture by age, 55 to 64
+- Labour force participation rate by age, 25 to 54, rural areas
+- Solids
+- Urban
+- Offshore Wind
+- Heat
+- Liquid Derivative of Crude Oil
+- Other industries energy efficiency standards
+- Marine
+- Building contractor training
+- Mean weekly hours actually worked per employed person in agriculture
+- Lignite (transportation sector)
+- Chemicals
+- Change in subsidies on hard coal
+- Employment in agriculture by age, 65+
+- Share of employment by status of employment, self-employed, rural areas
+- Change in Cash Flow for Government
+- Cogeneration and waste heat recovery
+- Gas w/ CCS
+- Change in subsidies on solar
+- Employment by age, total (15+), rural areas
+- Liquefied Biomass w/ CCS
+- Public
+- Passenger HDVs
+- Gasoline engine motorbikes fuel economy standards
+- Fossil Power Plants
+- Coal w/o CCS
+- Rural
+- Employment by status of employment, employees, rural areas
+- Change in Cash Flow for Capital Equipment Suppliers
+- Capital Investment
+- Distributed solar carve-out
+- Gases w/o CCS
+- Employment-to-population ratio by age, 65+, rural areas
+- Share of employment in fishing and aquaculture
+- Retrofitting building heating
+- Solar PV (utility)
+- Commercial cooling energy efficiency standards
+- Demand response
+- Rail
+- Cement
+- Forest restoration
+- Carbon price for transportation sector
+- Aluminium
+- Lignite (residential buildings sector)
+- Greenhouse Gas Removal
+- Cropland
+- Liquefied Biomass w/o CCS
+- Gasoline
+- Energy Related
+- Liquefied Coal
+- Liquefied Gas
+- Passenger rail
+- Rural residential building component electrification
+- TDM package implementation for passenger
+- Diesel engine HDVs fuel economy standards
+- Share of employment in forestry and logging
+- Oil w/ CCS
+- Electricity (commercial buildings sector)
+- Land area affected by afforestation and reforestation
+- Retrofitting building lighting
+- Domestic Gas
+- NOx
+- Freight LDVs
+- Coal w/ CCS
+- Biomass w/o CCS
+- Commercial building component electrification
+- Electricity (industry sector)
+- Methane capture
+- Urban residential lighting energy efficiency standards
+- Road
+- Gas
+- Lignite (commercial buildings sector)
+- Cooling (urban residential)
+- Domestic Aviation
+- Expenditure in Agricultural R&D as Share of Agricultural Value Added (Standard Local
+  Currency)
+- Employment in agriculture by status of employment, employees
+- Total non-agricultural AFS employment
+- Commercial heating energy energy efficiency standards
+- Subsidy for distributed solar
+- Employment by age, 25 to 54, rural areas
+- Solid w/o CCS
+- HFCs
+- GDP MER
+- Commercial other components energy efficiency standards
+- Liquefied Fossil Fuels w/o CCS
+loaded_at_value_samples:
+- '2026-08-24 14:22:57.332529+00'
+indicator_classes:
+- EL
+- CLIM
+- RES
+filtering_guidance:
+- Lookup table for indicator_name; join on indicator_key from facts
+sql_generation_hints:
+- LEFT JOIN dim_indicator i ON f.indicator_key = i.indicator_key; filter i.indicator_name
+semantic_role:
+  primary_domain: indicator
+  supports:
+  - indicator
+  - join_dim
+  - EL
+  - CLIM
+  - RES

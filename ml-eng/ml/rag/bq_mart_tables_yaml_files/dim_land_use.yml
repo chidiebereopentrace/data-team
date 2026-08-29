@@ -1,0 +1,94 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_land_use
+description: dim land use
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: land_use_key
+  type: STRING
+  description: land use key
+- name: land_use_code
+  type: STRING
+  description: land use code
+- name: land_use_class
+  type: STRING
+  description: land use class
+- name: description
+  type: STRING
+  description: description
+land_use_key_value_samples:
+- cf3875588a651214ebeecd68289db872
+- 1e03523f43802538d78eec814ff27ff0
+- fd21a7899e6e52e3d2484dc89c8e01f4
+- 2e145f3466e81347d5d883fc95bb26e0
+- 46c8482c0d548ffb42d566bff5c4727b
+- 843eb9fd9a9461a25694982e8b870534
+- 46bf645d37c20ed54a09120b0346110b
+- 88f99d15e3b53e05accb4a1a4c5ecf40
+- 7169476e1ca1b3b66537fdf8e9126b6e
+- 71f8876c8ad4c0c260beff531a12b5c1
+- f8ea9e07f542c0cdf0805e5f30c76cb6
+- e917f316633f7137bb1c0febc156d29b
+- c54759a889be44d7e2dec40b9e91f28c
+- 432163b99c47eb51f8cb4eb730521b5c
+- e980b3c49f16a423bcb35820dd1d28d2
+- a9bc6e0214c074c436fa4f5645f1eacb
+- 5d8d2ee1fad0f4583c050d354fa32cac
+- d9e26cb8ece2456063673d80d93c8178
+- 8d13d4f22d8d54676e33cefcf8a4da0f
+- 182c5d6bfa7830cadbae251d44af8cb2
+- edb8dfcd604c397c079fbf3899a975e3
+- 3b49fa3462e99aaeb22202634175671d
+- af48cd96217949fab0fd25e0bbb0de30
+land_use_code_value_samples:
+- cropland area under organic agric.
+- temporary fallow
+- country area
+- agriculture area actually irrigated
+- inland waters
+- temporary meadows and pastures
+- agricultural land
+- cropland area certified organic
+- cropland
+- other land
+- agriculture
+- temporary crops
+- agriculture area certified organic
+- permanent crops
+- agriculture area under organic agric.
+- cropland area actually irrigated
+- land area equipped for irrigation
+- naturally regenerating forest
+- forest land
+- land area
+- arable land
+- planted forest
+- permanent meadows and pastures
+land_use_class_value_samples:
+- Cropland area under organic agric.
+- Temporary fallow
+- Country area
+- Agriculture area actually irrigated
+- Inland waters
+- Temporary meadows and pastures
+- Agricultural land
+- Cropland area certified organic
+- Cropland
+- Other land
+- Agriculture
+- Temporary crops
+- Agriculture area certified organic
+- Permanent crops
+- Agriculture area under organic agric.
+- Cropland area actually irrigated
+- Land area equipped for irrigation
+- Naturally regenerating forest
+- Forest land
+- Land area
+- Arable land
+- Planted Forest
+- Permanent meadows and pastures
+description_value_stats:
+  distinct_count: 0
+  null_count: 23
+  is_truncated: false

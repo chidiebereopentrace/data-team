@@ -1,0 +1,90 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_technology
+description: fct technology
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+columns:
+- name: technology_fact_key
+  type: STRING
+  description: technology fact key
+- name: geo_key
+  type: STRING
+  description: geo key
+- name: time_key
+  type: INT64
+  description: time key
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: organisation_key
+  type: STRING
+  description: organisation key
+- name: technology_key
+  type: STRING
+  description: technology key
+- name: unit_key
+  type: STRING
+  description: unit key
+- name: audit_key
+  type: STRING
+  description: audit key
+- name: machinery_stock
+  type: NUMERIC
+  description: machinery stock
+- name: rd_expenditure
+  type: NUMERIC
+  description: rd expenditure
+- name: rd_intensity
+  type: FLOAT64
+  description: rd intensity
+- name: source_record_id
+  type: STRING
+  description: source record id
+technology_fact_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+geo_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+time_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+source_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+organisation_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+technology_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+unit_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+audit_key_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+machinery_stock_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+rd_expenditure_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+rd_intensity_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false
+source_record_id_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false

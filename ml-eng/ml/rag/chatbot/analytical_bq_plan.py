@@ -8,18 +8,17 @@ from typing import Any
 from ml.rag.chatbot.agri_measure_ontology import fallback_plan, resolve_measure
 from ml.rag.chatbot.bq_table_schema_yaml import (
     match_product_samples,
-    pack_selected_table_hints,
+    pack_mart_table_hints,
     table_supports_sql_pattern,
 )
 
 _STAPLES = ("Maize", "Rice", "Cassava", "Sorghum", "Millet")
 
-# Priority spine first, then cross-domain companions (not exclusive FEWS-only).
 _FOOD_SECURITY_TABLES = (
-    "stg_fews_food_security",
-    "stg_fews_market_prices",
-    "stg_faostat_production",
-    "stg_ilri_household_food_security",
+    "fct_food_security",
+    "fct_prices",
+    "fct_production",
+    "fct_household",
 )
 
 
@@ -40,7 +39,7 @@ def _asked_products(query: str, decomposition: dict[str, Any]) -> list[str]:
     entities = decomposition.get("entities")
     if isinstance(entities, list):
         blob_parts.extend(str(e) for e in entities if str(e).strip())
-    found = match_product_samples("stg_faostat_production", " ".join(blob_parts))
+    found = match_product_samples("fct_production", " ".join(blob_parts))
     return found[:6] if found else list(_STAPLES[:3])
 
 
@@ -76,36 +75,36 @@ def build_food_security_bq_plan(
     y0 = ts[:4] if ts[:4].isdigit() else "start"
     y1 = te[:4] if te[:4].isdigit() else "end"
     multi = len(countries) != 1
-    grain_country = ["country_name"] if multi else ["country_name", "year"]
+    grain_country = ["country_iso3"] if multi else ["country_iso3", "year"]
 
     intents: list[dict[str, Any]] = []
-    if "stg_fews_food_security" in selected:
+    if "fct_food_security" in selected:
         intents.append(
             {
-                "goal": "FEWS / IPC food security phases by country in the scoped geography",
-                "tables": ["stg_fews_food_security"],
-                "filters": f"{geo_filter}; year between {y0} and {y1}",
-                "notes": "analytical_fews_food_security",
+                "goal": "IPC food security by country in the scoped geography",
+                "tables": ["fct_food_security"],
+                "filters": f"measure_type='population'; {geo_filter}; year between {y0} and {y1}",
+                "notes": "analytical_food_security",
                 "pattern": "custom",
                 "metric": "value",
                 "grain": grain_country,
                 "order_by": "value DESC",
             }
         )
-    if "stg_fews_market_prices" in selected:
+    if "fct_prices" in selected:
         intents.append(
             {
-                "goal": "Retail market prices companion for food-security assessment",
-                "tables": ["stg_fews_market_prices"],
-                "filters": f"price_type='Retail'; {geo_filter}; year between {y0} and {y1}",
-                "notes": "analytical_fews_market_prices",
+                "goal": "Market prices companion for food-security assessment",
+                "tables": ["fct_prices"],
+                "filters": f"price_source='fews'; {geo_filter}; year between {y0} and {y1}",
+                "notes": "analytical_prices",
                 "pattern": "rank_by_sum" if multi else "custom",
                 "metric": "value",
-                "grain": ["country"],
+                "grain": ["country_iso3"],
                 "order_by": "total DESC" if multi else "value DESC",
             }
         )
-    if "stg_faostat_production" in selected:
+    if "fct_production" in selected:
         staples = ", ".join(_STAPLES[:4])
         intents.append(
             {
@@ -113,28 +112,28 @@ def build_food_security_bq_plan(
                     f"Staple crop production pressure companion ({staples}) "
                     "by country — multi-country rank/IN, not single-country series"
                 ),
-                "tables": ["stg_faostat_production"],
+                "tables": ["fct_production"],
                 "filters": (
-                    f"element='Production'; items in {list(_STAPLES[:4])}; "
+                    f"production_grain='physical'; items in {list(_STAPLES[:4])}; "
                     f"{geo_filter}; year between {y0} and {y1}"
                 ),
                 "notes": "analytical_food_security_production_companion",
                 "pattern": "rank_by_sum" if multi else "custom",
                 "metric": "value",
-                "grain": ["country_name", "product_name"] if multi else ["country_name", "year", "product_name"],
+                "grain": ["country_iso3", "product_key"] if multi else ["country_iso3", "year"],
                 "order_by": "total DESC" if multi else "value DESC",
             }
         )
-    if "stg_ilri_household_food_security" in selected:
+    if "fct_household" in selected:
         intents.append(
             {
-                "goal": "ILRI household food security companion signals",
-                "tables": ["stg_ilri_household_food_security"],
+                "goal": "Household food security companion signals",
+                "tables": ["fct_household"],
                 "filters": f"{geo_filter}; year between {y0} and {y1}",
-                "notes": "analytical_ilri_household_food_security",
+                "notes": "analytical_household_food_security",
                 "pattern": "custom",
                 "metric": "value",
-                "grain": ["country_name"],
+                "grain": ["country_iso3"],
                 "order_by": "value DESC",
             }
         )
@@ -150,7 +149,7 @@ def build_food_security_bq_plan(
         "max_sql_queries": max(3, len(intents)),
         "measure_id": "food_security_ipc",
     }
-    hints, hints_truncated = pack_selected_table_hints(
+    hints, hints_truncated = pack_mart_table_hints(
         selected,
         query_terms=_pack_terms(query, decomposition),
     )
@@ -207,7 +206,7 @@ def build_analytical_bq_plan(
                         "notes": f"analytical_companion_{tid}",
                         "pattern": "rank_by_sum" if table_supports_sql_pattern(tid) else "custom",
                         "metric": "value",
-                        "grain": ["country_name"],
+                        "grain": ["country_iso3"],
                         "order_by": "total DESC" if table_supports_sql_pattern(tid) else "value DESC",
                     }
                 )
@@ -217,7 +216,29 @@ def build_analytical_bq_plan(
             ontology_plan["rationale"] = f"analytical_forced_{hit.measure.id}"
             return ontology_plan
 
-    if "stg_faostat_production" not in known_tables:
+    contract_decomp = dict(decomposition)
+    contract_decomp["task_mode"] = "analytical"
+    from ml.rag.chatbot.retrieval_contract import build_retrieval_contract, contract_to_bq_plan
+
+    contract = build_retrieval_contract(
+        query,
+        decomposition=contract_decomp,
+        known_tables=known_tables,
+    )
+    if contract.bq_tables and contract.bq_intents and not contract.skip_bq:
+        contract_plan = contract_to_bq_plan(
+            contract,
+            query=query,
+            decomposition=contract_decomp,
+        )
+        if contract_plan is not None and not contract_plan.get("skip_bq"):
+            floor = analytical_sql_query_floor()
+            contract_plan["analytical_mode"] = True
+            contract_plan["max_sql_queries"] = floor
+            contract_plan["rationale"] = "analytical_forced_contract"
+            return contract_plan
+
+    if "fct_production" not in known_tables:
         return None
 
     geo_raw = decomposition.get("geography")
@@ -236,22 +257,23 @@ def build_analytical_bq_plan(
     product_filter = "items in " + ", ".join(products)
     want_yield = bool(re.search(r"\byields?\b", query or "", re.IGNORECASE))
     want_trade = _wants_trade(query)
-    primary_element = "Yield" if want_yield else "Production"
+    prod_table = "fct_yield" if want_yield else "fct_production"
+    grain_filter = "season_key" if want_yield else "production_grain='physical'"
 
-    selected = ["stg_faostat_production"]
-    if want_trade and "stg_faostat_trade" in known_tables:
-        selected.append("stg_faostat_trade")
+    selected = [prod_table]
+    if want_trade and "fct_trade" in known_tables:
+        selected.append("fct_trade")
 
-    rank_grain = ["country_name", "product_name"] if len(products) > 1 else ["country_name"]
+    rank_grain = ["country_iso3", "product_key"] if len(products) > 1 else ["country_iso3"]
     series_grain = (
-        ["country_name", "product_name", "year"] if len(products) > 1 else ["country_name", "year"]
+        ["country_iso3", "product_key", "year"] if len(products) > 1 else ["country_iso3", "year"]
     )
 
     intents: list[dict[str, Any]] = [
         {
-            "goal": f"Country {primary_element} ranking for {', '.join(products)}",
-            "tables": ["stg_faostat_production"],
-            "filters": f"element='{primary_element}'; {product_filter}; {geo_filter}; year≈{y1}",
+            "goal": f"Country {'yield' if want_yield else 'production'} ranking for {', '.join(products)}",
+            "tables": [prod_table],
+            "filters": f"{grain_filter}; {product_filter}; {geo_filter}; year≈{y1}",
             "notes": "analytical_products_by_country",
             "pattern": "rank_by_sum",
             "metric": "value",
@@ -259,9 +281,9 @@ def build_analytical_bq_plan(
             "order_by": "total DESC",
         },
         {
-            "goal": f"{primary_element} time series by country for {', '.join(products)}",
-            "tables": ["stg_faostat_production"],
-            "filters": f"element='{primary_element}'; {product_filter}; {geo_filter}; years {y0} and {y1}",
+            "goal": f"{'Yield' if want_yield else 'Production'} time series by country for {', '.join(products)}",
+            "tables": [prod_table],
+            "filters": f"{grain_filter}; {product_filter}; {geo_filter}; years {y0} and {y1}",
             "notes": "analytical_series_endpoints",
             "pattern": "time_series",
             "metric": "value",
@@ -270,16 +292,16 @@ def build_analytical_bq_plan(
         },
     ]
 
-    if "stg_faostat_trade" in selected:
-        for element, notes in (
-            ("Export quantity", "analytical_trade_export"),
-            ("Import quantity", "analytical_trade_import"),
+    if "fct_trade" in selected:
+        for trade_grain, notes in (
+            ("faostat_country_year export", "analytical_trade_export"),
+            ("faostat_country_year import", "analytical_trade_import"),
         ):
             intents.append(
                 {
-                    "goal": f"{element} by country for {', '.join(products)}",
-                    "tables": ["stg_faostat_trade"],
-                    "filters": f"element='{element}'; {product_filter}; {geo_filter}; year between {y0} and {y1}",
+                    "goal": f"Trade {notes} by country for {', '.join(products)}",
+                    "tables": ["fct_trade"],
+                    "filters": f"trade_grain='{trade_grain.split()[0]}'; {product_filter}; {geo_filter}; year between {y0} and {y1}",
                     "notes": notes,
                     "pattern": "rank_by_sum",
                     "metric": "value",
@@ -297,7 +319,7 @@ def build_analytical_bq_plan(
         "max_sql_queries": max(3, len(intents)),
         "measure_id": hit.measure.id if hit else None,
     }
-    hints, hints_truncated = pack_selected_table_hints(
+    hints, hints_truncated = pack_mart_table_hints(
         selected,
         query_terms=_pack_terms(query, decomposition),
     )

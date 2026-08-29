@@ -1,0 +1,242 @@
+table_name: opentrace-prod-5ga4.mart_dev.fct_protected_areas
+description: Protected area extents.
+source:
+  layer: mart_dev
+profiled_at: '2026-08-28T17:53:44.421016+00:00'
+grain: Protected area feature
+entity_type: spatial
+columns:
+- name: protected_area_key
+  type: STRING
+  description: protected area key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography (null if unmatched)
+- name: geo_level
+  type: STRING
+  description: geo level
+- name: country_iso3
+  type: STRING
+  description: ISO3 from dim or extractable geo even if key null
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: tier
+  type: INT64
+  description: Producer scale (1=global, 2=national ministry, 3=community survey)
+- name: data_level
+  type: STRING
+  description: Resolution of the number (warehouse row resolution)
+- name: geo_scope
+  type: STRING
+  description: national / sub_national / community / point (null when geography_key
+    null)
+- name: place_scope
+  type: ARRAY<STRING>
+  description: ARRAY of comparable place labels for ACF geo overlap
+- name: metric
+  type: STRING
+  description: Stable slug for the measure
+- name: source_id
+  type: STRING
+  description: Lineage key (= dim_source.source_key)
+- name: as_of_date
+  type: DATE
+  description: Observation date when known; else DATE(loaded_at)
+- name: as_of_date_basis
+  type: STRING
+  description: observation or loaded_at
+- name: value
+  type: FLOAT64
+  description: Numeric measure
+- name: unit
+  type: STRING
+  description: Unit of measure
+- name: protected_area_name
+  type: STRING
+  description: protected area name
+- name: latitude
+  type: FLOAT64
+  description: latitude
+- name: longitude
+  type: FLOAT64
+  description: longitude
+- name: geometry_wkt
+  type: STRING
+  description: geometry wkt
+- name: source_natural_key
+  type: STRING
+  description: source natural key
+- name: loaded_at
+  type: TIMESTAMP
+  description: loaded at
+protected_area_key_value_stats:
+  distinct_count: 6963
+  null_count: 0
+  is_truncated: true
+  min_value: 001aec7eef15158ace2bbf598b2c58fc
+  max_value: ffffbabfe97a00d86940c7cf05546b8d
+geography_key_value_stats:
+  distinct_count: 1769
+  null_count: 0
+  is_truncated: true
+  min_value: 0001600623fef7fd72830124b253ced3
+  max_value: ffe04a83093866d63e5946dede21a358
+geo_level_value_samples:
+- city
+- country
+country_iso3_value_samples:
+- ZAF
+- NGA
+- UGA
+- TZA
+- ZMB
+- KEN
+- CIV
+- MAR
+- GHA
+- ZWE
+- MDG
+- NAM
+- GIN
+- SEN
+- MWI
+- BFA
+- ETH
+- TUN
+- BWA
+- CMR
+- BEN
+- GAB
+- EGY
+- MOZ
+- TGO
+- COD
+- NER
+- LSO
+- COG
+- SLE
+- SSD
+- SWZ
+- MLI
+- GNB
+- CAF
+- MUS
+- GMB
+- LBR
+- AGO
+- TCD
+- GNQ
+- BDI
+- DZA
+- SYC
+- RWA
+- CPV
+- COM
+- ERI
+- MRT
+- STP
+- DJI
+- SOM
+source_key_value_samples:
+- 9a235ab0fae73596687afc9cdb25f920
+tier_value_samples:
+- '2'
+data_level_value_samples:
+- community
+- national
+geo_scope_value_samples:
+- community
+- national
+metric_value_samples:
+- protected_area_extent
+source_id_value_samples:
+- 9a235ab0fae73596687afc9cdb25f920
+as_of_date_value_samples:
+- '2026-08-27'
+as_of_date_basis_value_samples:
+- loaded_at
+value_value_stats:
+  distinct_count: 6939
+  null_count: 0
+  is_truncated: true
+  min_value: '0.00156782'
+  max_value: '98902.87315446'
+unit_value_stats:
+  distinct_count: 0
+  null_count: 6957
+  is_truncated: false
+protected_area_name_value_stats:
+  distinct_count: 6958
+  null_count: 0
+  is_truncated: true
+  min_value: 91 Ammunisie Depo Private Nature Reserve
+  max_value: uThukela Marine Protected Area
+latitude_value_stats:
+  distinct_count: 6944
+  null_count: 0
+  is_truncated: true
+  min_value: '-34.789382533221371'
+  max_value: '37.151894109840313'
+longitude_value_stats:
+  distinct_count: 6949
+  null_count: 0
+  is_truncated: true
+  min_value: '-24.364408653157529'
+  max_value: '57.783634179571891'
+geometry_wkt_value_stats:
+  distinct_count: 6945
+  null_count: 0
+  is_truncated: true
+  min_value: MULTIPOLYGON (((-0.0343875090760953 8.86013220616747, -0.091574260063144
+    8.83249143048694, -0.149317966526347 8.85778894542395, -0.249938261500574 8.82267375167033,
+    -0.255507816262115 8.85871204992417, -0.175988947311855 8.88803716200758, -0.149856955696819
+    8.89904234937959, -0.084531468235647 8.91118317209424, -0.0296084717645794 8.89679696301222,
+    -0.0343875090760953 8.86013220616747)), ((-2.49627444412269 10.8664566680344,
+    -2.55165558138866 10.8465357511882, -2.56329774747085 10.861939729842, -2.50712609275485
+    10.9131041666277, -2.49391187492546 10.9249589461252, -2.48074257286026 10.910907805092,
+    -2.49627444412269 10.8664566680344)))
+  max_value: POLYGON ((9.995266705507 19.9869496690419, 10.0082383782097 18.6530036037568,
+    9.74166692348476 18.6418704284164, 9.69642415993895 18.6399808241365, 9.70095166897092
+    18.6523141875243, 9.7245414283319 18.6689870614852, 9.73365034531287 18.6827734985827,
+    9.73893243918349 18.7037999097966, 9.7174986365044 18.7313659929151, 9.71133619365534
+    18.7545894800635, 9.71208179534116 18.7647285500092, 9.67091200586996 18.7596590912101,
+    9.65944051969175 18.7690919051026, 9.65478724652002 18.7988328580208, 9.6752598518451
+    18.8387201758703, 9.68361418398741 18.8510560327538, 9.69192360036552 18.8800685009364,
+    9.68193433440611 18.9054641003569, 9.68720744512389 18.9272189779399, 9.67568206002864
+    18.9598629748038, 9.6740830588229 18.9859684765337, 9.64801394927776 19.0367490656225,
+    9.63391932677437 19.0411477909907, 9.61179035113458 19.0480536845973, 9.59917254728018
+    19.0519912550858, 9.55414000208726 19.0628764631466, 9.50760727036987 19.0693970567882,
+    9.46415576007701 19.0679622085829, 9.44550277141166 19.0675156269495, 9.43365795618116
+    19.0672320443728, 9.40242340080165 19.0292813273186, 9.40023164445907 19.026617967297,
+    9.37895953853112 18.9983274481693, 9.25154616465629 19.3489656887667, 9.25138080188046
+    19.3494202774586, 9.23689097634762 19.3501407141159, 9.23160387167435 19.3443177361686,
+    9.2270095082223 19.3392575438549, 9.19141002180926 19.3344766208709, 9.15688701714393
+    19.329840134213, 9.12495190879348 19.2986596340344, 9.08787903619417 19.2868997017249,
+    9.05639248630948 19.2769111506172, 9.03811177027765 19.2696440545541, 9.00991365350914
+    19.2689317430818, 8.9976516498809 19.2870608023955, 8.96330905656901 19.2979389703467,
+    8.9266488098241 19.3189810428213, 8.88164321408971 19.3269664870462, 8.88310746800282
+    19.3472759001123, 8.88162651440857 19.3547680936118, 8.87923572912827 19.3668624261627,
+    8.89061738377806 19.3886158821267, 8.88903634887801 19.4052997540672, 8.89966341868915
+    19.424879302043, 8.89113840664285 19.472043525965, 8.9131291647981 19.5148419880195,
+    8.91992941149888 19.5358729344595, 8.9008312285585 19.5503830294407, 8.87099817797289
+    19.5822938735404, 8.84960929105801 19.5967997909497, 8.83195739572506 19.635969388161,
+    8.82572308765327 19.6838501030177, 8.81267056657501 19.7143221943821, 8.79277288303176
+    19.7411612416595, 8.79040133068169 19.7708869425441, 8.77890289504496 19.7919266156532,
+    8.76730564472698 19.843427839463, 8.73671800930271 19.8775274342549, 8.74350927285065
+    19.900740701527, 8.7556455123391 19.9246684282483, 8.75020172171734 19.9609374061887,
+    8.74327571087678 19.982711676823, 9.995266705507 19.9869496690419))
+source_natural_key_value_samples:
+- arcgis_land_protected_areas
+loaded_at_value_samples:
+- '2026-08-27 14:41:21.108170+00'
+filtering_guidance:
+- 'Grain: Protected area feature'
+- Protected area extents.
+sql_generation_hints:
+- 'Join keys: geography_key, source_key'
+- LEFT JOIN dim_geography on geography_key for country names
+semantic_role:
+  primary_domain: spatial
+  supports:
+  - spatial
