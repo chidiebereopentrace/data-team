@@ -12,10 +12,9 @@ from ml.rag.chatbot.agri_measure_ontology import (
 )
 from ml.rag.chatbot.analytical_bq_plan import build_food_security_bq_plan
 from ml.rag.chatbot.bq_table_schema_yaml import (
+    compile_intent_for_table,
     list_mart_table_index,
-    load_mart_table_schema,
     pack_mart_table_hints,
-    year_column,
 )
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
 from ml.rag.chatbot.mart_indicator_classes import class_for_query, do_not_mix_tables
@@ -60,76 +59,29 @@ def _geo_list(decomposition: dict[str, Any]) -> list[str]:
     return [str(g).strip() for g in raw if str(g).strip()]
 
 
-def _time_bounds_filter(
-    table_id: str,
-    *,
-    time_start: str,
-    time_end: str,
-    year_hint: str,
-) -> str:
-    ts = (time_start or "")[:10]
-    te = (time_end or "")[:10]
-    if ts and te:
-        schema = load_mart_table_schema(table_id)
-        names = {
-            str(c.get("name") or "").strip().lower()
-            for c in (schema or {}).get("columns") or []
-            if str(c.get("name") or "").strip()
-        }
-        if "as_of_date" in names:
-            return f"as_of_date BETWEEN '{ts}' AND '{te}'"
-        ycol = year_column(table_id) or "year"
-        if ts[:4].isdigit() and te[:4].isdigit():
-            return f"{ycol} BETWEEN {ts[:4]} AND {te[:4]}"
-    return f"year≈{year_hint}"
-
-
 def _intent_for_table(
     table_id: str,
     *,
     measure_id: str,
-    geo_filter: str,
+    geo_labels: list[str],
     year_hint: str,
     multi_country: bool,
+    query: str = "",
     time_start: str = "",
     time_end: str = "",
+    africa_panel: bool = False,
 ) -> dict[str, Any]:
-    time_filter = _time_bounds_filter(
+    return compile_intent_for_table(
         table_id,
+        measure_id=measure_id,
+        query=query,
+        geo_labels=geo_labels,
+        year_hint=year_hint,
+        multi_country=multi_country,
+        africa_panel=africa_panel,
         time_start=time_start,
         time_end=time_end,
-        year_hint=year_hint,
     )
-    filters = f"{geo_filter}; {time_filter}"
-    pattern = "custom"
-    grain = ["country_iso3"] if multi_country else ["country_iso3", "year"]
-    order_by = "value DESC"
-    if table_id == "fct_production" or "agg_production" in table_id:
-        filters = f"production_grain='physical'; {filters}"
-        pattern = "rank_by_sum" if multi_country else "custom"
-        order_by = "total DESC" if multi_country else "value DESC"
-    elif table_id == "fct_prices":
-        filters = f"price_source from question; {filters}"
-    elif table_id == "fct_trade":
-        filters = f"trade_grain from question; {filters}"
-        pattern = "rank_by_sum" if multi_country else "custom"
-        order_by = "total DESC" if multi_country else "value DESC"
-    elif table_id == "fct_food_security":
-        filters = f"measure_type from question (population vs classification); {filters}"
-    elif table_id == "fct_yield":
-        filters = f"season_key/harvest_year; {filters}"
-    elif table_id == "fct_employment":
-        filters = f"JOIN dim_indicator; unit=% vs headcount; {filters}"
-    return {
-        "goal": f"{measure_id} signal from {table_id}",
-        "tables": [table_id],
-        "filters": filters,
-        "notes": f"contract_{measure_id}_{table_id}",
-        "pattern": pattern,
-        "metric": "value",
-        "grain": grain,
-        "order_by": order_by,
-    }
 
 
 def choose_agg_vs_fact(
@@ -191,11 +143,7 @@ def build_retrieval_contract(
     te = str(enriched.get("time_end") or "")[:10]
     year_hint = (te or ts or "")[:4] or "year from question"
     multi = len(geo) != 1
-    geo_filter = (
-        f"country_iso3 in ({', '.join(geo[:16])})"
-        if geo
-        else "geography from question (country_iso3 or join dim_geography)"
-    )
+    africa_panel = bool(enriched.get("africa_panel"))
 
     indicator_classes = class_for_query(query)
     analytical = str(enriched.get("task_mode") or "") == "analytical"
@@ -241,11 +189,13 @@ def build_retrieval_contract(
                     _intent_for_table(
                         routed,
                         measure_id=h.measure.id,
-                        geo_filter=geo_filter,
+                        geo_labels=geo,
                         year_hint=year_hint,
                         multi_country=multi,
+                        query=query,
                         time_start=ts,
                         time_end=te,
+                        africa_panel=africa_panel,
                     )
                 )
                 if len(bq_tables) >= 6:

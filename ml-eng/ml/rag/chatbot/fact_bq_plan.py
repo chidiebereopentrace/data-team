@@ -9,7 +9,7 @@ from ml.rag.chatbot.agri_measure_ontology import (
     resolve_measure,
     wants_africa_panel,
 )
-from ml.rag.chatbot.bq_table_schema_yaml import pack_mart_table_hints
+from ml.rag.chatbot.bq_table_schema_yaml import compile_intent_for_table, pack_mart_table_hints
 
 
 def build_fact_bq_plan(
@@ -41,15 +41,6 @@ def build_fact_bq_plan(
     geo = geo_raw if isinstance(geo_raw, list) else []
     countries = [str(g).strip() for g in geo if str(g).strip()]
     africa_panel = bool(decomposition.get("africa_panel")) or wants_africa_panel(query)
-    geo_filter = (
-        "Africa continental panel GROUP BY country_iso3"
-        if africa_panel or (not countries and decomposition.get("africa_default"))
-        else (
-            f"country_iso3 in ({', '.join(countries[:8])})"
-            if countries
-            else "Africa continental ranking when unscoped"
-        )
-    )
     ts = str(decomposition.get("time_start") or "")[:10]
     te = str(decomposition.get("time_end") or "")[:10]
     year_hint = (te or ts or "")[:4] or "year from question"
@@ -59,35 +50,43 @@ def build_fact_bq_plan(
     item_hint = ", ".join(str(e).strip() for e in entities[:4] if str(e).strip()) or "crop from question"
     want_yield = bool(re.search(r"\byields?\b", query or "", re.IGNORECASE))
     table = "fct_yield" if want_yield else "fct_production"
-    grain_filter = "season_key/harvest_year" if want_yield else "production_grain='physical'"
+    multi = africa_panel or bool(decomposition.get("africa_default")) or len(countries) != 1
 
-    intents: list[dict[str, Any]] = [
-        {
-            "goal": f"Primary {'yield' if want_yield else 'production'} fact/rank for the asked geography/commodity",
-            "tables": [table],
-            "filters": f"{grain_filter}; {geo_filter}; year≈{year_hint}; product≈{item_hint}",
-            "notes": f"fact_{task_mode}",
-            "pattern": "rank_by_sum" if not countries or len(countries) > 1 or africa_panel else "custom",
-            "metric": "value",
-            "grain": ["country_iso3"]
-            if not countries or len(countries) != 1 or africa_panel
-            else ["country_iso3", "product_key"],
-            "order_by": "value DESC",
-        }
-    ]
+    intent = compile_intent_for_table(
+        table,
+        measure_id="production" if not want_yield else "yield",
+        query=query,
+        geo_labels=countries,
+        year_hint=year_hint,
+        multi_country=multi,
+        africa_panel=africa_panel,
+        time_start=ts,
+        time_end=te,
+    )
+    intent["goal"] = (
+        f"Primary {'yield' if want_yield else 'production'} fact/rank for the asked geography/commodity"
+    )
+    intent["notes"] = f"fact_{task_mode}"
+    intent["filters"] = f"{intent['filters']}; product≈{item_hint}"
+    intents: list[dict[str, Any]] = [intent]
+
     if task_mode == "data_export_only":
-        intents.append(
-            {
-                "goal": "Tabular series or multi-row export for the same filters",
-                "tables": [table],
-                "filters": f"{grain_filter}; {geo_filter}; year around {year_hint}",
-                "notes": "fact_export_table",
-                "pattern": "time_series",
-                "metric": "value",
-                "grain": ["country_iso3", "year"],
-                "order_by": "year ASC",
-            }
+        export = compile_intent_for_table(
+            table,
+            measure_id="production" if not want_yield else "yield",
+            query=query,
+            geo_labels=countries,
+            year_hint=year_hint,
+            multi_country=multi,
+            africa_panel=africa_panel,
+            time_start=ts,
+            time_end=te,
         )
+        export["goal"] = "Tabular series or multi-row export for the same filters"
+        export["notes"] = "fact_export_table"
+        export["pattern"] = "time_series"
+        export["order_by"] = "year ASC"
+        intents.append(export)
 
     selected = [table]
     plan: dict[str, Any] = {

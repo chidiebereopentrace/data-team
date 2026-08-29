@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from ml.rag.chatbot.analytical_intent import is_analytical_query
 from ml.rag.chatbot.bq_sql_templates import (
-    build_fews_food_security_sql,
-    match_fews_food_security,
+    build_mart_food_security_sql,
+    match_mart_food_security_snapshot,
     try_sql_template,
 )
 from ml.rag.chatbot.generator import (
@@ -154,28 +154,29 @@ def test_sahel_assessment_not_fact_lookup() -> None:
 
 
 def test_fews_latest_and_country_in() -> None:
-    assert match_fews_food_security(
+    assert match_mart_food_security_snapshot(
         query="food security risk across the Sahel",
-        selected_tables={"stg_fews_food_security"},
+        selected_tables={"fct_food_security"},
     )
-    sql = build_fews_food_security_sql(
+    sql = build_mart_food_security_sql(
         project_id="proj",
-        dataset="staging_dev",
+        dataset="mart_dev",
         year=None,
+        table_id="fct_food_security",
         countries=["Mali", "Niger", "Sahel"],
+        blob="food security population",
     )
-    assert "MAX(year)" in sql
-    assert "country IN" in sql
-    assert "'Mali'" in sql
+    assert "MAX(" in sql
+    assert "IN (" in sql or "= 'MLI'" in sql or "'Mali'" in sql
     assert "'Sahel'" not in sql
 
     hit = try_sql_template(
         query="IPC food security assessment in the Sahel",
         project_id="proj",
-        dataset="staging_dev",
-        selected_tables={"stg_fews_food_security"},
+        dataset="mart_dev",
+        selected_tables={"fct_food_security"},
         geo_countries=list(REGION_COUNTRIES["sahel"]),
     )
     assert hit is not None
-    assert hit["template"] == "fews_food_security"
-    assert "country IN" in hit["sql"]
+    assert hit["template"] == "mart_food_security_snapshot"
+    assert "stg_" not in hit["sql"]

@@ -351,7 +351,78 @@ def measure_columns_mart(table_id: str) -> list[str]:
 
 _GEO_COLUMN_CANDIDATES = ("country_name", "country")
 _MART_GEO_COLUMN_CANDIDATES = ("country_iso3", "country_name", "country")
-_YEAR_COLUMN_CANDIDATES = ("year", "harvest_year", "observation_year", "mp_year")
+_YEAR_COLUMN_CANDIDATES = ("year", "time_key", "harvest_year", "observation_year", "mp_year")
+
+# Canonical African country names (aligned with query_decomposer) → ISO3 for country_iso3 filters.
+_AFRICA_COUNTRY_ISO3: dict[str, str] = {
+    "Algeria": "DZA",
+    "Angola": "AGO",
+    "Benin": "BEN",
+    "Botswana": "BWA",
+    "Burkina Faso": "BFA",
+    "Burundi": "BDI",
+    "Cabo Verde": "CPV",
+    "Cameroon": "CMR",
+    "Central African Republic": "CAF",
+    "Chad": "TCD",
+    "Comoros": "COM",
+    "Republic of the Congo": "COG",
+    "Democratic Republic of the Congo": "COD",
+    "Djibouti": "DJI",
+    "Egypt": "EGY",
+    "Equatorial Guinea": "GNQ",
+    "Eritrea": "ERI",
+    "Eswatini": "SWZ",
+    "Ethiopia": "ETH",
+    "Gabon": "GAB",
+    "Gambia": "GMB",
+    "Ghana": "GHA",
+    "Guinea": "GIN",
+    "Guinea-Bissau": "GNB",
+    "Côte d'Ivoire": "CIV",
+    "Kenya": "KEN",
+    "Lesotho": "LSO",
+    "Liberia": "LBR",
+    "Libya": "LBY",
+    "Madagascar": "MDG",
+    "Malawi": "MWI",
+    "Mali": "MLI",
+    "Mauritania": "MRT",
+    "Mauritius": "MUS",
+    "Morocco": "MAR",
+    "Mozambique": "MOZ",
+    "Namibia": "NAM",
+    "Niger": "NER",
+    "Nigeria": "NGA",
+    "Rwanda": "RWA",
+    "Sao Tome and Principe": "STP",
+    "Senegal": "SEN",
+    "Seychelles": "SYC",
+    "Sierra Leone": "SLE",
+    "Somalia": "SOM",
+    "South Africa": "ZAF",
+    "South Sudan": "SSD",
+    "Sudan": "SDN",
+    "Tanzania": "TZA",
+    "Togo": "TGO",
+    "Tunisia": "TUN",
+    "Uganda": "UGA",
+    "Zambia": "ZMB",
+    "Zimbabwe": "ZWE",
+}
+_ISO3_RE = re.compile(r"^[A-Z]{3}$")
+
+_SERIES_QUERY_RE = re.compile(
+    r"\b(export|csv|chart|graph|plot|trend|time\s*series|over\s+time|by\s+year|"
+    r"from\s+19|from\s+20|till\s+date|until\s+now)\b",
+    re.IGNORECASE,
+)
+_RANK_QUERY_RE = re.compile(
+    r"\b(highest|lowest|top|rank|ranking|most|least|which country)\b",
+    re.IGNORECASE,
+)
+_YOY_QUERY_RE = re.compile(r"\b(yoy|year[\s-]over[\s-]year|year on year)\b", re.IGNORECASE)
+_SHARE_QUERY_RE = re.compile(r"\b(share of|percent of|percentage of|proportion of)\b", re.IGNORECASE)
 _PRODUCT_COLUMN_CANDIDATES = ("product_name", "product", "item")
 _PATTERN_DENY_TABLES = frozenset(
     {
@@ -453,6 +524,191 @@ def year_column(table_id: str) -> str | None:
         if cand in by_low:
             return by_low[cand]
     return None
+
+
+def resolve_geo_filter_values(table_id: str, labels: list[str] | None) -> list[str]:
+    """Map decomposition geography labels to warehouse filter values for the table geo column."""
+    col = geo_column(table_id)
+    if not col or not labels:
+        return [str(g).strip() for g in (labels or []) if str(g).strip()]
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in labels:
+        label = str(raw).strip()
+        if not label:
+            continue
+        if col == "country_iso3":
+            if _ISO3_RE.match(label.upper()):
+                val = label.upper()
+            else:
+                val = _AFRICA_COUNTRY_ISO3.get(label, label)
+        else:
+            val = label
+        key = val.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(val)
+    return out
+
+
+def geo_filter_string(
+    table_id: str,
+    geo_labels: list[str],
+    *,
+    multi_country: bool,
+) -> str:
+    """Human-readable filter clause using schema-correct geo column and values."""
+    if not geo_labels:
+        return "geography from question (country_iso3 or join dim_geography)"
+    resolved = resolve_geo_filter_values(table_id, geo_labels)
+    col = geo_column(table_id) or "country_iso3"
+    if not resolved:
+        return "geography from question (country_iso3 or join dim_geography)"
+    if len(resolved) == 1:
+        return f"{col} = '{resolved[0]}'"
+    lits = ", ".join(f"'{v}'" for v in resolved[:16])
+    return f"{col} in ({lits})"
+
+
+def time_bounds_filter_string(
+    table_id: str,
+    *,
+    time_start: str,
+    time_end: str,
+    year_hint: str,
+) -> str:
+    ts = (time_start or "")[:10]
+    te = (time_end or "")[:10]
+    if ts and te:
+        schema = load_mart_table_schema(table_id)
+        names = {
+            str(c.get("name") or "").strip().lower()
+            for c in (schema or {}).get("columns") or []
+            if str(c.get("name") or "").strip()
+        }
+        if "as_of_date" in names:
+            return f"as_of_date BETWEEN '{ts}' AND '{te}'"
+        ycol = year_column(table_id) or "year"
+        if ts[:4].isdigit() and te[:4].isdigit():
+            return f"{ycol} BETWEEN {ts[:4]} AND {te[:4]}"
+    return f"year≈{year_hint}"
+
+
+def intent_pattern_for_query(
+    query: str,
+    table_id: str,
+    *,
+    multi_country: bool,
+    africa_panel: bool = False,
+    time_start: str = "",
+    time_end: str = "",
+) -> str:
+    """Pick a compilable SQL pattern from question shape and mart table capability."""
+    if _is_mart_table_id(table_id):
+        if not table_supports_sql_pattern_mart(table_id):
+            return "custom"
+    elif not table_supports_sql_pattern(table_id):
+        return "custom"
+
+    q = query or ""
+    if _YOY_QUERY_RE.search(q):
+        return "yoy_delta"
+    if _SHARE_QUERY_RE.search(q):
+        return "share_of_total"
+    if _SERIES_QUERY_RE.search(q):
+        return "time_series"
+    if multi_country or africa_panel or _RANK_QUERY_RE.search(q):
+        return "rank_by_sum"
+    ts = (time_start or "")[:10]
+    te = (time_end or "")[:10]
+    if ts and te and ts[:4].isdigit():
+        return "rank_by_sum"
+    if re.search(r"\b(19|20)\d{2}\b", q):
+        return "rank_by_sum"
+    return "rank_by_sum"
+
+
+def intent_grain_for_table(
+    table_id: str,
+    *,
+    multi_country: bool,
+    pattern: str,
+) -> list[str]:
+    geo = geo_column(table_id) or "country_name"
+    prod = product_column(table_id)
+    if pattern == "time_series":
+        grain = [geo]
+        if prod:
+            grain.append(prod)
+        return grain
+    if multi_country or pattern in {"share_of_total", "yoy_delta"}:
+        return [geo]
+    grain = [geo]
+    if prod:
+        grain.append(prod)
+    return grain
+
+
+def _table_filter_prefix(table_id: str, measure_id: str = "") -> str:
+    if table_id == "fct_production" or "agg_production" in table_id:
+        return "production_grain='physical'"
+    if table_id == "fct_prices":
+        return "price_source from question"
+    if table_id == "fct_trade":
+        return "trade_grain from question"
+    if table_id == "fct_food_security":
+        return "measure_type from question (population vs classification)"
+    if table_id == "fct_yield":
+        return "season_key/harvest_year"
+    if table_id == "fct_employment":
+        return "JOIN dim_indicator; unit=% vs headcount"
+    return ""
+
+
+def compile_intent_for_table(
+    table_id: str,
+    *,
+    measure_id: str,
+    query: str = "",
+    geo_labels: list[str] | None = None,
+    year_hint: str = "",
+    multi_country: bool = False,
+    africa_panel: bool = False,
+    time_start: str = "",
+    time_end: str = "",
+    extra_filters: str = "",
+) -> dict[str, Any]:
+    """Schema-driven BQ intent shared by contract, ontology fallback, and fact plans."""
+    geo_filter = geo_filter_string(table_id, geo_labels or [], multi_country=multi_country)
+    time_filter = time_bounds_filter_string(
+        table_id,
+        time_start=time_start,
+        time_end=time_end,
+        year_hint=year_hint,
+    )
+    prefix = extra_filters or _table_filter_prefix(table_id, measure_id)
+    filters = f"{prefix}; {geo_filter}; {time_filter}" if prefix else f"{geo_filter}; {time_filter}"
+    pattern = intent_pattern_for_query(
+        query,
+        table_id,
+        multi_country=multi_country,
+        africa_panel=africa_panel,
+        time_start=time_start,
+        time_end=time_end,
+    )
+    grain = intent_grain_for_table(table_id, multi_country=multi_country, pattern=pattern)
+    rankish = multi_country or africa_panel or pattern in {"rank_by_sum", "share_of_total", "yoy_delta"}
+    order_by = "total DESC" if rankish else "value DESC"
+    return {
+        "goal": f"{measure_id} signal from {table_id}",
+        "tables": [table_id],
+        "filters": filters,
+        "notes": f"contract_{measure_id}_{table_id}",
+        "pattern": pattern,
+        "metric": "value",
+        "grain": grain,
+        "order_by": order_by,
+    }
 
 
 def product_column(table_id: str) -> str | None:
