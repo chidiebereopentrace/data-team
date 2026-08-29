@@ -27,110 +27,6 @@ market_key_value_stats:
   is_truncated: true
   min_value: 0006a06dc743367798d6e52e0100933d
   max_value: fffdab84332ddadab262bb00bf7043f9
-country_value_samples:
-- Zimbabwe
-- Indonesia
-- Myanmar
-- Bassas da India
-- Malawi
-- Rwanda
-- Mali
-- Ethiopia
-- Burundi
-- Philippines
-- Syrian Arab Republic
-- Democratic Republic of the Congo
-- Niger
-- Zambia
-- Bangladesh
-- Cambodia
-- Kenya
-- Cameroon
-- Burkina Faso
-- Senegal
-- Chad
-- Somalia
-- Nigeria
-- Benin
-- United Republic of Tanzania
-- Mozambique
-- Guinea-Bissau
-- Madagascar
-- Ghana
-- Nepal
-- Guinea
-- Libya
-- Afghanistan
-- Central African Republic
-- Mauritania
-- South Sudan
-- Kyrgyzstan
-- Sudan
-- Sri Lanka
-- Gambia
-- Ukraine
-- Colombia
-- Lebanon
-- Liberia
-- Yemen
-- Uganda
-- Lesotho
-- Iraq
-- Lao People's Democratic Republic
-- Namibia
-- El Salvador
-- Cote d'Ivoire
-- Armenia
-- Timor-Leste
-- Jordan
-- Côte d'Ivoire
-- Sierra Leone
-- Tajikistan
-- State of Palestine
-- China
-- Congo
-- Djibouti
-- Haiti
-- Bolivia
-- Russian Federation
-- Togo
-- Algeria
-- Nicaragua
-- Ecuador
-- Mexico
-- Mongolia
-- Angola
-- Swaziland
-- Eswatini
-- Pakistan
-- Cabo Verde
-- Turkey
-- Kazakhstan
-- South Africa
-- Argentina
-- Honduras
-- Viet Nam
-- Cape Verde
-- Dominican Republic
-- Panama
-- Bhutan
-- Japan
-- Guatemala
-- Eritrea
-- Moldova Republic of
-- Peru
-- Paraguay
-- Azerbaijan
-- Belarus
-- Morocco
-- Thailand
-- Iran  (Islamic Republic of)
-- Botswana
-- Georgia
-- Gabon
-- Venezuela
-- Egypt
-- Costa Rica
 admin_1_value_stats:
   distinct_count: 687
   null_count: 879
@@ -143,8 +39,6 @@ market_name_value_stats:
   is_truncated: true
   min_value: A'zaz
   max_value: Échelle
-loaded_at_value_samples:
-- '2026-08-24 21:57:12.510726+00'
 indicator_classes:
 - PRC
 filtering_guidance:
@@ -159,3 +53,13 @@ semantic_role:
   - market
   - prices
   - join_dim
+country_value_stats:
+  distinct_count: 103
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

@@ -66,10 +66,6 @@ coauthor_count_value_stats:
   is_truncated: true
   min_value: '0'
   max_value: '501'
-source_natural_key_value_samples:
-- openaire_persons
-loaded_at_value_samples:
-- '2026-08-24 14:23:02.692114+00'
 filtering_guidance:
 - 'Grain: Person/author id'
 - OpenAIRE persons/authors.
@@ -80,3 +76,13 @@ semantic_role:
   primary_domain: research
   supports:
   - research
+source_natural_key_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

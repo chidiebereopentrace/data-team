@@ -31,12 +31,6 @@ columns:
 - name: is_deleted
   type: BOOL
   description: is deleted
-audit_key_value_samples:
-- 382916a2abfbed1a10e93bcabbb4ecc9
-ingestion_timestamp_value_samples:
-- '2026-08-07 08:54:28.189062+00'
-source_system_value_samples:
-- open_trace_dbt
 source_file_name_value_stats:
   distinct_count: 0
   null_count: 1
@@ -49,11 +43,32 @@ pipeline_run_id_value_stats:
   distinct_count: 0
   null_count: 1
   is_truncated: false
-processed_at_value_samples:
-- '2026-08-07 08:54:28.189062+00'
 record_hash_value_stats:
   distinct_count: 0
   null_count: 1
   is_truncated: false
-is_deleted_value_samples:
-- 'false'
+audit_key_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+ingestion_timestamp_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_system_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+processed_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+is_deleted_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

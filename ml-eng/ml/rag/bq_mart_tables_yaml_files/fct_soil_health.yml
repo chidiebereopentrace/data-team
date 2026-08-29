@@ -85,9 +85,6 @@ geography_key_value_stats:
   is_truncated: true
   min_value: 0001600623fef7fd72830124b253ced3
   max_value: ffe04a83093866d63e5946dede21a358
-geo_level_value_samples:
-- city
-- country
 country_iso3_value_samples:
 - COD
 - ZAF
@@ -141,88 +138,6 @@ country_iso3_value_samples:
 - COM
 - STP
 - MYT
-soil_property_key_value_samples:
-- 2b6664a8eee5c39b954d5ba06116be67
-- 8a1bf1a65318854f1f17c51b21990ff4
-- f16fe32fa0695af377a2b8ac4e416d1d
-- fdc05140d9d1ff8ad21d7eccebef6e51
-- 47a93640d3d9c4a8052ce5aabc85a984
-- 56e92822a6ea24c9112cc08ba5d3463a
-- 4991e095de8b3050b4fb5c46379b9966
-- 3991ad0bb3698ab5e612bc1b99ce1ada
-- dba8ca51c355c8b04b723c4592ea800f
-- 8137cef9257042cae0584688cb898901
-- b2fe5e79ef1eb338b75381f05dab623f
-- d5341bd54d3fd883c095d436b7c574e4
-- 7ac7a75761431617e035280856e28fda
-- d1c4a8f02e3943d96b93827c3dd9f189
-- 65f84c137d425b46294d44406705fd7d
-- f39c09c86f14b728556bc18afce89e5d
-- eb5d799aab2bf7fac2d9a85b6da22876
-- 0405e522a54a158204e4b378a5538550
-- f350912e948bb7fdcaa62b9a7aeb1080
-- 2602b1c4eecbd36a52271b341a22c987
-- 219176a95768a2b58a6aa23557a0cff5
-- fcb95bdba598b5665e4bee7d54798c74
-- 3c426359b5d27dd2bd9f60c171e35787
-- 806b12d784032173e019454ec06266dc
-- 21d2338fb39eb00ec0668be9861b758b
-- 5069d596f3fb4d6be304f0d0f038fddc
-- 8fd58dc2ed771bdc4ce3afe75eda6333
-- 4b6d18fb5123df2071ee413e6dfb5056
-- d5a7b36fd5a4a0664cbb63a0bdf9163a
-- 6fc26af7eafe8a0614ab407099804e4e
-- 863311bdd8d252aa7e1931ff6db47d44
-- 89cc144ba001b99c841f34d60b775989
-- 1d510630b499f3cdb469f6a1f647157f
-- 90e707ce63d672c310db429b21d38af0
-- 3c9a86e88212d35c0156dc34a5101276
-- 8e0df976f6ec187fb8a1880f1e6aa314
-- 5fa9d1d16abddccab011ab8f3b821a98
-- 1fcca3f9b3ecee8bf698164f3c1d0b32
-- 44c07c4b26efc21890ff774a04307276
-- 4dd94ad7eaae1eaf341c8290b93971c4
-- 99c35686e16a60710317a3ad9e64077c
-- 1a85a55d29e8fbdbb9bf56e67b6b3afc
-- 309a81c0fca3b0046502cbcb4a5b0c55
-- 9b2330dd7fab7d029913df37d5eb7b9d
-- f87b1a2310d8f2d2fd351f33d342192a
-- f405973be50968d0f219477805a52906
-- 5b61601f283ef63c67754c35d25224bb
-- 1777cc2c8275fc958e8052b93866eaaf
-- bb9a77e204f21e43657b5eccc4035acf
-- b100367eaa77963dc95cf76a85261cd3
-- 5ecd0318dfac897c98617e6210d7d9e8
-- 33532350ce3dea87f8db356a69c344c3
-- 0eb38aba926963d302a975ad9b101f87
-- 8863569dd81212ff2e3d95546ac21c40
-- 3f913b5bffc3b38c07c6897c3bf03b98
-- 2ccdab669267e84c043cb1e311e5108f
-- 305e30c0cb2af3392042517d6552b528
-- e060de119655f0493849d31493e48526
-- d2db118cbce93be393d0af1730f3e338
-- af3f688385088f8c2976369ee34a4130
-- 5d6d5d418428423f6ad6d3536597a9b7
-- 41dca8e846d9ceb5b860482eaccce099
-- 50a4209e0dbc737d092c1d8da8c9eb92
-- 03aa8a764c69b9947354c5f62f4bef10
-- 68bcc44b8fe3cf1c23ad9c24d4cdf190
-- 07b1c938c12bb8cde816f5a1d780e56a
-- b4792ada75cc3f35058eb7cbabfb6988
-- a6787eaf67abfca17e6182dfab663e55
-- 9292f4b358bd9050fd54ba7c1d7c511a
-- a7be3f84ba1e83f0ba8719a3d3490970
-source_key_value_samples:
-- abc50272abd451daead6421cea631639
-- 8662fb9815678e093d6bca7d5b691b21
-tier_value_samples:
-- '1'
-data_level_value_samples:
-- community
-- national
-geo_scope_value_samples:
-- community
-- national
 metric_value_samples:
 - soil_cec
 - soil_nitrogen
@@ -246,9 +161,6 @@ metric_value_samples:
 - soil_clay
 - soil_soc
 - soil_bdod
-source_id_value_samples:
-- abc50272abd451daead6421cea631639
-- 8662fb9815678e093d6bca7d5b691b21
 latitude_value_stats:
   distinct_count: 2993
   null_count: 0
@@ -261,59 +173,16 @@ longitude_value_stats:
   is_truncated: true
   min_value: '-17.531231896013612'
   max_value: '51.351584090271288'
-soil_property_value_samples:
-- cec
-- nitrogen
-- calcium
-- carbon_total
-- iron
-- magnesium
-- bulk_density
-- aluminum
-- carbon_organic
-- zinc
-- potassium
-- stone_content
-- ph
-- sulfur
-- texture_class
-- bedrock_depth
-- silt
-- sand
-- clay
-- phh2o
-- bdod
-- soc
-depth_value_samples:
-- 0-20cm
-- 20-50cm
-- 15_30cm
-- 5_15cm
-- 30_60cm
-- 0_5cm
-- 60_100cm
 value_value_stats:
   distinct_count: 951
   null_count: 0
   is_truncated: true
   min_value: '0'
   max_value: '1404'
-as_of_date_value_samples:
-- '2026-08-25'
-- '2026-01-21'
-- '2026-01-22'
-as_of_date_basis_value_samples:
-- loaded_at
-- observation
 unit_value_stats:
   distinct_count: 0
   null_count: 70221581
   is_truncated: false
-source_natural_key_value_samples:
-- enriched_isda_soil_property_Africa
-- ISRIC_Africa_Soil
-loaded_at_value_samples:
-- '2026-08-25 22:48:13.784143+00'
 filtering_guidance:
 - 'Grain: Point × property × depth × source'
 - ISRIC + iSDA soil property values at points.
@@ -324,3 +193,68 @@ semantic_role:
   primary_domain: soil
   supports:
   - soil
+geo_level_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+soil_property_key_value_stats:
+  distinct_count: 70
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_key_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+data_level_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_scope_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_id_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+soil_property_value_stats:
+  distinct_count: 22
+  null_count: 0
+  is_truncated: false
+  patched: true
+depth_value_stats:
+  distinct_count: 7
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_basis_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

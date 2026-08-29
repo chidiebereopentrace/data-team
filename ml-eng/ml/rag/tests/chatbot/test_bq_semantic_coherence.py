@@ -13,6 +13,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     measure_blob,
     product_blob,
 )
+from ml.rag.chatbot.ontology_context import sanitize_decomposition_for_bq
 from ml.rag.chatbot.retrieval_contract import choose_agg_vs_fact
 
 
@@ -68,6 +69,42 @@ def test_build_mart_point_fact_production_with_yield_entity_noise() -> None:
     assert "metric = 'production_production_physical'" in sql
     assert "NGA" in sql
     assert "product_name = 'Maize'" in sql
+
+
+def test_sanitize_decomposition_strips_yield_climate_for_production() -> None:
+    dec = sanitize_decomposition_for_bq(
+        {
+            "entities": ["maize", "yield", "climate"],
+            "domains": ["production", "climate"],
+            "primary_measures": ["production"],
+        },
+        primary_measures=["production"],
+    )
+    ents = [e.lower() for e in dec.get("entities") or []]
+    assert "yield" not in ents
+    assert "climate" not in ents
+    assert "production" in ents
+    domains = [str(d).lower() for d in dec.get("domains") or []]
+    assert "climate" not in domains
+
+
+def test_validate_semantic_coherence_accepts_agg_time_key() -> None:
+    sql = (
+        "SELECT country_name, product_name, time_key, total_production_qty "
+        "FROM `proj.mart_dev.agg_production_annual` "
+        "WHERE time_key = 2022 AND country_name = 'Nigeria' "
+        "AND product_name = 'Maize' LIMIT 1"
+    )
+    err = validate_semantic_coherence(
+        sql,
+        query="maize production Nigeria 2022",
+        primary_measures=["production"],
+        geography=["Nigeria"],
+        time_start="2022-01-01",
+        time_end="2022-12-31",
+        table_ids={"agg_production_annual"},
+    )
+    assert err is None
 
 
 def test_validate_semantic_coherence_rejects_yield_for_production() -> None:

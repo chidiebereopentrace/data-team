@@ -100,42 +100,12 @@ vegetation_key_value_stats:
   is_truncated: true
   min_value: 0000f9c8d92fdf01b4968fd219149f45
   max_value: ffff4a6c3829a853ad18138a2c352969
-geography_key_value_samples:
-- 27039e65dfc53679c43c54e817d9f88a
-- 33e69584fe265d59e9953272db50ee4c
-- 537b450564c9b3fbc57c40c98c3445b7
-- c813f26dd8284618e82442f95f1994de
-- e43d2f7285620ad176b17d6e50e3381f
-- 08fe0e8017a52b702db7b32840bc7944
-- 82f02b51c7d5811da76162916d3d4794
-- bc44efe4b9425ab3ebff1d5937a785d1
-- ef8c67548a4cd221ebec6e084917a4fb
-- 2d0321beed1fc565bc7f5a310a86339d
-- b5bc72e7177eff3202e795f27c043f00
-- 574e402ab537930f87c32eedb2615b60
-- ccf2281209b535b1ab9937a94a0572e0
-- 693248ead8d606c6314c522e9d386547
-geo_level_value_samples:
-- city
 country_iso3_value_samples:
 - KEN
 - ZAF
-source_key_value_samples:
-- 52540e85bf65db18f07812fb4efdec1a
-- a73bdde0f938c625d9de8ae83affc877
-tier_value_samples:
-- '3'
-- '2'
-data_level_value_samples:
-- community
-geo_scope_value_samples:
-- community
 metric_value_samples:
 - carrying_capacity
 - ndvi_mean
-source_id_value_samples:
-- 52540e85bf65db18f07812fb4efdec1a
-- a73bdde0f938c625d9de8ae83affc877
 vegetation_grain_value_samples:
 - ilri_site
 - ndvi_grid
@@ -157,10 +127,6 @@ longitude_value_stats:
   is_truncated: true
   min_value: '18.357592078603382'
   max_value: '38.095978'
-as_of_date_value_samples:
-- '2026-08-25'
-as_of_date_basis_value_samples:
-- loaded_at
 value_value_stats:
   distinct_count: 1649
   null_count: 0
@@ -171,63 +137,6 @@ unit_value_stats:
   distinct_count: 0
   null_count: 111966
   is_truncated: false
-quantity_trees_value_samples:
-- Low density
-- High density
-- ''
-quantity_shrubs_value_samples:
-- Low density
-- High density
-- ''
-quantity_grass_value_samples:
-- ''
-- Low density
-- High density
-palatability_trees_value_samples:
-- Goats|Camels
-- Camels
-- ''
-- Goats
-- Goats|Cattle|Camels
-- Goats|Cattle
-- Camels|Cattle
-- Cattle
-palatability_shrubs_value_samples:
-- Goats|Camels
-- Goats
-- ''
-- Goats|Cattle|Camels
-- Goats|Cattle
-- Camels
-- Cattle
-- Camels|Cattle
-palatability_grass_value_samples:
-- ''
-- Goats|Cattle
-- Cattle
-- Goats
-- Goats|Camels
-- Goats|Cattle|Camels
-- Camels
-- Camels|Cattle
-currently_grazing_value_samples:
-- ''
-- Goats
-- Goats|Camels
-- Goats|Cattle
-- Cattle
-- Camels
-- Goats|Cattle|Camels
-- Camels|Cattle
-lifeform_mix_value_samples:
-- shrub_dominant
-- grass_dominant
-- tree_dominant
-source_natural_key_value_samples:
-- ilri_vegetation_survey_v1
-- arcgis_vegetation_ndvi
-loaded_at_value_samples:
-- '2026-08-27 15:11:53.394467+00'
 filtering_guidance:
 - 'Grain: ndvi_grid | ilri_site'
 - NDVI and ILRI site vegetation/carrying capacity.
@@ -238,3 +147,98 @@ semantic_role:
   primary_domain: vegetation
   supports:
   - vegetation
+geography_key_value_stats:
+  distinct_count: 14
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_key_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+data_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_scope_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_id_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_basis_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+quantity_trees_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+quantity_shrubs_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+quantity_grass_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+palatability_trees_value_stats:
+  distinct_count: 8
+  null_count: 0
+  is_truncated: false
+  patched: true
+palatability_shrubs_value_stats:
+  distinct_count: 8
+  null_count: 0
+  is_truncated: false
+  patched: true
+palatability_grass_value_stats:
+  distinct_count: 8
+  null_count: 0
+  is_truncated: false
+  patched: true
+currently_grazing_value_stats:
+  distinct_count: 8
+  null_count: 0
+  is_truncated: false
+  patched: true
+lifeform_mix_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

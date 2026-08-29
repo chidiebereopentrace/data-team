@@ -19,12 +19,6 @@ columns:
 - name: is_current
   type: BOOL
   description: is current
-scenario_key_value_samples:
-- dd7512f5e0289cddce66b0f8bca0c280
-- 9b14fd50dc7c262c5871fd91c3902f31
-- dcbf22a6f267a31d8a6fdc07d1fd2772
-- d01fd9b01e9dde8bd3dc247afbfb7218
-- 8d7e99c73cd5a10adaaf4c9f9a520368
 scenario_code_value_samples:
 - PROJ
 - OW
@@ -37,11 +31,18 @@ scenario_name_value_samples:
 - Business As Usual
 - Most Likely
 - Current Situation
-description_value_samples:
-- Forward-looking scenario
-- IPC projected optimistic or worst-case scenario
-- Baseline no-intervention trajectory
-- IPC projected most-likely scenario
-- IPC current-period scenario
-is_current_value_samples:
-- 'true'
+scenario_key_value_stats:
+  distinct_count: 5
+  null_count: 0
+  is_truncated: false
+  patched: true
+description_value_stats:
+  distinct_count: 5
+  null_count: 0
+  is_truncated: false
+  patched: true
+is_current_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

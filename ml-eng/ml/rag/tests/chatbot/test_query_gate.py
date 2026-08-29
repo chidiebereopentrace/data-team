@@ -53,6 +53,7 @@ def test_early_non_rag_route_help_incident() -> None:
     assert early_non_rag_route(incident) == "help"
     assert early_non_rag_route("what can I use you for") == "help"
     assert early_non_rag_route("what questions can I ask") == "help"
+    assert early_non_rag_route("what kind of wuestions can you answer") == "help"
 
 
 def test_out_of_scope_joke_and_ok() -> None:

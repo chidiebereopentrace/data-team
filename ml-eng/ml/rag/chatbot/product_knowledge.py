@@ -74,6 +74,11 @@ _CAPABILITY_PATTERNS: tuple[str, ...] = (
     r"\bhow (?:can|do) i use (?:you|ask adza|adza|opentrace)\b",
     r"\bwhat (?:can|do) you (?:do|help with|answer)\b",
     r"\bwhat questions can i ask\b",
+    r"\bwhat kind of questions?\b",
+    r"\bwhat kinds of questions?\b",
+    r"\bwhat type of questions?\b",
+    r"\bwhat data do you (?:have|cover)\b",
+    r"\bwhat indicators? do you cover\b",
     r"\bhelp me (?:get started|use) (?:ask adza|opentrace|you)\b",
     r"\bwhat are you (?:good|useful) for\b",
     r"\bhow does (?:ask adza|this|opentrace) work\b",
@@ -476,9 +481,40 @@ def _has_ag_entities_in_decomposition(decomposition: dict[str, Any] | None) -> b
 def _normalize_for_product_gate(query: str) -> str:
     """Normalize query text for brand/capability pattern matching."""
     text = unicodedata.normalize("NFC", (query or "").strip())
+    text = re.sub(r"\bwuestions\b", "questions", text, flags=re.IGNORECASE)
     text = re.sub(r"\bask\s*adza\b", "ask adza", text, flags=re.IGNORECASE)
     text = re.sub(r"\baskadza\b", "ask adza", text, flags=re.IGNORECASE)
     return text.casefold()
+
+
+def render_indicator_catalog_answer(*, max_classes: int = 8) -> str:
+    """Render indicator-class catalog with sample questions from mart_indicator_classes.yaml."""
+    from ml.rag.chatbot.ontology_context import list_indicator_class_contexts
+
+    lines = [
+        "Ask ADZA is OpenTrace Africa's natural-language interface for agricultural "
+        "intelligence across the continent. You can ask structured questions in these "
+        "indicator areas — each maps to specific mart tables and filters:",
+        "",
+    ]
+    for ctx in list_indicator_class_contexts(max_classes=max_classes):
+        facts = ", ".join(ctx.primary_facts[:3]) or "see mart index"
+        lines.append(f"**{ctx.code} — {ctx.name}**")
+        lines.append(f"Primary tables: {facts}")
+        for claim in ctx.example_claims[:2]:
+            lines.append(f"- Example: “{claim}”")
+        if ctx.do_not_mix_notes:
+            lines.append(f"- Note: {ctx.do_not_mix_notes[0][:120]}")
+        lines.append("")
+    lines.extend(
+        [
+            "Cross-cutting tips:",
+            "- Name **country or region**, **crop/commodity** (when relevant), and **year**.",
+            "- Production volume uses PROD tables; yield uses separate FNID-season facts.",
+            "- Food security (IPC) and production totals should not be blended without caveats.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _is_methodology_question(normalized: str, raw_query: str) -> bool:
@@ -539,9 +575,12 @@ def classify_product_subroute(query: str) -> Literal["help", "product"] | None:
 
 
 def static_capability_answer(query: str = "", answer_lang: str | None = None) -> str:
-    """Return static capability/onboarding answer for known languages."""
+    """Return indicator-class capability catalog for known languages."""
     lang = (answer_lang or detect_answer_language(query)).strip().lower()
-    text = CAPABILITY_TEMPLATES.get(lang) or CAPABILITY_STATIC_ANSWER
+    if lang in CAPABILITY_TEMPLATES and lang != "en":
+        text = CAPABILITY_TEMPLATES.get(lang) or CAPABILITY_STATIC_ANSWER
+    else:
+        text = render_indicator_catalog_answer()
     return _append_footer(text.strip())
 
 

@@ -83,8 +83,18 @@ def test_is_help_query_capability_phrases() -> None:
     assert is_help_query("what can I use you for")
     assert is_help_query("how do I use Ask ADZA")
     assert is_help_query("what questions can I ask")
+    assert is_help_query("what kind of questions can you answer")
+    assert is_help_query("what kind of wuestions can you answer")
+    assert is_help_query("what data do you cover")
     assert is_product_query("what can I use you for")
     assert is_product_query("how do I use Ask ADZA")
+
+
+def test_static_capability_answer_includes_indicator_classes() -> None:
+    ans = static_capability_answer("what kind of questions can you answer")
+    assert "PROD" in ans or "production" in ans.lower()
+    assert "FS" in ans or "food security" in ans.lower()
+    assert "Example:" in ans or "example" in ans.lower()
 
 
 def test_askadza_one_word_brand_normalization() -> None:
@@ -105,8 +115,8 @@ def test_is_help_query_product_brand_mechanics() -> None:
 def test_static_capability_answer_content() -> None:
     ans = static_capability_answer("what can I use you for")
     assert "natural-language interface" in ans.lower()
-    assert "maize" in ans.lower()
-    assert "rice" in ans.lower()
+    assert "PROD" in ans or "production" in ans.lower()
+    assert "indicator" in ans.lower() or "Example:" in ans
     assert "Citations" not in ans
     assert META_ANSWER_FOOTER.strip() in ans or "opentrace.africa" in ans.lower()
 
@@ -115,7 +125,7 @@ def test_generate_product_answer_help_uses_static() -> None:
     with patch("ml.rag.chatbot.generator._call_llama") as llama:
         ans = generate_product_answer("what can I use you for")
     llama.assert_not_called()
-    assert "maize" in ans.lower()
+    assert "PROD" in ans or "production" in ans.lower()
     assert "Citations" not in ans
 
 

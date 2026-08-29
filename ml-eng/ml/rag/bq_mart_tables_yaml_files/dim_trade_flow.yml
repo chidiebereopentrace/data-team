@@ -16,12 +16,6 @@ columns:
 - name: description
   type: STRING
   description: description
-trade_flow_key_value_samples:
-- c3318885df9741a35c421ee5ed06a7c7
-- 767be716b58109af4420da4b7ae706b3
-- e0e800353e1e3766e9737140681fffb7
-- 08878d9fe8e633ac3d5b454481e91965
-- a5dfb4015acf5043c2a33c7274e7fc77
 flow_type_value_samples:
 - REEXPORT
 - IMPORT
@@ -31,9 +25,13 @@ flow_type_value_samples:
 trade_type_value_samples:
 - Bilateral
 - Cross-Border
-description_value_samples:
-- Re-exports from reporting country
-- Imports into reporting country
-- Re-imports into reporting country
-- Exports from reporting country
-- Informal cross-border trade flows
+trade_flow_key_value_stats:
+  distinct_count: 5
+  null_count: 0
+  is_truncated: false
+  patched: true
+description_value_stats:
+  distinct_count: 5
+  null_count: 0
+  is_truncated: false
+  patched: true

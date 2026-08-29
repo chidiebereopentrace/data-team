@@ -79,63 +79,6 @@ economics_key_value_stats:
   is_truncated: true
   min_value: 00001a61f8a9c830b15b299d9b5dae64
   max_value: ffff863f935bdc665b35e87208861962
-geography_key_value_samples:
-- f14bb4203a7073edd04952936c354fca
-- dad3f956104596ff2fd5ccc98d2ac7c8
-- e06752126ff796d0bfd12fb5a3f93e52
-- 3e162de530565ea7fd832dcf8d5d8e00
-- 896ec125e415d43f6917dafc7bdbe109
-- f879de6d2aff3bb8e6336e65db2e4cb3
-- d8e7902a1aab9ce87cb3a10af9e19e8e
-- 7f4e1c93fa0ec34f371db0ceafe3a203
-- 82dc51dcf101cb11ff4c3346a530efbc
-- 8a9d2f38657b41d1beee71987b789584
-- b4f3325b4dff86fd532a100b328770a4
-- 8b2130007752cc4fd2bc50ce5f2ce31b
-- 514d63591d4d149773d80aac5c002246
-- 629f6ee5a903f4bcce1aa6a327392f4a
-- e36a49cf9440c0469a0b80d3dc94e83e
-- ec7437dac6b677268f738803c348a944
-- ff2abe6b8f87b63b0a4d12a3dc2fb900
-- fc36cac904ae8ed303bd472e14279601
-- 14cd64b93250222ef8109668740e33c9
-- 6b6a33d1b12ec418b4d84ea86d5ee2f1
-- d081c90ab6801ddb32bedd266ed0bc9e
-- e1490c9d435658d25b0069edb3330168
-- e2e7220258577b7bf5917652b1a0c882
-- e2a7da7be69c9efab479954c7fc62683
-- fafb8c280b3839e5bb2cf04e4982d459
-- dd2eb23623d3cfe1d69e6d1ef080baa4
-- 643b7e5a6012349b12e2a7d8b9f9b12f
-- c3b34f1c114c01b1ac1f59b7cc1199a3
-- 96a41cc70b4b99b5b238b479e6274f4c
-- b93642c9546b0ad7c4b50b1edd34b641
-- 8fdd65bc015f999ef22a924baf8e4980
-- 82533bcf1d2275baadeab94166482969
-- 42fc637e79bb98d1e905f28e55fca77a
-- caabf8e59e96c9806dd79ded964857de
-- 41a9071812831bd833b31a0015a7fc21
-- da5416d0b7eb15e076fd031e9a0b2e22
-- b9a6c3cfa0ba81a70106dd8e6007df4e
-- 4873407b6dcd3d440b964ca0e6285ec2
-- 939117deefb921f24dcb765b8ae3027d
-- 97b9d0ff0519f52da36b9897dbc109d8
-- 547d52a13b878d359e6e0e930b5fed18
-- 414e80f7a6cec83f4a5fa1139fc707bf
-- 7f24cf6c5ae4ae2c13e4a3cd9da9563d
-- bfcc5273fd7dce595c475531c8db844a
-- 869dbec7886b8171527c101f0aafa9d7
-- 6f8c5d76bea0a5e7b6408e80dd147dfc
-- 8d2977ea05cfc771252b5dd2e3456353
-- 6258dc0299b2e5beaec7f3d0e69cd89f
-- 8a6973d8ba686f5a6c7618896e9e9a6a
-- c7afa8e5dc75eaed3f865becb594623a
-- 73abae1655254baa0c8f2d1cdbf350da
-- 4d9142fd531731495f9f581296425df2
-- 08d5d1fbcfbc008d33905868ea7a2dd7
-- 813e1dfd9941f45a5c4665d686c3ca61
-geo_level_value_samples:
-- country
 country_iso3_value_samples:
 - KEN
 - MUS
@@ -191,64 +134,6 @@ country_iso3_value_samples:
 - ERI
 - SDN
 - SSD
-item_key_value_samples:
-- 20c18866acc61a84324ec5490e5c37cd
-- 83661bfe4356d283540c1b3d88a4b7dd
-- 2c878059625eb865352d46a3b0221182
-- effda13959eeb4b3c75c947b53c629a7
-- 1c00f0727820c36513b8d0bf7e2d399c
-- 59b087573e8cf3fff80b2ff0ecccd8aa
-- 2c9e4378841a9567cc986531a12ac492
-- 3234adaced92fa27a628254bb3b869a1
-- 20b95f92fbf7c3fe189aac109f28734b
-- d90fcea36cc9786caee285e0aef13690
-- 0664e3dce3d73c3012769feb5bb0d6d8
-- 88727f97ccee0245e77073a54f4f4e34
-- 8efc10f5b10459f5bb3791e335cef85d
-- 1599267b985c0008483b6efd500264d9
-element_key_value_samples:
-- 275ef393fa2b2e184c3731459bdc049e
-- 540c0bff0e4840ddcf2620ab1ce8b360
-- d21bb3f5a82774669b6333f6e5a53902
-- 14a6055f599cee0732a01508569e071a
-- e2267b4b029a330f10095572f6dc2e40
-- 4eba594fba3449baa83dee1e57d5b476
-- 09df44e5a6e9b77b7d97d64cf511212e
-- cc2ff8f122e7069f834575c9c486537f
-- 111ccc69efc580c015134914caabdf79
-- 794073e6a118f23d1c22ee8066eb5196
-- b3d6a1367d04791860960e51cf30a6dc
-- 4b0cf3d6cc47c9e8a6c7f01e88c84635
-- 9f79937e210f01166a7894e5e70e4850
-- 550539228d9c47d91892e4e67a2459c7
-- 43d1d6d6a1859a66dbbddf585caa7e43
-- 598a025db9c23e00e373adcf0043e71c
-- a74028bfdc34082a5ddf8c5d69b0e7ce
-- c8d8eafe1e6cf4257dc41331cc33091b
-- aa819e6df3238266906db86139b2ad92
-- a0ad0ccefccbb70503c26a34be9c6b35
-- 8ec63c3b73fb027b3da01fd959d667ff
-- 5d68dc2ae56575d1f1c4b43d53cf8287
-- 524550feff5cd01ae326e25fa4276fea
-- 808517cb0bc1172776734ee96ecbe464
-- 9e101d8f3828d9fb67cb0cf4d1508fa9
-- 5a28796f4dfb7adc0c0e614834984db4
-- f05d3ba33f0e413f1fd14789c925444f
-- c976bf783a7875840a81afc356f4c6e2
-- 5b429b09bda25dd3c83376d1af1a6dfe
-- 21fc5b62d7ee177faf1700ef02dcdf92
-- 323b89947e2ed544184350335a08d1a8
-- cb517d148f2dec3bb40762ef7bc92a59
-source_key_value_samples:
-- a1800fb44f4152dd62bcf501688c8f01
-- 1aed34bc27736172b4ea00808ebe2acb
-- 48dbbcd08273da790a232f45c57d43e8
-tier_value_samples:
-- '1'
-data_level_value_samples:
-- national
-geo_scope_value_samples:
-- national
 metric_value_samples:
 - value_added_(total_manufacturing)
 - value_added_(agriculture,_forestry_and_fishing)
@@ -265,14 +150,6 @@ metric_value_samples:
 - gross_output_(agriculture,_forestry_and_fishing)
 - gross_output_(agriculture)
 - value_added_(manufacture_of_tobacco_products)
-source_id_value_samples:
-- a1800fb44f4152dd62bcf501688c8f01
-- 1aed34bc27736172b4ea00808ebe2acb
-- 48dbbcd08273da790a232f45c57d43e8
-measurement_form_value_samples:
-- share_of_gdp
-- current_price
-- constant_price
 year_value_samples:
 - '2015'
 - '2017'
@@ -329,120 +206,6 @@ year_value_samples:
 - '1974'
 - '2024'
 - '1970'
-date_key_value_samples:
-- '20150101'
-- '20170101'
-- '20180101'
-- '20190101'
-- '20160101'
-- '20200101'
-- '20210101'
-- '20140101'
-- '20220101'
-- '20130101'
-- '20110101'
-- '20100101'
-- '20120101'
-- '20090101'
-- '20080101'
-- '20060101'
-- '20070101'
-- '20050101'
-- '20040101'
-- '20030101'
-- '20010101'
-- '20020101'
-- '20230101'
-- '20000101'
-- '19990101'
-- '19980101'
-- '19950101'
-- '19960101'
-- '19970101'
-- '19940101'
-- '19930101'
-- '19920101'
-- '19910101'
-- '19900101'
-- '19850101'
-- '19890101'
-- '19820101'
-- '19860101'
-- '19830101'
-- '19710101'
-- '19780101'
-- '19790101'
-- '19740101'
-- '19840101'
-- '19810101'
-- '19800101'
-- '19720101'
-- '19760101'
-- '19770101'
-- '19880101'
-- '19730101'
-- '19870101'
-- '19750101'
-- '20240101'
-- '19700101'
-as_of_date_value_samples:
-- '2015-12-31'
-- '2017-12-31'
-- '2018-12-31'
-- '2019-12-31'
-- '2016-12-31'
-- '2021-12-31'
-- '2020-12-31'
-- '2014-12-31'
-- '2022-12-31'
-- '2013-12-31'
-- '2011-12-31'
-- '2010-12-31'
-- '2012-12-31'
-- '2009-12-31'
-- '2008-12-31'
-- '2006-12-31'
-- '2007-12-31'
-- '2005-12-31'
-- '2004-12-31'
-- '2003-12-31'
-- '2001-12-31'
-- '2002-12-31'
-- '2023-12-31'
-- '2000-12-31'
-- '1999-12-31'
-- '1998-12-31'
-- '1995-12-31'
-- '1996-12-31'
-- '1997-12-31'
-- '1994-12-31'
-- '1993-12-31'
-- '1992-12-31'
-- '1991-12-31'
-- '1990-12-31'
-- '1987-12-31'
-- '1979-12-31'
-- '1978-12-31'
-- '1983-12-31'
-- '1986-12-31'
-- '1975-12-31'
-- '1981-12-31'
-- '1985-12-31'
-- '1988-12-31'
-- '1972-12-31'
-- '1976-12-31'
-- '1982-12-31'
-- '1973-12-31'
-- '1989-12-31'
-- '1984-12-31'
-- '1980-12-31'
-- '1977-12-31'
-- '1971-12-31'
-- '1974-12-31'
-- '2024-12-31'
-- '1970-12-31'
-as_of_date_basis_value_samples:
-- observation
 unit_value_samples:
 - '%'
 - million USD
@@ -455,12 +218,6 @@ value_value_stats:
   is_truncated: true
   min_value: '-95.00001'
   max_value: '303896185.7'
-source_natural_key_value_samples:
-- Unpivoted_FAOstat_africa_Macro-Economic_Indicators_Macro_Indicators
-- Unpivoted_FAOstat_africa_Macro-Economic_Indicators_Capital_Stock
-- africa_gdp_ppp
-loaded_at_value_samples:
-- '2026-08-25 22:17:55.848804+00'
 indicator_classes:
 - EL
 - FVC
@@ -478,3 +235,78 @@ semantic_role:
   - gdp
   - EL
   - HDI
+geography_key_value_stats:
+  distinct_count: 54
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+item_key_value_stats:
+  distinct_count: 14
+  null_count: 0
+  is_truncated: false
+  patched: true
+element_key_value_stats:
+  distinct_count: 32
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_key_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+data_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_scope_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_id_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+measurement_form_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+date_key_value_stats:
+  distinct_count: 55
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_value_stats:
+  distinct_count: 55
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_basis_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

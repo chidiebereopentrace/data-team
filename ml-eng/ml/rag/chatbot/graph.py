@@ -62,6 +62,7 @@ from ml.rag.chatbot.generator import (
     pin_bq_context_first,
     should_elevate_bq_context,
 )
+from ml.rag.chatbot.ontology_context import sanitize_decomposition_for_bq
 from ml.rag.chatbot.retrieval_contract import build_retrieval_contract
 from ml.rag.chatbot.query_decomposer import (
     decompose_query,
@@ -580,6 +581,7 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             dec["corpus_domain_tags"] = list(contract.corpus_domain_tags)
         if contract.primary_measures:
             dec["primary_measures"] = list(contract.primary_measures)
+        dec = sanitize_decomposition_for_bq(dec, primary_measures=dec.get("primary_measures"))
         if contract.companion_measures:
             dec["companion_measures"] = list(contract.companion_measures)
         # Re-resolve after gates/overrides may change geography or time.

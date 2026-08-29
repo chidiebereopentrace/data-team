@@ -27,240 +27,6 @@ columns:
 - name: loaded_at
   type: TIMESTAMP
   description: loaded at
-source_key_value_samples:
-- 0eabe8bee8678e5dbc8639651ed7c70c
-- 3d24478639172a60481c1873c530e9a2
-- 23f03f2ea6e0dfa7cf34bb14eabb2c82
-- 0c2233f6cfe7cd0bf02e5106b1476ea8
-- 22de7614571f35a5ca70ac97f5447094
-- 8b5d43617dfafffd9dbed887f0b4c113
-- c37dfac0c0cb060834a2e54c4444959e
-- c57ae3e680caf672403481f51dc1e038
-- ed037e23bea4433dcb0c68bf50b30e14
-- 94f9b3352fe08a5b25661869fcbc71ba
-- 3a3660277e605244fb09b7cda7f1f52b
-- a1800fb44f4152dd62bcf501688c8f01
-- 287db3202f2f7554983d5aa46b240163
-- 3c0da5496ac74e479dd7583f44f903c2
-- ce8bad3c4f13724549b3da28ad2f517b
-- 64ba20d50960aa6bf399e3271e01263b
-- f2d94edcc60f52e77ef0a79c6973e412
-- 899f0cb4035b6ae66162be3803c0efbb
-- 7e39376543c68c9792c1fff7bc64534a
-- f5009a1d76cbe70b1ef5027691d44e86
-- 25d570b988a49fd7034f57e3c7cceb21
-- 94a3d700d94dd0cd87c6ea9af738e9d0
-- 5a37fe788f70f9b3e5edad0179c372fa
-- 6132d9e9d3f48f709417ff5f5d95c747
-- 4683d9507b492958d442d409242d1328
-- c99f4f49cbd0b5291cb40cb571d19405
-- ea735f8be982dca3e48d4d20911893f8
-- 4d7d6c7df46f16db840b6f1538d62d61
-- 9e11fad2c2f330bc164b1eda5ba607b1
-- 78b3e7f41461d38868653a59e6f5e6f1
-- 88134e48b421121530206d7b7d3326ae
-- de703474944cc5735d8fd5d29f4f472e
-- 245baf3457c44ff6b486af05c2c99227
-- 1aed34bc27736172b4ea00808ebe2acb
-- a30a354ef9ea4cc3f23ea2de63edb5a3
-- d471e63ebc8849bc94431f952f21c051
-- 02bd78b6d416ebf2facb6567d75454e6
-- 315dd73578192354a2e7b9bfd06f78df
-- ccd165821fa362d2fbd27fe77489f76e
-- 63c6ef675eaf2ec93ef8cca02580ab5d
-- 4dc1c2f09fdcdffe032efbb5f7c973cf
-- 66462c8004adb2adada02342ff8e1eb8
-- 46e6ddac3fd022956211522fdb16e55c
-- 442b204bc129f7997cb3986994fc602b
-- 3e9c798ece11ae685e190d3292293156
-- 7e80ef78e29e1487498c81807bf898bc
-- 821123307cea01b7d769ad6a17901e82
-- 327b16529daa8340f7adf1994d8ce115
-- ce269fdbf1b881c05e0d8ae36b48680f
-- 9c70c13707442864b21874ed3328f4b2
-- c6bbe220735e9713346125982d4b0998
-- 2d43a94089d58f11833345c01f214580
-- 69abf20497bd6241fe31ab99041702f7
-- f35cbd7f0e2cebf00fab3b258373b60b
-- 4c0a7d1caa0d97acf611b89ee8c23041
-- e12e36382d31e6a74891004b363c333e
-- 75897a967d669f0c87bf3aaec6ac12b7
-- 4150f5843e259e08d867098ffd67a68d
-- 25c9a8f4314d1c30bd641f4a3b5659fa
-- aaf56634935b56c40870c3597e4fa80f
-- f33c4639421e90f1208bd87d9db2f959
-- 2e64aad8d9120f5ee31d16ba42fb0a59
-- a1092b718267034befd0324a9b208a70
-- 83822a971ffaf0c7e432a655a04040fb
-- f8f9f00b2b682abccea90939038d2f2a
-- 9db4fd24bd671b6a638b041eb38e6882
-- 8783bee2f23d73cd69c777df4361828a
-- bc5b8e42df960180296be4aa35b13bd9
-- 8662fb9815678e093d6bca7d5b691b21
-- 286c3ea7c835c414da7dcdd2867f8306
-- 170021af7801d97143c26c6a9edadf2b
-- 6b5647bc4ec2f5e1ab7297cc13718531
-- 5b7d02443deeb1ede39fcd70628837e4
-- 48dbbcd08273da790a232f45c57d43e8
-- abc50272abd451daead6421cea631639
-- 5c839f628c1e2f756cf3c92ef3fe4aac
-- 98dd55bda742c51ae16313c0f36512e1
-- 0c1c62a6df7d1b3e451b7edbc4160fe1
-- 2f833a17f634160985cbe26e309d5dcb
-- 2fec1718baa01fd5e7be149209101804
-- c18d6392dead9f2477e514c7f37fff23
-- 5b1d9dba309a8873f7a6f2425b657768
-- 445080aa90abb85c0d6b39e62355918a
-- b58995274d1aea23aba4bdc070eb6bfb
-- 9a235ab0fae73596687afc9cdb25f920
-- 76163241aec7f7f377e89c72d196f9bc
-- a73bdde0f938c625d9de8ae83affc877
-- c399ace63eea5428820dd735b37ebe40
-- 9de2050d8b5b08528f6c4f13a94362e2
-- aaec23e76470d77385fc2d19d3124670
-- ae98e5feb3c96d6b813bc779be707dd3
-- fae5707cc5176387b576c1f795a3f275
-- 5ce304ab4af037b068e24d9255549c3c
-- d6de5e5f316da6da7cc8307bb707ea7d
-- f580f9bfb2361d4057cce164a3631f6f
-- 057e39286a7cf96b34af09ea2c6f3e7c
-- bc65fc9b169c1af0db2a5846cef75399
-- 7f87d9b86ab68111a6de8285ccb93b44
-- 66931040dd9c4a230daeac60539d6b5b
-- e957401463d16232b818c9f0b7b2b94d
-- b6531e691220d68dda3b29f2c8475a37
-- 2b5d85a0474a83f2fd48c400963b9731
-- 961bfe3b4e337d0cd0313c1a077cde24
-- 52540e85bf65db18f07812fb4efdec1a
-- 33bc4b7316f3a2df8eac5ef572de08f6
-- a883180f7f0d8a2ac4faa43777d07fad
-- 69ede85e4ef9ac93f8334cf6ed00be5c
-- a5ea35e8d1ec08ae2ee2b5827169dbaf
-- 5995cd267e9ac5a337d69d4c070ddc52
-- f4b98faaf94c6bc48d1fc45747e7472a
-- 00a7dfad1f36052277a9286cf9ea4055
-- 4c9014bf3f0776956b7197af1c2716a5
-- a8539d916f6bfc2b5517a0dcc1a01abb
-- 508612046ea85569b01dc7f57afe1484
-- 7e4b3fbbdfb95d6d9015cf9d1c1d2b93
-- 9f033d2137775eb9cc5bbef0ae08ed77
-source_natural_key_value_samples:
-- ClimateWatch_climate_health_impacts
-- Copernicus_ERA5
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Land_use_and_change_Emissions_from_Forests
-- Unpivoted_FAOstat_africa_Discontinued_archives_and_data_series_Machinery
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Land_use_and_change_Emissions_from_Drained_organic_soils
-- Unpivoted_FAOstat_africa_Population_and_Employment_Annual_population
-- Unpivoted_FAOstat_africa_Prices_Deflators
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Fertilizers_by_Product
-- Unpivoted_FAOstat_africa_Population_and_Employment_Employment_Indicators_Employment_Indicators_Rural
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Farm_gate_Emissions_from_Crops
-- Unpivoted_FAOstat_africa_Investment_Development_Flows_to_Agriculture
-- Unpivoted_FAOstat_africa_Macro-Economic_Indicators_Macro_Indicators
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Land_use_and_change_Emissions_from_Fires
-- Unpivoted_FAOstat_africa_Discontinued_archives_and_data_series_Forestry_Trade_Flows
-- Unpivoted_FAOstat_africa_Investment_Country_Investment_Statistics_Profile
-- Unpivoted_FAOstat_africa_Investment_Foreign_Direct_Investment_FDI
-- Unpivoted_FAOstat_africa_Food_Balances_Commodity_Balances_non-food_2010-23
-- Unpivoted_FAOstat_africa_Cost_and_Affordability_of_a_Healthy_Diet_Cost_and_Affordability_of_a_Healthy_Diet
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_totals
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Livestock_Manure
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Detailed_trade_matrix_fertilizers
-- Unpivoted_FAOstat_africa_Investment_Government_Expenditure
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Pre_and_post_agricultural_production_Emissions_from_pre_and_post_agricultural_production
-- Unpivoted_FAOstat_africa_Discontinued_archives_and_data_series_Food_Aid_Shipments_WFP
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Farm_gate_Emissions_from_Livestock
-- Unpivoted_FAOstat_africa_Prices_Consumer_Price_Indices
-- Unpivoted_FAOstat_africa_World_Census_of_Agriculture_Structural_data_from_agricultural_censuses
-- Unpivoted_FAOstat_africa_production_Value_of_Agricultural_Production
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Land_Land_Use
-- Unpivoted_FAOstat_africa_Food_Balances_Food_Balances_1961-2013_old_methodology_and_population
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Fertilizers_by_Nutrient
-- Unpivoted_FAOstat_africa_Investment_Credit_to_Agriculture
-- Unpivoted_FAOstat_africa_production_Production Indices
-- Unpivoted_FAOstat_africa_Macro-Economic_Indicators_Capital_Stock
-- Unpivoted_FAOstat_africa_Prices_Producer_Prices
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Sustainability_Indicators_Bioenergy
-- Unpivoted_FAOstat_africa_Prices_Exchange_rates
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Land_Land_Cover
-- Unpivoted_FAOstat_africa_Forestry_Forestry_Production_and_Trade
-- Unpivoted_FAOstat_africa_Food_Balances_Supply_Utilization_Accounts_2010-23
-- Unpivoted_FAOstat_africa_Population_and_Employment_Employment_Indicators_Employment_Indicators_Agriculture_and_agrifood_systems
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_indicators
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Pesticides_Use
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Farm_gate_Emissions_from_Energy_use_in_agriculture
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Climate_Change_Indicators_Temperature_change_on_land
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Sustainability_Indicators_Cropland_Nutrient_Balance
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Sustainability_Indicators_Livestock_Patterns
-- Unpivoted_FAOstat_africa_production_Crops_and_livestock
-- Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Researchers
-- Unpivoted_FAOstat_africa_SDG_Indicators_SDG_Indicators
-- Unpivoted_FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_intensities
-- Unpivoted_FAOstat_africa_Trade_Crops_and_livestock_products
-- Unpivoted_FAOstat_africa_Food_Value_Chain_Value_shares_by_industry_and_primary_factors
-- Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Expenditures
-- Unpivoted_FAOstat_africa_Trade_Trade_Indices
-- Unpivoted_FAOstat_africa_Forestry_Pulp_and_paper_capacities_survey
-- Unpivoted_FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Pesticides_Trade
-- Unpivoted_FAOstat_africa_Trade_Crops_and_livestock_products_indicators
-- Unpivoted_FAOstat_africa_Food Balances_Food_Balances_2010-23
-- FEWS_NET_Food_insecure_population_estimates
-- FEWS_NET_market_Prices
-- FEWS_NET_food_security_classifications
-- FEWS_NET_Food_insecure_population_estimates_data_series
-- FEWS_NET_market_prices_data_series
-- FEWS_NET_cross_border_Trade
-- FEWS_NET_food_security_classifications_data_series
-- FEWS_NET_cross_border_trade_data_series
-- gbif_biodiversity_occurrence
-- ISRIC_Africa_Soil
-- NASA_POWER_daily
-- NASA_POWER_hourly
-- africa_Human_development_index
-- WFP_VAMPIRE_global_food_prices
-- africa_gdp_ppp
-- enriched_isda_soil_property_Africa
-- openaire_organisations
-- openaire_product_links
-- openaire_data_sources
-- openaire_projects
-- openaire_persons
-- UNCCD_land_degradation
-- yield_raw_data
-- arcgis_infrastructure_tourism_poi
-- arcgis_rarity_80_birds_africa
-- arcgis_land_protected_areas
-- arcgis_layer_rice_germplasm_in_africa_3d2a9
-- arcgis_vegetation_ndvi
-- arcgis_south_africa_wards_demographics_2ce07
-- crop_germplasm_africa
-- un_peace_security_records
-- nakuru_air_quality_archive
-- cifor_icraf_raw
-- ilri_ilri_s_gbs_data_on_buffel_grass_snp_markers
-- ilri_aliloo_phenotypes_public
-- ilri_dgea1_milkinfo_public
-- ilri_amuse_eth_data
-- ilri_dgea1_calvinfo_public
-- ilri_dairy_enterprise_cash_flows_ifamr_paperanon
-- ilri_feed_assessment_odisha_database_2018_mel_public
-- ilri_crp_household_food_security_v1
-- ilri_adgo_database_mel_public
-- ilri_agripreneurbaselinedata_public
-- ilri_i4i_samplingdata_anon
-- ilri_vegetation_survey_v1
-- ilri_databasetanzaniadairydevelopmentforumevaluationanonymous150119_public
-- ilri_i4i_farmerdataanon
-- ilri_impact_assessment_data_lira_uganda_nov25
-- ilri_bf_rct_vendorsurvey_t0t1_anonymous_final
-- ilri_acaricide_use_final_analysis_dataverse
-- ilri_burkinafaso_consumersurvey_t0t1data_wide_anonymous
-- ilri_dataset_burkina_faso_food_hazards_review_meta_analysis
-- ilri_accessions
-- ilri_ethiopia_consumersurvey_t0t1data_wide_anonymous
-- ilri_ilri_s_gbs_data_on_buffel_grass_silicosdart_markers
-- ilri_indicators_final_v1
-- s4a_field_surveys
 organisation_name_value_samples:
 - FAOSTAT
 - ILRI
@@ -280,22 +46,6 @@ organisation_name_value_samples:
 - Yield extract
 - CIFOR-ICRAF
 - S4A field surveys
-tier_value_samples:
-- '1'
-- '3'
-- '2'
-default_data_level_value_samples:
-- national
-- community
-- point
-- sub_national
-producer_scale_value_samples:
-- global
-- subnational
-- regional
-- national
-loaded_at_value_samples:
-- '2026-08-25 16:57:36.492964+00'
 filtering_guidance:
 - 'Grain: One row per source_natural_key'
 - Source registry for ACF tier and producer scale.
@@ -307,3 +57,33 @@ semantic_role:
   supports:
   - source
   - join_dim
+source_key_value_stats:
+  distinct_count: 116
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 116
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+default_data_level_value_stats:
+  distinct_count: 4
+  null_count: 0
+  is_truncated: false
+  patched: true
+producer_scale_value_stats:
+  distinct_count: 4
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

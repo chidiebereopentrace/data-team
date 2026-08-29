@@ -97,9 +97,6 @@ geography_key_value_stats:
   is_truncated: true
   min_value: 0001600623fef7fd72830124b253ced3
   max_value: ffe04a83093866d63e5946dede21a358
-geo_level_value_samples:
-- city
-- country
 country_iso3_value_samples:
 - ZAF
 - MDG
@@ -160,22 +157,8 @@ country_iso3_value_samples:
 - DJI
 - ATF
 - ESH
-source_key_value_samples:
-- bc5b8e42df960180296be4aa35b13bd9
-tier_value_samples:
-- '1'
-data_level_value_samples:
-- community
-- national
-- point
-geo_scope_value_samples:
-- community
-- national
-- point
 metric_value_samples:
 - species_occurrence
-source_id_value_samples:
-- bc5b8e42df960180296be4aa35b13bd9
 gbif_id_value_stats:
   distinct_count: 7534188
   null_count: 0
@@ -376,9 +359,6 @@ as_of_date_value_stats:
   is_truncated: true
   min_value: '1665-07-13'
   max_value: '2026-08-28'
-as_of_date_basis_value_samples:
-- observation
-- loaded_at
 value_value_stats:
   distinct_count: 0
   null_count: 7500000
@@ -395,10 +375,6 @@ rar_all_value_stats:
   distinct_count: 0
   null_count: 7500000
   is_truncated: false
-source_natural_key_value_samples:
-- gbif_biodiversity_occurrence
-loaded_at_value_samples:
-- '2026-08-28 14:29:06.292668+00'
 filtering_guidance:
 - 'Grain: GBIF occurrence'
 - Species occurrence points.
@@ -409,3 +385,48 @@ semantic_role:
   primary_domain: spatial
   supports:
   - spatial
+geo_level_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_key_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+data_level_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_scope_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_id_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_basis_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

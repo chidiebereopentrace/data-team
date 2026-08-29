@@ -13,65 +13,18 @@ columns:
 - name: is_typical_window
   type: BOOL
   description: is typical window
-season_key_value_samples:
-- 50e2cbb6d47d442526459b0472197a5a
-- 8394f0347c184cf156ac5924dccb773b
-- be1d175b034782a1825f40a3842ec03a
-- 7058151d5f76f6e8a45aa8844fc23f01
-- 49066f8e7d1f1130c95104d2da4b2170
-- d89d3f72530e7a9a931fd1c2cbf23454
-- c9313def424921af28947a25c62fcef5
-- ba6360fb9e3cd47b766121d986402472
-- 4949bcced07de9ac2af46cf2e7b8394a
-- 3e755582fa6b410c74507e9ad0808b0a
-- c22cf8376b1893dcfcef0649fe1a7d87
-- 46883a288b208033fe6c75742fddde4a
-- ae789b866db2fac36cf644f4cdba1267
-- 8bdf7046bbb27ff4461b0241f575ce1e
-- c4c696d78d97d24ce69ebe19fd7f8483
-- 95884b5232ea01d055768613fc84f242
-- e5dd4a8944f7325bcb65c44da24211e1
-- bbdc4863db2ec1f5a8ec579d53738c72
-- b18e66b41efd9a3df1a7bc8758da1883
-- a02c83a7dbd96295beaefb72c2bee2de
-- 7fb55ed0b7a30342ba6da306428cae04
-- fc4bd20ec58ba222cb010a8cfaa0da79
-- 9ca2e006f3610c5ecedbb979163d20d2
-- 30823563a4c0c32053137945cceb0f08
-- d749df6944fd8a8740720d15c098490a
-- f1d5dfafcd2174b8c90ac856df68a165
-- d9941e68d14b7b3273713648f4562c55
-- c9abefb941fd084e96ed93d0ae4a9529
-- 7e826cae21a4b793a0e92abb736740f8
-- 666bab7b4e247b9cfec4c0a5659eade4
-- c41c134624958fe67501100c678ca688
-- 8ce621e7357d8cab2d0041bda1e49c06
-- 30bb747c98bccdd11b3f89e644c4d0ad
-time_key_value_samples:
-- '2000'
-- '2001'
-- '2002'
-- '2003'
-- '2004'
-- '2005'
-- '2006'
-- '2007'
-- '2008'
-- '2009'
-- '2010'
-- '2011'
-- '2012'
-- '2013'
-- '2014'
-- '2015'
-- '2016'
-- '2017'
-- '2018'
-- '2019'
-- '2020'
-- '2021'
-- '2022'
-- '2023'
-- '2024'
-is_typical_window_value_samples:
-- 'true'
+season_key_value_stats:
+  distinct_count: 33
+  null_count: 0
+  is_truncated: false
+  patched: true
+time_key_value_stats:
+  distinct_count: 25
+  null_count: 0
+  is_truncated: false
+  patched: true
+is_typical_window_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

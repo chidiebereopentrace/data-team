@@ -524,14 +524,6 @@ country_name_value_samples:
 - Belize
 - Yugoslavia
 - Åland Islands
-org_source_value_samples:
-- openaire
-- asti
-source_natural_key_value_samples:
-- openaire_organisations
-- Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Expenditures
-loaded_at_value_samples:
-- '2026-08-24 14:23:00.147300+00'
 filtering_guidance:
 - 'Grain: Organisation identity (OpenAIRE/ASTI)'
 - Research and ASTI organisations.
@@ -542,3 +534,18 @@ semantic_role:
   primary_domain: research
   supports:
   - research
+org_source_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

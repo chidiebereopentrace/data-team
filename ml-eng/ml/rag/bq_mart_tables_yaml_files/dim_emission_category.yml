@@ -19,17 +19,6 @@ columns:
 - name: description
   type: STRING
   description: description
-emission_category_key_value_samples:
-- 93e0e13277e4354c72e2b033514037a5
-- 783083116c553637e9f8a93132f61520
-- 444fdd1e6917fea7104c591ee667abcd
-- 5f05011106d6f8dd658a12b3f676ef39
-- 01537890503d0f334850530d1515463c
-- 67e0bf5b9cd2651803fc9a722335395f
-- 1c68b77ce12e1f64761e7cd48f9728e4
-- ccbaf95d68cb94999f727584415edf1a
-- 67193a318264e29b1b263cfa7f3703c3
-- b2d7194c0df97c07e9fd5310b86d27c3
 category_code_value_samples:
 - ENERGY
 - LULUCF
@@ -52,16 +41,18 @@ category_name_value_samples:
 - Rice Cultivation
 - Enteric Fermentation
 - Crop Residues
-parent_category_value_samples:
-- AGRI
-description_value_samples:
-- Energy production and use
-- Land use change and forestry
-- Industrial processes and product use
-- Waste management
-- All agricultural emission sources
-- Livestock manure management
-- N2O from synthetic fertilizer application
-- Methane from paddy rice cultivation
-- Livestock enteric fermentation
-- N2O from crop residue burning/decomposition
+emission_category_key_value_stats:
+  distinct_count: 10
+  null_count: 0
+  is_truncated: false
+  patched: true
+parent_category_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+description_value_stats:
+  distinct_count: 10
+  null_count: 0
+  is_truncated: false
+  patched: true
