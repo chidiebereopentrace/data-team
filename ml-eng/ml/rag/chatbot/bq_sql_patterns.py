@@ -12,12 +12,15 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     geo_column,
     load_mart_table_schema,
     match_product_samples,
+    measure_blob,
     measure_sql_aggregation,
+    product_blob,
     resolve_geo_filter_values,
     resolve_measure_column,
     table_supports_sql_pattern,
     year_column,
 )
+from ml.rag.chatbot.retrieval_contract import choose_agg_vs_fact
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _ALLOWED_PATTERNS = frozenset(
@@ -121,9 +124,20 @@ def _product_clause(
     return sql
 
 
-def _discriminator_clause(table_id: str, blob: str) -> str:
+def _discriminator_clause(
+    table_id: str,
+    blob: str,
+    *,
+    primary_measures: list[str] | None = None,
+    query: str = "",
+) -> str:
+    mb = measure_blob(query or blob, primary_measures=primary_measures)
     parts: list[str] = []
-    for col, value in discriminator_equality_filters(table_id, blob):
+    for col, value in discriminator_equality_filters(
+        table_id,
+        mb,
+        primary_measures=primary_measures,
+    ):
         if not _IDENT_RE.match(col):
             continue
         parts.append(f"AND {col} = {_sql_literal(value)} ")
@@ -211,6 +225,10 @@ def build_rank_by_sum_sql(
     aggregation: str = "sum",
     time_start: str | None = None,
     time_end: str | None = None,
+    primary_measures: list[str] | None = None,
+    query: str = "",
+    measure_blob_text: str = "",
+    product_blob_text: str = "",
 ) -> str:
     lim = max(1, min(int(limit or 20), 100))
     metric_col = _safe_ident(metric, default="value")
@@ -228,7 +246,8 @@ def build_rank_by_sum_sql(
     )
     year_clause = "WHERE 1=1 " if time_clause.strip() else f"WHERE {ycol} = {int(year)} "
     select_cols = ", ".join(group_cols)
-    disc_blob = blob or (element or "")
+    disc_blob = measure_blob_text or blob or (element or "")
+    product_blob_use = product_blob_text or blob or (element or "")
     product_list = products or ([product_name] if product_name else None)
     return (
         f"SELECT {select_cols}, {_agg_expr(aggregation, metric_col)} AS total "
@@ -236,8 +255,8 @@ def build_rank_by_sum_sql(
         f"{year_clause}"
         f"{time_clause}"
         f"{geo_clause}"
-        f"{_discriminator_clause(table_id, disc_blob)}"
-        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=disc_blob)}"
+        f"{_discriminator_clause(table_id, disc_blob, primary_measures=primary_measures, query=query)}"
+        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=product_blob_use)}"
         f"GROUP BY {select_cols} "
         f"ORDER BY {order} "
         f"LIMIT {lim}"
@@ -261,6 +280,10 @@ def build_time_series_sql(
     grain: list[str] | None = None,
     time_start: str | None = None,
     time_end: str | None = None,
+    primary_measures: list[str] | None = None,
+    query: str = "",
+    measure_blob_text: str = "",
+    product_blob_text: str = "",
 ) -> str:
     ycol = _year_col(table_id)
     extra = _safe_idents(
@@ -275,7 +298,8 @@ def build_time_series_sql(
         time_start=time_start,
         time_end=time_end,
     )
-    disc_blob = blob or (element or "")
+    disc_blob = measure_blob_text or blob or (element or "")
+    product_blob_use = product_blob_text or blob or (element or "")
     product_list = products or ([product_name] if product_name else None)
     if extra:
         select_cols = ", ".join([*extra, f"{ycol} AS year"])
@@ -291,8 +315,8 @@ def build_time_series_sql(
         f"WHERE 1=1 "
         f"{year_filter}"
         f"{geo_clause}"
-        f"{_discriminator_clause(table_id, disc_blob)}"
-        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=disc_blob)}"
+        f"{_discriminator_clause(table_id, disc_blob, primary_measures=primary_measures, query=query)}"
+        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=product_blob_use)}"
         f"GROUP BY {group_cols} "
         f"ORDER BY {order_cols} "
         f"LIMIT {lim}"
@@ -314,6 +338,10 @@ def build_yoy_delta_sql(
     blob: str = "",
     geo_clause: str = "",
     aggregation: str = "sum",
+    primary_measures: list[str] | None = None,
+    query: str = "",
+    measure_blob_text: str = "",
+    product_blob_text: str = "",
 ) -> str:
     lim = max(1, min(int(limit or 20), 100))
     metric_col = _safe_ident(metric, default="value")
@@ -321,7 +349,8 @@ def build_yoy_delta_sql(
     ycol = _year_col(table_id)
     select_cols = ", ".join(group_cols)
     join_on = " AND ".join(f"curr.{c} = prev.{c}" for c in group_cols)
-    disc_blob = blob or (element or "")
+    disc_blob = measure_blob_text or blob or (element or "")
+    product_blob_use = product_blob_text or blob or (element or "")
     product_list = products or ([product_name] if product_name else None)
     return (
         f"WITH yearly AS ("
@@ -329,8 +358,8 @@ def build_yoy_delta_sql(
         f"FROM {_fqn(project_id, dataset, table_id)} "
         f"WHERE {ycol} IN ({int(year)}, {int(year) - 1}) "
         f"{geo_clause}"
-        f"{_discriminator_clause(table_id, disc_blob)}"
-        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=disc_blob)}"
+        f"{_discriminator_clause(table_id, disc_blob, primary_measures=primary_measures, query=query)}"
+        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=product_blob_use)}"
         f"GROUP BY {select_cols}, {ycol}"
         f") "
         f"SELECT {', '.join(f'curr.{c}' for c in group_cols)}, "
@@ -359,13 +388,18 @@ def build_share_of_total_sql(
     blob: str = "",
     geo_clause: str = "",
     aggregation: str = "sum",
+    primary_measures: list[str] | None = None,
+    query: str = "",
+    measure_blob_text: str = "",
+    product_blob_text: str = "",
 ) -> str:
     lim = max(1, min(int(limit or 20), 100))
     metric_col = _safe_ident(metric, default="value")
     group_cols = _safe_idents(grain, default=_default_grain(table_id))
     ycol = _year_col(table_id)
     select_cols = ", ".join(group_cols)
-    disc_blob = blob or (element or "")
+    disc_blob = measure_blob_text or blob or (element or "")
+    product_blob_use = product_blob_text or blob or (element or "")
     product_list = products or ([product_name] if product_name else None)
     return (
         f"WITH base AS ("
@@ -373,8 +407,8 @@ def build_share_of_total_sql(
         f"FROM {_fqn(project_id, dataset, table_id)} "
         f"WHERE {ycol} = {int(year)} "
         f"{geo_clause}"
-        f"{_discriminator_clause(table_id, disc_blob)}"
-        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=disc_blob)}"
+        f"{_discriminator_clause(table_id, disc_blob, primary_measures=primary_measures, query=query)}"
+        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=product_blob_use)}"
         f"GROUP BY {select_cols}"
         f"), tot AS (SELECT SUM(total) AS continent_total FROM base) "
         f"SELECT {', '.join(f'b.{c}' for c in group_cols)}, b.total, "
@@ -398,6 +432,7 @@ def try_sql_pattern(
     limit: int = 20,
     geo_country: str | None = None,
     geo_countries: list[str] | None = None,
+    primary_measures: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Compile SQL when intent.pattern is a known builder and required fields resolve."""
     if not project_id or not dataset or not isinstance(intent, dict):
@@ -408,17 +443,35 @@ def try_sql_pattern(
     table_id = _table_from_intent(intent, selected_tables)
     if not table_id:
         return None
+    tables = {
+        str(t).strip().split(".")[-1].lower()
+        for t in (selected_tables or [])
+        if str(t).strip()
+    }
     year = _year_from_context(time_start=time_start, time_end=time_end, query=query or "")
     blob_parts = [query or "", str(intent.get("filters") or ""), str(intent.get("goal") or "")]
-    if entities:
-        blob_parts.extend(str(e) for e in entities)
+    product_text = product_blob(query, entities)
+    measure_text = measure_blob(query, primary_measures=primary_measures)
     blob = " ".join(blob_parts)
-    products = match_product_samples(table_id, blob)
+    routed = choose_agg_vs_fact(
+        table_id,
+        query=query,
+        multi_country=bool(geo_countries and len(geo_countries) > 1),
+        year_hint=str(year or ""),
+        single_country=bool(geo_country or (geo_countries and len(geo_countries) == 1)),
+    )
+    if routed in tables:
+        table_id = routed
+    products = match_product_samples(table_id, product_text or blob)
     crop = products[0] if products else None
     metric = resolve_measure_column(table_id, str(intent.get("metric") or "").strip() or None)
     if not metric:
         return None
-    disc = discriminator_equality_filters(table_id, blob)
+    disc = discriminator_equality_filters(
+        table_id,
+        measure_text,
+        primary_measures=primary_measures,
+    )
     element = next((v for c, v in disc if c.lower() == "element"), None)
     aggregation = measure_sql_aggregation(table_id, metric, element=element)
     geo_sql = _geo_clause(table_id, geo_country=geo_country, geo_countries=geo_countries)
@@ -445,6 +498,10 @@ def try_sql_pattern(
         "product_name": crop,
         "element": element,
         "blob": blob,
+        "measure_blob_text": measure_text,
+        "product_blob_text": product_text,
+        "primary_measures": primary_measures,
+        "query": query,
         "geo_clause": geo_sql,
         "aggregation": aggregation,
     }
@@ -517,6 +574,7 @@ def try_sql_patterns(
     geo_country: str | None = None,
     geo_countries: list[str] | None = None,
     max_queries: int | None = None,
+    primary_measures: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Compile every structured intent that a YAML-capable pattern can bind."""
     if not isinstance(intents, list):
@@ -546,6 +604,7 @@ def try_sql_patterns(
             limit=limit,
             geo_country=geo_country,
             geo_countries=geo_countries,
+            primary_measures=primary_measures,
         )
         if hit:
             hit["intent_index"] = idx

@@ -90,10 +90,16 @@ def choose_agg_vs_fact(
     query: str,
     multi_country: bool,
     year_hint: str,
+    single_country: bool = False,
 ) -> str:
     """Prefer agg_* for national annual rollups when question scope fits."""
     q = (query or "").lower()
-    national = multi_country or "national" in q or "country" in q
+    national = (
+        multi_country
+        or single_country
+        or "national" in q
+        or "country" in q
+    )
     annual = "month" not in q and "season" not in q and "fnid" not in q
     if table_id == "fct_production" and national and annual:
         return "agg_production_annual"

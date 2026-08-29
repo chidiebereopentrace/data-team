@@ -476,6 +476,7 @@ _PREFERRED_DISCRIMINATOR_DEFAULTS = (
 )
 _AUTO_DEFAULT_DISCRIMINATOR_COLS = frozenset({"element", "price_type", "measure_type"})
 _WORD_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _YIELD_QUERY_RE = re.compile(r"\byields?\b", re.IGNORECASE)
 _PRODUCTION_QUERY_RE = re.compile(
     r"\b(production|produced|output|tonnes?|tons?)\b",
@@ -485,6 +486,32 @@ _PRODUCER_PRICE_QUERY_RE = re.compile(r"\b(producer|farm\s*gate)\b", re.IGNORECA
 _WHOLESALE_QUERY_RE = re.compile(r"\bwholesale\b", re.IGNORECASE)
 _POPULATION_QUERY_RE = re.compile(r"\b(population|people|ipc)\b", re.IGNORECASE)
 _CLASSIFICATION_QUERY_RE = re.compile(r"\b(classification|phase)\b", re.IGNORECASE)
+_DECOMPOSER_DOMAIN_ENTITIES = frozenset(
+    {
+        "production",
+        "yield",
+        "climate",
+        "rainfall",
+        "markets",
+        "prices",
+        "trade",
+        "food security",
+        "ipc",
+        "agriculture",
+    }
+)
+_MEASURE_DISCRIMINATOR_COLS = frozenset(
+    {
+        "element",
+        "metric",
+        "production_grain",
+        "price_type",
+        "measure_type",
+        "indicator",
+        "trade_grain",
+        "price_source",
+    }
+)
 
 
 def _column_names(table_id: str) -> set[str]:
@@ -877,6 +904,29 @@ def match_value_samples(blob: str, samples: set[str] | list[str]) -> list[str]:
     return chosen
 
 
+def _match_metric_slug(blob: str, samples: set[str] | list[str]) -> str | None:
+    """Match metric slug samples using crop/entity tokens (e.g. production_maize_yield)."""
+    expanded = expand_speech_text(blob or "")
+    blob_tokens = set(_alnum_tokens(expanded))
+    if not blob_tokens:
+        return None
+    skip_toks = _GENERIC_SAMPLE_TOKENS | frozenset({"production", "yield", "physical"})
+    best: str | None = None
+    best_hits = 0
+    for raw in samples or []:
+        sample = str(raw).strip()
+        if not sample:
+            continue
+        toks = [t for t in _alnum_tokens(sample) if t not in skip_toks]
+        hits = sum(
+            1 for t in toks if t in blob_tokens or _SPEECH_SYNONYMS.get(t, t) in blob_tokens
+        )
+        if hits > best_hits:
+            best_hits = hits
+            best = sample
+    return best if best_hits > 0 else None
+
+
 _PRODUCT_FK_COL = "product_key"
 _PRODUCT_LABEL_COL = "product_name"
 _PRODUCT_JOIN_DIM = "dim_product"
@@ -1078,6 +1128,227 @@ def compile_product_filter_sql(
     )
 
 
+def product_blob(query: str, entities: list[str] | None = None) -> str:
+    """Speech blob for product/geo matching — query plus crop-like entities only."""
+    q = (query or "").strip()
+    parts = [q] if q else []
+    for raw in entities or []:
+        text = str(raw).strip()
+        if not text:
+            continue
+        low = text.lower()
+        if low in _DECOMPOSER_DOMAIN_ENTITIES:
+            continue
+        if resolve_dictionary_label(column=_PRODUCT_LABEL_COL, blob=text):
+            parts.append(text)
+    return " ".join(parts)
+
+
+def measure_blob(
+    query: str,
+    *,
+    primary_measures: list[str] | None = None,
+    task_mode: str = "",
+) -> str:
+    """Speech blob for measure discriminators — query + contract measures, not domain tags."""
+    parts = [str(query or "").strip()]
+    parts.extend(str(m).strip() for m in (primary_measures or []) if str(m).strip())
+    mode = str(task_mode or "").strip()
+    if mode:
+        parts.append(mode)
+    return " ".join(p for p in parts if p)
+
+
+def value_samples_for_table(table_id: str) -> dict[str, list[str]]:
+    """Column samples from mart or staging YAML for one table."""
+    bare = _strip_fqn(table_id).lower()
+    if _is_mart_table_id(bare):
+        return value_samples_for_mart_tables({bare}).get(bare) or {}
+    return value_samples_for_tables({bare}).get(bare) or {}
+
+
+def _primary_measure_ids(primary_measures: list[str] | None) -> list[str]:
+    return [str(m).strip().lower() for m in (primary_measures or []) if str(m).strip()]
+
+
+def _wants_production_volume(primary_measures: list[str] | None, measure_blob_text: str) -> bool:
+    pm = _primary_measure_ids(primary_measures)
+    if any(m in ("production", "prod") for m in pm):
+        return True
+    blob = measure_blob_text or ""
+    if not _PRODUCTION_QUERY_RE.search(blob):
+        return False
+    if any("yield" in m for m in pm):
+        return False
+    return True
+
+
+def _wants_yield(primary_measures: list[str] | None, measure_blob_text: str) -> bool:
+    pm = _primary_measure_ids(primary_measures)
+    if any("yield" in m for m in pm):
+        return True
+    return bool(_YIELD_QUERY_RE.search(measure_blob_text or "")) and not _wants_production_volume(
+        primary_measures, measure_blob_text
+    )
+
+
+def compile_measure_filters(
+    table_id: str,
+    *,
+    measure_blob_text: str = "",
+    primary_measures: list[str] | None = None,
+) -> list[tuple[str, str]]:
+    """Compile equality filters for measure discriminators bound to primary_measures."""
+    bare = _strip_fqn(table_id).lower()
+    samples_map = value_samples_for_table(bare)
+    if not samples_map:
+        return []
+
+    schema = (_schema_loader_for(bare))(bare) or {}
+    col_names = {
+        str(c.get("name") or "").strip().lower()
+        for c in (schema.get("columns") or [])
+        if str(c.get("name") or "").strip()
+    }
+    pm = _primary_measure_ids(primary_measures)
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def _add(col: str, val: str | None) -> None:
+        if not val or col.lower() in seen:
+            return
+        seen.add(col.lower())
+        out.append((col, val))
+
+    production_vol = _wants_production_volume(pm, measure_blob_text)
+    yield_q = _wants_yield(pm, measure_blob_text)
+
+    if production_vol and bare in ("fct_production", "agg_production_annual"):
+        if "production_grain" in col_names:
+            grain_samples = samples_map.get("production_grain") or []
+            grain = default_discriminator_value(
+                "production_grain",
+                grain_samples,
+                query=measure_blob_text,
+                primary_measures=pm,
+            )
+            if grain:
+                _add("production_grain", grain)
+        element_samples = samples_map.get("element") or []
+        _add(
+            "element",
+            default_discriminator_value(
+                "element",
+                element_samples,
+                query=measure_blob_text,
+                primary_measures=pm,
+            ),
+        )
+        if "metric" in col_names:
+            _add(
+                "metric",
+                default_discriminator_value(
+                    "metric",
+                    samples_map.get("metric") or [],
+                    query=measure_blob_text,
+                    primary_measures=pm,
+                ),
+            )
+        return out
+
+    if yield_q:
+        if "element" in samples_map:
+            _add(
+                "element",
+                default_discriminator_value(
+                    "element",
+                    samples_map.get("element") or [],
+                    query=measure_blob_text,
+                    primary_measures=pm,
+                ),
+            )
+        if "metric" in col_names:
+            metric_samples = samples_map.get("metric") or []
+            metric_val = _match_metric_slug(measure_blob_text, metric_samples)
+            if not metric_val:
+                matched = match_value_samples(measure_blob_text, metric_samples)
+                metric_val = matched[0] if matched else default_discriminator_value(
+                    "metric",
+                    metric_samples,
+                    query=measure_blob_text,
+                    primary_measures=pm,
+                )
+            _add("metric", metric_val)
+        return out
+
+    product_col = (product_column(bare) or "").lower()
+    skip = {product_col, "unit", "country", "country_name", "market_name"} - {""}
+    for col, samples in samples_map.items():
+        col_l = col.lower()
+        if col_l in skip or col_l not in _MEASURE_DISCRIMINATOR_COLS:
+            continue
+        matched = match_value_samples(measure_blob_text, samples)
+        if matched:
+            _add(col, matched[0])
+            continue
+        if col_l not in _AUTO_DEFAULT_DISCRIMINATOR_COLS:
+            continue
+        default = default_discriminator_value(
+            col,
+            samples,
+            query=measure_blob_text,
+            primary_measures=pm,
+        )
+        if default:
+            _add(col, default)
+    return out
+
+
+def compile_measure_filter_sql(
+    table_id: str,
+    *,
+    measure_blob_text: str = "",
+    primary_measures: list[str] | None = None,
+) -> str:
+    """AND-prefixed SQL fragments for measure discriminators."""
+    parts: list[str] = []
+    for col, val in compile_measure_filters(
+        table_id,
+        measure_blob_text=measure_blob_text,
+        primary_measures=primary_measures,
+    ):
+        if _IDENT_RE.match(col):
+            parts.append(f"AND {col} = {_sql_literal(val)} ")
+    return "".join(parts)
+
+
+def compile_time_filter_sql(
+    table_id: str,
+    *,
+    year: int | None = None,
+    time_start: str | None = None,
+    time_end: str | None = None,
+) -> str:
+    """Partition-aware time bounds when table has as_of_date."""
+    bare = _strip_fqn(table_id).lower()
+    schema = (_schema_loader_for(bare))(bare) or {}
+    col_names = {
+        str(c.get("name") or "").strip().lower()
+        for c in (schema.get("columns") or [])
+        if str(c.get("name") or "").strip()
+    }
+    ts = (time_start or "")[:10]
+    te = (time_end or "")[:10]
+    if "as_of_date" in col_names and ts and te:
+        return f"AND as_of_date BETWEEN DATE '{ts}' AND DATE '{te}' "
+    ycol = year_column(bare) or "year"
+    if year is not None:
+        return f"AND {ycol} = {int(year)} "
+    if ts[:4].isdigit() and te[:4].isdigit():
+        return f"AND {ycol} BETWEEN {int(ts[:4])} AND {int(te[:4])} "
+    return ""
+
+
 def compile_semantic_filter(
     table_id: str,
     facet: str,
@@ -1086,25 +1357,73 @@ def compile_semantic_filter(
     project_id: str,
     dataset: str,
     labels: list[str] | None = None,
+    primary_measures: list[str] | None = None,
+    measure_blob_text: str = "",
+    year: int | None = None,
+    time_start: str | None = None,
+    time_end: str | None = None,
+    country_labels: list[str] | None = None,
 ) -> SemanticFilterClause | None:
     """Compile one semantic facet filter (dictionary label + join routing)."""
     facet_l = str(facet or "").strip().lower()
-    if facet_l != "product":
-        return None
-    sql, resolved = compile_product_filter_sql(
-        table_id,
-        project_id=project_id,
-        dataset=dataset,
-        blob=blob,
-        labels=labels,
-    )
-    if not sql:
-        return None
-    return SemanticFilterClause(
-        sql=sql,
-        label=resolved[0] if resolved else None,
-        labels=tuple(resolved),
-    )
+    if facet_l == "product":
+        sql, resolved = compile_product_filter_sql(
+            table_id,
+            project_id=project_id,
+            dataset=dataset,
+            blob=blob,
+            labels=labels,
+        )
+        if not sql:
+            return None
+        return SemanticFilterClause(
+            sql=sql,
+            label=resolved[0] if resolved else None,
+            labels=tuple(resolved),
+        )
+    if facet_l == "measure":
+        mb = measure_blob_text or blob
+        filters = compile_measure_filters(
+            table_id,
+            measure_blob_text=mb,
+            primary_measures=primary_measures,
+        )
+        if not filters:
+            return None
+        sql = compile_measure_filter_sql(
+            table_id,
+            measure_blob_text=mb,
+            primary_measures=primary_measures,
+        )
+        return SemanticFilterClause(
+            sql=sql,
+            label=filters[0][1] if filters else None,
+            labels=tuple(v for _, v in filters),
+        )
+    if facet_l == "geo":
+        if not country_labels:
+            return None
+        resolved = resolve_geo_filter_values(table_id, country_labels)
+        if not resolved:
+            return None
+        col = geo_column(table_id) or "country_name"
+        if len(resolved) == 1:
+            sql = f"AND {col} = {_sql_literal(resolved[0])} "
+        else:
+            lits = ", ".join(_sql_literal(v) for v in resolved[:32])
+            sql = f"AND {col} IN ({lits}) "
+        return SemanticFilterClause(sql=sql, label=resolved[0], labels=tuple(resolved))
+    if facet_l == "time":
+        sql = compile_time_filter_sql(
+            table_id,
+            year=year,
+            time_start=time_start,
+            time_end=time_end,
+        )
+        if not sql:
+            return None
+        return SemanticFilterClause(sql=sql)
+    return None
 
 
 def match_product_samples(table_id: str, blob: str) -> list[str]:
@@ -1117,6 +1436,7 @@ def default_discriminator_value(
     samples: set[str] | list[str] | None,
     *,
     query: str = "",
+    primary_measures: list[str] | None = None,
 ) -> str | None:
     """Pick a YAML sample for a discriminator column. Never invent labels."""
     sample_set = {str(s).strip() for s in (samples or []) if str(s).strip()}
@@ -1125,6 +1445,9 @@ def default_discriminator_value(
     by_low = {s.lower(): s for s in sample_set}
     col_l = (col or "").strip().lower()
     q = query or ""
+    pm = _primary_measure_ids(primary_measures)
+    production_vol = _wants_production_volume(pm, q)
+    yield_q = _wants_yield(pm, q)
 
     def _from_cands(*cands: str) -> str | None:
         for cand in cands:
@@ -1134,7 +1457,11 @@ def default_discriminator_value(
         return None
 
     if col_l == "element":
-        if _YIELD_QUERY_RE.search(q):
+        if production_vol:
+            hit = _from_cands("Production")
+            if hit:
+                return hit
+        if yield_q:
             hit = _from_cands("Yield")
             if hit:
                 return hit
@@ -1142,9 +1469,17 @@ def default_discriminator_value(
             hit = _from_cands("Production")
             if hit:
                 return hit
+        if _YIELD_QUERY_RE.search(q):
+            hit = _from_cands("Yield")
+            if hit:
+                return hit
 
     if col_l == "metric":
-        if _YIELD_QUERY_RE.search(q):
+        if production_vol:
+            hit = _from_cands("production_production_physical")
+            if hit:
+                return hit
+        if yield_q:
             hit = _from_cands("production_yield_physical")
             if hit:
                 return hit
@@ -1152,6 +1487,15 @@ def default_discriminator_value(
             hit = _from_cands("production_production_physical")
             if hit:
                 return hit
+        if _YIELD_QUERY_RE.search(q):
+            hit = _from_cands("production_yield_physical")
+            if hit:
+                return hit
+
+    if col_l == "production_grain" and production_vol:
+        hit = _from_cands("physical")
+        if hit:
+            return hit
 
     if col_l == "price_type":
         if _PRODUCER_PRICE_QUERY_RE.search(q):
@@ -1189,25 +1533,19 @@ def default_discriminator_value(
     return ordered[0]
 
 
-def discriminator_equality_filters(table_id: str, blob: str) -> list[tuple[str, str]]:
+def discriminator_equality_filters(
+    table_id: str,
+    blob: str,
+    *,
+    primary_measures: list[str] | None = None,
+) -> list[tuple[str, str]]:
     """``(column, sample)`` filters from YAML samples; prefer query matches then known defaults."""
-    samples_map = value_samples_for_tables({table_id}).get(_strip_fqn(table_id).lower()) or {}
-    product_col = (product_column(table_id) or "").lower()
-    skip = {product_col, "unit", "country", "country_name", "market_name"} - {""}
-    out: list[tuple[str, str]] = []
-    for col, samples in samples_map.items():
-        if col.lower() in skip:
-            continue
-        matched = match_value_samples(blob, samples)
-        if matched:
-            out.append((col, matched[0]))
-            continue
-        if col.lower() not in _AUTO_DEFAULT_DISCRIMINATOR_COLS:
-            continue
-        default = default_discriminator_value(col, samples, query=blob)
-        if default:
-            out.append((col, default))
-    return out
+    mb = measure_blob(blob, primary_measures=primary_measures) if primary_measures else blob
+    return compile_measure_filters(
+        table_id,
+        measure_blob_text=mb,
+        primary_measures=primary_measures,
+    )
 
 
 def table_source_meta(table_id: str) -> dict[str, Any]:

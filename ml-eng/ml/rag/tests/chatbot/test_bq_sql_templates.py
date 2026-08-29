@@ -133,7 +133,7 @@ def test_mart_point_fact_sql_passes_validation() -> None:
     assert validate_required_metric_filters(sql, selected) is None
 
 
-def test_mart_point_fact_prefers_fct_production() -> None:
+def test_mart_point_fact_routes_to_agg_for_single_country() -> None:
     hit = try_sql_template(
         query="What was maize production in Nigeria in 2022?",
         project_id="proj",
@@ -142,15 +142,13 @@ def test_mart_point_fact_prefers_fct_production() -> None:
         geo_country="Nigeria",
         time_start="2022-01-01",
         time_end="2022-12-31",
+        primary_measures=["production"],
     )
     assert hit is not None
     assert hit["template"] == "mart_point_fact"
-    assert hit["table_id"] == "fct_production"
-    assert "fct_production" in hit["sql"]
-    assert "dim_product" in hit["sql"]
+    assert hit["table_id"] == "agg_production_annual"
+    assert "agg_production_annual" in hit["sql"]
     assert "product_name = 'Maize'" in hit["sql"]
-    assert "production_grain" in hit["sql"]
-    assert "source_key" in hit["sql"]
     assert "LIMIT 1" in hit["sql"]
 
 

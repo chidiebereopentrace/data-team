@@ -7,12 +7,16 @@ from typing import Any
 from ml.rag.chatbot.bq_table_schema_yaml import (
     columns_for_mart_tables,
     compile_product_filter_sql,
+    compile_measure_filters,
+    compile_time_filter_sql,
     default_discriminator_value,
     discriminator_equality_filters,
     geo_column,
     load_mart_table_schema,
     match_product_samples,
+    measure_blob,
     measure_columns_mart,
+    product_blob,
     product_column,
     resolve_dictionary_label,
     resolve_geo_filter_values,
@@ -20,6 +24,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     value_samples_for_mart_tables,
     year_column,
 )
+from ml.rag.chatbot.retrieval_contract import choose_agg_vs_fact
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.query_decomposer import _extract_countries
 
@@ -371,50 +376,41 @@ def build_mart_point_fact_sql(
     year: int,
     blob: str,
     limit: int = 1,
+    primary_measures: list[str] | None = None,
+    time_start: str | None = None,
+    time_end: str | None = None,
+    query: str = "",
 ) -> str:
     lim = max(1, min(int(limit or 1), 5))
+    mb = measure_blob(query or blob, primary_measures=primary_measures)
     geo_col = _mart_geo_col(table_id)
     ycol = _mart_year_col(table_id)
     metric = resolve_measure_column(table_id, "value") or (
         measure_columns_mart(table_id)[0] if measure_columns_mart(table_id) else "value"
     )
     geo_vals = resolve_geo_filter_values(table_id, country_labels)
-    clauses = [f"{ycol} = {int(year)}"]
+    clauses: list[str] = []
+    time_sql = compile_time_filter_sql(
+        table_id,
+        year=year,
+        time_start=time_start,
+        time_end=time_end,
+    ).strip()
+    if time_sql.startswith("AND "):
+        clauses.append(time_sql[4:])
+    else:
+        clauses.append(f"{ycol} = {int(year)}")
     if len(geo_vals) == 1:
         clauses.append(f"{geo_col} = {_sql_literal(geo_vals[0])}")
     elif geo_vals:
         lits = ", ".join(_sql_literal(v) for v in geo_vals)
         clauses.append(f"{geo_col} IN ({lits})")
-    for col, val in discriminator_equality_filters(table_id, blob):
+    for col, val in compile_measure_filters(
+        table_id,
+        measure_blob_text=mb,
+        primary_measures=primary_measures,
+    ):
         clauses.append(f"{col} = {_sql_literal(val)}")
-    if table_id == "fct_production":
-        schema = load_mart_table_schema(table_id) or {}
-        col_names = {
-            str(c.get("name") or "").strip()
-            for c in (schema.get("columns") or [])
-            if str(c.get("name") or "").strip()
-        }
-        if "production_grain" in col_names and not any(
-            c.startswith("production_grain") for c in clauses
-        ):
-            clauses.append("production_grain = 'physical'")
-        samples_map = value_samples_for_mart_tables({table_id}).get(table_id) or {}
-        if _PRODUCTION_RE.search(blob) and not any(c.startswith("element") for c in clauses):
-            element = default_discriminator_value(
-                "element",
-                samples_map.get("element") or [],
-                query=blob,
-            )
-            if element:
-                clauses.append(f"element = {_sql_literal(element)}")
-        if "metric" in col_names and not any(c.startswith("metric") for c in clauses):
-            metric_val = default_discriminator_value(
-                "metric",
-                samples_map.get("metric") or [],
-                query=blob,
-            )
-            if metric_val:
-                clauses.append(f"metric = {_sql_literal(metric_val)}")
     prod_clause, _ = _product_filter(
         table_id,
         blob,
@@ -516,6 +512,8 @@ def try_sql_template(
     limit: int = 20,
     geo_country: str | None = None,
     geo_countries: list[str] | None = None,
+    primary_measures: list[str] | None = None,
+    task_mode: str = "",
 ) -> dict[str, Any] | None:
     """
     Return ``{\"sql\": ..., \"template\": ...}`` when a mart template matches.
@@ -527,7 +525,7 @@ def try_sql_template(
     if not project_id or not dataset:
         return None
     year = _year_from_context(time_start=time_start, time_end=time_end, query=query or "")
-    blob = _blob(query, entities)
+    blob = product_blob(query, entities)
     product_label = _resolve_dictionary_product(blob)
     country = _resolve_country(
         query=query,
@@ -554,6 +552,15 @@ def try_sql_template(
             table_id = _pick_table(tables, _MART_PRICE_TABLES) or "fct_prices"
         else:
             table_id = _pick_point_fact_production_table(tables)
+        routed = choose_agg_vs_fact(
+            table_id,
+            query=query,
+            multi_country=len(countries) > 1,
+            year_hint=str(year or ""),
+            single_country=bool(country),
+        )
+        if routed in tables:
+            table_id = routed
         point_limit = 1
         return {
             "sql": build_mart_point_fact_sql(
@@ -564,6 +571,10 @@ def try_sql_template(
                 year=year,
                 blob=blob,
                 limit=point_limit,
+                primary_measures=primary_measures,
+                time_start=time_start,
+                time_end=time_end,
+                query=query,
             ),
             "template": "mart_point_fact",
             "country": country,

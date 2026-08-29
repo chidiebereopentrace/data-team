@@ -1346,6 +1346,12 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
                 **bq_geo,
                 crop_required=bool(plan.get("crop_required", True)),
                 geography_required=bool(plan.get("geography_required", True)),
+                decomposition=dec,
+                primary_measures=(
+                    dec.get("primary_measures")
+                    if isinstance(dec.get("primary_measures"), list)
+                    else None
+                ),
             )
             results = fut.result(timeout=bq_timeout)
     except FuturesTimeoutError:

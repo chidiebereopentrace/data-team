@@ -157,6 +157,71 @@ def _raw_row_from_item(item: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in (meta or {}).items() if k not in _BQ_PROVENANCE_KEYS and v is not None}
 
 
+def _row_coherent_with_decomposition(
+    raw: dict[str, Any],
+    decomposition: dict[str, Any] | None,
+) -> bool:
+    """Drop rows whose measure/geo/year contradict decomposition intent."""
+    if not raw or not decomposition:
+        return True
+
+    pm = [
+        str(m).strip().lower()
+        for m in (decomposition.get("primary_measures") or [])
+        if str(m).strip()
+    ]
+    element = str(raw.get("element") or "").strip().lower()
+    metric = str(raw.get("metric") or "").strip().lower()
+    production_intent = any(m in ("production", "prod") for m in pm)
+    yield_intent = any("yield" in m for m in pm)
+    if production_intent and not yield_intent:
+        if element == "yield":
+            return False
+        if metric and "yield" in metric and "production_production" not in metric:
+            return False
+    if yield_intent and not production_intent and element == "production":
+        return False
+
+    geo = [str(g).strip() for g in (decomposition.get("geography") or []) if str(g).strip()]
+    if geo:
+        row_geo_parts = [
+            str(raw.get(k) or "").strip().lower()
+            for k in _GEO_KEYS
+            if raw.get(k) is not None and str(raw.get(k)).strip()
+        ]
+        row_geo = " ".join(row_geo_parts)
+        if row_geo and not any(
+            g.lower() in row_geo or row_geo in g.lower() for g in geo
+        ):
+            return False
+
+    ts = str(decomposition.get("time_start") or "")[:4]
+    te = str(decomposition.get("time_end") or "")[:4]
+    if ts.isdigit() and te.isdigit():
+        row_year = raw.get("year") or raw.get("time_key") or raw.get("observation_year")
+        if row_year is not None:
+            try:
+                y = int(row_year)
+            except (TypeError, ValueError):
+                return True
+            if y < int(ts) or y > int(te):
+                return False
+
+    return True
+
+
+def _reject_incoherent_item(
+    item: dict[str, Any],
+    *,
+    reason: str,
+) -> dict[str, Any]:
+    out = dict(item)
+    meta = dict(out.get("metadata") or {})
+    meta["semantic_row_rejected"] = True
+    meta["semantic_row_reason"] = reason
+    out["metadata"] = meta
+    return out
+
 def _sql_aliases(sql: str) -> list[str]:
     return [m.group(1).lower() for m in _SELECT_ALIAS_RE.finditer(sql or "")]
 
@@ -1005,6 +1070,21 @@ def enrich_bq_results(
             usable.append(item)
         else:
             diagnostics.append(item)
+
+    if dec:
+        kept: list[dict[str, Any]] = []
+        for item in usable:
+            raw = _raw_row_from_item(item)
+            if _row_coherent_with_decomposition(raw, dec):
+                kept.append(item)
+            else:
+                diagnostics.append(
+                    _reject_incoherent_item(
+                        item,
+                        reason="row outside decomposition geo/measure/year",
+                    )
+                )
+        usable = kept
 
     # Group usable rows by SQL for optional ranking consolidation.
     by_sql: dict[str, list[dict[str, Any]]] = {}
