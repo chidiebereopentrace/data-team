@@ -36,116 +36,6 @@ columns:
 - name: loaded_at
   type: TIMESTAMP
   description: loaded at
-season_key_value_samples:
-- 02dbd70bbfce3d97b2f92c5d3e7d00d1
-- dac81addca8aae8e6494eb9db4f286cd
-- a016f6ef57498a6f31b50cb3f42097a7
-- de1475b25826c32ffcfa1b4792c304d8
-- c4d7ec5367a391c1ad4957ed21f8f327
-- c07d6a95087384631d3235296f0f2e41
-- dcb8a6759e33016841dc959ef805aac7
-- 71c15c659d6e266948971dbb76110499
-- 50bc11c23d392694ae6af611dcae3c61
-- 62ee06c55d91140dfb35021e1db88a81
-- 315f141b0d055be5ecc3267df358f2ee
-- 8e6937376bd4d0fe496001142b26b6a0
-- 15d7545700584de8bc476aff0e8f24a9
-- bde0b28da597faf2581a1ade089dd0c8
-- 66c2f2e075d57273da4f110649442161
-- 67152abc97fcb5c78dad2e8db92b1bb5
-- b14b3dc4edd82cfea7665167870cf48f
-- c4b72fd9f98be065b5618362e221bdb1
-- 55951b60af641b70f1c67401d09bb221
-- 5578770014acf9cbab1335d43d0387f6
-- 67260a0885f6de9ff223dd93428d9dfd
-- d113fd8fba3bb7b75163b366b21159ec
-- 6d4f0a3449b2080561d1cf49cbc8dd61
-- 7bec4a4ab6fc51fabe2d12702d79646e
-- 9bd49faefc2abbc351f4624bfc295e46
-- afa498708a8ba53081a1d8397ff482ce
-- d5cfaa49081589c88562fb695523473c
-- 6cb8ca9145c14fc2e65d539543262be7
-- d0e8c429a92d7acddbc9595477abb896
-- c4e70b2238c5e2276b50235dd3b95f22
-- a3c34eec182fed802cd2b6af3f7a73cc
-- 486c88b45fd49ff3c4176a38734c64a4
-- 91c00d8a5ac16222de6281bfe651c0d0
-- 873dd35f0b2633fd251e54d91beaaa93
-- 6369c6ae5aacd97552b3517fbb08f747
-- cecd2a44eb79be67e3246bbf179384a7
-- df93372e6a912b5d95ea210e618611e1
-- 840d503b942cfe7d219bdcaf1ad464a0
-- 2cf2ca51f7b0783a1c120283c2cf362f
-- 1b49adee47329587661ebc63b5af61d7
-- d1096486d7878b7badd1e3b3ef9a1272
-- 5d1fb18ea81a7472b182d7feab92ecc0
-- f41ea193a996061be6038093867df2d2
-- b4cad69424349910d99e05292f6f4d72
-- 3af630d410e1a6f2e18877614680759e
-- 7243d5a639cfbdf623fb413a717d4d20
-- 3a6abe15a3adf7a725a3c18fa9c18c2c
-- 87f90372dcb9c3a7d9515f8eed11d6aa
-- 153501331df1c163d6d37f6bccb105e3
-- 61974745b5eba9bca4d1e03a263983f1
-- 661bc7caf9657649c00573f905902f9d
-- d29e0514ac5c2ab356c09a6e60e0ac77
-- ad6b15886a1bfe4c8499f66ba03da84a
-- d5272b30d1d5e8ee85d2fe0767d77d3e
-- 135f0ea1f36c27827c0324d742464b02
-- 8d8dacbebcef6bb83be3b9da6e9eafa0
-- d3fabe288e6cbcfab1bf08ee1f9faaca
-- b5bf8a03e37e2fc7667c56a0a404ece8
-- e33776a0a63b4f5e5e309545678653ae
-- 81b516334096dbcdf983b25df453cc1a
-- cdc917d9dcd5a3967c5ef88af6693757
-- 1168b728a9c85fd4b704ba60d79dcb81
-- 73fa7d86e1f8d85fbb72296d181a3ec6
-- b5eac6ab95de15b9d67337007c91f6c3
-- f2084519120d0a15aa51c1323f5fac7f
-- 2c6757e4ec9d9a43d837f4a80ccdc52e
-- 69f06e4d1f120c0ddc47e2d95b9754f4
-- da324841fc5d4a618ef50e61d213bbb2
-- 77de89d221d0e7842ebede00a3665658
-- b704277b60c5569e967aac191b59034a
-- 35cf3f42cc3524c9ff4bb5173662f279
-- e613dd8b565685b9fc5be85e5615df94
-- 1b0f4cf144a537b4cfaadecbfb9c0224
-- 09799402856f89c0d414533d01defe4d
-- 4d2cf541d8f4c14a25c6b9d0d0a22ebe
-country_value_samples:
-- Mauritania
-- Cameroon
-- Somalia
-- Mozambique
-- Tanzania, United Republic of
-- Rwanda
-- Burundi
-- Malawi
-- Kenya
-- Uganda
-- South Sudan
-- Togo
-- Benin
-- Ghana
-- Burkina Faso
-- Nigeria
-- Chad
-- Niger
-- Senegal
-- Sudan
-- South Africa
-- Lesotho
-- Madagascar
-- Angola
-- Zimbabwe
-- Central African Republic
-- Sierra Leone
-- DRC
-- Liberia
-- Mali
-- Guinea
-- Ethiopia
-- Zambia
 season_name_value_samples:
 - Main
 - Annual
@@ -180,146 +70,6 @@ season_name_value_samples:
 - Walo
 - Wet
 - 1st Season
-season_name_norm_value_samples:
-- main
-- annual
-- winter
-- long
-- season a
-- summer
-- short
-- season c
-- season b
-- bas-fond
-- deyr-off
-- dry
-- first
-- gu
-- gu-off
-- hot off-season
-- cold off-season
-- long/dry
-- 2nd season
-- main-off
-- meher
-- north 1st season
-- north 2nd season
-- rice season
-- deyr
-- decrue controlee
-- dam retention
-- second
-- cotton season
-- cold-off
-- walo
-- wet
-- 1st season
-start_month_value_samples:
-- '6'
-- '10'
-- '3'
-- '11'
-- '5'
-- '1'
-- '9'
-- '2'
-- '4'
-- '8'
-end_month_value_samples:
-- '12'
-- '11'
-- '6'
-- '10'
-- '3'
-- '8'
-- '7'
-- '4'
-- '5'
-- '9'
-- '1'
-- '2'
-crosses_year_value_samples:
-- 'false'
-- 'true'
-is_off_season_value_samples:
-- 'false'
-- 'true'
-n_rows_value_samples:
-- '116'
-- '2717'
-- '2045'
-- '480'
-- '21'
-- '4873'
-- '352'
-- '5036'
-- '541'
-- '2158'
-- '9329'
-- '13569'
-- '223'
-- '48'
-- '2553'
-- '746'
-- '478'
-- '12257'
-- '218'
-- '11'
-- '333'
-- '168'
-- '51'
-- '2603'
-- '267'
-- '6671'
-- '867'
-- '2590'
-- '342'
-- '22'
-- '1324'
-- '852'
-- '8'
-- '228'
-- '981'
-- '10353'
-- '1671'
-- '222'
-- '403'
-- '2243'
-- '17441'
-- '3253'
-- '9943'
-- '266'
-- '2154'
-- '3492'
-- '15172'
-- '995'
-- '282'
-- '2521'
-- '10832'
-- '780'
-- '36'
-- '15197'
-- '834'
-- '128'
-- '297'
-- '2665'
-- '1791'
-- '1805'
-- '3171'
-- '16'
-- '1847'
-- '889'
-- '939'
-- '501'
-- '1915'
-- '1861'
-- '82'
-- '7478'
-- '1104'
-- '495'
-- '140'
-loaded_at_value_samples:
-- '2026-08-24 14:23:05.241391+00'
 filtering_guidance:
 - 'Grain: Country × season_name'
 - Agricultural seasons by country (start/end months).
@@ -330,3 +80,48 @@ semantic_role:
   primary_domain: production
   supports:
   - production
+season_key_value_stats:
+  distinct_count: 75
+  null_count: 0
+  is_truncated: false
+  patched: true
+country_value_stats:
+  distinct_count: 33
+  null_count: 0
+  is_truncated: false
+  patched: true
+season_name_norm_value_stats:
+  distinct_count: 33
+  null_count: 0
+  is_truncated: false
+  patched: true
+start_month_value_stats:
+  distinct_count: 10
+  null_count: 0
+  is_truncated: false
+  patched: true
+end_month_value_stats:
+  distinct_count: 12
+  null_count: 0
+  is_truncated: false
+  patched: true
+crosses_year_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+is_off_season_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+n_rows_value_stats:
+  distinct_count: 73
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

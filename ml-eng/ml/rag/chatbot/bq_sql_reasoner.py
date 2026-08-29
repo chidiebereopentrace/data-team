@@ -34,6 +34,7 @@ from ml.rag.chatbot.query_decomposer import (
     _extract_year_range,
     wants_africa_default_scope,
 )
+from ml.rag.chatbot.ontology_context import build_ontology_context
 from ml.rag.chatbot.retrieval_contract import build_retrieval_contract, contract_to_bq_plan
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.observability import observed_span, update_current_span_metadata
@@ -356,6 +357,8 @@ def reason_bq_sql_plan(
         return plan
 
     filter_hints = (scope or {}).get("filter_hints") or ""
+    ontology = build_ontology_context(query, dec)
+    ontology_block = ontology.to_reasoner_block()
     measure_line = ""
     if scope:
         measure_line = (
@@ -390,6 +393,7 @@ def reason_bq_sql_plan(
     )
     user = (
         f"{measure_line}"
+        f"{ontology_block}\n\n"
         f"Max tables: {max_tables}\n"
         f"Plan type: {plan_type or '-'}\n"
         f"Category: {category or '-'}\n"

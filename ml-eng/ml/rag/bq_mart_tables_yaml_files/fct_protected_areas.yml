@@ -82,9 +82,6 @@ geography_key_value_stats:
   is_truncated: true
   min_value: 0001600623fef7fd72830124b253ced3
   max_value: ffe04a83093866d63e5946dede21a358
-geo_level_value_samples:
-- city
-- country
 country_iso3_value_samples:
 - ZAF
 - NGA
@@ -138,24 +135,8 @@ country_iso3_value_samples:
 - STP
 - DJI
 - SOM
-source_key_value_samples:
-- 9a235ab0fae73596687afc9cdb25f920
-tier_value_samples:
-- '2'
-data_level_value_samples:
-- community
-- national
-geo_scope_value_samples:
-- community
-- national
 metric_value_samples:
 - protected_area_extent
-source_id_value_samples:
-- 9a235ab0fae73596687afc9cdb25f920
-as_of_date_value_samples:
-- '2026-08-27'
-as_of_date_basis_value_samples:
-- loaded_at
 value_value_stats:
   distinct_count: 6939
   null_count: 0
@@ -226,10 +207,6 @@ geometry_wkt_value_stats:
     8.76730564472698 19.843427839463, 8.73671800930271 19.8775274342549, 8.74350927285065
     19.900740701527, 8.7556455123391 19.9246684282483, 8.75020172171734 19.9609374061887,
     8.74327571087678 19.982711676823, 9.995266705507 19.9869496690419))
-source_natural_key_value_samples:
-- arcgis_land_protected_areas
-loaded_at_value_samples:
-- '2026-08-27 14:41:21.108170+00'
 filtering_guidance:
 - 'Grain: Protected area feature'
 - Protected area extents.
@@ -240,3 +217,53 @@ semantic_role:
   primary_domain: spatial
   supports:
   - spatial
+geo_level_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_key_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+data_level_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_scope_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_id_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_basis_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

@@ -91,8 +91,6 @@ metric_value_samples:
 - production_maize_yield
 - production_rice_yield
 - production_sorghum_yield
-grain_flag_value_samples:
-- fnid_season
 indicator_classes:
 - PROD
 sql_generation_hints:
@@ -115,3 +113,8 @@ semantic_relationships:
   do_not_join:
   - table: fct_production
     reason: FAOSTAT national vs FNID-season
+grain_flag_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

@@ -32,17 +32,108 @@ MD_OUT = DATA_ENG_ROOT / "docs" / "_mart_column_labels_raw.md"
 YAML_DIR = REPO_ROOT / "ml-eng" / "ml" / "rag" / "bq_mart_tables_yaml_files"
 AUDIT_TABLE = "audit_mart_column_labels"
 MAX_LABELS = 500
+MAX_FILTER_SAMPLES = 50
 SKIP_TABLES = {"gold_example", AUDIT_TABLE, "audit_mart_ontology_vocab"}
+
+MEASURE_DISCRIMINATOR_COLS = frozenset(
+    {
+        "element",
+        "metric",
+        "production_grain",
+        "price_type",
+        "measure_type",
+        "indicator",
+        "trade_grain",
+        "price_source",
+        "phase_name",
+        "scenario_name",
+        "scenario_code",
+        "phase_code",
+    }
+)
+TIME_DIM_COLS = frozenset({"year", "time_key", "harvest_year", "observation_year", "mp_year", "month"})
+MEASURE_NUMERIC_SUFFIXES = ("_qty", "_value", "_affected", "_pct", "_count", "_total")
+SURROGATE_SUFFIXES = ("_key", "_id")
+HUMAN_LABEL_SUFFIXES = ("_name", "_code", "_type", "_grain")
+
 # Always profile top-N label samples for dim columns used in SQL speech→literal filters.
 FILTER_RELEVANT_LABEL_COLUMNS: dict[str, frozenset[str]] = {
     "dim_product": frozenset({"product_name"}),
     "dim_geography": frozenset({"country_name", "country_iso3"}),
     "dim_market": frozenset({"market_name"}),
+    "dim_classification": frozenset({"phase_name", "phase_code"}),
+    "dim_scenario": frozenset({"scenario_name", "scenario_code"}),
+}
+
+DIM_LABEL_BACKFILL: dict[tuple[str, str], tuple[str, str]] = {
+    ("agg_food_security_monthly", "phase_name"): ("dim_classification", "phase_name"),
+    ("agg_food_security_monthly", "scenario_name"): ("dim_scenario", "scenario_name"),
 }
 
 
 def _is_filter_relevant_label_column(table_name: str, column_name: str) -> bool:
-    return column_name in FILTER_RELEVANT_LABEL_COLUMNS.get(table_name, frozenset())
+    if column_name in FILTER_RELEVANT_LABEL_COLUMNS.get(table_name, frozenset()):
+        return True
+    col_l = column_name.lower()
+    if col_l in MEASURE_DISCRIMINATOR_COLS or col_l in TIME_DIM_COLS:
+        return True
+    return col_l.endswith(HUMAN_LABEL_SUFFIXES)
+
+
+def _column_profile_mode(col: ColumnMeta, acf_desc: dict[str, str]) -> str:
+    """Return 'samples', 'stats', or 'omit' for YAML emission."""
+    if _is_complex_type(col.data_type):
+        return "stats"
+    col_l = col.column_name.lower()
+    dtype = col.data_type.upper()
+    role = str((acf_desc.get(col.column_name) or {}).get("role") or "")).lower()
+
+    if col_l.endswith(SURROGATE_SUFFIXES) and col_l not in TIME_DIM_COLS:
+        if col_l.endswith("_name") or col_l.endswith("_code"):
+            pass
+        elif role not in ("dim",):
+            return "stats"
+
+    if dtype in NUMERIC_TYPES:
+        if col_l in TIME_DIM_COLS:
+            return "samples"
+        if role == "measure" or any(col_l.endswith(s) for s in MEASURE_NUMERIC_SUFFIXES):
+            return "stats"
+        if col_l in MEASURE_DISCRIMINATOR_COLS:
+            return "samples"
+        return "stats"
+
+    if _is_filter_relevant_label_column(col.table_name, col.column_name):
+        return "samples"
+    return "stats"
+
+
+def _backfill_labels_from_dim(
+    client,
+    project: str,
+    dataset: str,
+    table_name: str,
+    column_name: str,
+    limit: int,
+) -> list[str]:
+    spec = DIM_LABEL_BACKFILL.get((table_name, column_name))
+    if not spec:
+        return []
+    dim_table, dim_col = spec
+    if not _safe_ident(dim_col):
+        return []
+    sql = f"""
+    SELECT CAST({dim_col} AS STRING) AS label_value, COUNT(*) AS row_count
+    FROM {_fq(project, dataset, dim_table)}
+    WHERE {dim_col} IS NOT NULL
+    GROUP BY 1
+    ORDER BY row_count DESC
+    LIMIT {limit}
+    """
+    try:
+        return [r.label_value for r in client.query(sql).result() if r.label_value]
+    except Exception:
+        return []
 
 # Preserved on regen (curated by patch_mart_yaml_semantics.py)
 CURATED_YAML_KEYS = frozenset(
@@ -263,20 +354,26 @@ def profile_column(
     dataset: str,
     col: ColumnMeta,
     profiled_at: str,
+    acf_desc: dict[str, str],
 ) -> ColumnProfile:
     distinct_count, null_count, total_rows = _column_stats(client, project, dataset, col)
     non_null = max(total_rows - null_count, 0)
-    use_labels = not _is_complex_type(col.data_type) and (
-        distinct_count <= MAX_LABELS
-        or _is_filter_relevant_label_column(col.table_name, col.column_name)
-    )
+    mode = _column_profile_mode(col, acf_desc)
+    sample_limit = MAX_FILTER_SAMPLES if mode == "samples" else MAX_LABELS
 
-    if use_labels:
-        raw_labels = _column_labels(client, project, dataset, col, MAX_LABELS)
+    if mode == "samples":
+        raw_labels = _column_labels(client, project, dataset, col, sample_limit)
+        if not raw_labels:
+            raw_labels = [
+                (label, 0)
+                for label in _backfill_labels_from_dim(
+                    client, project, dataset, col.table_name, col.column_name, sample_limit
+                )
+            ]
         label_rows: list[tuple[str, int, float | None]] = []
         labels: list[str] = []
         for label_value, count in raw_labels:
-            pct = (100.0 * count / non_null) if non_null else None
+            pct = (100.0 * count / non_null) if non_null and count else None
             label_rows.append((label_value, count, round(pct, 4) if pct is not None else None))
             labels.append(label_value)
         return ColumnProfile(
@@ -287,11 +384,11 @@ def profile_column(
             distinct_count=distinct_count,
             null_count=null_count,
             total_rows=total_rows,
-            is_truncated=distinct_count > MAX_LABELS,
-            labels=labels,
+            is_truncated=distinct_count > sample_limit,
+            labels=labels[:sample_limit],
             min_value=None,
             max_value=None,
-            label_rows=label_rows,
+            label_rows=label_rows[:sample_limit],
             profiled_at=profiled_at,
         )
 
@@ -560,7 +657,9 @@ def main() -> int:
         profiles: list[ColumnProfile] = []
         for col in columns:
             try:
-                profiles.append(profile_column(client, project, dataset, col, profiled_at))
+                profiles.append(
+                    profile_column(client, project, dataset, col, profiled_at, acf_desc)
+                )
             except Exception as exc:
                 print(f"  skip {col.column_name}: {exc}", file=sys.stderr)
                 continue

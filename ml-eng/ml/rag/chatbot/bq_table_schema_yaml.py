@@ -233,6 +233,7 @@ _MEASURE_SKIP_COLUMNS = frozenset(
         "area_code",
         "item_code",
         "objectid",
+        "record_count",
     }
 )
 
@@ -1363,8 +1364,20 @@ def compile_semantic_filter(
     time_start: str | None = None,
     time_end: str | None = None,
     country_labels: list[str] | None = None,
+    ontology_context: Any | None = None,
 ) -> SemanticFilterClause | None:
     """Compile one semantic facet filter (dictionary label + join routing)."""
+    pm = list(primary_measures) if primary_measures else []
+    mb = measure_blob_text or blob
+    if ontology_context is not None:
+        if not pm:
+            pm = list(getattr(ontology_context, "primary_measures", None) or [])
+        if not mb and getattr(ontology_context, "query", ""):
+            mb = measure_blob(
+                str(ontology_context.query),
+                primary_measures=pm or None,
+            )
+
     facet_l = str(facet or "").strip().lower()
     if facet_l == "product":
         sql, resolved = compile_product_filter_sql(
@@ -1382,18 +1395,17 @@ def compile_semantic_filter(
             labels=tuple(resolved),
         )
     if facet_l == "measure":
-        mb = measure_blob_text or blob
         filters = compile_measure_filters(
             table_id,
             measure_blob_text=mb,
-            primary_measures=primary_measures,
+            primary_measures=pm or None,
         )
         if not filters:
             return None
         sql = compile_measure_filter_sql(
             table_id,
             measure_blob_text=mb,
-            primary_measures=primary_measures,
+            primary_measures=pm or None,
         )
         return SemanticFilterClause(
             sql=sql,

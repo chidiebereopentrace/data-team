@@ -651,9 +651,10 @@ class BQRetriever(BaseRetriever):
         query: str | None = None,
         primary_measures: list[str] | None = None,
         geography: list[str] | None = None,
-        crop_required: bool = True,
-        geography_required: bool = True,
+        crop_required: bool | None = None,
+        geography_required: bool | None = None,
         sql_source: str = "",
+        decomposition: dict[str, Any] | None = None,
     ) -> tuple[str | None, str | None]:
         """
         Validate SQL, enforce table allowlist, dry-run, and optionally retry once.
@@ -687,6 +688,7 @@ class BQRetriever(BaseRetriever):
                 crop_required=crop_required,
                 geography_required=geography_required,
                 table_ids=selected_tables or None,
+                decomposition=decomposition,
             )
             if coherence_err:
                 return coherence_err
@@ -1256,6 +1258,7 @@ class BQRetriever(BaseRetriever):
                     crop_required=crop_required,
                     geography_required=geography_required,
                     sql_source=source,
+                    decomposition=decomp if isinstance(decomp, dict) else None,
                 )
                 if validated is None:
                     logger.warning(
@@ -1348,6 +1351,7 @@ class BQRetriever(BaseRetriever):
                             crop_required=crop_required,
                             geography_required=geography_required,
                             sql_source=source,
+                            decomposition=decomp if isinstance(decomp, dict) else None,
                         )
                         if revalidated:
                             try:

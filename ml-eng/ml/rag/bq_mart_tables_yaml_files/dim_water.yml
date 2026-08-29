@@ -16,24 +16,6 @@ columns:
 - name: description
   type: STRING
   description: description
-water_key_value_samples:
-- 0cb4f0893e2a7c355004c431ea69bd15
-- 8cd881ec4a68defc999ff75e5c4717de
-- 96bd3960883a44c2ad99720b0a6a8a47
-- 888cef3c3f89d41aacfa6af001d9fd91
-- d8c25b197559cd350c06b3ccccf06495
-- 2fe0a1ddf706eff200e23470a743be3e
-- c328b7e2721553adfde222ba15086418
-- 38725bcb340299230c9e4326ad6b5430
-water_source_value_samples:
-- PIPED_YARD
-- TANKER
-- PROTECTED_SPRING
-- PIPED_IN
-- BOREHOLE
-- RAINWATER
-- SURFACE_WATER
-- UNPROTECTED_WELL
 water_access_type_value_samples:
 - Piped (yard)
 - Tanker/Truck
@@ -43,12 +25,18 @@ water_access_type_value_samples:
 - Rainwater Collection
 - Surface Water
 - Unprotected Well
-description_value_samples:
-- Piped water to yard/plot
-- Water delivered by tanker or truck
-- Protected spring water source
-- Piped water directly into dwelling
-- Protected borehole or tubewell
-- Rainwater harvesting
-- River, lake, or pond water
-- Unprotected dug well
+water_key_value_stats:
+  distinct_count: 8
+  null_count: 0
+  is_truncated: false
+  patched: true
+water_source_value_stats:
+  distinct_count: 8
+  null_count: 0
+  is_truncated: false
+  patched: true
+description_value_stats:
+  distinct_count: 8
+  null_count: 0
+  is_truncated: false
+  patched: true

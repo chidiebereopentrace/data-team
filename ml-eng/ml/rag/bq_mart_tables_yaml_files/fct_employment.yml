@@ -88,67 +88,6 @@ employment_key_value_stats:
   is_truncated: true
   min_value: 00012feed7290516dbe0558d12815bcf
   max_value: ffff08f6bd12cffd9b3a4aec3d62cbd8
-geography_key_value_samples:
-- 3e162de530565ea7fd832dcf8d5d8e00
-- 869dbec7886b8171527c101f0aafa9d7
-- 514d63591d4d149773d80aac5c002246
-- dad3f956104596ff2fd5ccc98d2ac7c8
-- da5416d0b7eb15e076fd031e9a0b2e22
-- fafb8c280b3839e5bb2cf04e4982d459
-- fc36cac904ae8ed303bd472e14279601
-- b4f3325b4dff86fd532a100b328770a4
-- 629f6ee5a903f4bcce1aa6a327392f4a
-- 14cd64b93250222ef8109668740e33c9
-- 82dc51dcf101cb11ff4c3346a530efbc
-- caabf8e59e96c9806dd79ded964857de
-- 7f4e1c93fa0ec34f371db0ceafe3a203
-- e06752126ff796d0bfd12fb5a3f93e52
-- f14bb4203a7073edd04952936c354fca
-- 41a9071812831bd833b31a0015a7fc21
-- b93642c9546b0ad7c4b50b1edd34b641
-- ec7437dac6b677268f738803c348a944
-- d081c90ab6801ddb32bedd266ed0bc9e
-- 8a9d2f38657b41d1beee71987b789584
-- e2a7da7be69c9efab479954c7fc62683
-- bfcc5273fd7dce595c475531c8db844a
-- 73abae1655254baa0c8f2d1cdbf350da
-- ff2abe6b8f87b63b0a4d12a3dc2fb900
-- 6b6a33d1b12ec418b4d84ea86d5ee2f1
-- 643b7e5a6012349b12e2a7d8b9f9b12f
-- e1490c9d435658d25b0069edb3330168
-- 8fdd65bc015f999ef22a924baf8e4980
-- 414e80f7a6cec83f4a5fa1139fc707bf
-- d8e7902a1aab9ce87cb3a10af9e19e8e
-- 08d5d1fbcfbc008d33905868ea7a2dd7
-- 82533bcf1d2275baadeab94166482969
-- e36a49cf9440c0469a0b80d3dc94e83e
-- c7afa8e5dc75eaed3f865becb594623a
-- 42fc637e79bb98d1e905f28e55fca77a
-- 97b9d0ff0519f52da36b9897dbc109d8
-- f879de6d2aff3bb8e6336e65db2e4cb3
-- 896ec125e415d43f6917dafc7bdbe109
-- dd2eb23623d3cfe1d69e6d1ef080baa4
-- 8b2130007752cc4fd2bc50ce5f2ce31b
-- 8a6973d8ba686f5a6c7618896e9e9a6a
-- c3b34f1c114c01b1ac1f59b7cc1199a3
-- e2e7220258577b7bf5917652b1a0c882
-- 4873407b6dcd3d440b964ca0e6285ec2
-- 939117deefb921f24dcb765b8ae3027d
-- b9a6c3cfa0ba81a70106dd8e6007df4e
-- 8d2977ea05cfc771252b5dd2e3456353
-- 6258dc0299b2e5beaec7f3d0e69cd89f
-- 547d52a13b878d359e6e0e930b5fed18
-- 7f24cf6c5ae4ae2c13e4a3cd9da9563d
-- 96a41cc70b4b99b5b238b479e6274f4c
-- 6f8c5d76bea0a5e7b6408e80dd147dfc
-- f3d9c789cd0435e4115220ab2b98481f
-- f73b9fe995874638e36e5bd11f8866e4
-- 4d9142fd531731495f9f581296425df2
-- d185cda4a02671a4ed8ccd6509c1494a
-- cdb4c89696d45097587020d9c09861d9
-- 813e1dfd9941f45a5c4665d686c3ca61
-geo_level_value_samples:
-- country
 country_iso3_value_samples:
 - ZAF
 - EGY
@@ -208,84 +147,6 @@ country_iso3_value_samples:
 - SHN
 - MYT
 - SSD
-item_key_value_samples:
-- 82a753e3d428eeadeb4a7924c738b013
-element_key_value_samples:
-- 2063c1608d6e0baf80249c42e2be5804
-- 3327686e50c24afe75fd433bf8b0ba44
-- 032f2d7916221f7f16ff5434ec7a6fe4
-- 4add28e84724924da246a4756c46219d
-- 98b5282308369d9e1092fa4cfcd2560e
-- ca2c4ae7ddfba980b00320376ede3fed
-indicator_key_value_samples:
-- 0884c075ada640e0e1288e8e10495114
-- cb9742e45b1ce6bbbdf320097a77be35
-- f12ebf9adc12dc7d1cf8d41f1ec79517
-- 99f76d0bfbd8eb824f93597ae5246ae8
-- fead496d4772dc3abeaec2b76b098fcf
-- c1f749da5ff361e0f2e7c740cfe1f933
-- 88fa5b04ff14e3c44f9b03233e1a8ed5
-- fe9db8e4af203bd77e138a6b4fb7f2b7
-- 1af3c43e0f320e9510a162b4b1af124b
-- 1103194b75121e06aa7f3c179513fea7
-- 9a7c4f6f7b886d9492808d3113a70496
-- b0c33791ec6e42c691956bcda86d1df6
-- 15096c5b0980c5c5addcff36736f2740
-- 48f784679868a5a73c1fa337c21c82c6
-- c3f7d219e34a2e214d639f2d3337c293
-- 4d3bc56a6d4313b341430e19cc1c94c1
-- f485d97e8b9ea2b603b43a2a17a2eec5
-- 99987d82a35e498050778a3e6a32ca33
-- af24178c7413dbfad6c46f3ff3f204d7
-- d8f3b69e9e24442c2cb9140538f6edd1
-- ab2eab77a06c6e60aae5395867e9424e
-- 285c4d26897b0d09021ae1a0d5512fee
-- d10cbf940641afe3b455b757ee2db6a0
-- fdf9d47d35505c2b36d18d5d9c56aa2e
-- 1247bb8703dd8364278499030f93b59d
-- 4f0b66afb72dc162d379c86abd68608d
-- 22326c03701fb04115a9ad55ca43b0de
-- a16c18577a86940bd3a300bb869f4d10
-- 27ecb6a4f0d69d9b966b275ace6ef51e
-- 9db2ec2ccdcf2d74e43d2fe580c1f758
-- 6c6a04f352a0d1f7db44d51d95e59ec4
-- e6a78e574a72eebd3672f1178f13f9fe
-- 93cdd6f92d464d2d49beb7c79b556418
-- 04a249113c3726d9e37ee1114cc9bd22
-- 0728b52da42498dcba1c6762d94f4671
-- f6a611176a9c6d80aac8f5b06bbd98a4
-- f1f3d642c3fc2cab8dd6b17dffa5d9ba
-- befa1d475cbabb7b8dd7a82d838be515
-- b008e72b6c3fb5821ef18c3d2b9fa3e1
-- 276c352d7faa44345466d9d7667108fc
-- 12719521aec275b7a05bb30c27b69247
-- e606a9945b671cf2e342db258087fcbb
-- ee4a1d3c08786f7fe785d977e045bac5
-- bbb49e06857cb0cfdf69feb64ffbb5a6
-- bddbee7e9356e8d0345ea877caf73ffe
-- 9b9f931f14e6e7bc7119ea279cfa13fa
-- 77450da78c6baf6b01fdf6f92d9bf2e1
-- 9a3ae5b6cac1219c4f70a23ae5e75856
-- c2f17c322a3f35a643cce2819b403ee7
-- c52c93896fc7c86aa1ba2e61d43c90c4
-- 2d3816c34134c1cfe897f6f459c318a6
-- 8d6fab5d79cb71474b6d48dbd017b9ad
-- 1059c062f8b142219dc36db88e26bf2e
-sex_key_value_samples:
-- unknown
-- total
-- female
-- male
-source_key_value_samples:
-- 8b5d43617dfafffd9dbed887f0b4c113
-- 4dc1c2f09fdcdffe032efbb5f7c973cf
-- ed037e23bea4433dcb0c68bf50b30e14
-tier_value_samples:
-- '1'
-data_level_value_samples:
-- national
-geo_scope_value_samples:
-- national
 metric_value_samples:
 - total_population_-_female
 - total_population_-_male
@@ -345,10 +206,6 @@ metric_value_samples:
 - share_of_employment_in_crop_and_animal_production,_hunting_and_related_service_activities
 - share_of_employment_in_forestry_and_logging
 - share_of_employment_by_status_of_employment,_workers_not_classified,_rural_areas
-source_id_value_samples:
-- 8b5d43617dfafffd9dbed887f0b4c113
-- 4dc1c2f09fdcdffe032efbb5f7c973cf
-- ed037e23bea4433dcb0c68bf50b30e14
 indicator_value_samples:
 - Share of employment in agriculture in total employment - ILO Modelled Estimates
 - Employment in agriculture - ILO modelled estimates
@@ -403,10 +260,6 @@ indicator_value_samples:
 - Share of employment in crop and animal production, hunting and related service activities
 - Share of employment in forestry and logging
 - Share of employment by status of employment, workers not classified, rural areas
-sex_value_samples:
-- Total
-- Female
-- Male
 year_value_samples:
 - '2019'
 - '2022'
@@ -559,312 +412,6 @@ year_value_samples:
 - '2054'
 - '2081'
 - '2086'
-date_key_value_samples:
-- '20190101'
-- '20220101'
-- '20170101'
-- '20140101'
-- '20210101'
-- '20110101'
-- '20120101'
-- '20150101'
-- '20180101'
-- '20130101'
-- '20160101'
-- '20200101'
-- '20100101'
-- '20230101'
-- '20090101'
-- '20060101'
-- '20080101'
-- '20050101'
-- '20040101'
-- '20010101'
-- '20070101'
-- '20020101'
-- '20000101'
-- '20030101'
-- '19990101'
-- '19960101'
-- '19940101'
-- '19910101'
-- '19980101'
-- '19950101'
-- '19930101'
-- '19970101'
-- '19920101'
-- '20240101'
-- '19900101'
-- '19830101'
-- '19890101'
-- '19860101'
-- '19850101'
-- '19840101'
-- '19870101'
-- '19820101'
-- '19780101'
-- '19790101'
-- '19770101'
-- '19880101'
-- '19810101'
-- '19800101'
-- '19750101'
-- '19760101'
-- '19740101'
-- '19730101'
-- '19720101'
-- '19710101'
-- '19700101'
-- '20380101'
-- '20330101'
-- '20400101'
-- '20270101'
-- '20350101'
-- '20410101'
-- '20420101'
-- '20390101'
-- '20320101'
-- '20250101'
-- '20500101'
-- '20260101'
-- '20340101'
-- '20460101'
-- '20290101'
-- '20310101'
-- '20300101'
-- '20480101'
-- '20360101'
-- '20370101'
-- '20470101'
-- '20450101'
-- '20440101'
-- '20490101'
-- '20280101'
-- '20430101'
-- '19520101'
-- '19600101'
-- '19550101'
-- '19650101'
-- '19510101'
-- '19590101'
-- '19620101'
-- '19530101'
-- '19570101'
-- '19630101'
-- '19610101'
-- '19540101'
-- '19670101'
-- '19640101'
-- '19690101'
-- '19660101'
-- '19500101'
-- '19580101'
-- '19560101'
-- '19680101'
-- '20680101'
-- '20570101'
-- '20530101'
-- '20600101'
-- '20580101'
-- '20920101'
-- '20830101'
-- '20700101'
-- '20840101'
-- '20660101'
-- '20960101'
-- '20780101'
-- '20690101'
-- '20750101'
-- '20560101'
-- '20810101'
-- '20520101'
-- '20880101'
-- '20610101'
-- '20720101'
-- '20820101'
-- '21000101'
-- '20630101'
-- '20900101'
-- '20870101'
-- '20760101'
-- '20770101'
-- '20980101'
-- '20550101'
-- '20540101'
-- '20930101'
-- '20970101'
-- '20990101'
-- '20910101'
-- '20650101'
-- '20800101'
-- '20710101'
-- '20670101'
-- '20730101'
-- '20890101'
-- '20510101'
-- '20740101'
-- '20790101'
-- '20640101'
-- '20940101'
-- '20860101'
-- '20590101'
-- '20620101'
-- '20850101'
-- '20950101'
-as_of_date_value_samples:
-- '2019-12-31'
-- '2022-12-31'
-- '2017-12-31'
-- '2014-12-31'
-- '2021-12-31'
-- '2011-12-31'
-- '2012-12-31'
-- '2015-12-31'
-- '2018-12-31'
-- '2013-12-31'
-- '2016-12-31'
-- '2020-12-31'
-- '2010-12-31'
-- '2023-12-31'
-- '2009-12-31'
-- '2006-12-31'
-- '2008-12-31'
-- '2005-12-31'
-- '2004-12-31'
-- '2001-12-31'
-- '2007-12-31'
-- '2002-12-31'
-- '2000-12-31'
-- '2003-12-31'
-- '1999-12-31'
-- '1996-12-31'
-- '1994-12-31'
-- '1991-12-31'
-- '1998-12-31'
-- '1995-12-31'
-- '1993-12-31'
-- '1997-12-31'
-- '1992-12-31'
-- '2024-12-31'
-- '1990-12-31'
-- '1983-12-31'
-- '1989-12-31'
-- '1986-12-31'
-- '1985-12-31'
-- '1984-12-31'
-- '1987-12-31'
-- '1982-12-31'
-- '1978-12-31'
-- '1977-12-31'
-- '1979-12-31'
-- '1988-12-31'
-- '1980-12-31'
-- '1981-12-31'
-- '1974-12-31'
-- '1975-12-31'
-- '1976-12-31'
-- '1973-12-31'
-- '1972-12-31'
-- '1971-12-31'
-- '1970-12-31'
-- '2029-12-31'
-- '2028-12-31'
-- '2050-12-31'
-- '2039-12-31'
-- '2031-12-31'
-- '2035-12-31'
-- '2045-12-31'
-- '2034-12-31'
-- '2025-12-31'
-- '2043-12-31'
-- '2038-12-31'
-- '2044-12-31'
-- '2026-12-31'
-- '2042-12-31'
-- '2047-12-31'
-- '2033-12-31'
-- '2037-12-31'
-- '2036-12-31'
-- '2048-12-31'
-- '2040-12-31'
-- '2027-12-31'
-- '2049-12-31'
-- '2030-12-31'
-- '2032-12-31'
-- '2046-12-31'
-- '2041-12-31'
-- '1964-12-31'
-- '1967-12-31'
-- '1958-12-31'
-- '1957-12-31'
-- '1968-12-31'
-- '1961-12-31'
-- '1956-12-31'
-- '1955-12-31'
-- '1962-12-31'
-- '1954-12-31'
-- '1969-12-31'
-- '1952-12-31'
-- '1963-12-31'
-- '1959-12-31'
-- '1965-12-31'
-- '1960-12-31'
-- '1953-12-31'
-- '1951-12-31'
-- '1950-12-31'
-- '1966-12-31'
-- '2067-12-31'
-- '2057-12-31'
-- '2059-12-31'
-- '2085-12-31'
-- '2083-12-31'
-- '2070-12-31'
-- '2078-12-31'
-- '2094-12-31'
-- '2060-12-31'
-- '2084-12-31'
-- '2088-12-31'
-- '2065-12-31'
-- '2073-12-31'
-- '2093-12-31'
-- '2091-12-31'
-- '2066-12-31'
-- '2052-12-31'
-- '2092-12-31'
-- '2087-12-31'
-- '2089-12-31'
-- '2058-12-31'
-- '2086-12-31'
-- '2064-12-31'
-- '2063-12-31'
-- '2053-12-31'
-- '2074-12-31'
-- '2098-12-31'
-- '2096-12-31'
-- '2062-12-31'
-- '2097-12-31'
-- '2076-12-31'
-- '2080-12-31'
-- '2069-12-31'
-- '2077-12-31'
-- '2082-12-31'
-- '2072-12-31'
-- '2075-12-31'
-- '2090-12-31'
-- '2068-12-31'
-- '2055-12-31'
-- '2095-12-31'
-- '2056-12-31'
-- '2100-12-31'
-- '2081-12-31'
-- '2051-12-31'
-- '2099-12-31'
-- '2061-12-31'
-- '2079-12-31'
-- '2054-12-31'
-- '2071-12-31'
-as_of_date_basis_value_samples:
-- observation
 unit_value_samples:
 - 1000 No
 - '%'
@@ -876,12 +423,6 @@ value_value_stats:
   is_truncated: true
   min_value: '0'
   max_value: '476747.781'
-source_natural_key_value_samples:
-- Unpivoted_FAOstat_africa_Population_and_Employment_Annual_population
-- Unpivoted_FAOstat_africa_Population_and_Employment_Employment_Indicators_Employment_Indicators_Agriculture_and_agrifood_systems
-- Unpivoted_FAOstat_africa_Population_and_Employment_Employment_Indicators_Employment_Indicators_Rural
-loaded_at_value_samples:
-- '2026-08-26 01:15:23.157492+00'
 indicator_classes:
 - EL
 - GYI
@@ -899,3 +440,88 @@ semantic_role:
   - employment
   - EL
   - GYI
+geography_key_value_stats:
+  distinct_count: 58
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+item_key_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+element_key_value_stats:
+  distinct_count: 6
+  null_count: 0
+  is_truncated: false
+  patched: true
+indicator_key_value_stats:
+  distinct_count: 53
+  null_count: 0
+  is_truncated: false
+  patched: true
+sex_key_value_stats:
+  distinct_count: 4
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_key_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+data_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_scope_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_id_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+sex_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+date_key_value_stats:
+  distinct_count: 151
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_value_stats:
+  distinct_count: 151
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_basis_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 3
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

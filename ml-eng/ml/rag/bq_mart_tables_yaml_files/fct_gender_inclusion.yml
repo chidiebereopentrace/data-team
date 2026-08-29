@@ -82,68 +82,6 @@ gender_inclusion_key_value_stats:
   is_truncated: true
   min_value: 00005a649e5cced86f66a9cf1f4ab58b
   max_value: ffffc656c9ffbbb44de5db176e792801
-geography_key_value_samples:
-- 3e162de530565ea7fd832dcf8d5d8e00
-- 514d63591d4d149773d80aac5c002246
-- dd2eb23623d3cfe1d69e6d1ef080baa4
-- 82dc51dcf101cb11ff4c3346a530efbc
-- 629f6ee5a903f4bcce1aa6a327392f4a
-- 73abae1655254baa0c8f2d1cdbf350da
-- f14bb4203a7073edd04952936c354fca
-- 869dbec7886b8171527c101f0aafa9d7
-- 7f4e1c93fa0ec34f371db0ceafe3a203
-- 8b2130007752cc4fd2bc50ce5f2ce31b
-- 97b9d0ff0519f52da36b9897dbc109d8
-- 896ec125e415d43f6917dafc7bdbe109
-- 939117deefb921f24dcb765b8ae3027d
-- c7afa8e5dc75eaed3f865becb594623a
-- b93642c9546b0ad7c4b50b1edd34b641
-- c3b34f1c114c01b1ac1f59b7cc1199a3
-- d081c90ab6801ddb32bedd266ed0bc9e
-- e06752126ff796d0bfd12fb5a3f93e52
-- fafb8c280b3839e5bb2cf04e4982d459
-- fc36cac904ae8ed303bd472e14279601
-- bfcc5273fd7dce595c475531c8db844a
-- 41a9071812831bd833b31a0015a7fc21
-- 643b7e5a6012349b12e2a7d8b9f9b12f
-- 14cd64b93250222ef8109668740e33c9
-- 8a9d2f38657b41d1beee71987b789584
-- e2a7da7be69c9efab479954c7fc62683
-- 6f8c5d76bea0a5e7b6408e80dd147dfc
-- ec7437dac6b677268f738803c348a944
-- d8e7902a1aab9ce87cb3a10af9e19e8e
-- da5416d0b7eb15e076fd031e9a0b2e22
-- dad3f956104596ff2fd5ccc98d2ac7c8
-- ff2abe6b8f87b63b0a4d12a3dc2fb900
-- 82533bcf1d2275baadeab94166482969
-- f879de6d2aff3bb8e6336e65db2e4cb3
-- 42fc637e79bb98d1e905f28e55fca77a
-- 8fdd65bc015f999ef22a924baf8e4980
-- e1490c9d435658d25b0069edb3330168
-- e36a49cf9440c0469a0b80d3dc94e83e
-- b4f3325b4dff86fd532a100b328770a4
-- caabf8e59e96c9806dd79ded964857de
-- 8a6973d8ba686f5a6c7618896e9e9a6a
-- 4873407b6dcd3d440b964ca0e6285ec2
-- 547d52a13b878d359e6e0e930b5fed18
-- b9a6c3cfa0ba81a70106dd8e6007df4e
-- 6258dc0299b2e5beaec7f3d0e69cd89f
-- 813e1dfd9941f45a5c4665d686c3ca61
-- 08d5d1fbcfbc008d33905868ea7a2dd7
-- 7f24cf6c5ae4ae2c13e4a3cd9da9563d
-- 6b6a33d1b12ec418b4d84ea86d5ee2f1
-- 4d9142fd531731495f9f581296425df2
-- 414e80f7a6cec83f4a5fa1139fc707bf
-- 96a41cc70b4b99b5b238b479e6274f4c
-- f73b9fe995874638e36e5bd11f8866e4
-- e2e7220258577b7bf5917652b1a0c882
-- 8d2977ea05cfc771252b5dd2e3456353
-- d185cda4a02671a4ed8ccd6509c1494a
-- cdb4c89696d45097587020d9c09861d9
-- f3d9c789cd0435e4115220ab2b98481f
-- 0a0441b57f37ba6fcab0014f30073fe0
-geo_level_value_samples:
-- country
 country_iso3_value_samples:
 - ZAF
 - TUN
@@ -204,335 +142,6 @@ country_iso3_value_samples:
 - MYT
 - ESH
 - ATF
-item_key_value_samples:
-- 3b9c01e7bbe6f45f289c8e1e1c04a9b2
-- 5e804129cf05c723efd3e486a3454a8e
-- 5e0eaad753802d57f0132ea35ee72cba
-- 38831bbdf83107918a1cc40c39617834
-- 1fc29679c1f2ff874095c519f77468cd
-- a66ccb0b1a03f4cc600f08460fe328bd
-- 527c2a95a47c94fefa4d20072a04a1ae
-- 49e42d8f738d9e08173e083508c6f8ab
-- 50601630c2a1aef66d4754b1d5987244
-- d4715155cd68930e6c4477c8dc64fdf4
-- d84e4cc4ff171fe759c224012317e1a9
-- 843711cbe6604de9662867f0e88ad48f
-- c3d34f3b7c96fea4060cc96b7b55d46e
-- debe1ab834e05fec626c318dfee340ad
-- 7086da571172b8c242d367cba21563cf
-- 51b4094273868959a853292d74fa2de8
-- 7e98b10c6aa799673dddececd1af098c
-- c080ccca8a3ffb8a0839499e6b56b55b
-- 3efe2776dfeaaddc5b2ffd1c20cd5fb3
-- a9754de5c47373788759c1cc6c1a2f26
-- 6906d54ee70f2105e106f70426955cc5
-- d81b2fbe93a62e7384015a5d6cec07fb
-- 1f51e0c5df169f5d19e5741a0261e007
-- a3b52ecdf356679f4f9676a510b2471e
-- 71efae1ce10d299515d576292ea5afe5
-- 9cabb89cbf4bb09469a47903695304a5
-- d7422a64b03b39f34738d92e46f75c72
-- b5b1aaa131555d902d99974d4b23272e
-- a6053318b7d1dbd4a7576b297d424127
-- bfbdeacb00295048f273f75725aac0db
-- 8ed15a8cc2f9c1c5b0df5544f97cac77
-- 10e900a8d0cd2e376a8cabc7402ff327
-- 492baa2a0470f7c356a98eb8b7c1eb8d
-- 8073c3cef6964f100724fa2a6a5028de
-- 948aecc1c7832c17f89b3460068826a9
-- e522366259a9378c660492c93a07ee42
-- f656867e5a6119741d7ecb01b8a2d79a
-- 2c2481f448e484baf8a964f7ec97edaa
-- a826d1c821a0c1de13550b861694d7df
-- 47f84f42eb6468cadee1c7c1a4e51619
-- 6117dafc20711e4d8462efb24d15baf0
-- c8e60acf8607e960df169f61e3cf5bc2
-- bcfa0572c2037d86cf267d6ff97d0a18
-- 9d551389773d81e3a1921677efe0e033
-- cca7c357f31df9ff61a2982614c9cc20
-- 166ae8824ffaa6b7d984ea09fde2e28d
-- e512958fa71324cf9b9d7d054f7c958e
-- ddb5221e79d7a4ccb4b823856261a300
-- 77b412677bd36f9642dfda5242b56366
-- f94e2fe6b512e2c157be454136b451d7
-- c2d0c216adc6566df76a9b999fc3f6c3
-- 0e7fc0c84f8626bbf35a4216d4d0558a
-- f1494dc3ba13f56d98fb5b463868d556
-- e126c8f46c9f05f115de10781b73b365
-- eba22fe244c9eb4bb0fa544cc5d7ce07
-- cd08ed74d6f8f62a83afb93e0b1e98b2
-- b6a9fc47f6d8047775de8e0dc93e5ad1
-- e945dde4398fc51fb322eede5fe7f756
-- abfcaa5201bdcc6fd45fc135222c43d9
-- 913662a88d38497c7fc3e02cb04980e1
-- 74702e812133454181cbb5f15203aab9
-- 9dbd364459ddaeb5f3e146a6133b2163
-- 490bf7515502d79d84b1ba42d02a9894
-- 2efc3f91adc87ea51619f487b7292a71
-- 14517b4e4a41aae2eff395d205f06aef
-- 1e6bfb222c39b6f260cca07bc11e8719
-- 2bdb368d5630221fc8c91be0c6bec13e
-- 156ba490f84108ad44a8612b8f51751a
-- 10d24d34c7182830f03db5e37a941c3c
-- 86baf92e056606c287d91154c98cac71
-- 38e8a1a6a8989282fb3b6b14d226963e
-- 69461765cea6fbcf8b51d03c13c34217
-- 12e55a6dd25fd52be2507924ea19790e
-- 178dc60d12582086e4b38d28cbcc21e8
-- 1e7092261e5a737386ef87c6713e68a9
-- 33be99b97ebccc5e271b35280ce615c1
-- 75e939ca957024fdea5941e272ddefe3
-- 3faed1debaee05d31e6021b4c15e9390
-- 7615bfa2734e8cdebf2d1d7c79cdb31f
-- 5b4aa15d2ce71b1d4612eab308eed70f
-- 701fbfb26da715372f149f1c76ff604c
-- 0e1891a4f6cea7934bf817ed9638158e
-- 7768b2b758130ba31049a4db4cf295de
-- 203bd2355f33612b78d35557e5134d62
-- 3828b3115c2941a5de2f8fbbf9f3c0b4
-- 7fb8a69c2af9c57a9a3316cdd77a688e
-- 6aa36f68162857e89a2c6433f7c90f35
-- aa22173975509b33a52990346210da8c
-- b2715fd543abc6e9f6e9f9996608c969
-- 71e07efe662b31b68d73b23a7781dcc2
-- f68c77219c0225ee09ef71f537081606
-- c7f14480617646be07d5637a0feea909
-- e5948a7e33318edf484d5fd33795df4d
-- d92a4ef0b8f01418074a1f1835ea0f45
-- d9de820d298defb2ca00a524ee1f3316
-- 8a45b42b60b1e69fb88eb5fbfd8e4239
-- c71dc94803aeddcd2f94c566d5859b11
-- 682486b093e34df590bad452894b19bf
-- 472c1f9d7ae80769c2b72e9c7563d0d5
-- 10a2976ff36c28cb30fa021a9803ac7b
-- 6482877c44bee27b2d060e951bd07210
-- ad191544dee825f3ffcb7ee6d8d5bca5
-- bb78416e2cc80e014ec307c0a192da70
-- c30f154a78fd284b2d7c007d2f9c62cd
-- d9413ff404afc29fdd3d545413065566
-- fc9976b059dfd23956772f34f7644503
-- c403473b7caca597f1574dc79d9bf1e8
-- b970f6b84aeff8d6204cd67046569126
-- b2f989bfd39ac6da838cdf4e78f84208
-- 43c10b5532da22ad74818a1e851fcd0f
-- 11620736ed0f251ef425ab6b28cd1456
-- 0ecbaefaebc443412bbe21d67418f189
-- 9e248025eaadbd49747133d7d97ab7f1
-- 552a79ee1e220fedcc312e8384a3ec03
-- 45429ff057efdbf5642fa8f568dd1def
-- 3071ac51e99c0cf62e98c4451761f06f
-- 6485a685407540658fd81a38d20ec2e8
-- c2e4ece800a208b4a88d1920ca2a8b8e
-- 6b627ad28e0693c680f3045f044a9ee5
-- a36900e78c7c4760b4f34192010b0ec4
-- 87bbbd0ac53ea6a85982556d6a65be22
-- 4fbec2032524bf158e644f0931b9e0be
-- cfea87d44b08e9ba29d074be2c304c83
-- ef6640451dafca6e1553b01a1701822e
-- 7bfe68d644a5e5ab112acfe5bc862f89
-- ef1204595c169538f9514e60290fa6a2
-- d60309b5d1763f49d8462bbca1a53e72
-- f9c8cf230b6f9f20f67caa533ce70989
-- 178b93fc2e6e0a5b74deecc22bd890bc
-- 8f9f2a429b65c86f90f10162acdb2db4
-- fdfa5f8d9c3c4176964ed93e1efb5cdb
-- 560d43226793e9f8fb73e791ce062fc2
-- dc472f562f4697e42701f5883d9d3356
-- 053f3bf4fe6b67ec50c62f114049ac56
-- 5f01b96a24e6cc1996046e5a98375fb2
-- e798de4dc2d9926ad464d8982ec0a548
-- b445d0d236e0650507c09f13585cef15
-- a00418fbd21e196b7a7a80b962b492f4
-- 597d3451b3548329d9465dac4b4091fe
-- 6426969583afdd6cfe0552f82c38d254
-- 608f1dfb2246fe822feffaa949b1ed2f
-- 8a86141369e623b62ad18aab1e80c26e
-- 9b2fa1d331b3dba054ea349a2b115a4d
-- e5de0fdf087a308a5aedf5f779867190
-- 9f84ae057e4dca913873363d1d648e4e
-- a24a8f1580acda1b3b53199eb54267a2
-- 5db4930048c4c97a645bd4d97e8465ae
-- c5c2ce32fb90a723ea910a9ad0da972c
-- 33c4f8f09a90c26b0d37e2ebc76af7f3
-- 2624532668fc4fc2d8ccfadac19c3cb7
-- d7c1f810a206268f9bd1c826f47ee89e
-- 96f26ad4b9f1ed9c512d5944dc40d558
-- 4793751b11a4b782aa3ed6ee6d21a8ab
-- c24a66c1dbac11cdbf4bbad96610caa6
-- c4e7ebc6ab78e5273e22f4d56cd4613e
-- 064fb3bd95498408fc7974a94ae91d50
-- 6f27c2da7cfeeaab9d0917a9ceda7a92
-- 59adfda4b1c74845dbc6cad21ce21536
-- 51cdf13532bc212e6e72aba9b0da9d7b
-- 96dbf366d450487915069ff31ff9e6ff
-- 8a0db30d38f45a467a83839d31f88ca2
-- 7269b289a31ef1adadffdb15cc7b40af
-- d915141a08898767f00c96742a8da20d
-- 5cea66f2869e6e885dde2fb8d9b1d0ef
-- 32ff1282de0497de2dc62a441b8abd45
-- e848008a14d1e5bf4ff56017cdfc5ef8
-- 25dd4b480ca245dfd8189029d7117bde
-- 2f2174cf3ba9d7eecb16694056f345fe
-- 7c0c60bf6e857ede5c5fac5a06cdd42c
-- 8dbcaf3ea1199627ee92f025079f5ae3
-- 7dbf10bf0ab76fcd24d109cd01ae6d78
-- ad3b26a07f11ef1cd1ff5cc11c1b85bb
-- 7e0ccfe686fdc7d0b02cd39aaf51466b
-- f354c7693b4f039b322d9b0277735f10
-- 275bd1808425e8d1f531cf0921e58bd0
-- b2c54a07bd271869fa4f654ab9df8a6a
-- 97ce78775ba118a2df7a41c16d542e76
-- 95d770f27e5baca823b7d2dc545b741b
-- ea850f093e827d2773a06f61e146333f
-- e3cb5b5b65de98b0ba8c9a27068066f7
-- d20260862572ec906ee486c0c14b7ee8
-- cf646d16870d77584d92edca4c2eaf14
-- aab10f08afd243bb82ef48ed50cc7015
-- 94e0a81c9a83ec00638017cd14c77a93
-- 5fe41df9e1b9a22bb0d3440174695e86
-- 3779f25672c62ab5c2379b27470a53ae
-- 066dca839e644bc950ef693c981bad0b
-- dd6c9976b83dc614847975db9084ccc3
-- 9e7ffefd40ed03d7f629aa1147a481d5
-- 677be71c494588727c72f09b3a2186fe
-- 5b989099ec364bc211a5b5bb70896daa
-- 19d38ac098e63231af72cc8e9c539504
-- 54368fe66cb857c8c2eb9fd3488beeff
-- 402f74eb7771e3f1e25570a1e522b350
-- d097cd01f384472a11de05894b313b13
-- 3c70e632a76d542dff12e0a1da57446d
-- a10d49c3a598aa83e6e480a76038408e
-- 079a28add1e8ef4bfffa35a40bae8bed
-- db2ecd24c9ef70d1195456475a1fe674
-- 5cbfa929e47f073eb4b06fce7acbc9ee
-- 8b1cafab16e74c2fc9bc9b3629290fb2
-- 099b1bbf36f2b94b549415c50761f6f1
-- 54def1ed279e4b66c5cdbd54c2ad0fe8
-- 38b139b618e1a35897b3cf18e0372f39
-- 0442e3748a1ff5f6a45117cecd9e8783
-- 9dd1645ad36da7a5cf01cb72d814b52f
-- 04ef90627950bd6b6a6ac8efc7415002
-- 253b1a3da6528f53ec2ad4e6246d8979
-- 7a64b7c5cc4e233799994cb87ef53591
-- e28c038d7723157628e2a82cf9c93dfd
-- f4b61b0781228a7f1279b32b1f590da7
-- a89444504c487711150ec2248cdfa2b5
-- 952d59672269fc77913464321e0f3cb2
-- 8e271e3e1cbba31222d8238c3a4652fd
-- e60a05482d9b50eda0831d2b6416c060
-- 9f75d3262a33d4e52376c8a2ec7760a5
-- e62749f4409e6bd5175a7e16006ad6db
-- f5e972f94becdc3d2c36532d389143d1
-- 8e4d8ab0090cc8b5b59d28be26740cd9
-- c83960f3d345925b22045207e95dec15
-- c075310c610c0b44c87400f1939ccae1
-- e7d74a3d2e0393d30449a2e23b59a13b
-- 2948e1362826cdeebdf9cf98f0e182c8
-- 793941a5ffb4372e5e895be9fccde207
-- 2e4b19b7e55995fabafa9260a22b587d
-- 100e0acfb337b3b442367254bba92b3c
-- 2ebff4a2b3e9f0080e06ced8cd2475ca
-- 605b4b2dbd8973c923a2ddcafe97c8e7
-- fa2de408ad66bf976532c3b3a8e2bf0c
-- 06e0928142cba6f0741a9d3045d80441
-- 7d7f1ce789bca75977dd1102d1446010
-- 9692a9197fe6646cf45614317ba7782d
-- 15db7fd0567980b84858b1ad3bde89c8
-- d57b0264534fdaefb90cf52e5a271c82
-- fd26438da2a8d86f2c76b7dec450bb9f
-- 6b5cea66f46a60776d704672770bf28b
-- 6e94ed0ef985bcf233d865fa578d7349
-- 265a56187e3f8c69e46f70719fd76ea7
-- 168bb94854c5ec7888343d6cbcbf0923
-- b8df01b744b519fd5a25115075d4880b
-- c249100a09b6342fb60266d24fb0123d
-- 3fbb641320f335248fee8f62fe1f2c10
-- 49b6b7f25d761b453cf869f57d7a838b
-- 8970ab3c3d5c27033d3e939470580f44
-- b04bd8c44a0a14cebd7960535ae3af9a
-- d551685b48e2eac25af1329fb6f2098a
-- e737a3b7a1a3a7f9ea1e0340f432ab12
-- 443c5bb6c0280a86f8e4855858caa2e6
-- 00edc6f94ad95269401c6aa652919c33
-- f67a66c9c3df7815afdf3a2c26ebbfe7
-- 3119c01d5dfbc56999c45ed7c6a331e2
-- 6e60a8e56d00b0445223b4da1dc1132c
-- 9d190440f1ceaeac304a8aa563f4dfa5
-- 1518f73b0f23415fd245089aef0f5a45
-- e3d3f981c7c55b436ca8df01a95c7b90
-- 930c9b55c40d2c429be8d2f06c6f8feb
-- 95b7de2653d7c5c8037fd5bf7a00fe60
-- 18133334549643dd2c90cc7eeec1fbdd
-- 183bf2e5290a591f58b15c87cd6a3465
-- 7e0fb43cf408c4e8ea73f38eb61e323a
-- 37211029d3a9bfeb930e098e57be4abd
-- 66622090c96c4f3421f08c504175fb05
-- 72b8b7d728d793697302ea09ed2a0e2f
-- 734e1e997bdc9083fedf9c18409b97ed
-- 2e7239c503cad382a771acf71d9d65bf
-- afc59b75f8211ba89c14d8df14cb1cd9
-- a48801a4c51b8e22728c061645663b98
-- c5fbac5082ef02ecd20ee019bb8aeb81
-- d6863569f7b8fe7d315d4ace3dd853bd
-- 9eef29ebd916fdbc4e096efa559957af
-- 5c975144eb2f19e0875dccf7c19a1dda
-- 6f37a2399048ac4d8710e613ab830aa8
-- 5d14e7b2696469d008c85f1ce3746e29
-- fcf9bd349554da631ce794adec85af0f
-- 6f546bd0799475421e07b3f146d6ef43
-- 4837ae63baf3b2a8c5cc009ae4f105fb
-- edb0c41b608ec42e493565cf895e88c8
-- 9b62fe14ccc6aafcc94f285610721052
-- cf8b1121ea2dab6a637e037a2b4fd678
-- a7945437b55712b3034756bd3b92d52d
-- df5a27442c20c6732b5e37da865ad372
-- e7487fe3f168e2aa0e99ad820abd4ef1
-- eb55c6656bbb7b946b7272553473b587
-- 75474901a31f86cc91e92aea98526a1a
-- 5442ae36a7cd9b2a1bcf79b90bde4367
-- 584b26b124762a3b18e24f816ff64418
-- 8a427525135ceab098baeeb6b987bff3
-- 7c4ae3b58fe7ace82f209dc7f5f217c3
-- 512e6451bab3aae48a13c60289fdeb57
-- b196cecf435125738b88bf465db8b3e1
-- 1fb339b765927e8ac75e32dda4a88e62
-- d8705c48670b93026ce9057cf8d74377
-- 3ccb5ef0ba86aeb8ff52f0765efb7f90
-- 9b6bf6cd9d0038846b32e6081c824d30
-- 5084fa2c54db50aa0a7de64f9597ea7c
-- 4cf66d219dfa90918d1b16d9e62d1e9a
-element_key_value_samples:
-- 2063c1608d6e0baf80249c42e2be5804
-- 24e0971d6cbcd312fa1bdefebeb88c07
-- 7386b3f0615feacd177be12e140d6baf
-- b1bc248a7ff2b2e95569f56de68615df
-- 540c0bff0e4840ddcf2620ab1ce8b360
-- f99f8c63b39b436749944ee66ac9edd1
-- d21bb3f5a82774669b6333f6e5a53902
-- 77c8b0d82eb47d2dbe362f97ff0840fe
-- 15ea8f83f394361f7c2e6b3fe54016ac
-- e61cbeeadae45b82324e4bbcdf3e9493
-- 4b82677b6c1408df4be21ada9a584fde
-- e4e8d532b56e6345ebf0956306c3ccbf
-- 33dfcb2359d7a7d8136d4709f84e2679
-- 97ef3982bbd7b1eb1c1cf298b1e04ebc
-- 5169b2c7a41098c43897e86892a039ae
-- f996f4c8459a99e6628eba9a61bf9101
-- 346bf528cd7e3547d23b35a99f0a2cbd
-- 8631f1c401aba0577f2b33dacf7f6bb0
-- d42418c41efb684a2c35f9b3ff595d6d
-- a06c85b4c4e66981af3ededeeea30e95
-source_key_value_samples:
-- 9c70c13707442864b21874ed3328f4b2
-- 69abf20497bd6241fe31ab99041702f7
-- ea735f8be982dca3e48d4d20911893f8
-- 899f0cb4035b6ae66162be3803c0efbb
-tier_value_samples:
-- '1'
-data_level_value_samples:
-- national
-geo_scope_value_samples:
-- national
 metric_value_samples:
 - ''
 - wholesale_and_retail_trade
@@ -541,24 +150,6 @@ metric_value_samples:
 - agriculture,_forestry_and_fishing
 - manufacture_of_food,_beverages_and_tobacco_products
 - total_industries
-source_id_value_samples:
-- 9c70c13707442864b21874ed3328f4b2
-- 69abf20497bd6241fe31ab99041702f7
-- ea735f8be982dca3e48d4d20911893f8
-- 899f0cb4035b6ae66162be3803c0efbb
-industry_value_samples:
-- Manufacture of food, beverages and tobacco products
-- Transportation and storage
-- Total Industries
-- Agriculture, Forestry and Fishing
-- Wholesale and retail trade
-- Accommodation and food service activities
-factor_value_samples:
-- Operating surplus
-- Import
-- Taxes
-- Labour
-- Primary Factors Total
 year_value_samples:
 - '2021'
 - '2015'
@@ -593,76 +184,6 @@ year_value_samples:
 - '1950'
 - '1930'
 - '1995'
-date_key_value_samples:
-- '20210101'
-- '20150101'
-- '20180101'
-- '20100101'
-- '20000101'
-- '20050101'
-- '20200101'
-- '20220101'
-- '20190101'
-- '20230101'
-- '20170101'
-- '20160101'
-- '20140101'
-- '20130101'
-- '20120101'
-- '20110101'
-- '20090101'
-- '20080101'
-- '20070101'
-- '20060101'
-- '20240101'
-- '20250101'
-- '20040101'
-- '20030101'
-- '19900101'
-- '20020101'
-- '20010101'
-- '19700101'
-- '19600101'
-- '19800101'
-- '19500101'
-- '19300101'
-- '19950101'
-as_of_date_value_samples:
-- '2021-12-31'
-- '2015-12-31'
-- '2018-12-31'
-- '2010-12-31'
-- '2000-12-31'
-- '2005-12-31'
-- '2020-12-31'
-- '2022-12-31'
-- '2019-12-31'
-- '2023-12-31'
-- '2017-12-31'
-- '2016-12-31'
-- '2014-12-31'
-- '2013-12-31'
-- '2012-12-31'
-- '2011-12-31'
-- '2009-12-31'
-- '2008-12-31'
-- '2007-12-31'
-- '2006-12-31'
-- '2024-12-31'
-- '2025-12-31'
-- '2004-12-31'
-- '2003-12-31'
-- '1990-12-31'
-- '2002-12-31'
-- '2001-12-31'
-- '1970-12-31'
-- '1960-12-31'
-- '1980-12-31'
-- '1950-12-31'
-- '1930-12-31'
-- '1995-12-31'
-as_of_date_basis_value_samples:
-- observation
 unit_value_samples:
 - '%'
 - 'No'
@@ -687,13 +208,6 @@ value_value_stats:
   is_truncated: true
   min_value: '-55.71'
   max_value: '210073055'
-source_natural_key_value_samples:
-- Unpivoted_FAOstat_africa_SDG_Indicators_SDG_Indicators
-- Unpivoted_FAOstat_africa_Food_Value_Chain_Value_shares_by_industry_and_primary_factors
-- Unpivoted_FAOstat_africa_World_Census_of_Agriculture_Structural_data_from_agricultural_censuses
-- Unpivoted_FAOstat_africa_Cost_and_Affordability_of_a_Healthy_Diet_Cost_and_Affordability_of_a_Healthy_Diet
-loaded_at_value_samples:
-- '2026-08-28 13:10:09.284956+00'
 filtering_guidance:
 - 'Grain: Country × item × element × year (national SDG)'
 - National SDG gender inclusion indicators.
@@ -704,3 +218,83 @@ semantic_role:
   primary_domain: socio_economic
   supports:
   - socio_economic
+geography_key_value_stats:
+  distinct_count: 59
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+item_key_value_stats:
+  distinct_count: 296
+  null_count: 0
+  is_truncated: false
+  patched: true
+element_key_value_stats:
+  distinct_count: 20
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_key_value_stats:
+  distinct_count: 4
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+data_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_scope_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_id_value_stats:
+  distinct_count: 4
+  null_count: 0
+  is_truncated: false
+  patched: true
+industry_value_stats:
+  distinct_count: 6
+  null_count: 0
+  is_truncated: false
+  patched: true
+factor_value_stats:
+  distinct_count: 5
+  null_count: 0
+  is_truncated: false
+  patched: true
+date_key_value_stats:
+  distinct_count: 33
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_value_stats:
+  distinct_count: 33
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_basis_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 4
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

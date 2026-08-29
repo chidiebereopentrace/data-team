@@ -584,3 +584,33 @@ def test_template_preferred_over_nl2sql() -> None:
     patterns.assert_not_called()
     assert items
     assert any((it.get("metadata") or {}).get("sql_source") == "template" for it in items)
+
+
+def test_prepare_sql_accepts_nigeria_maize_agg_time_key() -> None:
+    """Regression: agg_production_annual uses time_key, not year."""
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=False)
+    sql = (
+        "SELECT country_name, product_name, time_key, total_production_qty "
+        "FROM `proj.mart_dev.agg_production_annual` "
+        "WHERE time_key = 2022 AND country_name = 'Nigeria' "
+        "AND product_name = 'Maize' LIMIT 1"
+    )
+    with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
+        with patch("ml.rag.retrievers.bq_retriever.sql_retry_enabled", return_value=False):
+            validated, err = retriever._prepare_sql(
+                sql,
+                question="What was maize production in Nigeria in 2022?",
+                table_hints=["hint"],
+                selected_tables={"agg_production_annual"},
+                allowed_datasets={"mart_dev"},
+                limit=1,
+                client=MagicMock(),
+                time_start="2022-01-01",
+                time_end="2022-12-31",
+                primary_measures=["production"],
+                geography=["Nigeria"],
+                sql_source="template",
+            )
+    assert err is None, err
+    assert validated is not None
+    assert "time_key = 2022" in validated

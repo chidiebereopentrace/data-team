@@ -100,65 +100,6 @@ investment_key_value_stats:
   is_truncated: true
   min_value: 000076bb1b306606b71e4ce21a7c51ce
   max_value: ffffec25347d6f1c564bddeae621b29b
-geography_key_value_samples:
-- f14bb4203a7073edd04952936c354fca
-- 82dc51dcf101cb11ff4c3346a530efbc
-- f879de6d2aff3bb8e6336e65db2e4cb3
-- d081c90ab6801ddb32bedd266ed0bc9e
-- 869dbec7886b8171527c101f0aafa9d7
-- 8a9d2f38657b41d1beee71987b789584
-- 629f6ee5a903f4bcce1aa6a327392f4a
-- 73abae1655254baa0c8f2d1cdbf350da
-- fc36cac904ae8ed303bd472e14279601
-- da5416d0b7eb15e076fd031e9a0b2e22
-- 3e162de530565ea7fd832dcf8d5d8e00
-- fafb8c280b3839e5bb2cf04e4982d459
-- 41a9071812831bd833b31a0015a7fc21
-- e2a7da7be69c9efab479954c7fc62683
-- b4f3325b4dff86fd532a100b328770a4
-- caabf8e59e96c9806dd79ded964857de
-- dd2eb23623d3cfe1d69e6d1ef080baa4
-- bfcc5273fd7dce595c475531c8db844a
-- 896ec125e415d43f6917dafc7bdbe109
-- ec7437dac6b677268f738803c348a944
-- 97b9d0ff0519f52da36b9897dbc109d8
-- 643b7e5a6012349b12e2a7d8b9f9b12f
-- 514d63591d4d149773d80aac5c002246
-- c7afa8e5dc75eaed3f865becb594623a
-- 14cd64b93250222ef8109668740e33c9
-- b93642c9546b0ad7c4b50b1edd34b641
-- 4873407b6dcd3d440b964ca0e6285ec2
-- e36a49cf9440c0469a0b80d3dc94e83e
-- 08d5d1fbcfbc008d33905868ea7a2dd7
-- 414e80f7a6cec83f4a5fa1139fc707bf
-- c3b34f1c114c01b1ac1f59b7cc1199a3
-- 6b6a33d1b12ec418b4d84ea86d5ee2f1
-- 7f4e1c93fa0ec34f371db0ceafe3a203
-- 82533bcf1d2275baadeab94166482969
-- dad3f956104596ff2fd5ccc98d2ac7c8
-- e06752126ff796d0bfd12fb5a3f93e52
-- ff2abe6b8f87b63b0a4d12a3dc2fb900
-- 42fc637e79bb98d1e905f28e55fca77a
-- e1490c9d435658d25b0069edb3330168
-- 8b2130007752cc4fd2bc50ce5f2ce31b
-- b9a6c3cfa0ba81a70106dd8e6007df4e
-- 939117deefb921f24dcb765b8ae3027d
-- d8e7902a1aab9ce87cb3a10af9e19e8e
-- 8a6973d8ba686f5a6c7618896e9e9a6a
-- 547d52a13b878d359e6e0e930b5fed18
-- 7f24cf6c5ae4ae2c13e4a3cd9da9563d
-- e2e7220258577b7bf5917652b1a0c882
-- 8d2977ea05cfc771252b5dd2e3456353
-- 4d9142fd531731495f9f581296425df2
-- 8fdd65bc015f999ef22a924baf8e4980
-- 96a41cc70b4b99b5b238b479e6274f4c
-- 6258dc0299b2e5beaec7f3d0e69cd89f
-- 813e1dfd9941f45a5c4665d686c3ca61
-- 6f8c5d76bea0a5e7b6408e80dd147dfc
-- d185cda4a02671a4ed8ccd6509c1494a
-- cdb4c89696d45097587020d9c09861d9
-geo_level_value_samples:
-- country
 country_iso3_value_samples:
 - KEN
 - TZA
@@ -216,124 +157,6 @@ country_iso3_value_samples:
 - LBY
 - SHN
 - MYT
-item_key_value_samples:
-- e4586172850ecb0954a632168fa0151a
-- 59a706ffd3d89046da01babb2c5f02c7
-- b5ff74fb8c2999902c354daf40ab1e01
-- 74f00993cf6b805f526ee0d96a902275
-- ec250308df67c767185ab8b3c588f3ef
-- 2c878059625eb865352d46a3b0221182
-- 73c2b0ba59bf1e931564395f4ab7c3c3
-- 224b6d2c9fee26fa779b63da59499184
-- 7e12545310968ee444c6d907afe38ec1
-- 1c00f0727820c36513b8d0bf7e2d399c
-- ec635fa1d5c5947cccbfa4b13045dcca
-- 7b9b00347ffa45accf9f589e3ba82280
-- 238a161fec61b1160662bb518eb703e2
-- 77230190ea7cf14d59cd5af522771015
-- 94552359880b6c0d5d0f654894ab34b9
-- efb1e93d92b2139757b7c160cee2426f
-- c6d734d26cc4666bdb158408659430a1
-- e3b624c8c0ba73658d86d312a88e5349
-- b30d731f2b70012ab7db9d6fb6e8984e
-- 60bd95aff6726c1cbcaf7b8445407a1b
-- 2370f9a461ba8fbdb8c7ceebc8455440
-- 5bf99c77bdfbc998191ed22a455bcbeb
-- dadc39f6741f47dccf6583c1dcb230f1
-- c801c05e964d6c037a997a4fdae175b3
-- d1970769032d60fa1607346f3023054c
-- 9d4a1851b4dcbcf3f9f5fa67c51d56b8
-- aa3b4cde4f1750d21c836f238d6d80f6
-- 1ed9b49ead51facd4cb81271f889729d
-- a7488057dc26ca4ae0f0da7d235cdc39
-- 02619723641a21b558cb788e9f6e45f1
-- b254b7d2cf97c714a3febd5d1c7aebfc
-- 18f13f07d024fc696ddc91fbb8cff784
-- 85a7bde339bbd2d078bf27ba8badd17d
-- fa00a328ef780b692adb5194e94292ed
-- 8a22e6665d649b5bcc891edd163d2eda
-- ce27f4a41cde8e8452d8642371d9bf9d
-- e48ae44343012518fc3d51427cf19281
-- a6b36c3111162ae1c7b23fea5d8d8125
-- 7c40c06cd870063ab3b3744dbc5cb111
-- 65d2bfc382b88809ae8e327e93f3505c
-- 2f496cd12c7edf8cccad45e6558c8b05
-- 058c2ed9c6dc5f8c918a668b08f0eb0a
-- c3525c3ce6bb2016aad0281c5b5fb2de
-- cd8a9d795e38d4bcfff60a33630e0ce1
-- edd5e1b8b0941d0e049c4f68564d8a54
-- 1cc7d9d318249022400f07563cde8094
-- bd7ea24960d753f237f5d6ed284740cc
-- dc4649dc30ad817d43a4f4bcf942caad
-- c324f497b838bba0de71a0dca559251a
-- e3005e28ad7e63b0d55e7e9b9ec37921
-- e7dc14fcc819b1542dc5566ad4d147fc
-- 51de96070a082850f48fa9b4600e2125
-- 634860a5ca745daa69dcd87c8c875115
-- 147f1244b331438af2cc65309dd43ed4
-- 12967755a2a901efa15d2ebf6f45f08e
-- aadd852dd907ae40c8c05fc6f4eea850
-- 9d4f7aefa449b3579ca432545b4bf9cf
-- 3e49b751bf9b723a6f285a262b1795bc
-- 97d052b967bf8ed227eef852f53b88e6
-- 6a1b9f01e514353ff838bb5493369fce
-- 6bd5c142bd38b610659463117533cb37
-- aba8fa74bd10f327b8d19958c69fe83c
-- 4d7f96bce84fbc75881ca8fb48f85fe6
-- 01f88895f18d645c9cfc87fec426c66b
-- f3b0543ae95e81fe468705967176657c
-- 2ea26aee2d9d45290ea5844cd28649ed
-- a9b41a5a7a31d1a2ddebc5f3f518656c
-- ae97ce59cf9a693400f90e1972df3498
-- 5cbf416eeb3c3341e7b6fee083f766d4
-- e8b69d7867389db819ff7daa5a37db35
-element_key_value_samples:
-- 540c0bff0e4840ddcf2620ab1ce8b360
-- 000ebb03f9b20af0acfeb656da658c06
-- d21bb3f5a82774669b6333f6e5a53902
-- 275ef393fa2b2e184c3731459bdc049e
-- 405365439863456298c86ffe30a01ac4
-- 8ec63c3b73fb027b3da01fd959d667ff
-- b0fe5ac07934722b836ace679e7b0519
-- 14a6055f599cee0732a01508569e071a
-- a0ad0ccefccbb70503c26a34be9c6b35
-- 09df44e5a6e9b77b7d97d64cf511212e
-- 524550feff5cd01ae326e25fa4276fea
-- c8fff7bf9d22699613d040e4e647fde5
-- 8468430dd16522883a8e866d63ed3453
-- e38aca8bcfbdb88bba0b7e33da162055
-- 0ebaec60e0cdbc12516d8fc9a2930a1f
-- 5daaa5201b49ea9da9c686253f59afa4
-- 47720fd47221d3302ac6d1478d133cde
-- e679b2bceda4bafdac2230fc54a335d9
-- 50b75712c0db84c86df52cd129a04276
-indicator_key_value_samples:
-- 5d3be45671b68cad95d69b5b2fcc341a
-- 148d07b9af3a80ebeabdff1d32720fbc
-- ff1d1e22f1213670497a924bc671be08
-- 46171865ec562e74993b7dde419a7b85
-- 90544be66ff51d7df1d4623dcec937a3
-- 7e15d85f98b503d16fcb15bf522e363b
-- de52bb94df4d586480a374f57a5eca47
-sex_key_value_samples:
-- unknown
-- total
-organisation_key_value_samples:
-- 72e045f3894fa791558cf058a188f8b7
-source_key_value_samples:
-- 3a3660277e605244fb09b7cda7f1f52b
-- 94a3d700d94dd0cd87c6ea9af738e9d0
-- ce8bad3c4f13724549b3da28ad2f517b
-- de703474944cc5735d8fd5d29f4f472e
-- 64ba20d50960aa6bf399e3271e01263b
-- f35cbd7f0e2cebf00fab3b258373b60b
-- ce269fdbf1b881c05e0d8ae36b48680f
-tier_value_samples:
-- '1'
-data_level_value_samples:
-- national
-geo_scope_value_samples:
-- national
 metric_value_samples:
 - value_us$
 - value_us$,_2023_prices
@@ -361,184 +184,6 @@ metric_value_samples:
 - expenditure_in_agricultural_r&d_as_share_of_agricultural_value_added_(standard_local_currency)
 - share_of_total_fdi_inflows_us$,_2015_prices
 - share_of_total_fdi_outflows_us$,_2015_prices
-source_id_value_samples:
-- 3a3660277e605244fb09b7cda7f1f52b
-- 94a3d700d94dd0cd87c6ea9af738e9d0
-- ce8bad3c4f13724549b3da28ad2f517b
-- de703474944cc5735d8fd5d29f4f472e
-- 64ba20d50960aa6bf399e3271e01263b
-- f35cbd7f0e2cebf00fab3b258373b60b
-- ce269fdbf1b881c05e0d8ae36b48680f
-donor_value_samples:
-- All Donors
-- Bilateral Donors
-- Multilateral Donors
-- European Union (EU) Institutions
-- France
-- Japan
-- United States of America
-- Germany
-- Canada
-- International Development Association (IDA)
-- Italy
-- Global Environment Facility (GEF)
-- United Kingdom of Great Britain and Northern Ireland
-- Sweden
-- Norway
-- African Development Fund (AfDF)
-- Netherlands (Kingdom of the)
-- Belgium
-- Switzerland
-- United Nations Development Programme (UNDP)
-- Spain
-- Finland
-- Denmark
-- International Fund for Agricultural Development (IFAD)
-- Australia
-- Private Donors
-- Republic of Korea
-- Ireland
-- African Development Bank (AfDB)
-- Austria
-- Bill & Melinda Gates Foundation
-- Islamic Development Bank (IsDB)
-- Food and Agriculture Organization of the United Nations (FAO)
-- United Arab Emirates
-- OPEC Fund for International Development (OFID)
-- International Bank for Reconstruction and Development (IBRD)
-- Luxembourg
-- United Nations Children's Fund (UNICEF)
-- Portugal
-- Türkiye
-- Arab Bank for Economic Development in Africa (BADEA)
-- MasterCard Foundation
-- Arcus Foundation
-- Kuwait
-- Adaptation Fund
-- International Finance Corporation (IFC)
-- Green Climate Fund
-- New Zealand
-- MAVA Foundation
-- Rockefeller Foundation
-- Arab Fund for Economic and Social Development (AFESD)
-- Climate Investment Funds (CIF)
-- International Labour Organization (ILO)
-- Poland
-- Czechia
-- Charity Projects Ltd (Comic Relief)
-- Hungary
-- Greece
-- Iceland
-- WTO - International Trade Centre
-- Saudi Arabia
-- United Nations Peacebuilding Fund (UNPBF)
-- Global Green Growth Institute (GGGI)
-- Nordic Development Fund (NDF)
-- David & Lucile Packard Foundation
-- Israel
-- UBS Optimus Foundation
-- IKEA Foundation
-- United Nations Population Fund (UNFPA)
-- Slovakia
-- Margaret A. Cargill Foundation
-- Oak Foundation
-- European Bank for Reconstruction and Development (EBRD)
-- Dutch Postcode Lottery
-- John D. & Catherine T. MacArthur Foundation
-- Gatsby Charitable Foundation
-- Monaco
-- McKnight Foundation
-- William & Flora Hewlett Foundation
-- Ford Foundation
-- Liechtenstein
-- Slovenia
-- United Nations Industrial Development Organization (UNIDO)
-- Leo M. and Harry B. Helmsley Charitable Trust
-- Swedish Postcode Lottery
-- Estonia
-- German Postcode Lottery
-- World Food Programme (WFP)
-- Bezos Earth Fund
-- Qatar
-- Laudes Foundation
-- United Nations Environment Programme (UNEP)
-- Wellcome Trust
-- Arcadia Fund
-- Howard G. Buffett Foundation
-- Latvia
-- Joint Sustainable Development Goals Fund
-- Global Fund
-- Romania
-- Private Infrastructure Development Group
-- Bloomberg Family Foundation
-- Children's Investment Fund Foundation
-- Conrad N. Hilton Foundation
-- Lithuania
-- World Trade Organization
-- La Caixa Banking Foundation
-- Michael & Susan Dell Foundation
-- Open Society Foundations
-- Omidyar Network Fund, Inc.
-- United Nations Economic and Social Commission for Western Asia (UNESCWA)
-- International Centre for Genetic Engineering and Biotechnology
-- People's Postcode Lottery
-- China, Taiwan Province of
-purpose_value_samples:
-- Agriculture, forestry, fishing
-- Agriculture
-- General Environment Protection
-- Other Agriculture, Forestry and Fishing
-- Rural Development
-- All CRS purposes
-- Environmental policy and administrative management
-- Rural development
-- Agricultural policy and administrative management
-- Agro-industry
-- Bio-diversity
-- Agricultural development
-- Fishing
-- Agro-industries
-- Forestry
-- Food crop production
-- Agricultural water resources
-- Livestock
-- Agricultural research
-- Agricultural services
-- Agricultural inputs
-- Industrial crops/export crops
-- Agricultural land resources
-- Forestry development
-- Agricultural education/training
-- Site preservation
-- Environmental research
-- Environmental education/ training
-- Biosphere protection
-- Fishery development
-- Forestry policy and administrative management
-- Fishing policy and administrative management
-- Cottage industries and handicraft
-- Agricultural financial services
-- Forest industries
-- Textiles, leather and substitutes
-- Agriculture, unspecified
-- Agricultural co-operatives
-- Fertilizer plants
-- Livestock/veterinary services
-- Agricultural extension
-- Fuelwood/charcoal
-- Plant and post-harvest protection and pest control
-- Fishery services
-- Fertilizer minerals
-- Agrarian reform
-- Forestry services
-- Fishery education/training
-- Fishery research
-- Forestry research
-- Modern biofuels manufacturing
-- Forestry education/training
-- Agricultural alternative development
-- Fishing, unspecified
-- Forestry, unspecified
 indicator_value_samples:
 - Agricultural Researchers (FTE)
 - Agricultural Researchers (FTE) per 100 000 Agricultural Workers
@@ -548,10 +193,6 @@ indicator_value_samples:
 - Total Expenditure in Agricultural R&D (US$ PPP, 2015 prices)
 - Expenditure in Agricultural R&D as Share of Agricultural Value Added (Standard Local
   Currency)
-institution_value_samples:
-- Government, Higher Education and Private Non-profit
-sex_value_samples:
-- Total
 year_value_samples:
 - '2022'
 - '2023'
@@ -608,120 +249,6 @@ year_value_samples:
 - '1972'
 - '1971'
 - '1970'
-date_key_value_samples:
-- '20220101'
-- '20230101'
-- '20210101'
-- '20200101'
-- '20190101'
-- '20180101'
-- '20170101'
-- '20130101'
-- '20150101'
-- '20140101'
-- '20120101'
-- '20160101'
-- '20110101'
-- '20090101'
-- '20100101'
-- '20080101'
-- '20070101'
-- '20060101'
-- '20050101'
-- '20040101'
-- '20030101'
-- '20020101'
-- '20010101'
-- '20000101'
-- '19990101'
-- '19980101'
-- '19970101'
-- '19960101'
-- '19950101'
-- '19940101'
-- '19920101'
-- '19930101'
-- '19900101'
-- '19910101'
-- '19870101'
-- '19890101'
-- '19880101'
-- '19830101'
-- '19840101'
-- '19860101'
-- '19820101'
-- '19850101'
-- '19810101'
-- '19800101'
-- '19790101'
-- '19780101'
-- '19770101'
-- '20240101'
-- '19760101'
-- '19750101'
-- '19740101'
-- '19730101'
-- '19720101'
-- '19710101'
-- '19700101'
-as_of_date_value_samples:
-- '2022-12-31'
-- '2023-12-31'
-- '2021-12-31'
-- '2020-12-31'
-- '2019-12-31'
-- '2018-12-31'
-- '2017-12-31'
-- '2013-12-31'
-- '2015-12-31'
-- '2014-12-31'
-- '2012-12-31'
-- '2016-12-31'
-- '2011-12-31'
-- '2009-12-31'
-- '2010-12-31'
-- '2008-12-31'
-- '2007-12-31'
-- '2006-12-31'
-- '2005-12-31'
-- '2004-12-31'
-- '2003-12-31'
-- '2002-12-31'
-- '2001-12-31'
-- '2000-12-31'
-- '1999-12-31'
-- '1998-12-31'
-- '1997-12-31'
-- '1996-12-31'
-- '1995-12-31'
-- '1994-12-31'
-- '1992-12-31'
-- '1993-12-31'
-- '1990-12-31'
-- '1991-12-31'
-- '1987-12-31'
-- '1989-12-31'
-- '1988-12-31'
-- '1983-12-31'
-- '1984-12-31'
-- '1986-12-31'
-- '1982-12-31'
-- '1985-12-31'
-- '1981-12-31'
-- '1980-12-31'
-- '1979-12-31'
-- '1978-12-31'
-- '1977-12-31'
-- '2024-12-31'
-- '1976-12-31'
-- '1975-12-31'
-- '1974-12-31'
-- '1973-12-31'
-- '1972-12-31'
-- '1971-12-31'
-- '1970-12-31'
-as_of_date_basis_value_samples:
-- observation
 unit_value_samples:
 - million USD
 - '%'
@@ -733,16 +260,6 @@ value_value_stats:
   is_truncated: true
   min_value: '-7397.3'
   max_value: '44536128'
-source_natural_key_value_samples:
-- Unpivoted_FAOstat_africa_Investment_Development_Flows_to_Agriculture
-- Unpivoted_FAOstat_africa_Investment_Government_Expenditure
-- Unpivoted_FAOstat_africa_Investment_Country_Investment_Statistics_Profile
-- Unpivoted_FAOstat_africa_Investment_Credit_to_Agriculture
-- Unpivoted_FAOstat_africa_Investment_Foreign_Direct_Investment_FDI
-- Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Expenditures
-- Unpivoted_FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Researchers
-loaded_at_value_samples:
-- '2026-08-27 23:20:02.695922+00'
 filtering_guidance:
 - 'Grain: Country × donor/item/element/indicator/sex/institution × year'
 - ASTI / agricultural research investment.
@@ -754,3 +271,108 @@ semantic_role:
   primary_domain: research
   supports:
   - research
+geography_key_value_stats:
+  distinct_count: 56
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+item_key_value_stats:
+  distinct_count: 70
+  null_count: 0
+  is_truncated: false
+  patched: true
+element_key_value_stats:
+  distinct_count: 19
+  null_count: 0
+  is_truncated: false
+  patched: true
+indicator_key_value_stats:
+  distinct_count: 7
+  null_count: 0
+  is_truncated: false
+  patched: true
+sex_key_value_stats:
+  distinct_count: 2
+  null_count: 0
+  is_truncated: false
+  patched: true
+organisation_key_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_key_value_stats:
+  distinct_count: 7
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+data_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_scope_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_id_value_stats:
+  distinct_count: 7
+  null_count: 0
+  is_truncated: false
+  patched: true
+donor_value_stats:
+  distinct_count: 113
+  null_count: 0
+  is_truncated: false
+  patched: true
+purpose_value_stats:
+  distinct_count: 55
+  null_count: 0
+  is_truncated: false
+  patched: true
+institution_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+sex_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+date_key_value_stats:
+  distinct_count: 55
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_value_stats:
+  distinct_count: 55
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_basis_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 7
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

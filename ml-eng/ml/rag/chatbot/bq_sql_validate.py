@@ -531,16 +531,47 @@ def _table_has_column(table_id: str, col_name: str) -> bool:
     return False
 
 
-def _sql_has_time_filter(sql: str) -> bool:
+def _column_has_time_predicate(scrubbed: str, column: str) -> bool:
+    col_l = column.lower()
+    return bool(
+        re.search(
+            rf"\b{re.escape(col_l)}\b\s*(=|between|>=|<=|>|<|in\s*\()",
+            scrubbed,
+        )
+    )
+
+
+def _sql_has_time_filter(
+    sql: str,
+    table_ids: set[str] | None = None,
+) -> bool:
+    """True when SQL filters as_of_date or the table year column (year, time_key, …)."""
     stripped = _strip_string_literals(sql or "").lower()
-    if re.search(r"\bas_of_date\b", stripped):
-        return True
-    if re.search(r"\byear\b", stripped) and re.search(
-        r"\b(?:=|between|>=|<=|>|<|in\s*\()",
+    if re.search(
+        r"\bas_of_date\b\s*(=|between|>=|<=|>|<|in\s*\()",
         stripped,
     ):
         return True
+
+    refs = _refs_for_sql_checks(sql or "", table_ids)
+    if refs:
+        for bare in sorted(refs):
+            ycol = year_column(bare) or "year"
+            if _column_has_time_predicate(stripped, ycol):
+                return True
+        return False
+
+    for cand in ("year", "time_key", "harvest_year", "observation_year", "mp_year"):
+        if _column_has_time_predicate(stripped, cand):
+            return True
     return False
+
+
+def _sql_has_time_bounds(
+    sql: str,
+    table_ids: set[str] | None = None,
+) -> bool:
+    return _sql_has_time_filter(sql, table_ids)
 
 
 def inject_time_bounds(
@@ -554,7 +585,11 @@ def inject_time_bounds(
     Prefers ``as_of_date BETWEEN`` on mart facts; falls back to ``year BETWEEN``.
     """
     text = (sql or "").strip()
-    if not text or _sql_has_time_filter(text):
+    if not text:
+        return text, []
+
+    refs = _refs_for_sql_checks(text, table_ids)
+    if _sql_has_time_filter(text, table_ids):
         return text, []
 
     decomp = decomposition or {}
@@ -843,10 +878,6 @@ def _sql_has_geo_filter(sql: str, geo_col: str | None) -> bool:
     return bool(re.search(rf"\b{re.escape(geo_col.lower())}\s*(=|in\s*\()", scrubbed))
 
 
-def _sql_has_time_bounds(sql: str) -> bool:
-    return _sql_has_time_filter(sql)
-
-
 def _sql_has_partition_predicate(sql: str, table_id: str) -> bool:
     bare = str(table_id or "").strip().split(".")[-1].lower()
     if bare not in _LARGE_PARTITIONED_TABLES:
@@ -875,20 +906,47 @@ def validate_semantic_coherence(
     geography: list[str] | None = None,
     time_start: str | None = None,
     time_end: str | None = None,
-    crop_required: bool = True,
-    geography_required: bool = True,
+    crop_required: bool | None = None,
+    geography_required: bool | None = None,
     table_ids: set[str] | None = None,
+    decomposition: dict[str, Any] | None = None,
 ) -> str | None:
     """
     Reject warehouse-valid SQL that contradicts decomposition intent.
 
     Checks measure/geo/product/time coherence — not YAML literal presence alone.
     """
+    from ml.rag.chatbot.ontology_context import build_ontology_context
+
+    ontology = build_ontology_context(query, decomposition) if decomposition else None
+
+    raw_pm = list(primary_measures) if primary_measures else []
+    if not raw_pm and ontology:
+        raw_pm = list(ontology.primary_measures)
+    pm = [str(m).strip().lower() for m in raw_pm if str(m).strip()]
+
+    geo_labels = [str(g).strip() for g in (geography or []) if str(g).strip()]
+    if not geo_labels and ontology:
+        geo_labels = list(ontology.geography)
+
+    ts = str(time_start or (ontology.time_start if ontology else "") or "")[:10]
+    te = str(time_end or (ontology.time_end if ontology else "") or "")[:10]
+
+    crop_req = (
+        crop_required
+        if crop_required is not None
+        else (ontology.crop_required if ontology else True)
+    )
+    geo_req = (
+        geography_required
+        if geography_required is not None
+        else (ontology.geography_required if ontology else True)
+    )
+
     text = (sql or "").strip()
     if not text:
         return None
 
-    pm = [str(m).strip().lower() for m in (primary_measures or []) if str(m).strip()]
     production_intent = any(m in ("production", "prod") for m in pm) or bool(
         re.search(r"\b(production|tonnes?|tons?)\b", (query or ""), re.IGNORECASE)
     )
@@ -917,8 +975,7 @@ def validate_semantic_coherence(
             if lit.lower() in _PRODUCTION_ELEMENT_VALUES:
                 return "SQL filters element='Production' but question requests yield."
 
-    geo_labels = [str(g).strip() for g in (geography or []) if str(g).strip()]
-    if geography_required and geo_labels:
+    if geo_req and geo_labels:
         refs = _refs_for_sql_checks(text, table_ids)
         geo_ok = False
         for bare in refs:
@@ -932,7 +989,7 @@ def validate_semantic_coherence(
                 f"Expected filter on geo column for: {', '.join(geo_labels[:5])}."
             )
 
-    if crop_required and not _sql_has_product_filter(text):
+    if crop_req and not _sql_has_product_filter(text):
         q = (query or "").lower()
         if re.search(r"\b(maize|rice|wheat|sorghum|millet|cassava|crop|commodity)\b", q):
             return (
@@ -940,7 +997,7 @@ def validate_semantic_coherence(
                 "question names a crop/commodity."
             )
 
-    if time_start and time_end and not _sql_has_time_bounds(text):
+    if ts and te and not _sql_has_time_bounds(text, table_ids):
         return (
             "SQL must include a time bound (year or as_of_date) matching the "
             "decomposition time window."

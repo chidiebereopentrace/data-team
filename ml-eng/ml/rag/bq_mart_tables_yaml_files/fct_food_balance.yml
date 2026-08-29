@@ -100,58 +100,6 @@ food_balance_key_value_stats:
   is_truncated: true
   min_value: 000005f80893e2c16aa8375af54a9b42
   max_value: fffffa555d7c0e39ddb80eeed401e6ae
-geography_key_value_samples:
-- f14bb4203a7073edd04952936c354fca
-- 869dbec7886b8171527c101f0aafa9d7
-- 3e162de530565ea7fd832dcf8d5d8e00
-- dd2eb23623d3cfe1d69e6d1ef080baa4
-- 82dc51dcf101cb11ff4c3346a530efbc
-- 41a9071812831bd833b31a0015a7fc21
-- 896ec125e415d43f6917dafc7bdbe109
-- 14cd64b93250222ef8109668740e33c9
-- fafb8c280b3839e5bb2cf04e4982d459
-- 629f6ee5a903f4bcce1aa6a327392f4a
-- d081c90ab6801ddb32bedd266ed0bc9e
-- ec7437dac6b677268f738803c348a944
-- 514d63591d4d149773d80aac5c002246
-- e06752126ff796d0bfd12fb5a3f93e52
-- fc36cac904ae8ed303bd472e14279601
-- bfcc5273fd7dce595c475531c8db844a
-- 939117deefb921f24dcb765b8ae3027d
-- dad3f956104596ff2fd5ccc98d2ac7c8
-- 7f4e1c93fa0ec34f371db0ceafe3a203
-- f879de6d2aff3bb8e6336e65db2e4cb3
-- 73abae1655254baa0c8f2d1cdbf350da
-- 97b9d0ff0519f52da36b9897dbc109d8
-- e2a7da7be69c9efab479954c7fc62683
-- d8e7902a1aab9ce87cb3a10af9e19e8e
-- 8a9d2f38657b41d1beee71987b789584
-- b4f3325b4dff86fd532a100b328770a4
-- b9a6c3cfa0ba81a70106dd8e6007df4e
-- 7f24cf6c5ae4ae2c13e4a3cd9da9563d
-- caabf8e59e96c9806dd79ded964857de
-- 4873407b6dcd3d440b964ca0e6285ec2
-- ff2abe6b8f87b63b0a4d12a3dc2fb900
-- 6b6a33d1b12ec418b4d84ea86d5ee2f1
-- 82533bcf1d2275baadeab94166482969
-- 42fc637e79bb98d1e905f28e55fca77a
-- 6258dc0299b2e5beaec7f3d0e69cd89f
-- e1490c9d435658d25b0069edb3330168
-- 8d2977ea05cfc771252b5dd2e3456353
-- 414e80f7a6cec83f4a5fa1139fc707bf
-- 8b2130007752cc4fd2bc50ce5f2ce31b
-- c7afa8e5dc75eaed3f865becb594623a
-- e2e7220258577b7bf5917652b1a0c882
-- 6f8c5d76bea0a5e7b6408e80dd147dfc
-- 08d5d1fbcfbc008d33905868ea7a2dd7
-- 643b7e5a6012349b12e2a7d8b9f9b12f
-- b93642c9546b0ad7c4b50b1edd34b641
-- da5416d0b7eb15e076fd031e9a0b2e22
-- 8fdd65bc015f999ef22a924baf8e4980
-- 547d52a13b878d359e6e0e930b5fed18
-- c3b34f1c114c01b1ac1f59b7cc1199a3
-geo_level_value_samples:
-- country
 country_iso3_value_samples:
 - KEN
 - EGY
@@ -208,47 +156,6 @@ product_key_value_stats:
   is_truncated: true
   min_value: 013ae1638015cc77b5d179aef929e6eb
   max_value: ff64d6ae6ec04e13977dce54c43e596d
-element_key_value_samples:
-- 3ee42f1e728b96424cf7d07e299fbd8f
-- 3df2cb1273ded5a0377130a88ca5a7c2
-- d6892c34694635df0ca0231a0a4729b9
-- 78c08ff8fb3939dac4ea3a30683a4507
-- 90c943f7183fca0f754d6f3198b47854
-- feb8eab7f633f986ad4e8eaad065fdb2
-- 62506be34d574da4a0d158a67253ea99
-- 75f1d40122602afc39ff45fc9dcd65ff
-- fd89784e59c72499525556f80289b2c7
-- c9ec0dc8c850f21961ca0bed8f24d274
-- 270200161b3bbba2fe68484807e329e4
-- a732ff5b1736107ca137d8da2c2328ce
-- ff1523efdaf2fdee354276af47e7fc44
-- 9f8bd02d39361bc9d73ecfc26df6a7f6
-- a4bfb1e0bea6145aec1a94093151cc6a
-- 765d540f1be9ed037a425c7cfd3c923c
-- 78013e185beebd6830ed61e2101be1a1
-- f0a607852055bb42bc0fedf751cb4b57
-- 5c9729e633bcd376b6d6d59addf378d0
-- 09353387931db36c8af0e1b3658ddffe
-- ddbbceb321746e045d6e17c5513c8941
-- 523dd4072f67b7c761becf9df9f16772
-- 20c64f22958d9c29896393e773ea6b43
-- fe4c0f30aa359c41d9f9a5f69c8c4192
-- 4374990dedc873c6a9417a355a2ac4cf
-- 81513effdf5790b79549208838404407
-- c1369fda090480bbdaa0e21aa35f3bdb
-- 9d090a4005926e9e2a32e05cbd8c2fc6
-- 4add28e84724924da246a4756c46219d
-source_key_value_samples:
-- 78b3e7f41461d38868653a59e6f5e6f1
-- 63c6ef675eaf2ec93ef8cca02580ab5d
-- 25c9a8f4314d1c30bd641f4a3b5659fa
-- f2d94edcc60f52e77ef0a79c6973e412
-tier_value_samples:
-- '1'
-data_level_value_samples:
-- national
-geo_scope_value_samples:
-- national
 metric_value_samples:
 - food_balance_food_supply_(kcal/capita/day)
 - food_balance_import_quantity
@@ -279,11 +186,6 @@ metric_value_samples:
 - food_balance_tourist_consumption
 - food_balance_processed
 - food_balance_total_population_-_both_sexes
-source_id_value_samples:
-- 78b3e7f41461d38868653a59e6f5e6f1
-- 63c6ef675eaf2ec93ef8cca02580ab5d
-- 25c9a8f4314d1c30bd641f4a3b5659fa
-- f2d94edcc60f52e77ef0a79c6973e412
 element_value_samples:
 - Food supply (kcal/capita/day)
 - Fat supply quantity (g/capita/day)
@@ -420,136 +322,6 @@ year_value_samples:
 - '1973'
 - '1970'
 - '1969'
-date_key_value_samples:
-- '20130101'
-- '20120101'
-- '20110101'
-- '20100101'
-- '20230101'
-- '20220101'
-- '20210101'
-- '20200101'
-- '20180101'
-- '20190101'
-- '20170101'
-- '20160101'
-- '20150101'
-- '20140101'
-- '19990101'
-- '20010101'
-- '20050101'
-- '20080101'
-- '19950101'
-- '19940101'
-- '20090101'
-- '20000101'
-- '19930101'
-- '20060101'
-- '20040101'
-- '20070101'
-- '19970101'
-- '19980101'
-- '20030101'
-- '20020101'
-- '19960101'
-- '19780101'
-- '19800101'
-- '19750101'
-- '19920101'
-- '19900101'
-- '19620101'
-- '19640101'
-- '19690101'
-- '19710101'
-- '19810101'
-- '19830101'
-- '19770101'
-- '19720101'
-- '19630101'
-- '19740101'
-- '19840101'
-- '19670101'
-- '19820101'
-- '19910101'
-- '19700101'
-- '19660101'
-- '19760101'
-- '19850101'
-- '19610101'
-- '19860101'
-- '19790101'
-- '19890101'
-- '19730101'
-- '19650101'
-- '19680101'
-- '19870101'
-- '19880101'
-as_of_date_value_samples:
-- '2013-12-31'
-- '2012-12-31'
-- '2011-12-31'
-- '2010-12-31'
-- '2023-12-31'
-- '2022-12-31'
-- '2021-12-31'
-- '2020-12-31'
-- '2018-12-31'
-- '2019-12-31'
-- '2017-12-31'
-- '2016-12-31'
-- '2015-12-31'
-- '2014-12-31'
-- '2007-12-31'
-- '2003-12-31'
-- '2004-12-31'
-- '2005-12-31'
-- '2000-12-31'
-- '2002-12-31'
-- '1997-12-31'
-- '1995-12-31'
-- '2009-12-31'
-- '2008-12-31'
-- '1993-12-31'
-- '2006-12-31'
-- '1996-12-31'
-- '2001-12-31'
-- '1994-12-31'
-- '1999-12-31'
-- '1998-12-31'
-- '1986-12-31'
-- '1988-12-31'
-- '1981-12-31'
-- '1989-12-31'
-- '1971-12-31'
-- '1961-12-31'
-- '1968-12-31'
-- '1965-12-31'
-- '1990-12-31'
-- '1973-12-31'
-- '1991-12-31'
-- '1979-12-31'
-- '1992-12-31'
-- '1967-12-31'
-- '1978-12-31'
-- '1963-12-31'
-- '1976-12-31'
-- '1969-12-31'
-- '1983-12-31'
-- '1977-12-31'
-- '1972-12-31'
-- '1962-12-31'
-- '1975-12-31'
-- '1964-12-31'
-- '1982-12-31'
-- '1985-12-31'
-- '1984-12-31'
-- '1970-12-31'
-- '1966-12-31'
-- '1987-12-31'
-- '1974-12-31'
-- '1980-12-31'
-as_of_date_basis_value_samples:
-- observation
 production_value_stats:
   distinct_count: 61646
   null_count: 5205751
@@ -600,13 +372,6 @@ value_value_stats:
   is_truncated: true
   min_value: '-2467397'
   max_value: '205457116.8'
-source_natural_key_value_samples:
-- Unpivoted_FAOstat_africa_Food_Balances_Food_Balances_1961-2013_old_methodology_and_population
-- Unpivoted_FAOstat_africa_Food_Balances_Supply_Utilization_Accounts_2010-23
-- Unpivoted_FAOstat_africa_Food Balances_Food_Balances_2010-23
-- Unpivoted_FAOstat_africa_Food_Balances_Commodity_Balances_non-food_2010-23
-loaded_at_value_samples:
-- '2026-08-26 11:24:41.165140+00'
 indicator_classes:
 - FS
 - FVC
@@ -622,3 +387,68 @@ semantic_role:
   - food_balance
   - FS
   - FVC
+geography_key_value_stats:
+  distinct_count: 49
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+element_key_value_stats:
+  distinct_count: 29
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_key_value_stats:
+  distinct_count: 4
+  null_count: 0
+  is_truncated: false
+  patched: true
+tier_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+data_level_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+geo_scope_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_id_value_stats:
+  distinct_count: 4
+  null_count: 0
+  is_truncated: false
+  patched: true
+date_key_value_stats:
+  distinct_count: 63
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_value_stats:
+  distinct_count: 63
+  null_count: 0
+  is_truncated: false
+  patched: true
+as_of_date_basis_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
+source_natural_key_value_stats:
+  distinct_count: 4
+  null_count: 0
+  is_truncated: false
+  patched: true
+loaded_at_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true

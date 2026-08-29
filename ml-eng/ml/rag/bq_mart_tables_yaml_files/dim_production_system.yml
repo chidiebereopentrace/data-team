@@ -16,15 +16,6 @@ columns:
 - name: description
   type: STRING
   description: description
-production_system_key_value_samples:
-- 70a7ffaabaee5fd9a89930ffa9127040
-- d7e2f2aa12a4e55b15dac50965e7eac4
-- 1868c2177fdc84d496f7784a23729d3b
-- c513faea7b7a4d4fc162ced97e32f2e0
-- cd9d1c615f2c97eccf84b5c06708099d
-- c53fa5abbc8954eb27e66a6f71708f52
-- 516a2342953891f249b58ff1c3943723
-- eaa16acfa1104cb223a55fb03fdde12f
 system_code_value_samples:
 - COMM
 - RAIN
@@ -43,12 +34,13 @@ system_name_value_samples:
 - Peri-Urban
 - Mixed Crop-Livestock
 - Irrigated
-description_value_samples:
-- Large-scale commercial farming
-- Rain-dependent smallholder farming
-- Agroforestry and forest-adjacent systems
-- Mixed crop-livestock agro-pastoral
-- Nomadic/transhumant pastoral systems
-- Peri-urban market-oriented systems
-- Integrated smallholder crop-livestock
-- Irrigated crop/livestock systems
+production_system_key_value_stats:
+  distinct_count: 8
+  null_count: 0
+  is_truncated: false
+  patched: true
+description_value_stats:
+  distinct_count: 8
+  null_count: 0
+  is_truncated: false
+  patched: true

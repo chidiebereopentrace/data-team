@@ -16,120 +16,22 @@ columns:
 - name: location_description
   type: STRING
   description: location description
-sensor_key_value_samples:
-- 82cec96096d4281b7c95cd7e74623496
-- 6c524f9d5d7027454a783c841250ba71
-- 0a09c8844ba8f0936c20bd791130d6b6
-- 5ea1649a31336092c05438df996a3e59
-- a600bd172fcabd688500dac58ebda3a0
-- b43a6403c17870707ca3c44984a2da22
-- 41f1f19176d383480afa65d325c06ed0
-- 04992c5115a2c2fe6d12bdc21e16f64e
-- 4fb8a7a22a82c80f2c26fe6c1e0dcbb3
-- eaae5e04a259d09af85c108fe4d7dd0c
-- faa9afea49ef2ff029a833cccc778fd0
-- 991327d63593b0ba2c45618bf81f6a64
-- db095bd14b838cbf3abf886f492c721b
-- b2f627fff19fda463cb386442eac2b3d
-- fe131d7f5a6b38b23cc967316c13dae2
-- 57cd30d9088b0185cf0ebca1a472ff1d
-- 2b24d495052a8ce66358eb576b8912c8
-- 33b9c7c18ec3acc3747c41e70e9bb3d6
-- 7eacb532570ff6858afd2723755ff790
-- 78e8dffe65a2898eef68a33b8db35b78
-- c5ff2543b53f4cc0ad3819a36752467b
-- db8419f41d890df802dca330e6284952
-- 2f3bbb9730639e9ea48f309d9a79ff01
-- 2458ab18be2a140a1cfb932dd96f25d6
-- b3746c4a274181d2bcc315ab1f7aa87d
-- 1216a1bca4361c39d1d77965c5d95ee3
-- b6f0479ae87d244975439c6124592772
-- f718499c1c8cef6730f9fd03c8125cab
-- 3c7781a36bcd6cf08c11a970fbe0e2a6
-- 24b16fede9a67c9251d3e7c7161c83ac
-- ec16c57ed363c5ca91a3e5e5b88fe502
-- e32c51ad39723ee92b285b362c916ca7
-- 9a3f263a5e5f63006098a05cd7491997
-- 64a7157cf3932bf74755aa3cf586f2ec
-- 79e785d63f00348ff360d5a86528580b
-- 427e3427c5f38a41bb9cb26525b22fba
-- a48251d4c143adf4d4b657d5d82ee0ee
-- f1ea154c843f7cf3677db7ce922a2d17
-- d80b7040b773199015de6d3b4293c8ff
-- d490d7b4576290fa60eb31b5fc917ad1
-- 3e441eec3456b703a4fe741005f3981f
-- 01386bd6d8e091c2ab4c7c7de644d37b
-- 65658fde58ab3c2b6e5132a39fae7cb9
-- 4dc3ed26a29c9c3df3ec373524377a5b
-sensor_id_value_samples:
-- '355'
-- '356'
-- '144'
-- '537'
-- '4971'
-- '4941'
-- '371'
-- '4961'
-- '4923'
-- '4925'
-- '423'
-- '4935'
-- '4945'
-- '601'
-- '255'
-- '4937'
-- '145'
-- '4973'
-- '419'
-- '4957'
-- '347'
-- '4933'
-- '4969'
-- '4940'
-- '4932'
-- '4960'
-- '420'
-- '256'
-- '424'
-- '372'
-- '4938'
-- '4972'
-- '4939'
-- '4936'
-- '4922'
-- '4924'
-- '4968'
-- '4970'
-- '4956'
-- '600'
-- '4944'
-- '348'
-- '536'
-- '4934'
 sensor_type_value_samples:
 - DHT22
 - pms5003
 - SDS011
-location_description_value_samples:
-- '3977'
-- '3993'
-- '3990'
-- '3994'
-- '4001'
-- '4010'
-- '3999'
-- '4009'
-- '3978'
-- '3996'
-- '3987'
-- '3997'
-- '3991'
-- '3995'
-- '3988'
-- '3528'
-- '4008'
-- '4000'
-- '3989'
-- '4007'
-- '3998'
-- '3984'
+sensor_key_value_stats:
+  distinct_count: 44
+  null_count: 0
+  is_truncated: false
+  patched: true
+sensor_id_value_stats:
+  distinct_count: 44
+  null_count: 0
+  is_truncated: false
+  patched: true
+location_description_value_stats:
+  distinct_count: 22
+  null_count: 0
+  is_truncated: false
+  patched: true

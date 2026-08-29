@@ -13,11 +13,14 @@ columns:
 - name: currency_name
   type: STRING
   description: currency name
-currency_key_value_samples:
-- 3518f8944d42212dd37daffe097d216e
 currency_code_value_samples:
 - USD
 currency_name_value_stats:
   distinct_count: 0
   null_count: 1
   is_truncated: false
+currency_key_value_stats:
+  distinct_count: 1
+  null_count: 0
+  is_truncated: false
+  patched: true
