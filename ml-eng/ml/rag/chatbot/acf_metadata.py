@@ -56,7 +56,15 @@ _DATE_KEYS = (
     "first_period_date",
 )
 
-_YEAR_KEYS = ("publication_year", "year", "harvest_year", "planting_year", "mp_year", "TIME_PERIOD")
+_YEAR_KEYS = (
+    "publication_year",
+    "year",
+    "time_key",
+    "harvest_year",
+    "planting_year",
+    "mp_year",
+    "TIME_PERIOD",
+)
 
 _METRIC_KEYS = (
     "metric",
@@ -641,26 +649,32 @@ def project_bq_row_acf(row: dict[str, Any], *, table_hint: str | None = None) ->
             if source_key:
                 meta["source_id"] = source_key
     else:
-        # Grain key for durable source_id
-        grain_parts = [table or "bq"]
-        for key in (
-            "country",
-            "country_name",
-            "area",
-            "region",
-            "geographic_unit_name",
-            "product",
-            "item",
-            "year",
-            "harvest_year",
-            "TIME_PERIOD",
-            "mp_year",
-            "mp_month",
-        ):
-            val = _s(meta.get(key))
-            if val:
-                grain_parts.append(f"{key}={val}")
-        meta["source_id"] = ":".join(grain_parts)[:256]
+        source_key = _s(meta.get("source_key"))
+        if source_key:
+            meta["source_id"] = source_key
+        else:
+            # Grain key for durable source_id
+            grain_parts = [table or "bq"]
+            for key in (
+                "source_key",
+                "country",
+                "country_name",
+                "area",
+                "region",
+                "geographic_unit_name",
+                "product",
+                "item",
+                "year",
+                "time_key",
+                "harvest_year",
+                "TIME_PERIOD",
+                "mp_year",
+                "mp_month",
+            ):
+                val = _s(meta.get(key))
+                if val:
+                    grain_parts.append(f"{key}={val}")
+            meta["source_id"] = ":".join(grain_parts)[:256]
 
     # value / prior_value when both present under common names
     val = _first_numeric(meta, _VALUE_KEYS)

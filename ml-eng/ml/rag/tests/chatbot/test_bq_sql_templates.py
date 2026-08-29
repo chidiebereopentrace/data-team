@@ -47,13 +47,52 @@ def test_build_mart_point_fact_sql_uses_nga() -> None:
         product_name="Maize",
         year=2022,
         blob="maize production Nigeria 2022",
-        limit=5,
+        limit=1,
     )
     assert "stg_" not in sql
     assert "fct_production" in sql
     assert "NGA" in sql
     assert "2022" in sql
     assert "Maize" in sql or "product_key" in sql
+    assert "source_key" in sql
+    assert "production_grain" in sql
+    assert "LIMIT 1" in sql
+
+
+def test_mart_point_fact_prefers_fct_production() -> None:
+    hit = try_sql_template(
+        query="What was maize production in Nigeria in 2022?",
+        project_id="proj",
+        dataset="mart_dev",
+        selected_tables=["agg_production_annual", "fct_production"],
+        geo_country="Nigeria",
+        time_start="2022-01-01",
+        time_end="2022-12-31",
+    )
+    assert hit is not None
+    assert hit["template"] == "mart_point_fact"
+    assert hit["table_id"] == "fct_production"
+    assert "fct_production" in hit["sql"]
+    assert "production_grain" in hit["sql"]
+    assert "source_key" in hit["sql"]
+    assert "LIMIT 1" in hit["sql"]
+
+
+def test_mart_point_fact_sql_includes_lineage_cols() -> None:
+    sql = build_mart_point_fact_sql(
+        project_id="proj",
+        dataset="mart_dev",
+        table_id="agg_production_annual",
+        country_labels=["Nigeria"],
+        product_name="Maize",
+        year=2022,
+        blob="maize production Nigeria 2022",
+    )
+    assert "source_key" in sql
+    assert "source_name" in sql
+    assert "total_production_qty" in sql or "production_qty" in sql
+    assert "ORDER BY record_count DESC" in sql
+    assert "LIMIT 1" in sql
 
 
 def test_try_sql_template_mart_country_rank() -> None:
