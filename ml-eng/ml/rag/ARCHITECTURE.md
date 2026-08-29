@@ -11,7 +11,7 @@ The RAG stack answers natural-language questions about African agriculture and f
 | Source | Technology | Role |
 |--------|------------|------|
 | **Unstructured text (VECTOR LEG)** | Qdrant Cloud (six corpora) | News, academic papers, policies, public reports, formation, OTA insights — via corpus router + E5/hybrid cascade |
-| **Structured tables (BQ LEG)** | BigQuery (`BQ_DATASET_SILVER` / `staging_dev`) | Measure ontology + staging YAML reasoner + NL-to-SQL → row-level facts |
+| **Structured tables (BQ LEG)** | BigQuery (`BQ_DATASET_GOLD` / `mart_dev`) | Measure ontology + mart YAML reasoner + deterministic SQL (templates/patterns) + NL2SQL fallback → row-level facts |
 | **Orchestration** | LangGraph in [`chatbot/graph.py`](chatbot/graph.py) | Control plane → **vector leg** (six Qdrant corpora) + **BQ leg** (YAML reasoner + NL2SQL) → merge → rerank → **generation strategy** → generate |
 | **Generation** | [`llm_chat.py`](llm_chat.py) + [`generation_plan.py`](chatbot/generation_plan.py) | OpenAI-compatible backend; post-retrieval strategy shapes answer/evidence before the LLM call |
 
@@ -83,7 +83,7 @@ flowchart TB
 
   PR --> vectorLeg
 
-  subgraph bqLeg [BQ LEG — staging_dev]
+  subgraph bqLeg [BQ LEG — mart_dev]
     YAML[bq_sql_reasoner plus ontology scope]
     BR[BQRetriever NL2SQL execute]
     BQR --> YAML --> BR
@@ -202,7 +202,7 @@ Implemented in [`chatbot/graph.py`](chatbot/graph.py). Entry: `run_rag(query, **
 |------|----------|-------------|--------------|
 | **decompose** | enricher + `decompose_query` + ontology + contract | `query`, memory | `decomposition`, `task_mode`, `measure_id`, route flags |
 | **parallel_retrieve** | `select_corpora` + thread pool + six `_retrieve_*` | `query`, `decomposition`, `task_mode`, overrides | `vector_news_results`, `vector_academic_papers_results`, `vector_policies_results`, `vector_public_reports_results`, `vector_formation_results`, `vector_ota_results`, `corpus_selection` |
-| **bq_reason** | staging YAML SQL reasoner | `query`, `decomposition`, `task_mode` | `bq_sql_plan`, `bq_table_candidates` |
+| **bq_reason** | mart YAML SQL reasoner | `query`, `decomposition`, `task_mode` | `bq_sql_plan`, `bq_table_candidates` |
 | **bq_retrieve** | `BQRetriever.retrieve` | `query`, `decomposition`, hints | `bq_results`, (SQL in row metadata) |
 | **merge** | concat + corpus labels + OFIA tier | all `vector_*_results` + `bq_results` | `merged_context` |
 | **rerank** | `rerank` + `diversify_context_pack` | `query`, `merged_context`, `task_mode` | `reranked_context` |
@@ -222,7 +222,7 @@ Short-circuit nodes (`generate_meta`, `generate_product`, `generate_social`, `ge
 | `decomposition` | `intent`, `entities`, `geography`, `domains`, `time_start`, `time_end`, `primary_measures`, `corpus_domain_tags` |
 | `task_mode` | `clarify`, `analytical`, `fact_lookup`, `briefing`, `data_export_only`, `research`, `chat` |
 | `measure_id`, `recency_tier` | From [`agri_measure_ontology`](chatbot/agri_measure_ontology.py) |
-| `bq_table_candidates` | One hint dict per staging table selected by the YAML reasoner (`source: staging_yaml`) |
+| `bq_table_candidates` | One hint dict per mart table selected by the YAML reasoner (`source: mart_yaml`) |
 | `vector_news_results` | News chunks from Qdrant |
 | `vector_academic_papers_results` | Academic paper chunks |
 | `vector_policies_results` | Policy document chunks |
@@ -563,7 +563,7 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | Variable | Purpose |
 |----------|---------|
 | `BQ_PROJECT` | GCP project |
-| `BQ_DATASET_SILVER` | Dataset for RAG NL-to-SQL + validation (default `staging_dev`) |
+| `BQ_DATASET_GOLD` | Dataset for RAG retrieve + validation (default `mart_dev`) |
 | `BQ_DATASET_BRONZE` | Bronze/raw dataset (data-eng tooling; not queried by RAG NL2SQL) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Service account JSON path (local/GCE) |
 | `GOOGLE_APPLICATION_CREDENTIALS_BASE64` | Base64 SA JSON (Railway; decoded at container start) |
@@ -631,7 +631,7 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_BQ_SKIP_LIVE_SCHEMA` | Use hint-only schema text (faster prompts) |
 | `RAG_BQ_ROWS_PER_QUERY` | Rows per executed SQL |
 | `RAG_BQ_HINT_MAX_CHARS` | Truncate each table hint in prompt |
-| `RAG_BQ_MAX_TABLES` | Max tables the staging YAML reasoner may select (default **6**) |
+| `RAG_BQ_MAX_TABLES` | Max tables the mart YAML reasoner may select (default **6**) |
 | `RAG_BQ_REASONER_MODEL_ID` | Dedicated model for `bq_reason` (e.g. `deepseek/deepseek-v4-flash-0731`) |
 | `RAG_BQ_NL2SQL_MODEL_ID` | Dedicated model for NL-to-SQL (e.g. `deepseek/deepseek-v4-flash-0731`; falls back to `RAG_LLM_MODEL_ID`) |
 
@@ -683,7 +683,7 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 
 1. Streamlit **pipeline debug** → check **BQ SQL queries** count and SQL text.
 2. Confirm `RAG_LLM_BASE_URL` and model id; NL-to-SQL empty → fallback SQL.
-3. Confirm `BQ_PROJECT`, credentials, **`BQ_DATASET_SILVER`** (staging_dev).
+3. Confirm `BQ_PROJECT`, credentials, **`BQ_DATASET_GOLD`** (`mart_dev`).
 4. Set logging; check `bq_retriever` warnings for “0 queries from N hints”.
 5. Ensure decomposition shows correct `geography` / `time_*` (word-boundary country extraction).
 

@@ -1,10 +1,19 @@
-"""Deterministic SQL templates as NL2SQL fallback (metrics-layer lite)."""
+"""Deterministic mart SQL templates (fct_* / agg_* only) as NL2SQL fallback."""
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from ml.rag.chatbot.bq_table_schema_yaml import columns_for_tables, match_product_samples
+from ml.rag.chatbot.bq_table_schema_yaml import (
+    discriminator_equality_filters,
+    geo_column,
+    match_product_samples,
+    measure_columns_mart,
+    product_column,
+    resolve_geo_filter_values,
+    resolve_measure_column,
+    year_column,
+)
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.query_decomposer import _extract_countries
 
@@ -37,6 +46,22 @@ _SERIES_RE = re.compile(
     r"\b(export|csv|chart|graph|plot|trend|time\s*series|over\s+time|by\s+year|"
     r"from\s+19|from\s+20|till\s+date|until\s+now)\b",
     re.IGNORECASE,
+)
+
+_MART_PRODUCTION_TABLES = (
+    "agg_production_annual",
+    "fct_production",
+    "fct_yield",
+)
+_MART_PRICE_TABLES = ("fct_prices", "agg_prices_country_month")
+_MART_FOOD_SECURITY_TABLES = ("fct_food_security", "agg_food_security_monthly")
+_MART_RANK_TABLES = ("agg_production_annual", "fct_production", "fct_trade")
+_MART_FACT_TABLES = frozenset(
+    {
+        *_MART_PRODUCTION_TABLES,
+        *_MART_PRICE_TABLES,
+        "fct_yield",
+    }
 )
 
 # Speech synonyms for crop detection. Warehouse labels come from YAML samples.
@@ -113,132 +138,7 @@ def _resolve_country(
     return found[0] if found else None
 
 
-def _geo_col(table_id: str) -> str:
-    if table_id.startswith("stg_fews") or table_id in {
-        "stg_wfp_vampire_prices",
-        "stg_yield_raw_data",
-    }:
-        return "country"
-    return "country_name"
-
-
-def _year_col(table_id: str) -> str:
-    if table_id == "stg_yield_raw_data":
-        return "harvest_year"
-    return "year"
-
-
-def _product_col(table_id: str) -> str:
-    if table_id == "stg_yield_raw_data":
-        return "product"
-    return "product_name"
-
-
-def _product_name_for_table(table_id: str, product_name: str | None) -> str | None:
-    if not product_name:
-        return None
-    hits = match_product_samples(table_id, product_name)
-    return hits[0] if hits else product_name
-
-
-def _default_element(table_id: str, *, want_yield: bool) -> str | None:
-    if table_id == "stg_faostat_prices":
-        return "Producer Price (USD/tonne)"
-    if table_id.startswith("stg_faostat"):
-        return "Yield" if want_yield else "Production"
-    return None
-
-
-def _default_price_type(table_id: str) -> str | None:
-    if table_id == "stg_fews_market_prices":
-        return "Retail"
-    return None
-
-
-def match_faostat_crop_rank(
-    *,
-    query: str,
-    selected_tables: set[str] | list[str] | None,
-    entities: list[str] | None = None,
-    time_start: str | None = None,
-    time_end: str | None = None,
-) -> bool:
-    tables = _tables_set(selected_tables)
-    if "stg_faostat_production" not in tables:
-        return False
-    blob = _blob(query, entities)
-    if _extract_crop(blob) is None:
-        return False
-    if not (_PRODUCTION_RE.search(blob) or _RANK_RE.search(blob)):
-        return False
-    if not _CONTINENT_RE.search(blob) and not _RANK_RE.search(blob):
-        return False
-    return _year_from_context(time_start=time_start, time_end=time_end, query=query or "") is not None
-
-
-def match_faostat_country_rank(
-    *,
-    query: str,
-    selected_tables: set[str] | list[str] | None,
-    entities: list[str] | None = None,
-    time_start: str | None = None,
-    time_end: str | None = None,
-) -> bool:
-    """True when the Africa production country-ranking template should apply."""
-    tables = _tables_set(selected_tables)
-    if "stg_faostat_production" not in tables:
-        return False
-    blob = _blob(query, entities)
-    # Prefer crop-specific template when a crop is named.
-    if _extract_crop(blob) is not None:
-        return False
-    if not _PRODUCTION_RE.search(blob):
-        return False
-    if not _RANK_RE.search(blob):
-        return False
-    if not _CONTINENT_RE.search(blob):
-        return False
-    return _year_from_context(time_start=time_start, time_end=time_end, query=query or "") is not None
-
-
-def match_faostat_price_rank(
-    *,
-    query: str,
-    selected_tables: set[str] | list[str] | None,
-    entities: list[str] | None = None,
-    time_start: str | None = None,
-    time_end: str | None = None,
-) -> bool:
-    tables = _tables_set(selected_tables)
-    if "stg_faostat_prices" not in tables:
-        return False
-    blob = _blob(query, entities)
-    if not _PRICE_RE.search(blob):
-        return False
-    if not (_RANK_RE.search(blob) or _CONTINENT_RE.search(blob)):
-        return False
-    return _year_from_context(time_start=time_start, time_end=time_end, query=query or "") is not None
-
-
-def match_fews_food_security(
-    *,
-    query: str,
-    selected_tables: set[str] | list[str] | None,
-    entities: list[str] | None = None,
-    time_start: str | None = None,
-    time_end: str | None = None,
-) -> bool:
-    tables = _tables_set(selected_tables)
-    if "stg_fews_food_security" not in tables:
-        return False
-    blob = _blob(query, entities)
-    if not _FOOD_SEC_RE.search(blob):
-        return False
-    # Year optional: latest-snapshot SQL when omitted (live IPC / assessments).
-    return True
-
-
-def _fews_countries(
+def _resolve_countries(
     *,
     geo_country: str | None,
     geo_countries: list[str] | None,
@@ -260,43 +160,72 @@ def _fews_countries(
     return out
 
 
-def build_fews_food_security_sql(
+def _pick_table(tables: set[str], candidates: tuple[str, ...]) -> str | None:
+    for tid in candidates:
+        if tid in tables:
+            return tid
+    return None
+
+
+def _mart_geo_col(table_id: str) -> str:
+    return geo_column(table_id) or "country_name"
+
+
+def _mart_year_col(table_id: str) -> str:
+    return year_column(table_id) or "year"
+
+
+def _mart_product_col(table_id: str) -> str:
+    return product_column(table_id) or "product_name"
+
+
+def _product_filter(table_id: str, blob: str, product_name: str | None) -> tuple[str, str | None]:
+    hits = match_product_samples(table_id, blob)
+    pname = hits[0] if hits else product_name
+    if not pname:
+        return "", None
+    col = _mart_product_col(table_id)
+    return f"AND {col} = {_sql_literal(pname)} ", pname
+
+
+def match_mart_point_fact(
     *,
-    project_id: str,
-    dataset: str,
-    year: int | None = None,
-    limit: int = 20,
-    countries: list[str] | None = None,
-) -> str:
-    lim = max(1, min(int(limit or 20), 100))
-    fqn = f"`{project_id}.{dataset}.stg_fews_food_security`"
-    country_clause = ""
-    real_countries = _fews_countries(geo_country=None, geo_countries=countries)
-    if real_countries:
-        lits = ", ".join(_sql_literal(c) for c in real_countries)
-        country_clause = f"AND country IN ({lits}) "
-    if year is not None:
-        year_clause = f"AND year = {int(year)} "
-    else:
-        year_clause = (
-            f"AND year = (SELECT MAX(year) FROM {fqn} "
-            f"WHERE measure_type = {_sql_literal('population')}) "
-        )
-    return (
-        f"SELECT country, admin_1, AVG(SAFE_CAST(phase_code AS FLOAT64)) AS avg_phase "
-        f"FROM {fqn} "
-        f"WHERE measure_type = {_sql_literal('population')} "
-        f"AND scenario_name = {_sql_literal('Current Situation')} "
-        f"AND phase_code IS NOT NULL "
-        f"{year_clause}"
-        f"{country_clause}"
-        f"GROUP BY country, admin_1 "
-        f"ORDER BY avg_phase DESC "
-        f"LIMIT {lim}"
+    query: str,
+    selected_tables: set[str] | list[str] | None,
+    entities: list[str] | None = None,
+    time_start: str | None = None,
+    time_end: str | None = None,
+    geo_country: str | None = None,
+    geo_countries: list[str] | None = None,
+) -> bool:
+    tables = _tables_set(selected_tables)
+    if not tables.intersection(_MART_FACT_TABLES):
+        return False
+    multi = [str(c).strip() for c in (geo_countries or []) if str(c).strip()]
+    if len(multi) > 1:
+        return False
+    if not _resolve_country(
+        query=query,
+        entities=entities,
+        geo_country=geo_country,
+        geo_countries=geo_countries,
+    ):
+        return False
+    if _year_from_context(time_start=time_start, time_end=time_end, query=query or "") is None:
+        return False
+    blob = _blob(query, entities)
+    if _RANK_RE.search(blob) and _CONTINENT_RE.search(blob) and not _SERIES_RE.search(blob):
+        return False
+    if _SERIES_RE.search(blob):
+        return False
+    return bool(
+        _PRODUCTION_RE.search(blob)
+        or _YIELD_RE.search(blob)
+        or _PRICE_RE.search(blob)
     )
 
 
-def match_country_crop_series(
+def match_mart_country_series(
     *,
     query: str,
     selected_tables: set[str] | list[str] | None,
@@ -304,154 +233,169 @@ def match_country_crop_series(
     geo_country: str | None = None,
     geo_countries: list[str] | None = None,
 ) -> bool:
-    """Country (+ optional crop) production/price/yield time series — chart/CSV/export style."""
-    # Multi-country / regional expands must not collapse to a single-country series.
     multi = [str(c).strip() for c in (geo_countries or []) if str(c).strip()]
     if len(multi) > 1:
         return False
     tables = _tables_set(selected_tables)
-    fact = None
-    for tid in (
-        "stg_faostat_production",
-        "stg_faostat_prices",
-        "stg_fews_market_prices",
-    ):
-        if tid in tables:
-            fact = tid
-            break
-    if fact is None:
+    table_id = _pick_table(tables, _MART_PRODUCTION_TABLES + _MART_PRICE_TABLES)
+    if table_id is None:
         return False
     blob = _blob(query, entities)
-    country = _resolve_country(
+    if not _resolve_country(
         query=query,
         entities=entities,
         geo_country=geo_country,
         geo_countries=geo_countries,
-    )
-    if not country:
-        return False
-    if fact == "stg_faostat_prices" or fact == "stg_fews_market_prices":
-        if not (_PRICE_RE.search(blob) or _SERIES_RE.search(blob)):
-            return False
-    elif not (
-        _PRODUCTION_RE.search(blob)
-        or _YIELD_RE.search(blob)
-        or _SERIES_RE.search(blob)
     ):
         return False
-    # Prefer series/export over continental ranking when a country is named.
+    if table_id in _MART_PRICE_TABLES:
+        if not (_PRICE_RE.search(blob) or _SERIES_RE.search(blob)):
+            return False
+    elif not (_PRODUCTION_RE.search(blob) or _YIELD_RE.search(blob) or _SERIES_RE.search(blob)):
+        return False
     if _CONTINENT_RE.search(blob) and _RANK_RE.search(blob) and not _SERIES_RE.search(blob):
         return False
     return True
 
 
-def build_faostat_country_rank_sql(
+def match_mart_country_rank(
     *,
-    project_id: str,
-    dataset: str,
-    year: int,
-    limit: int = 20,
-    element: str = "Production",
-    product_name: str | None = None,
-) -> str:
-    """Single-table FAOSTAT country production ranking SQL."""
-    lim = max(1, min(int(limit or 20), 100))
-    fqn = f"`{project_id}.{dataset}.stg_faostat_production`"
-    product_clause = ""
-    if product_name:
-        product_clause = f"AND product_name = {_sql_literal(product_name)} "
-    return (
-        f"SELECT country_name, SUM(value) AS total "
-        f"FROM {fqn} "
-        f"WHERE year = {int(year)} "
-        f"AND element = {_sql_literal(element)} "
-        f"{product_clause}"
-        f"GROUP BY country_name "
-        f"ORDER BY total DESC "
-        f"LIMIT {lim}"
-    )
+    query: str,
+    selected_tables: set[str] | list[str] | None,
+    entities: list[str] | None = None,
+    time_start: str | None = None,
+    time_end: str | None = None,
+) -> bool:
+    tables = _tables_set(selected_tables)
+    if not _pick_table(tables, _MART_RANK_TABLES):
+        return False
+    blob = _blob(query, entities)
+    if _extract_crop(blob) and _RANK_RE.search(blob):
+        return _year_from_context(time_start=time_start, time_end=time_end, query=query or "") is not None
+    if not _PRODUCTION_RE.search(blob) and not _PRICE_RE.search(blob):
+        return False
+    if not _RANK_RE.search(blob):
+        return False
+    if not _CONTINENT_RE.search(blob):
+        return False
+    return _year_from_context(time_start=time_start, time_end=time_end, query=query or "") is not None
 
 
-def build_faostat_price_rank_sql(
+def match_mart_food_security_snapshot(
     *,
-    project_id: str,
-    dataset: str,
-    year: int,
-    limit: int = 20,
-    product_name: str | None = None,
-) -> str:
-    lim = max(1, min(int(limit or 20), 100))
-    fqn = f"`{project_id}.{dataset}.stg_faostat_prices`"
-    product_clause = ""
-    if product_name:
-        product_clause = f"AND product_name = {_sql_literal(product_name)} "
-    return (
-        f"SELECT country_name, AVG(value) AS avg_price "
-        f"FROM {fqn} "
-        f"WHERE year = {int(year)} "
-        f"AND element = {_sql_literal('Producer Price (USD/tonne)')} "
-        f"{product_clause}"
-        f"GROUP BY country_name "
-        f"ORDER BY avg_price DESC "
-        f"LIMIT {lim}"
-    )
+    query: str,
+    selected_tables: set[str] | list[str] | None,
+    entities: list[str] | None = None,
+) -> bool:
+    tables = _tables_set(selected_tables)
+    if not _pick_table(tables, _MART_FOOD_SECURITY_TABLES):
+        return False
+    blob = _blob(query, entities)
+    return bool(_FOOD_SEC_RE.search(blob))
 
 
-def build_country_crop_series_sql(
+def build_mart_point_fact_sql(
     *,
     project_id: str,
     dataset: str,
     table_id: str,
-    country: str,
-    product_name: str | None = None,
-    element: str | None = None,
-    price_type: str | None = None,
-    year_start: int | None = None,
-    year_end: int | None = None,
-    limit: int = 100,
+    country_labels: list[str],
+    product_name: str | None,
+    year: int,
+    blob: str,
+    limit: int = 5,
 ) -> str:
-    """Country (+ crop) time series with exact metric-discriminator filters."""
-    lim = max(1, min(int(limit or 100), 200))
-    tid = table_id.strip().split(".")[-1].lower()
-    fqn = f"`{project_id}.{dataset}.{tid}`"
-    geo = _geo_col(tid)
-    ycol = _year_col(tid)
-    want_yield = bool(element and element.lower() == "yield")
-    elem = element or _default_element(tid, want_yield=want_yield)
-    ptype = price_type or _default_price_type(tid)
-
-    clauses = [f"{geo} = {_sql_literal(country)}"]
-    if elem:
-        clauses.append(f"element = {_sql_literal(elem)}")
-    if ptype:
-        clauses.append(f"price_type = {_sql_literal(ptype)}")
-    if product_name:
-        clauses.append(
-            f"{_product_col(tid)} = {_sql_literal(_product_name_for_table(tid, product_name) or product_name)}"
-        )
-    if year_start is not None:
-        clauses.append(f"{ycol} >= {int(year_start)}")
-    if year_end is not None:
-        clauses.append(f"{ycol} <= {int(year_end)}")
-
-    select_cols = [f"{ycol} AS year", "value"]
-    cols = columns_for_tables({tid}).get(tid) or set()
-    if "unit" in cols:
-        select_cols.append("unit")
-    select_cols.extend([_product_col(tid), geo])
-    if elem and "element" in cols:
-        select_cols.append("element")
-    if ptype and "price_type" in cols:
-        select_cols.append("price_type")
-
+    lim = max(1, min(int(limit or 5), 20))
+    geo_col = _mart_geo_col(table_id)
+    ycol = _mart_year_col(table_id)
+    metric = resolve_measure_column(table_id, "value") or (
+        measure_columns_mart(table_id)[0] if measure_columns_mart(table_id) else "value"
+    )
+    geo_vals = resolve_geo_filter_values(table_id, country_labels)
+    clauses = [f"{ycol} = {int(year)}"]
+    if len(geo_vals) == 1:
+        clauses.append(f"{geo_col} = {_sql_literal(geo_vals[0])}")
+    elif geo_vals:
+        lits = ", ".join(_sql_literal(v) for v in geo_vals)
+        clauses.append(f"{geo_col} IN ({lits})")
+    for col, val in discriminator_equality_filters(table_id, blob):
+        clauses.append(f"{col} = {_sql_literal(val)}")
+    prod_clause, _ = _product_filter(table_id, blob, product_name)
     where = " AND ".join(clauses)
+    prod_col = _mart_product_col(table_id)
+    select_cols = [geo_col, ycol, metric]
+    if prod_col:
+        select_cols.insert(1, prod_col)
+    fqn = f"`{project_id}.{dataset}.{table_id}`"
     return (
         f"SELECT {', '.join(select_cols)} "
         f"FROM {fqn} "
         f"WHERE {where} "
-        f"ORDER BY {ycol} "
+        f"{prod_clause}"
         f"LIMIT {lim}"
     )
+
+
+def build_mart_food_security_sql(
+    *,
+    project_id: str,
+    dataset: str,
+    table_id: str,
+    year: int | None = None,
+    limit: int = 20,
+    countries: list[str] | None = None,
+    blob: str = "",
+) -> str:
+    lim = max(1, min(int(limit or 20), 100))
+    fqn = f"`{project_id}.{dataset}.{table_id}`"
+    geo_col = _mart_geo_col(table_id)
+    ycol = _mart_year_col(table_id)
+    metric = resolve_measure_column(table_id, "value") or "value"
+    clauses: list[str] = []
+    for col, val in discriminator_equality_filters(table_id, blob or "food security population"):
+        clauses.append(f"{col} = {_sql_literal(val)}")
+    real_countries = _resolve_countries(geo_country=None, geo_countries=countries)
+    if real_countries:
+        geo_vals = resolve_geo_filter_values(table_id, real_countries)
+        if len(geo_vals) == 1:
+            clauses.append(f"{geo_col} = {_sql_literal(geo_vals[0])}")
+        elif geo_vals:
+            lits = ", ".join(_sql_literal(c) for c in geo_vals)
+            clauses.append(f"{geo_col} IN ({lits})")
+    if year is not None:
+        clauses.append(f"{ycol} = {int(year)}")
+    else:
+        clauses.append(
+            f"{ycol} = (SELECT MAX({ycol}) FROM {fqn} "
+            f"WHERE measure_type = {_sql_literal('population')})"
+        )
+    where = " AND ".join(clauses) if clauses else "1=1"
+    return (
+        f"SELECT {geo_col}, {ycol}, {metric} "
+        f"FROM {fqn} "
+        f"WHERE {where} "
+        f"ORDER BY {metric} DESC "
+        f"LIMIT {lim}"
+    )
+
+
+def _geo_clause_for_template(
+    table_id: str,
+    *,
+    geo_country: str | None,
+    geo_countries: list[str] | None,
+) -> str:
+    countries = _resolve_countries(geo_country=geo_country, geo_countries=geo_countries)
+    if not countries:
+        return ""
+    resolved = resolve_geo_filter_values(table_id, countries)
+    if not resolved:
+        return ""
+    col = _mart_geo_col(table_id)
+    if len(resolved) == 1:
+        return f"AND {col} = {_sql_literal(resolved[0])} "
+    lits = ", ".join(_sql_literal(c) for c in resolved[:32])
+    return f"AND {col} IN ({lits}) "
 
 
 def try_sql_template(
@@ -468,11 +412,12 @@ def try_sql_template(
     geo_countries: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """
-    Return ``{\"sql\": ..., \"template\": ...}`` when a template matches.
+    Return ``{\"sql\": ..., \"template\": ...}`` when a mart template matches.
 
-    NL2SQL remains primary; call this only after NL2SQL yields nothing or all prepares fail.
-    Match order: country crop series → crop rank → country rank → prices → FEWS food security.
+    Match order: point fact → country series → country rank → food security snapshot.
     """
+    from ml.rag.chatbot.bq_sql_patterns import build_rank_by_sum_sql, build_time_series_sql
+
     if not project_id or not dataset:
         return None
     year = _year_from_context(time_start=time_start, time_end=time_end, query=query or "")
@@ -484,26 +429,57 @@ def try_sql_template(
         geo_country=geo_country,
         geo_countries=geo_countries,
     )
+    tables = _tables_set(selected_tables)
+    countries = _resolve_countries(geo_country=geo_country, geo_countries=geo_countries)
 
-    if match_country_crop_series(
+    if match_mart_point_fact(
+        query=query,
+        selected_tables=selected_tables,
+        entities=entities,
+        time_start=time_start,
+        time_end=time_end,
+        geo_country=geo_country,
+        geo_countries=geo_countries,
+    ):
+        assert year is not None and country is not None
+        if _YIELD_RE.search(blob) and "fct_yield" in tables:
+            table_id = "fct_yield"
+        elif _PRICE_RE.search(blob):
+            table_id = _pick_table(tables, _MART_PRICE_TABLES) or "fct_prices"
+        else:
+            table_id = _pick_table(tables, _MART_PRODUCTION_TABLES) or "fct_production"
+        return {
+            "sql": build_mart_point_fact_sql(
+                project_id=project_id,
+                dataset=dataset,
+                table_id=table_id,
+                country_labels=[country],
+                product_name=crop,
+                year=year,
+                blob=blob,
+                limit=limit,
+            ),
+            "template": "mart_point_fact",
+            "country": country,
+            "product_name": crop,
+            "table_id": table_id,
+            "year": year,
+        }
+
+    if match_mart_country_series(
         query=query,
         selected_tables=selected_tables,
         entities=entities,
         geo_country=geo_country,
         geo_countries=geo_countries,
     ):
-        tables = _tables_set(selected_tables)
-        table_id = "stg_faostat_production"
-        for tid in (
-            "stg_faostat_production",
-            "stg_faostat_prices",
-            "stg_fews_market_prices",
-        ):
-            if tid in tables:
-                table_id = tid
-                break
         assert country is not None
-        want_yield = bool(_YIELD_RE.search(blob)) and table_id == "stg_faostat_production"
+        if _PRICE_RE.search(blob):
+            table_id = _pick_table(tables, _MART_PRICE_TABLES) or "fct_prices"
+        elif _YIELD_RE.search(blob) and "fct_yield" in tables:
+            table_id = "fct_yield"
+        else:
+            table_id = _pick_table(tables, _MART_PRODUCTION_TABLES) or "fct_production"
         y_start = None
         y_end = None
         if time_start:
@@ -517,106 +493,100 @@ def try_sql_template(
         if y_start is None and y_end is None and year is not None:
             y_end = year
             y_start = year - 30
+        geo_sql = _geo_clause_for_template(
+            table_id,
+            geo_country=geo_country,
+            geo_countries=geo_countries,
+        )
+        products = match_product_samples(table_id, blob)
+        metric = resolve_measure_column(table_id, "value") or "value"
         return {
-            "sql": build_country_crop_series_sql(
+            "sql": build_time_series_sql(
                 project_id=project_id,
                 dataset=dataset,
                 table_id=table_id,
-                country=country,
-                product_name=crop,
-                element=("Yield" if want_yield else None),
-                year_start=y_start,
-                year_end=y_end,
+                metric=metric,
+                product_name=products[0] if products else crop,
+                products=products or None,
+                year=year,
                 limit=max(limit, 100),
+                blob=blob,
+                geo_clause=geo_sql,
+                time_start=time_start,
+                time_end=time_end,
             ),
-            "template": "country_crop_series",
+            "template": "mart_country_series",
             "country": country,
             "product_name": crop,
             "table_id": table_id,
         }
 
-    if match_faostat_crop_rank(
+    if match_mart_country_rank(
         query=query,
         selected_tables=selected_tables,
         entities=entities,
         time_start=time_start,
         time_end=time_end,
     ):
-        assert year is not None and crop is not None
+        assert year is not None
+        table_id = _pick_table(tables, _MART_RANK_TABLES) or "fct_production"
+        geo = geo_column(table_id) or "country_iso3"
+        grain = [geo]
+        products = match_product_samples(table_id, blob)
         return {
-            "sql": build_faostat_country_rank_sql(
+            "sql": build_rank_by_sum_sql(
                 project_id=project_id,
                 dataset=dataset,
+                table_id=table_id,
                 year=year,
                 limit=limit,
-                product_name=crop,
+                product_name=products[0] if products else crop,
+                products=products or None,
+                grain=grain,
+                blob=blob,
+                time_start=time_start,
+                time_end=time_end,
             ),
-            "template": "faostat_crop_rank",
+            "template": "mart_country_rank",
             "year": year,
             "product_name": crop,
+            "table_id": table_id,
         }
 
-    if match_faostat_country_rank(
+    if match_mart_food_security_snapshot(
         query=query,
         selected_tables=selected_tables,
         entities=entities,
-        time_start=time_start,
-        time_end=time_end,
     ):
-        assert year is not None
+        table_id = _pick_table(tables, _MART_FOOD_SECURITY_TABLES) or "fct_food_security"
         return {
-            "sql": build_faostat_country_rank_sql(
+            "sql": build_mart_food_security_sql(
                 project_id=project_id,
                 dataset=dataset,
+                table_id=table_id,
                 year=year,
                 limit=limit,
+                countries=countries or None,
+                blob=blob,
             ),
-            "template": "faostat_country_rank",
+            "template": "mart_food_security_snapshot",
             "year": year,
-        }
-
-    if match_faostat_price_rank(
-        query=query,
-        selected_tables=selected_tables,
-        entities=entities,
-        time_start=time_start,
-        time_end=time_end,
-    ):
-        assert year is not None
-        return {
-            "sql": build_faostat_price_rank_sql(
-                project_id=project_id,
-                dataset=dataset,
-                year=year,
-                limit=limit,
-                product_name=crop,
-            ),
-            "template": "faostat_price_rank",
-            "year": year,
-        }
-
-    if match_fews_food_security(
-        query=query,
-        selected_tables=selected_tables,
-        entities=entities,
-        time_start=time_start,
-        time_end=time_end,
-    ):
-        fews_countries = _fews_countries(
-            geo_country=geo_country,
-            geo_countries=geo_countries,
-        )
-        return {
-            "sql": build_fews_food_security_sql(
-                project_id=project_id,
-                dataset=dataset,
-                year=year,
-                limit=limit,
-                countries=fews_countries or None,
-            ),
-            "template": "fews_food_security",
-            "year": year,
-            "countries": fews_countries,
+            "countries": countries,
+            "table_id": table_id,
         }
 
     return None
+
+
+__all__ = [
+    "try_sql_template",
+    "match_mart_point_fact",
+    "match_mart_country_series",
+    "match_mart_country_rank",
+    "match_mart_food_security_snapshot",
+    "build_mart_point_fact_sql",
+    "build_mart_food_security_sql",
+    "_CROP_ALIASES",
+    "_sql_literal",
+    "_year_from_context",
+]

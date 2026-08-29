@@ -793,7 +793,7 @@ def fallback_plan(
     task_mode: str = "fact_lookup",
 ) -> dict[str, Any] | None:
     """Last-resort forced plan from MeasureSpec after reasoner retries fail."""
-    from ml.rag.chatbot.bq_table_schema_yaml import pack_mart_table_hints
+    from ml.rag.chatbot.bq_table_schema_yaml import compile_intent_for_table, pack_mart_table_hints
 
     tables = [t for t in effective_tables(hit) if t in known_tables]
     if not tables and hit.measure.candidate_tables:
@@ -830,41 +830,47 @@ def fallback_plan(
     hints = effective_filter_hints(hit)
     primary = tables[0]
 
+    multi_country = africa_panel or africa_default or hit.measure.country_is_answer or len(countries) != 1
+
     intents: list[dict[str, Any]] = [
-        {
-            "goal": f"{hit.measure.id} fact/rank for asked scope",
-            "tables": [primary],
-            "filters": f"{hints}; {geo_filter}; year≈{year_hint}; item≈{item_hint}",
-            "notes": f"ontology_fallback_{hit.measure.id}",
-            "pattern": (
-                "rank_by_sum"
-                if (africa_default or africa_panel or hit.measure.country_is_answer or len(countries) != 1)
-                else "custom"
-            ),
-            "metric": "value",
-            "grain": ["country_iso3"]
-            if (africa_default or africa_panel or hit.measure.country_is_answer or len(countries) != 1)
-            else ["country_iso3", "year"],
-            "order_by": "value DESC",
-        }
+        compile_intent_for_table(
+            primary,
+            measure_id=hit.measure.id,
+            query=query,
+            geo_labels=countries,
+            year_hint=year_hint,
+            multi_country=multi_country,
+            africa_panel=africa_panel or africa_default,
+            time_start=ts,
+            time_end=te,
+            extra_filters=hints,
+        )
     ]
+    intents[0]["goal"] = f"{hit.measure.id} fact/rank for asked scope"
+    intents[0]["notes"] = f"ontology_fallback_{hit.measure.id}"
+    intents[0]["filters"] = f"{hints}; {intents[0]['filters']}"
 
     # Multi-signal investor / analytical composite.
     if hit.measure.id == "investor_best_country":
         intents = []
         for tid in tables[:6]:
-            intents.append(
-                {
-                    "goal": f"Investment signal from {tid}",
-                    "tables": [tid],
-                    "filters": f"{geo_filter}; recent years; {hints}",
-                    "notes": f"ontology_fallback_investor_{tid}",
-                    "pattern": "rank_by_sum" if "fct_production" in tid or "fct_trade" in tid else "custom",
-                    "metric": "value",
-                    "grain": ["country_iso3"],
-                    "order_by": "value DESC",
-                }
+            extra = hints
+            intent = compile_intent_for_table(
+                tid,
+                measure_id=hit.measure.id,
+                query=query,
+                geo_labels=countries,
+                year_hint=year_hint,
+                multi_country=True,
+                africa_panel=africa_panel or africa_default,
+                time_start=ts,
+                time_end=te,
+                extra_filters=extra,
             )
+            intent["goal"] = f"Investment signal from {tid}"
+            intent["notes"] = f"ontology_fallback_investor_{tid}"
+            intent["filters"] = f"{extra}; recent years; {intent['filters']}"
+            intents.append(intent)
 
     # FEWS / IPC food security — spine + cross-domain companions (not production-only pad).
     if hit.measure.id == "food_security_ipc":
@@ -877,53 +883,49 @@ def fallback_plan(
         ordered_present = [t for t in ordered if t in tables] or tables[:6]
         intents = []
         for tid in ordered_present:
-            intents.append(
-                {
-                    "goal": f"Food security signal from {tid}",
-                    "tables": [tid],
-                    "filters": (
-                        f"{hints}; {geo_filter}; year≈{year_hint}"
-                        + ("; price_source='fews'" if tid == "fct_prices" else "")
-                        + (
-                            "; production_grain='physical'"
-                            if tid == "fct_production"
-                            else ""
-                        )
-                        + (
-                            "; measure_type='population'"
-                            if tid == "fct_food_security"
-                            else ""
-                        )
-                    ),
-                    "notes": f"ontology_fallback_food_security_{tid}",
-                    "pattern": (
-                        "rank_by_sum"
-                        if tid == "fct_production"
-                        and (africa_default or africa_panel or len(countries) != 1)
-                        else "custom"
-                    ),
-                    "metric": "value",
-                    "grain": ["country_iso3"]
-                    if (africa_default or africa_panel or len(countries) != 1)
-                    else ["country_iso3", "year"],
-                    "order_by": "value DESC",
-                }
+            extra = hints
+            if tid == "fct_prices":
+                extra = f"{hints}; price_source='fews'"
+            elif tid == "fct_production":
+                extra = f"{hints}; production_grain='physical'"
+            elif tid == "fct_food_security":
+                extra = f"{hints}; measure_type='population'"
+            intent = compile_intent_for_table(
+                tid,
+                measure_id=hit.measure.id,
+                query=query,
+                geo_labels=countries,
+                year_hint=year_hint,
+                multi_country=africa_default or africa_panel or len(countries) != 1,
+                africa_panel=africa_panel or africa_default,
+                time_start=ts,
+                time_end=te,
+                extra_filters=extra,
             )
+            intent["goal"] = f"Food security signal from {tid}"
+            intent["notes"] = f"ontology_fallback_food_security_{tid}"
+            intents.append(intent)
         tables = ordered_present
 
     if task_mode == "data_export_only" or hit.measure.id == "data_export_panel":
-        intents.append(
-            {
-                "goal": "Tabular multi-row export / full panel",
-                "tables": [primary],
-                "filters": f"{hints}; {geo_filter}; year around {year_hint}",
-                "notes": "ontology_fallback_export",
-                "pattern": "custom",
-                "metric": "value",
-                "grain": ["country_iso3", "year"],
-                "order_by": "year ASC",
-            }
+        export_intent = compile_intent_for_table(
+            primary,
+            measure_id=hit.measure.id,
+            query=query,
+            geo_labels=countries,
+            year_hint=year_hint,
+            multi_country=multi_country,
+            africa_panel=africa_panel or africa_default,
+            time_start=ts,
+            time_end=te,
+            extra_filters=hints,
         )
+        export_intent["goal"] = "Tabular multi-row export / full panel"
+        export_intent["notes"] = "ontology_fallback_export"
+        export_intent["pattern"] = "time_series"
+        export_intent["order_by"] = "year ASC"
+        export_intent["filters"] = f"{hints}; {export_intent['filters']}"
+        intents.append(export_intent)
 
     selected = tables[:6]
     plan: dict[str, Any] = {

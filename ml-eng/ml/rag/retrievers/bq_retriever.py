@@ -1036,6 +1036,7 @@ class BQRetriever(BaseRetriever):
             if template_sqls:
                 sql_queries = template_sqls
             else:
+                pattern_cap = 1 if fast_fact else None
                 pattern_hits = try_sql_patterns(
                     query_intents,
                     project_id=self.project_id,
@@ -1048,6 +1049,7 @@ class BQRetriever(BaseRetriever):
                     limit=rows_per_query,
                     geo_country=geo_country,
                     geo_countries=geo_countries,
+                    max_queries=pattern_cap,
                 )
                 if pattern_hits:
                     pattern_meta = {
@@ -1074,7 +1076,7 @@ class BQRetriever(BaseRetriever):
                             leftover_tables.append(tid)
                 need_nl2sql = self.nl2sql_enabled and (
                     not pattern_sqls
-                    or leftover_intents
+                    or (leftover_intents and not fast_fact)
                     or not query_intents
                 )
                 if need_nl2sql:

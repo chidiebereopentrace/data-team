@@ -12,7 +12,7 @@ Full reference: [config/.env.example](../config/.env.example).
 
 | Variable | Why |
 |----------|-----|
-| `QDRANT_COLLECTION_DATA_DESCRIPTIONS` | Removed; BQ table selection uses staging YAML only |
+| `QDRANT_COLLECTION_DATA_DESCRIPTIONS` | Removed; BQ table selection uses mart YAML only |
 | `NEWS_PUBLIC_REPORTS` or similar legacy alias | Use `QDRANT_COLLECTION_PUBLIC_REPORTS=public_reports` |
 | `GOOGLE_APPLICATION_CREDENTIALS=config/keys/...` | Invalid on Railway; use `GOOGLE_APPLICATION_CREDENTIALS_BASE64` |
 | `GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-sa.json` | Stale HF/serving path; entrypoint uses `/tmp/gcp-sa-key.json` only |
@@ -64,15 +64,15 @@ Unset or align per-plan vars so they do not override chat to a larger model:
 
 - `RAG_LLM_MODEL_FREE`, `RAG_LLM_MODEL_FARMERS`, `RAG_LLM_MODEL_GOVERNMENT`, etc.
 
-### BigQuery (staging YAML reasoner + NL2SQL)
+### BigQuery (mart YAML reasoner + deterministic SQL + NL2SQL fallback)
 
 ```bash
 BQ_PROJECT=opentrace-prod-5ga4
-BQ_DATASET_SILVER=staging_dev
+BQ_DATASET_GOLD=mart_dev
 GOOGLE_APPLICATION_CREDENTIALS_BASE64=<base64 of GCP service account JSON>
 ```
 
-RAG NL-to-SQL queries **`staging_dev`** only (`BQ_DATASET_SILVER`). `BQ_DATASET_BRONZE` is for data-eng tooling, not the live RAG path.
+RAG queries **`mart_dev`** (`BQ_DATASET_GOLD`) via mart templates/patterns first; NL2SQL is fallback. `BQ_DATASET_BRONZE` / `BQ_DATASET_SILVER` are for data-eng tooling, not the live RAG retrieve path.
 
 Encode key: [scripts/encode-gcp-key.sh](../scripts/encode-gcp-key.sh).
 
@@ -101,7 +101,7 @@ This was caused by a Railway **Custom Start Command** that decoded `GCP_SA_JSON_
 1. **Clear** the dashboard Custom Start Command (after deploy it should show “set in railway.toml”).
 2. **Set** `GOOGLE_APPLICATION_CREDENTIALS_BASE64` — copy from `GCP_SA_JSON_B64` if that is where the key lives, or re-encode with `ml-eng/scripts/encode-gcp-key.sh` (single line, no quotes).
 3. **Delete** `GCP_SA_JSON_B64`, `GCP_SA_JSON`, and `GOOGLE_APPLICATION_CREDENTIALS` (especially `/tmp/gcp-sa.json`).
-4. Confirm `BQ_PROJECT` and `BQ_DATASET_SILVER=staging_dev`.
+4. Confirm `BQ_PROJECT` and `BQ_DATASET_GOLD=mart_dev`.
 5. **Redeploy** (`Dockerfile.railway`).
 6. **Verify** `GET /ready` → `bq.gcp.path` is `/tmp/gcp-sa-key.json`, `bq.gcp.json_ok: true`, `status: ready`.
 
@@ -197,7 +197,7 @@ Embeddings, hybrid search, and rerank models are **baked** in `Dockerfile.railwa
 4. **Smoke queries**:
    - Meta: `{"query":"Who are you?"}`
    - Retrieval: maize or policy question — news / academic / policies paths populated
-   - BQ: e.g. fertilizer use or maize production in Nigeria — BQ uses `staging_dev` tables
+   - BQ: e.g. fertilizer use or maize production in Nigeria — BQ uses `mart_dev` tables
    - Rerank: Langfuse / response metadata shows `rerank_mode=cross_encoder` on a full_rag query
 
 ---

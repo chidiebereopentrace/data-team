@@ -13,6 +13,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     match_product_samples,
     measure_sql_aggregation,
     product_column,
+    resolve_geo_filter_values,
     resolve_measure_column,
     table_supports_sql_pattern,
     year_column,
@@ -135,9 +136,12 @@ def _geo_clause(
         countries = [str(geo_country).strip()]
     if not countries:
         return ""
-    if len(countries) == 1:
-        return f"AND {col} = {_sql_literal(countries[0])} "
-    literals = ", ".join(_sql_literal(c) for c in countries[:_GEO_IN_CAP])
+    resolved = resolve_geo_filter_values(table_id, countries)
+    if not resolved:
+        return ""
+    if len(resolved) == 1:
+        return f"AND {col} = {_sql_literal(resolved[0])} "
+    literals = ", ".join(_sql_literal(c) for c in resolved[:_GEO_IN_CAP])
     return f"AND {col} IN ({literals}) "
 
 

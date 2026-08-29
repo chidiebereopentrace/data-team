@@ -1173,7 +1173,7 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
         {
             "content": hint,
             "table_name": tid,
-            "metadata": {"table_name": tid, "source": "staging_yaml"},
+            "metadata": {"table_name": tid, "source": "mart_yaml"},
         }
         for tid, hint in zip(list(plan.get("selected_tables") or []), hints)
     ]
@@ -1184,7 +1184,7 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
                 {
                     "content": "",
                     "table_name": tid,
-                    "metadata": {"table_name": tid, "source": "staging_yaml"},
+                    "metadata": {"table_name": tid, "source": "mart_yaml"},
                 }
             )
     return {
@@ -1323,12 +1323,12 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         bq_timeout = float(
             os.environ.get(
                 "RAG_BQ_RETRIEVE_TIMEOUT_S",
-                "6" if task_mode in ("fact_lookup", "data_export_only") else "15",
+                "10" if task_mode in ("fact_lookup", "data_export_only") else "15",
             )
-            or (6 if task_mode in ("fact_lookup", "data_export_only") else 15)
+            or (10 if task_mode in ("fact_lookup", "data_export_only") else 15)
         )
     except ValueError:
-        bq_timeout = 6.0 if task_mode in ("fact_lookup", "data_export_only") else 15.0
+        bq_timeout = 10.0 if task_mode in ("fact_lookup", "data_export_only") else 15.0
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             fut = ex.submit(
@@ -1350,7 +1350,17 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
             results = fut.result(timeout=bq_timeout)
     except FuturesTimeoutError:
         update_current_span_metadata({"bq_timeout": True, "status": "timeout"})
-        results = []
+        results = [
+            {
+                "content": f"BigQuery retrieve timed out after {bq_timeout}s",
+                "metadata": {
+                    "status": "bq_timeout",
+                    "bq_timeout_s": bq_timeout,
+                    "task_mode": task_mode,
+                },
+                "score": 0.0,
+            }
+        ]
     except Exception:
         logger.exception("BQ retrieve failed")
         results = []
