@@ -10,6 +10,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     columns_for_tables,
     default_discriminator_value,
     dictionary_samples_for_column,
+    geo_column,
     load_mart_table_schema,
     load_table_schema,
     value_samples_for_mart_tables,
@@ -19,6 +20,12 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
 from ml.rag.helpers.mart_semantic_relationships import SEMANTIC_RELATIONSHIPS
 
 _SHARED_DICTIONARY_COLUMNS = frozenset({"product_name"})
+
+_LARGE_PARTITIONED_TABLES = frozenset({"fct_production", "fct_trade", "fct_prices", "fct_yield"})
+
+_YIELD_ELEMENT_VALUES = frozenset({"yield"})
+_YIELD_METRIC_TOKENS = ("yield",)
+_PRODUCTION_ELEMENT_VALUES = frozenset({"production"})
 
 _MART_TABLE_RE = re.compile(
     r"\b(?:fct|agg|dim|bridge)_[a-z0-9_]+\b",
@@ -457,6 +464,7 @@ def inject_missing_metric_filters(
     table_ids: set[str] | None = None,
     *,
     query: str = "",
+    primary_measures: list[str] | None = None,
 ) -> tuple[str, list[str]]:
     """
     Auto-inject equality filters for required metric discriminators that are missing.
@@ -493,7 +501,12 @@ def inject_missing_metric_filters(
                     sample_vals = set(vals)
                     orig_col = str(key)
                     break
-            default = default_discriminator_value(orig_col, sample_vals, query=query)
+            default = default_discriminator_value(
+                orig_col,
+                sample_vals,
+                query=query,
+                primary_measures=primary_measures,
+            )
             if not default:
                 continue
             lit = default.replace("'", "''")
@@ -779,3 +792,197 @@ def dry_run_sql(client: Any, sql: str) -> str | None:
         return None
     except Exception as exc:
         return str(exc)[:500]
+
+
+def dry_run_bytes_processed(client: Any, sql: str) -> int | None:
+    """Return dry-run totalBytesProcessed or None when unavailable."""
+    if not sql or not dry_run_enabled():
+        return None
+    try:
+        from google.cloud import bigquery
+
+        job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
+        job = client.query(sql, job_config=job_config)
+        return int(getattr(job, "total_bytes_processed", 0) or 0)
+    except Exception:
+        return None
+
+
+def _eq_literals_for_column(sql: str, column: str) -> list[str]:
+    """Equality / IN string literals for one column."""
+    col_l = column.lower()
+    out: list[str] = []
+    for match in _EQ_FILTER_RE.finditer(sql or ""):
+        if match.group(1).lower() != col_l:
+            continue
+        out.append(match.group(2).replace("''", "'").strip())
+    for match in _IN_FILTER_RE.finditer(sql or ""):
+        if match.group(1).lower() != col_l:
+            continue
+        body = match.group(2)
+        if "select" in body.lower():
+            continue
+        for lit_m in re.finditer(r"'((?:''|[^'])*)'", body):
+            out.append(lit_m.group(1).replace("''", "'").strip())
+    return out
+
+
+def _sql_has_product_filter(sql: str) -> bool:
+    scrubbed = _strip_string_literals(sql or "").lower()
+    if re.search(r"\bproduct_name\s*(=|in\s*\()", scrubbed):
+        return True
+    if re.search(r"\bproduct_key\s+in\s*\(\s*select\b", scrubbed):
+        return True
+    return False
+
+
+def _sql_has_geo_filter(sql: str, geo_col: str | None) -> bool:
+    if not geo_col:
+        return True
+    scrubbed = _strip_string_literals(sql or "").lower()
+    return bool(re.search(rf"\b{re.escape(geo_col.lower())}\s*(=|in\s*\()", scrubbed))
+
+
+def _sql_has_time_bounds(sql: str) -> bool:
+    return _sql_has_time_filter(sql)
+
+
+def _sql_has_partition_predicate(sql: str, table_id: str) -> bool:
+    bare = str(table_id or "").strip().split(".")[-1].lower()
+    if bare not in _LARGE_PARTITIONED_TABLES:
+        return True
+    schema = load_mart_table_schema(bare) or {}
+    col_names = {
+        str(c.get("name") or "").strip().lower()
+        for c in (schema.get("columns") or [])
+        if str(c.get("name") or "").strip()
+    }
+    scrubbed = _strip_string_literals(sql or "").lower()
+    if "as_of_date" in col_names and re.search(
+        r"\bas_of_date\b\s*(=|between|>=|<=|>|<|in\s*\()",
+        scrubbed,
+    ):
+        return True
+    ycol = (year_column(bare) or "year").lower()
+    return bool(re.search(rf"\b{re.escape(ycol)}\b\s*(=|between|>=|<=|>|<|in\s*\()", scrubbed))
+
+
+def validate_semantic_coherence(
+    sql: str,
+    *,
+    query: str = "",
+    primary_measures: list[str] | None = None,
+    geography: list[str] | None = None,
+    time_start: str | None = None,
+    time_end: str | None = None,
+    crop_required: bool = True,
+    geography_required: bool = True,
+    table_ids: set[str] | None = None,
+) -> str | None:
+    """
+    Reject warehouse-valid SQL that contradicts decomposition intent.
+
+    Checks measure/geo/product/time coherence — not YAML literal presence alone.
+    """
+    text = (sql or "").strip()
+    if not text:
+        return None
+
+    pm = [str(m).strip().lower() for m in (primary_measures or []) if str(m).strip()]
+    production_intent = any(m in ("production", "prod") for m in pm) or bool(
+        re.search(r"\b(production|tonnes?|tons?)\b", (query or ""), re.IGNORECASE)
+    )
+    yield_intent = any("yield" in m for m in pm) or bool(
+        re.search(r"\byields?\b", (query or ""), re.IGNORECASE)
+    )
+
+    if production_intent and not yield_intent:
+        for lit in _eq_literals_for_column(text, "element"):
+            if lit.lower() in _YIELD_ELEMENT_VALUES:
+                return (
+                    "SQL filters element='Yield' but question/primary_measures "
+                    "request production volume. Use element='Production' and a "
+                    "production volume metric."
+                )
+        for lit in _eq_literals_for_column(text, "metric"):
+            low = lit.lower()
+            if any(tok in low for tok in _YIELD_METRIC_TOKENS) and "production_production" not in low:
+                return (
+                    "SQL filters a yield metric but question/primary_measures "
+                    "request production volume."
+                )
+
+    if yield_intent and not production_intent:
+        for lit in _eq_literals_for_column(text, "element"):
+            if lit.lower() in _PRODUCTION_ELEMENT_VALUES:
+                return "SQL filters element='Production' but question requests yield."
+
+    geo_labels = [str(g).strip() for g in (geography or []) if str(g).strip()]
+    if geography_required and geo_labels:
+        refs = _refs_for_sql_checks(text, table_ids)
+        geo_ok = False
+        for bare in refs:
+            gcol = geo_column(bare)
+            if _sql_has_geo_filter(text, gcol):
+                geo_ok = True
+                break
+        if not geo_ok:
+            return (
+                "SQL must filter geography when decomposition specifies countries. "
+                f"Expected filter on geo column for: {', '.join(geo_labels[:5])}."
+            )
+
+    if crop_required and not _sql_has_product_filter(text):
+        q = (query or "").lower()
+        if re.search(r"\b(maize|rice|wheat|sorghum|millet|cassava|crop|commodity)\b", q):
+            return (
+                "SQL must include a dictionary-backed product filter when the "
+                "question names a crop/commodity."
+            )
+
+    if time_start and time_end and not _sql_has_time_bounds(text):
+        return (
+            "SQL must include a time bound (year or as_of_date) matching the "
+            "decomposition time window."
+        )
+
+    refs = _refs_for_sql_checks(text, table_ids)
+    for bare in sorted(refs):
+        if bare in _LARGE_PARTITIONED_TABLES and not _sql_has_partition_predicate(text, bare):
+            return (
+                f"SQL querying `{bare}` must filter as_of_date or year for partition "
+                "pruning on large mart facts."
+            )
+
+    return None
+
+
+def validate_dry_run_bytes(
+    client: Any,
+    sql: str,
+    *,
+    max_bytes: int | None = None,
+    sql_source: str = "",
+) -> str | None:
+    """Optional dry-run bytes ceiling (template vs nl2sql defaults)."""
+    if not max_bytes or max_bytes <= 0:
+        return None
+    processed = dry_run_bytes_processed(client, sql)
+    if processed is None:
+        return None
+    if processed > max_bytes:
+        mb = processed / (1024 * 1024)
+        cap = max_bytes / (1024 * 1024)
+        return (
+            f"SQL dry-run would scan {mb:.0f}MB (cap {cap:.0f}MB for {sql_source or 'query'}). "
+            "Add partition/time bounds or route to an agg table."
+        )
+    return None
+
+
+def max_bytes_billed_for_source(sql_source: str) -> int:
+    """Bytes cap by SQL producer (NL2SQL stricter than template/pattern)."""
+    src = (sql_source or "").strip().lower()
+    if src in ("template", "pattern"):
+        return int(os.environ.get("RAG_BQ_TEMPLATE_MAX_BYTES_BILLED", str(512 * 1024 * 1024)) or 0)
+    return int(os.environ.get("RAG_BQ_MAX_BYTES_BILLED", str(250 * 1024 * 1024)) or 0)

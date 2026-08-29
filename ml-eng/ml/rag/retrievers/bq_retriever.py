@@ -21,8 +21,11 @@ from ml.rag.chatbot.bq_sql_validate import (
     dry_run_sql,
     inject_missing_metric_filters,
     inject_time_bounds,
+    max_bytes_billed_for_source,
     sql_retry_enabled,
+    validate_dry_run_bytes,
     validate_required_metric_filters,
+    validate_semantic_coherence,
     validate_sql_column_allowlist,
     validate_sql_table_allowlist,
     validate_sql_value_samples,
@@ -646,6 +649,11 @@ class BQRetriever(BaseRetriever):
         entities: list[str] | None = None,
         domains: list[str] | None = None,
         query: str | None = None,
+        primary_measures: list[str] | None = None,
+        geography: list[str] | None = None,
+        crop_required: bool = True,
+        geography_required: bool = True,
+        sql_source: str = "",
     ) -> tuple[str | None, str | None]:
         """
         Validate SQL, enforce table allowlist, dry-run, and optionally retry once.
@@ -669,6 +677,28 @@ class BQRetriever(BaseRetriever):
             sample_err = validate_sql_value_samples(sql, selected_tables or None)
             if sample_err:
                 return sample_err
+            coherence_err = validate_semantic_coherence(
+                sql,
+                query=question or query or "",
+                primary_measures=primary_measures,
+                geography=geography,
+                time_start=time_start,
+                time_end=time_end,
+                crop_required=crop_required,
+                geography_required=geography_required,
+                table_ids=selected_tables or None,
+            )
+            if coherence_err:
+                return coherence_err
+            bytes_cap = max_bytes_billed_for_source(sql_source)
+            bytes_err = validate_dry_run_bytes(
+                client,
+                sql,
+                max_bytes=bytes_cap,
+                sql_source=sql_source,
+            )
+            if bytes_err:
+                return bytes_err
             dry_err = dry_run_sql(client, sql)
             if dry_err:
                 return f"dry_run_failed: {dry_err[:300]}"
@@ -682,6 +712,7 @@ class BQRetriever(BaseRetriever):
                     sql,
                     selected_tables or None,
                     query=cue,
+                    primary_measures=primary_measures,
                 )
                 if notes:
                     revalidated = _validate_sql(fixed, allowed_datasets, limit)
@@ -988,6 +1019,21 @@ class BQRetriever(BaseRetriever):
         query_intents: list[Any] | None = raw_intents if isinstance(raw_intents, list) else None
         crop_required = bool(kwargs.get("crop_required", True))
         geography_required = bool(kwargs.get("geography_required", True))
+        raw_pm = kwargs.get("primary_measures")
+        primary_measures: list[str] | None = None
+        if isinstance(raw_pm, list):
+            primary_measures = [str(m).strip() for m in raw_pm if str(m).strip()] or None
+        decomp = kwargs.get("decomposition")
+        geography: list[str] | None = None
+        if isinstance(decomp, dict):
+            geo_raw = decomp.get("geography")
+            if isinstance(geo_raw, list):
+                geography = [str(g).strip() for g in geo_raw if str(g).strip()] or None
+        if geography is None and geo_countries:
+            geography = list(geo_countries)
+        elif geography is None and geo_country:
+            geography = [geo_country]
+        task_mode = str(kwargs.get("task_mode") or "").strip().lower()
 
         sql_input = kwargs.get("sql")
         sql_queries: list[str] = []
@@ -999,7 +1045,6 @@ class BQRetriever(BaseRetriever):
             sql_queries = [str(s).strip() for s in sql_input if str(s).strip()]
             explicit_sql = bool(sql_queries)
 
-        task_mode = str(kwargs.get("task_mode") or "").strip().lower()
         fast_fact = task_mode in ("fact_lookup", "data_export_only")
 
         template_meta: dict[str, Any] | None = None
@@ -1025,6 +1070,8 @@ class BQRetriever(BaseRetriever):
                 limit=template_limit,
                 geo_country=geo_country,
                 geo_countries=geo_countries,
+                primary_measures=primary_measures,
+                task_mode=task_mode,
             )
             if not hit:
                 return []
@@ -1051,6 +1098,7 @@ class BQRetriever(BaseRetriever):
                     geo_country=geo_country,
                     geo_countries=geo_countries,
                     max_queries=pattern_cap,
+                    primary_measures=primary_measures,
                 )
                 if pattern_hits:
                     pattern_meta = {
@@ -1067,6 +1115,10 @@ class BQRetriever(BaseRetriever):
                             for idx, intent in enumerate(query_intents)
                             if idx not in compiled_idx and isinstance(intent, dict)
                         ]
+                elif isinstance(query_intents, list):
+                    leftover_intents = [
+                        intent for intent in query_intents if isinstance(intent, dict)
+                    ]
                     sql_source = "pattern"
 
                 leftover_tables: list[str] = []
@@ -1075,11 +1127,18 @@ class BQRetriever(BaseRetriever):
                         tid = str(raw).strip().split(".")[-1].lower()
                         if _is_mart_table_id(tid) and tid not in leftover_tables:
                             leftover_tables.append(tid)
+                custom_leftover = [
+                    intent
+                    for intent in leftover_intents
+                    if isinstance(intent, dict)
+                    and str(intent.get("pattern") or "custom").strip().lower() == "custom"
+                ]
                 need_nl2sql = self.nl2sql_enabled and (
-                    not pattern_sqls
-                    or (leftover_intents and not fast_fact)
-                    or not query_intents
+                    custom_leftover
+                    or (not pattern_sqls and not template_sqls and not query_intents)
                 )
+                if fast_fact and not custom_leftover:
+                    need_nl2sql = False
                 if need_nl2sql:
                     nl_tables = leftover_tables or (
                         sorted(selected_tables) if selected_tables else None
@@ -1192,6 +1251,11 @@ class BQRetriever(BaseRetriever):
                     entities=entities,
                     domains=domains,
                     query=query,
+                    primary_measures=primary_measures,
+                    geography=geography,
+                    crop_required=crop_required,
+                    geography_required=geography_required,
+                    sql_source=source,
                 )
                 if validated is None:
                     logger.warning(
@@ -1224,12 +1288,14 @@ class BQRetriever(BaseRetriever):
                 prepared_ok = True
                 try:
                     from google.cloud.bigquery import QueryJobConfig as _QJC
-                    _max_b = int(
-                        os.environ.get("RAG_BQ_MAX_BYTES_BILLED", str(250 * 1024 * 1024)) or 0
-                    )
+
+                    _max_b = max_bytes_billed_for_source(source)
                     _jcfg = _QJC(maximum_bytes_billed=_max_b) if _max_b > 0 else None
                     job = client.query(validated, job_config=_jcfg)
                     rows = list(job.result())
+                    billed = int(getattr(job, "total_bytes_billed", 0) or 0)
+                    if billed:
+                        logger.info("BQ bytes billed sql#%d source=%s: %s", idx + 1, source, billed)
                 except Exception as exc:
                     logger.warning(
                         "BQ execution failed for validated SQL #%d: %s (sql: %s)",
@@ -1277,10 +1343,21 @@ class BQRetriever(BaseRetriever):
                             entities=entities,
                             domains=domains,
                             query=query,
+                            primary_measures=primary_measures,
+                            geography=geography,
+                            crop_required=crop_required,
+                            geography_required=geography_required,
+                            sql_source=source,
                         )
                         if revalidated:
                             try:
-                                job = client.query(revalidated)
+                                from google.cloud.bigquery import QueryJobConfig as _QJC
+
+                                _max_b = max_bytes_billed_for_source(source)
+                                _jcfg = (
+                                    _QJC(maximum_bytes_billed=_max_b) if _max_b > 0 else None
+                                )
+                                job = client.query(revalidated, job_config=_jcfg)
                                 rows = list(job.result())
                                 validated = revalidated
                             except Exception as exc:

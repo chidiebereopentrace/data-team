@@ -197,25 +197,26 @@ def test_retrieve_template_fallback_when_nl2sql_empty() -> None:
     )
 
 
-def test_retrieve_prefers_valid_nl2sql_over_template() -> None:
+def test_retrieve_fast_fact_skips_nl2sql_without_custom_intent() -> None:
     retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
     good_sql = (
         "SELECT country_iso3, SUM(value) AS total "
         "FROM `proj.mart_dev.fct_production` "
         "WHERE year = 2020 AND production_grain = 'physical' "
+        "AND element = 'Production' AND metric = 'production_production_physical' "
         "GROUP BY country_iso3 ORDER BY total DESC LIMIT 10"
     )
     client = MagicMock()
     client.query.return_value.result.return_value = [
         {"country_iso3": "KEN", "total": 50.0}
     ]
-    with patch.object(retriever, "_nl_to_sql_queries", return_value=[good_sql]):
+    with patch.object(retriever, "_nl_to_sql_queries", return_value=[good_sql]) as nl:
         with patch.object(retriever, "_get_client", return_value=client):
             with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
                 with patch(
                     "ml.rag.retrievers.bq_retriever.try_sql_template",
                     return_value=None,
-                ) as tmpl:
+                ):
                     with patch(
                         "ml.rag.retrievers.bq_retriever.try_sql_patterns",
                         return_value=[],
@@ -224,10 +225,60 @@ def test_retrieve_prefers_valid_nl2sql_over_template() -> None:
                             "highest agricultural production in Africa 2020",
                             selected_tables=["fct_production"],
                             time_start="2020-01-01",
+                            task_mode="fact_lookup",
                         )
-    tmpl.assert_called_once()
+    nl.assert_not_called()
+    assert len(items) == 1
+    assert items[0]["metadata"]["status"] == "no_valid_sql"
+
+
+_PRODUCTION_WHERE = (
+    "production_grain = 'physical' "
+    "AND element = 'Production' AND metric = 'production_production_physical'"
+)
+
+
+def test_retrieve_prefers_valid_nl2sql_with_custom_intent() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    good_sql = (
+        "SELECT country_iso3, SUM(value) AS total "
+        "FROM `proj.mart_dev.fct_production` "
+        f"WHERE year = 2020 AND {_PRODUCTION_WHERE} "
+        "GROUP BY country_iso3 ORDER BY total DESC LIMIT 10"
+    )
+    client = MagicMock()
+    client.query.return_value.result.return_value = [
+        {"country_iso3": "KEN", "total": 50.0}
+    ]
+    with patch.object(retriever, "_nl_to_sql_queries", return_value=[good_sql]) as nl:
+        with patch.object(retriever, "_get_client", return_value=client):
+            with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
+                with patch(
+                    "ml.rag.retrievers.bq_retriever.try_sql_template",
+                    return_value=None,
+                ):
+                    with patch(
+                        "ml.rag.retrievers.bq_retriever.try_sql_patterns",
+                        return_value=[],
+                    ):
+                        items = retriever.retrieve(
+                            "highest agricultural production in Africa 2020",
+                            selected_tables=["fct_production"],
+                            time_start="2020-01-01",
+                            query_intents=[
+                                {"pattern": "custom", "tables": ["fct_production"]},
+                            ],
+                            task_mode="analytical",
+                            crop_required=False,
+                            geography_required=False,
+                        )
+    nl.assert_called_once()
     assert any("KEN" in str(it.get("content")) for it in items)
     assert any((it.get("metadata") or {}).get("sql_source") == "nl2sql" for it in items)
+
+
+def test_retrieve_prefers_valid_nl2sql_over_template() -> None:
+    test_retrieve_prefers_valid_nl2sql_with_custom_intent()
 
 
 def test_aggregate_bq_sql_debug_includes_failures() -> None:
@@ -278,7 +329,7 @@ def test_retrieve_empty_nl2sql_rows_retries_template() -> None:
     tmpl_sql = (
         "SELECT country_iso3, value "
         "FROM `proj.mart_dev.fct_production` "
-        "WHERE year = 2022 AND production_grain = 'physical' "
+        f"WHERE year = 2022 AND {_PRODUCTION_WHERE} "
         "AND country_iso3 = 'NGA' LIMIT 5"
     )
     filled_job = MagicMock()
@@ -302,6 +353,8 @@ def test_retrieve_empty_nl2sql_rows_retries_template() -> None:
                             selected_tables=["fct_production"],
                             time_start="2022-01-01",
                             time_end="2022-12-31",
+                            crop_required=False,
+                            geography_required=False,
                         )
     tmpl.assert_called()
     nl.assert_not_called()
@@ -314,7 +367,7 @@ def test_retrieve_pattern_hits_still_nl2sql_leftover_custom() -> None:
     pattern_sql = (
         "SELECT country_iso3, SUM(value) AS total "
         "FROM `proj.mart_dev.fct_production` "
-        "WHERE year = 2022 AND production_grain = 'physical' "
+        f"WHERE year = 2022 AND {_PRODUCTION_WHERE} "
         "GROUP BY country_iso3 ORDER BY total DESC LIMIT 10"
     )
     leftover_sql = (
@@ -372,7 +425,7 @@ def test_retrieve_zero_rows_labeled_empty_result() -> None:
     nl_sql = (
         "SELECT country_iso3, SUM(value) AS total "
         "FROM `proj.mart_dev.fct_production` "
-        "WHERE year = 2022 AND production_grain = 'physical' "
+        f"WHERE year = 2022 AND {_PRODUCTION_WHERE} "
         "GROUP BY country_iso3 LIMIT 10"
     )
     client = MagicMock()
@@ -392,6 +445,12 @@ def test_retrieve_zero_rows_labeled_empty_result() -> None:
                             "maize production 2022",
                             selected_tables=["fct_production"],
                             time_start="2022-01-01",
+                            query_intents=[
+                                {"pattern": "custom", "tables": ["fct_production"]},
+                            ],
+                            task_mode="analytical",
+                            crop_required=False,
+                            geography_required=False,
                         )
     assert len(items) == 1
     meta = items[0]["metadata"]
@@ -404,7 +463,7 @@ def test_retrieve_broadens_empty_year_once() -> None:
     nl_sql = (
         "SELECT country_iso3, SUM(value) AS total "
         "FROM `proj.mart_dev.fct_production` "
-        "WHERE year = 2022 AND production_grain = 'physical' "
+        f"WHERE year = 2022 AND {_PRODUCTION_WHERE} "
         "GROUP BY country_iso3 LIMIT 10"
     )
     empty_job = MagicMock()
@@ -417,22 +476,37 @@ def test_retrieve_broadens_empty_year_once() -> None:
         with patch.object(retriever, "_get_client", return_value=client):
             with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
                 with patch(
-                    "ml.rag.retrievers.bq_retriever.try_sql_template",
+                    "ml.rag.retrievers.bq_retriever.validate_dry_run_bytes",
                     return_value=None,
                 ):
                     with patch(
-                        "ml.rag.retrievers.bq_retriever.try_sql_patterns",
-                        return_value=[],
+                        "ml.rag.retrievers.bq_retriever.try_sql_template",
+                        return_value=None,
                     ):
-                        items = retriever.retrieve(
-                            "maize production 2022",
-                            selected_tables=["fct_production"],
-                            time_start="2022-01-01",
-                        )
+                        with patch(
+                            "ml.rag.retrievers.bq_retriever.try_sql_patterns",
+                            return_value=[],
+                        ):
+                            items = retriever.retrieve(
+                                "maize production 2022",
+                                selected_tables=["fct_production"],
+                                time_start="2022-01-01",
+                                query_intents=[
+                                    {"pattern": "custom", "tables": ["fct_production"]},
+                                ],
+                                task_mode="analytical",
+                                crop_required=False,
+                                geography_required=False,
+                            )
     assert any("NGA" in str(it.get("content")) for it in items)
-    second_sql = client.query.call_args_list[1].args[0]
-    assert "BETWEEN 2021 AND 2023" in second_sql
-    assert "dim_" not in second_sql
+    execute_calls = [
+        c.args[0]
+        for c in client.query.call_args_list
+        if c.args and str(c.args[0]).upper().startswith("SELECT")
+    ]
+    assert len(execute_calls) >= 2
+    assert "BETWEEN 2021 AND 2023" in execute_calls[-1]
+    assert "dim_" not in execute_calls[-1]
 
 
 def test_retrieve_invalid_nl2sql_rescued_by_pattern() -> None:
@@ -444,7 +518,7 @@ def test_retrieve_invalid_nl2sql_rescued_by_pattern() -> None:
     pattern_sql = (
         "SELECT country_iso3, SUM(value) AS total "
         "FROM `proj.mart_dev.fct_production` "
-        "WHERE year = 2022 AND production_grain = 'physical' "
+        f"WHERE year = 2022 AND {_PRODUCTION_WHERE} "
         "GROUP BY country_iso3 LIMIT 10"
     )
     client = MagicMock()
@@ -478,6 +552,8 @@ def test_retrieve_invalid_nl2sql_rescued_by_pattern() -> None:
                                 "maize production west africa 2022",
                                 selected_tables=["fct_production"],
                                 time_start="2022-01-01",
+                                crop_required=False,
+                                geography_required=False,
                             )
     assert any("NGA" in str(it.get("content")) for it in items)
     assert any((it.get("metadata") or {}).get("sql_source") == "pattern" for it in items)
