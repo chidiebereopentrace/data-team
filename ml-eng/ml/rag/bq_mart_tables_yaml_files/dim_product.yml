@@ -39,6 +39,32 @@ product_name_value_stats:
   is_truncated: true
   min_value: Abaca, manila hemp, raw
   max_value: hydrogenated oils and fats
+product_name_value_samples:
+- Maize
+- Sorghum
+- Millet
+- Groundnuts (In Shell)
+- Rice
+- Cassava
+- Cowpea
+- Beans (mixed)
+- Sweet Potatoes
+- Sesame Seed
+- Wheat
+- Soybean
+- Banana
+- Potato
+- Yams
+- Sunflower Seed
+- Taro
+- Cotton
+- Bambara groundnut
+- Tomato
+- Pea
+- Okras
+- Coffee
+- Onions
+- Fonio
 cpcv2_value_stats:
   distinct_count: 993
   null_count: 1063

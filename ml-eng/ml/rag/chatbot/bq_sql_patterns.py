@@ -7,12 +7,12 @@ from typing import Any
 
 from ml.rag.chatbot.bq_sql_templates import _year_from_context
 from ml.rag.chatbot.bq_table_schema_yaml import (
+    compile_product_filter_sql,
     discriminator_equality_filters,
     geo_column,
     load_mart_table_schema,
     match_product_samples,
     measure_sql_aggregation,
-    product_column,
     resolve_geo_filter_values,
     resolve_measure_column,
     table_supports_sql_pattern,
@@ -96,19 +96,29 @@ def _agg_expr(aggregation: str, metric_col: str) -> str:
     return f"AVG({metric_col})" if aggregation == "avg" else f"SUM({metric_col})"
 
 
-def _product_clause(table_id: str, products: list[str] | str | None) -> str:
-    if not products:
-        return ""
-    names = [products] if isinstance(products, str) else [p for p in products if str(p).strip()]
-    if not names:
-        return ""
-    col = product_column(table_id) or (
-        "product" if table_id == "stg_yield_raw_data" else "product_name"
+def _product_clause(
+    table_id: str,
+    products: list[str] | str | None,
+    *,
+    project_id: str,
+    dataset: str,
+    blob: str = "",
+) -> str:
+    labels: list[str] | None
+    if isinstance(products, str):
+        labels = [products] if str(products).strip() else None
+    elif products:
+        labels = [str(p).strip() for p in products if str(p).strip()]
+    else:
+        labels = None
+    sql, _ = compile_product_filter_sql(
+        table_id,
+        project_id=project_id,
+        dataset=dataset,
+        blob=blob,
+        labels=labels,
     )
-    if len(names) == 1:
-        return f"AND {col} = {_sql_literal(names[0])} "
-    literals = ", ".join(_sql_literal(n) for n in names[:16])
-    return f"AND {col} IN ({literals}) "
+    return sql
 
 
 def _discriminator_clause(table_id: str, blob: str) -> str:
@@ -227,7 +237,7 @@ def build_rank_by_sum_sql(
         f"{time_clause}"
         f"{geo_clause}"
         f"{_discriminator_clause(table_id, disc_blob)}"
-        f"{_product_clause(table_id, product_list)}"
+        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=disc_blob)}"
         f"GROUP BY {select_cols} "
         f"ORDER BY {order} "
         f"LIMIT {lim}"
@@ -282,7 +292,7 @@ def build_time_series_sql(
         f"{year_filter}"
         f"{geo_clause}"
         f"{_discriminator_clause(table_id, disc_blob)}"
-        f"{_product_clause(table_id, product_list)}"
+        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=disc_blob)}"
         f"GROUP BY {group_cols} "
         f"ORDER BY {order_cols} "
         f"LIMIT {lim}"
@@ -320,7 +330,7 @@ def build_yoy_delta_sql(
         f"WHERE {ycol} IN ({int(year)}, {int(year) - 1}) "
         f"{geo_clause}"
         f"{_discriminator_clause(table_id, disc_blob)}"
-        f"{_product_clause(table_id, product_list)}"
+        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=disc_blob)}"
         f"GROUP BY {select_cols}, {ycol}"
         f") "
         f"SELECT {', '.join(f'curr.{c}' for c in group_cols)}, "
@@ -364,7 +374,7 @@ def build_share_of_total_sql(
         f"WHERE {ycol} = {int(year)} "
         f"{geo_clause}"
         f"{_discriminator_clause(table_id, disc_blob)}"
-        f"{_product_clause(table_id, product_list)}"
+        f"{_product_clause(table_id, product_list, project_id=project_id, dataset=dataset, blob=disc_blob)}"
         f"GROUP BY {select_cols}"
         f"), tot AS (SELECT SUM(total) AS continent_total FROM base) "
         f"SELECT {', '.join(f'b.{c}' for c in group_cols)}, b.total, "

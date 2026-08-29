@@ -9,12 +9,16 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     columns_for_mart_tables,
     columns_for_tables,
     default_discriminator_value,
+    dictionary_samples_for_column,
     load_mart_table_schema,
     load_table_schema,
     value_samples_for_mart_tables,
     value_samples_for_tables,
     year_column,
 )
+from ml.rag.helpers.mart_semantic_relationships import SEMANTIC_RELATIONSHIPS
+
+_SHARED_DICTIONARY_COLUMNS = frozenset({"product_name"})
 
 _MART_TABLE_RE = re.compile(
     r"\b(?:fct|agg|dim|bridge)_[a-z0-9_]+\b",
@@ -289,6 +293,25 @@ def _load_schema_for_ref(bare: str):
     return load_table_schema(bare)
 
 
+def _reasoner_allowed_tables(selected: set[str]) -> set[str]:
+    """Reasoner-selected tables plus documented semantic join dims (not ad-hoc subqueries)."""
+    allowed = {
+        str(t).strip().split(".")[-1].lower()
+        for t in (selected or [])
+        if str(t).strip()
+    }
+    expanded = set(allowed)
+    for bare in allowed:
+        rel = SEMANTIC_RELATIONSHIPS.get(bare) or {}
+        for join in rel.get("joins_with") or []:
+            if not isinstance(join, dict):
+                continue
+            jt = str(join.get("table") or "").strip().lower()
+            if jt:
+                expanded.add(jt)
+    return expanded
+
+
 def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
     """
     Return an error message if SQL references tables outside ``allowed``.
@@ -300,7 +323,7 @@ def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
     """
     if not allowed:
         return None
-    allowed_lower = {t.lower() for t in allowed if str(t).strip()}
+    allowed_lower = _reasoner_allowed_tables(allowed)
     if not allowed_lower:
         return None
     refs = referenced_tables(sql)
@@ -595,6 +618,17 @@ def _refs_for_sql_checks(sql: str, table_ids: set[str] | None = None) -> set[str
     return {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
 
 
+def validation_table_refs(sql: str, table_ids: set[str] | None = None) -> set[str]:
+    """Plan-selected tables plus every mart/staging table referenced in SQL."""
+    selected = {
+        str(t).strip().split(".")[-1].lower()
+        for t in (table_ids or [])
+        if str(t).strip()
+    }
+    refs = _refs_for_sql_checks(sql, table_ids)
+    return selected | refs
+
+
 def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None) -> str | None:
     """
     Require equality/IN filters on YAML metric-discriminator columns that have samples.
@@ -640,7 +674,7 @@ def validate_sql_column_allowlist(sql: str, table_ids: set[str] | None = None) -
 
     When YAML columns cannot be loaded for any referenced table, skip the check.
     """
-    refs = _refs_for_sql_checks(sql, table_ids)
+    refs = validation_table_refs(sql, table_ids)
     if not refs:
         return None
     col_map = _columns_for_refs(refs)
@@ -683,7 +717,7 @@ def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> s
 
     Skips columns with no samples and leaves LIKE filters alone.
     """
-    refs = _refs_for_sql_checks(sql, table_ids)
+    refs = validation_table_refs(sql, table_ids)
     if not refs:
         return None
     samples_map = _samples_for_refs(refs)
@@ -693,9 +727,16 @@ def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> s
     for per_table in samples_map.values():
         for col, vals in per_table.items():
             by_col.setdefault(col.lower(), set()).update(vals)
+    for col in _SHARED_DICTIONARY_COLUMNS:
+        by_col.setdefault(col, set()).update(dictionary_samples_for_column(col))
 
     def _ok(col: str, literal: str) -> bool:
-        allowed = by_col.get(col.lower())
+        col_l = col.lower()
+        allowed = by_col.get(col_l)
+        if col_l in _SHARED_DICTIONARY_COLUMNS:
+            shared = dictionary_samples_for_column(col_l)
+            if shared:
+                allowed = set(shared)
         if not allowed:
             return True
         lit = literal.replace("''", "'").strip()

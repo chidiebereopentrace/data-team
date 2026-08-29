@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ from ml.rag.chatbot.mart_indicator_classes import (
     families_for_fact,
     indicator_classes_for_table,
 )
+from ml.rag.helpers.mart_semantic_relationships import SEMANTIC_RELATIONSHIPS
 from ml.rag.helpers.mart_semantic_relationships import compact_rels_summary as mart_compact_rels_summary
 from ml.rag.helpers.mart_semantic_relationships import format_join_fragments_for_nl2sql as mart_join_fragments
 from ml.rag.helpers.staging_semantic_relationships import compact_rels_summary
@@ -875,13 +877,239 @@ def match_value_samples(blob: str, samples: set[str] | list[str]) -> list[str]:
     return chosen
 
 
-def match_product_samples(table_id: str, blob: str) -> list[str]:
-    col = product_column(table_id)
+_PRODUCT_FK_COL = "product_key"
+_PRODUCT_LABEL_COL = "product_name"
+_PRODUCT_JOIN_DIM = "dim_product"
+_PRODUCT_PREFER_TABLES = ("dim_product", "agg_production_annual")
+_SHARED_DICTIONARY_COLUMNS = frozenset({_PRODUCT_LABEL_COL})
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + (value or "").replace("'", "''") + "'"
+
+
+@dataclass(frozen=True)
+class SemanticFilterClause:
+    sql: str
+    label: str | None = None
+    labels: tuple[str, ...] = ()
+
+
+def _mart_bare_table_ids() -> list[str]:
+    directory = _mart_yaml_dir()
+    if not directory.is_dir():
+        return []
+    return sorted(p.stem for p in directory.glob("*.yml"))
+
+
+def column_samples_for_table(table_id: str, column: str) -> list[str]:
+    """Profiled ``{column}_value_samples`` for one table (mart or staging YAML)."""
+    bare = _strip_fqn(table_id).lower()
+    col = (column or "").strip().lower()
+    if not bare or not col:
+        return []
+    for loader in (value_samples_for_mart_tables, value_samples_for_tables):
+        samples_map = loader({bare}).get(bare) or {}
+        for sample_col, vals in samples_map.items():
+            if sample_col.lower() == col:
+                return [str(v).strip() for v in vals if str(v).strip()]
+    return []
+
+
+def dictionary_samples_for_column(
+    column: str,
+    *,
+    prefer_tables: list[str] | None = None,
+) -> list[str]:
+    """Union of profiled ``{column}_value_samples`` across mart and staging YAML tables."""
+    col = (column or "").strip().lower()
     if not col:
         return []
-    samples_map = value_samples_for_tables({table_id}).get(_strip_fqn(table_id).lower()) or {}
-    samples = samples_map.get(col) or set()
-    return match_value_samples(blob, samples)
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def _merge(table_id: str) -> None:
+        for text in column_samples_for_table(table_id, col):
+            if text in seen:
+                continue
+            seen.add(text)
+            ordered.append(text)
+
+    for tid in prefer_tables or []:
+        _merge(tid)
+    for tid in _mart_bare_table_ids():
+        _merge(tid)
+    return ordered
+
+
+def resolve_dictionary_label(
+    *,
+    column: str,
+    blob: str,
+    prefer_tables: list[str] | None = None,
+) -> str | None:
+    """Match speech to one dictionary label for ``column``; never invent literals."""
+    samples = dictionary_samples_for_column(column, prefer_tables=prefer_tables)
+    if not samples:
+        return None
+    matched = match_value_samples(blob, samples)
+    return matched[0] if matched else None
+
+
+def resolve_dictionary_labels(
+    *,
+    column: str,
+    blob: str,
+    prefer_tables: list[str] | None = None,
+    limit: int = 6,
+) -> list[str]:
+    samples = dictionary_samples_for_column(column, prefer_tables=prefer_tables)
+    if not samples:
+        return []
+    matched = match_value_samples(blob, samples)
+    return matched[: max(1, int(limit or 6))]
+
+
+def _product_join_dim(table_id: str) -> str | None:
+    bare = _strip_fqn(table_id).lower()
+    rels = SEMANTIC_RELATIONSHIPS.get(bare) or {}
+    for join in rels.get("joins_with") or []:
+        if not isinstance(join, dict):
+            continue
+        jt = str(join.get("table") or "").strip().lower()
+        on_keys = [str(x).split("≈")[0].strip().lower() for x in (join.get("on") or [])]
+        if jt == _PRODUCT_JOIN_DIM and _PRODUCT_FK_COL in on_keys:
+            return jt
+    schema = load_mart_table_schema(bare) or {}
+    col_names = {
+        str(c.get("name") or "").strip().lower()
+        for c in (schema.get("columns") or [])
+        if str(c.get("name") or "").strip()
+    }
+    if _PRODUCT_FK_COL in col_names and _PRODUCT_LABEL_COL not in col_names:
+        return _PRODUCT_JOIN_DIM
+    return None
+
+
+def _fact_has_denormalized_product_name(table_id: str) -> bool:
+    return bool(column_samples_for_table(table_id, _PRODUCT_LABEL_COL))
+
+
+def _resolve_product_labels_for_table(
+    table_id: str,
+    *,
+    blob: str,
+    labels: list[str] | None = None,
+) -> list[str]:
+    """Resolve speech or hints to dictionary labels for one table's filter column."""
+    bare = _strip_fqn(table_id).lower()
+    table_samples = column_samples_for_table(bare, _PRODUCT_LABEL_COL)
+    if table_samples:
+        hinted = [str(x).strip() for x in (labels or []) if str(x).strip()]
+        if hinted:
+            in_table = [h for h in hinted if h in table_samples]
+            if in_table:
+                return in_table[:6]
+        matched = match_value_samples(blob, table_samples)
+        if matched:
+            return matched[:6]
+        if hinted:
+            return hinted[:6]
+        return []
+
+    prefer = [bare, *_PRODUCT_PREFER_TABLES]
+    hinted = [str(x).strip() for x in (labels or []) if str(x).strip()]
+    if hinted:
+        return hinted[:6]
+    return resolve_dictionary_labels(
+        column=_PRODUCT_LABEL_COL,
+        blob=blob,
+        prefer_tables=prefer,
+    )
+
+
+def compile_product_filter_sql(
+    table_id: str,
+    *,
+    project_id: str,
+    dataset: str,
+    blob: str = "",
+    labels: list[str] | None = None,
+) -> tuple[str, list[str]]:
+    """
+    Compile a product filter SQL fragment using dictionary labels + join graph.
+
+    Returns ``(sql_fragment, resolved_labels)``. Fragment is empty when no dictionary match.
+    """
+    bare = _strip_fqn(table_id).lower()
+    resolved = _resolve_product_labels_for_table(bare, blob=blob, labels=labels)
+    if not resolved:
+        return "", []
+
+    if _fact_has_denormalized_product_name(bare):
+        col = _PRODUCT_LABEL_COL
+        if len(resolved) == 1:
+            return f"AND {col} = {_sql_literal(resolved[0])} ", resolved
+        lits = ", ".join(_sql_literal(v) for v in resolved[:16])
+        return f"AND {col} IN ({lits}) ", resolved
+
+    dim = _product_join_dim(bare) or _PRODUCT_JOIN_DIM
+    schema = load_mart_table_schema(bare) or {}
+    col_names = {
+        str(c.get("name") or "").strip().lower()
+        for c in (schema.get("columns") or [])
+        if str(c.get("name") or "").strip()
+    }
+    fk_col = _PRODUCT_FK_COL if _PRODUCT_FK_COL in col_names else (
+        product_column_mart(bare) or _PRODUCT_FK_COL
+    )
+    dim_fqn = f"`{project_id}.{dataset}.{dim}`"
+    if len(resolved) == 1:
+        return (
+            f"AND {fk_col} IN (SELECT {_PRODUCT_FK_COL} FROM {dim_fqn} "
+            f"WHERE {_PRODUCT_LABEL_COL} = {_sql_literal(resolved[0])}) ",
+            resolved,
+        )
+    lits = ", ".join(_sql_literal(v) for v in resolved[:16])
+    return (
+        f"AND {fk_col} IN (SELECT {_PRODUCT_FK_COL} FROM {dim_fqn} "
+        f"WHERE {_PRODUCT_LABEL_COL} IN ({lits})) ",
+        resolved,
+    )
+
+
+def compile_semantic_filter(
+    table_id: str,
+    facet: str,
+    *,
+    blob: str,
+    project_id: str,
+    dataset: str,
+    labels: list[str] | None = None,
+) -> SemanticFilterClause | None:
+    """Compile one semantic facet filter (dictionary label + join routing)."""
+    facet_l = str(facet or "").strip().lower()
+    if facet_l != "product":
+        return None
+    sql, resolved = compile_product_filter_sql(
+        table_id,
+        project_id=project_id,
+        dataset=dataset,
+        blob=blob,
+        labels=labels,
+    )
+    if not sql:
+        return None
+    return SemanticFilterClause(
+        sql=sql,
+        label=resolved[0] if resolved else None,
+        labels=tuple(resolved),
+    )
+
+
+def match_product_samples(table_id: str, blob: str) -> list[str]:
+    """Dictionary-resolved product labels for SQL filters (not fact-column hash samples)."""
+    return _resolve_product_labels_for_table(table_id, blob=blob)
 
 
 def default_discriminator_value(
@@ -912,6 +1140,16 @@ def default_discriminator_value(
                 return hit
         if _PRODUCTION_QUERY_RE.search(q):
             hit = _from_cands("Production")
+            if hit:
+                return hit
+
+    if col_l == "metric":
+        if _YIELD_QUERY_RE.search(q):
+            hit = _from_cands("production_yield_physical")
+            if hit:
+                return hit
+        if _PRODUCTION_QUERY_RE.search(q):
+            hit = _from_cands("production_production_physical")
             if hit:
                 return hit
 

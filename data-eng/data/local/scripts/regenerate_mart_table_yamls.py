@@ -33,6 +33,16 @@ YAML_DIR = REPO_ROOT / "ml-eng" / "ml" / "rag" / "bq_mart_tables_yaml_files"
 AUDIT_TABLE = "audit_mart_column_labels"
 MAX_LABELS = 500
 SKIP_TABLES = {"gold_example", AUDIT_TABLE, "audit_mart_ontology_vocab"}
+# Always profile top-N label samples for dim columns used in SQL speech→literal filters.
+FILTER_RELEVANT_LABEL_COLUMNS: dict[str, frozenset[str]] = {
+    "dim_product": frozenset({"product_name"}),
+    "dim_geography": frozenset({"country_name", "country_iso3"}),
+    "dim_market": frozenset({"market_name"}),
+}
+
+
+def _is_filter_relevant_label_column(table_name: str, column_name: str) -> bool:
+    return column_name in FILTER_RELEVANT_LABEL_COLUMNS.get(table_name, frozenset())
 
 # Preserved on regen (curated by patch_mart_yaml_semantics.py)
 CURATED_YAML_KEYS = frozenset(
@@ -256,7 +266,10 @@ def profile_column(
 ) -> ColumnProfile:
     distinct_count, null_count, total_rows = _column_stats(client, project, dataset, col)
     non_null = max(total_rows - null_count, 0)
-    use_labels = not _is_complex_type(col.data_type) and distinct_count <= MAX_LABELS
+    use_labels = not _is_complex_type(col.data_type) and (
+        distinct_count <= MAX_LABELS
+        or _is_filter_relevant_label_column(col.table_name, col.column_name)
+    )
 
     if use_labels:
         raw_labels = _column_labels(client, project, dataset, col, MAX_LABELS)
