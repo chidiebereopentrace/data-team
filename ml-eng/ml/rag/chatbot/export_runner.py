@@ -14,6 +14,7 @@ from ml.rag.chatbot.exports.docx_builder import build_docx
 from ml.rag.chatbot.exports.pdf_builder import build_pdf
 from ml.rag.chatbot.exports.tabular import report_topic, rows_from_bq_results
 from ml.rag.chatbot.output_format import SLOT_TEMPLATES
+from ml.rag.chatbot.plan_policy import allows_export
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 
 logger = logging.getLogger(__name__)
