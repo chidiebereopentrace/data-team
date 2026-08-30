@@ -1,0 +1,14 @@
+version: "2026.8"
+# Measure-aware vector companion / fallback corpora for typed turn contract v2.
+
+defaults:
+  companion_allow: [academic_papers, public_reports, news]
+  companion_block: [policies, formation]
+
+employment_share:
+  companion_allow: [academic_papers]
+  companion_block: [policies, formation, news, ota, public_reports]
+
+disease_prevalence:
+  fallback_allow: [academic_papers, public_reports]
+  fallback_block: [policies, formation, news, ota]

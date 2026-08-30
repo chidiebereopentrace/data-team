@@ -1036,6 +1036,26 @@ class BQRetriever(BaseRetriever):
         elif geography is None and geo_country:
             geography = [geo_country]
         task_mode = str(kwargs.get("task_mode") or "").strip().lower()
+        serve_status = str(kwargs.get("serve_status") or "served").strip().lower()
+        contract_sql_only = bool(kwargs.get("contract_sql_only"))
+        template_key = str(kwargs.get("template_key") or "").strip()
+
+        if serve_status in ("unsupported_grain", "unsupported_measure", "unsupported_dimension"):
+            update_current_span_metadata(
+                {
+                    "status": serve_status,
+                    "row_count": 0,
+                    "sql_source": "contract_fail_closed",
+                }
+            )
+            self.last_sql_source = "contract_fail_closed"
+            return [
+                _bq_diagnostic_item(
+                    status="no_valid_sql",
+                    message=f"[BQ contract:{serve_status}] warehouse cell not served",
+                    prep_error=serve_status,
+                )
+            ]
 
         sql_input = kwargs.get("sql")
         sql_queries: list[str] = []
@@ -1074,6 +1094,7 @@ class BQRetriever(BaseRetriever):
                 geo_countries=geo_countries,
                 primary_measures=primary_measures,
                 task_mode=task_mode,
+                template_key=template_key,
             )
             if not hit:
                 return []
@@ -1139,7 +1160,20 @@ class BQRetriever(BaseRetriever):
                     custom_leftover
                     or (not pattern_sqls and not template_sqls and not query_intents)
                 )
+                pm = [
+                    str(m).strip().lower()
+                    for m in (primary_measures or [])
+                    if str(m).strip()
+                ]
+                if fast_fact and (
+                    "market_price" in pm
+                    or "food_security_ipc" in pm
+                    or "food_security" in pm
+                ):
+                    need_nl2sql = False
                 if fast_fact and not custom_leftover:
+                    need_nl2sql = False
+                if contract_sql_only:
                     need_nl2sql = False
                 if need_nl2sql:
                     nl_tables = leftover_tables or (

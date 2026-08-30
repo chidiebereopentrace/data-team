@@ -51,7 +51,12 @@ PLAN_TYPES: tuple[str, ...] = (
 )
 
 
-def _stub_item(kind: str, *, content: str = "Sample evidence text.") -> dict[str, Any]:
+def _stub_item(kind: str, *, content: str | None = None) -> dict[str, Any]:
+    if content is None:
+        content = (
+            "Sample evidence on rice production in Ghana and Kenya for West Africa "
+            "food security and maize policy challenges."
+        )
     meta: dict[str, Any] = {"doc_kind": kind}
     if kind == "bigquery":
         meta.update(
@@ -62,6 +67,12 @@ def _stub_item(kind: str, *, content: str = "Sample evidence text.") -> dict[str
                 "year": 2020,
                 "value": 973000,
                 "unit": "t",
+                "value_semantics": {
+                    "measure_value": 973000,
+                    "measure_column": "production_t",
+                    "element": "production",
+                    "metric": "production",
+                },
             }
         )
     elif kind == "news":
@@ -258,7 +269,7 @@ def build_matrix_cases() -> list[dict[str, Any]]:
                 "decomposition": decomposition_for_shape("numeric_fact" if numeric else "policy_narrative"),
                 "expect_shape": "numeric_fact" if numeric else "policy_narrative",
                 "expect_priority_head": kind,
-                "expect_ground": "bigquery" if numeric else "any",
+                "expect_ground": "bigquery" if numeric else "narrative",
             }
         )
 
@@ -280,8 +291,12 @@ def build_matrix_cases() -> list[dict[str, Any]]:
             ctx = context_for_kind("public_report", 2) + context_for_kind("news", 1)
             task_mode = "briefing"
             shape = "briefing_digest"
+        elif measure_id in ("hdi", "gdp"):
+            ctx = mixed_narrative_context()
+            task_mode = "chat"
+            shape = "numeric_fact"
         else:
-            ctx = mixed_bq_news_context()
+            ctx = mixed_narrative_context()
             task_mode = "chat"
             shape = "policy_narrative"
         cases.append(
@@ -356,7 +371,7 @@ def build_matrix_cases() -> list[dict[str, Any]]:
                 "decomposition": decomposition_for_shape("comparison"),
                 "expect_shape": "comparison",
                 "expect_priority_head": "bigquery",
-                "expect_ground": "any",
+                "expect_ground": "bigquery",
             }
         )
 

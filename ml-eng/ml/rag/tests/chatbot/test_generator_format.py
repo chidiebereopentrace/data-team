@@ -1,4 +1,4 @@
-"""Prompt format: dynamic analytical outline and persona register."""
+"""Prompt format: typed output geometry and persona register."""
 from __future__ import annotations
 
 from ml.rag.chatbot.generation_plan import build_generation_plan
@@ -11,24 +11,40 @@ def _system_prompt(**kwargs) -> str:
     return messages[0]["content"]
 
 
-def test_analytical_prompt_has_no_fixed_five_section_headings() -> None:
+def test_analytical_prompt_uses_typed_geometry_not_legacy_outline() -> None:
+    ctx = mixed_bq_news_context()
+    for item in ctx:
+        if item.get("_context_kind") == "bigquery":
+            item["metadata"]["country_name"] = "Kenya"
+            item["metadata"]["product_name"] = "Maize"
+        if item.get("_context_kind") == "news":
+            item["content"] = "[News] Maize production compared across Kenya and Tanzania."
+            item["metadata"]["country"] = "Kenya"
     plan = build_generation_plan(
         "Compare maize production in Kenya and Tanzania",
         task_mode="analytical",
         category="Government",
-        reranked_context=mixed_bq_news_context(),
+        reranked_context=ctx,
         measure_id="production",
-        decomposition={"intent": "compare", "geography": ["Kenya", "Tanzania"]},
+        decomposition={
+            "intent": "compare",
+            "geography": ["Kenya", "Tanzania"],
+            "entities": ["maize"],
+        },
     )
     system = _system_prompt(
         analytical_mode=True,
         task_mode="analytical",
         category="Government",
         generation_plan=plan.to_dict(),
+        evidence_tier="strong",
     )
     assert "Regional & Country Picture" not in system
-    assert "REPORT OUTLINE" in system
-    assert "ANALYTICAL VOICE RULES" in system
+    assert "REPORT OUTLINE" not in system
+    assert "ANALYTICAL VOICE RULES" not in system
+    assert "OUTPUT TYPE:" in system
+    assert "Kenya, Tanzania" in system
+    assert "Implications (after spine)" in system
 
 
 def test_government_analytical_allows_tables_in_register() -> None:
@@ -65,7 +81,7 @@ def test_farmers_analytical_forbids_tables_and_fixed_headings() -> None:
     )
     assert "## Key Findings" not in system
     assert "Do not use markdown tables" in system
-    assert "bullet layout" in system.lower() or "bullet points" in system.lower()
+    assert "plain bullet points" in system.lower()
 
 
 def test_same_task_mode_different_register_by_category() -> None:
@@ -96,7 +112,7 @@ def test_same_task_mode_different_register_by_category() -> None:
     assert "Do not use markdown tables" in farm_sys
 
 
-def test_investor_measure_produces_multi_section_outline() -> None:
+def test_investor_measure_uses_diagnosis_type_without_report_sections() -> None:
     plan = build_generation_plan(
         "Best African country for agricultural investment",
         task_mode="analytical",
@@ -104,6 +120,6 @@ def test_investor_measure_produces_multi_section_outline() -> None:
         reranked_context=mixed_bq_news_context(),
         measure_id="investor_best_country",
     )
-    assert len(plan.report_sections) >= 4
-    titles = [s.title for s in plan.report_sections]
-    assert any("Investment" in t or "Market" in t or "Opportunity" in t for t in titles)
+    assert plan.report_sections == ()
+    assert plan.output_type in ("diagnosis", "compare", "fact")
+    assert plan.has_usable_spine is True

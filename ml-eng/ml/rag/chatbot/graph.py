@@ -51,6 +51,12 @@ from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
 from ml.rag.chatbot.context_diversity import diversify_context_pack
 from ml.rag.chatbot.corpus_catalog import select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
+from ml.rag.chatbot.facet_compiler import compile_turn_contract
+from ml.rag.chatbot.capability_registry import resolve_capability, unsupported_answer_hint
+from ml.rag.chatbot.empty_answer_templates import empty_answer_for_contract
+from ml.rag.chatbot.time_retrieval import sync_decomposition_time, time_fallback_enabled, time_kwargs_from_contract
+from ml.rag.chatbot.turn_contract import NUMERIC_JOBS, TurnContract
+from ml.rag.chatbot.typed_pack import typed_context_pack, should_zero_pack
 from ml.rag.chatbot.generation_plan import build_generation_plan
 from ml.rag.chatbot.generator import (
     _generate_max_tokens,
@@ -59,6 +65,7 @@ from ml.rag.chatbot.generator import (
     is_comparative_bq_query,
     is_numeric_data_query,
     is_usable_context_item,
+    is_usable_structured_bq_row,
     pin_bq_context_first,
     should_elevate_bq_context,
 )
@@ -282,16 +289,18 @@ def _retrieve_vector_cascade(
     time_fallback_env: str,
     allow_geo_fallback: bool = True,
     max_levels: int | None = None,
+    allow_time_fallback: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Try full filters, widen time ±1y, then drop time/geo when fallbacks allow."""
     attempts: list[dict[str, Any]] = [dict(base_kwargs)]
     has_geo = bool(countries)
+    time_fb = allow_time_fallback if allow_time_fallback is not None else _env_on(time_fallback_env)
 
     widened = _widen_time_kwargs(base_kwargs) if has_time else None
     if widened is not None:
         attempts.append(widened)
 
-    if has_time and _env_on(time_fallback_env):
+    if has_time and time_fb:
         no_time = dict(base_kwargs)
         no_time.pop("published_at_from", None)
         no_time.pop("published_at_to", None)
@@ -308,7 +317,7 @@ def _retrieve_vector_cascade(
         and has_time
         and allow_geo_fallback
         and _env_on(geo_fallback_env)
-        and _env_on(time_fallback_env)
+        and time_fb
     ):
         relaxed = dict(base_kwargs)
         relaxed.pop("geo_country", None)
@@ -361,7 +370,11 @@ def _vector_retrieve_for_corpus(
 ) -> list[dict[str, Any]]:
     """Shared retrieval: decomposition geo/time + optional multi-country filter."""
     q = (state.get("query") or "").strip()
-    dec = state.get("decomposition") or {}
+    dec_raw = state.get("decomposition") or {}
+    dec = sync_decomposition_time(
+        dec_raw if isinstance(dec_raw, dict) else {},
+        TurnContract.from_dict(state.get("turn_contract") if isinstance(state.get("turn_contract"), dict) else None),
+    )
     coll = os.environ.get(collection_env, default_collection).strip() or default_collection
     vr = VectorRetriever(collection_name=coll)
 
@@ -369,8 +382,21 @@ def _vector_retrieve_for_corpus(
         geo_override=str(state.get("geo_override") or ""),
         geography=dec.get("geography") if isinstance(dec.get("geography"), list) else None,
     )
-    ts = (state.get("time_start_override") or dec.get("time_start") or "").strip()[:10]
-    te = (state.get("time_end_override") or dec.get("time_end") or "").strip()[:10]
+    contract = TurnContract.from_dict(state.get("turn_contract") if isinstance(state.get("turn_contract"), dict) else None)
+    time_kw = time_kwargs_from_contract(contract if contract.measure_id or contract.time_spec.start else None)
+    ts = str(
+        time_kw.get("published_at_from")
+        or state.get("time_start_override")
+        or dec.get("time_start")
+        or ""
+    ).strip()[:10]
+    te = str(
+        time_kw.get("published_at_to")
+        or state.get("time_end_override")
+        or dec.get("time_end")
+        or ""
+    ).strip()[:10]
+    hard_filter = bool(time_kw.get("hard_filter"))
 
     kwargs = build_kwargs(state, dec)
     _apply_geo_to_kwargs(kwargs, countries)
@@ -382,6 +408,7 @@ def _vector_retrieve_for_corpus(
     allow_geo_fb = not _strict_compare_filters(dec)
     task_mode = str(state.get("task_mode") or "chat").strip().lower()
     cascade_max = 1 if task_mode in ("fact_lookup", "data_export_only") else None
+    time_fb = time_fallback_enabled(hard_filter=hard_filter, env_var=time_fallback_env)
     raw = _retrieve_vector_cascade(
         vr,
         q,
@@ -392,6 +419,7 @@ def _vector_retrieve_for_corpus(
         time_fallback_env=time_fallback_env,
         allow_geo_fallback=allow_geo_fb,
         max_levels=cascade_max,
+        allow_time_fallback=time_fb,
     )
     if countries:
         return _post_filter_geography(raw, countries)
@@ -476,6 +504,7 @@ class RAGGraphState(TypedDict, total=False):
     enriched_query: str | None
     measure_id: str | None
     recency_tier: str | None
+    turn_contract: dict[str, Any] | None
     generation_plan: dict[str, Any] | None
     # Latency / cost observability (internal; not part of the public API schema)
     route_candidate: str | None
@@ -589,6 +618,20 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         task_mode = resolve_task_mode(q, dec, profile_country=country)
         analytical = task_mode == "analytical"
         recency = resolve_recency_tier(q, measure_hit)
+        answer_lang = detect_answer_language(q)
+        turn = compile_turn_contract(
+            q,
+            dec,
+            answer_lang=answer_lang,
+            measure_hit=measure_hit,
+            task_mode_hint=task_mode,
+        )
+        turn = resolve_capability(turn)
+        if turn.measure_id:
+            dec["primary_measures"] = [turn.measure_id]
+            measure_hit = resolve_measure(q, dec)
+        if turn.is_fail_closed() and turn.job == "clarify":
+            task_mode = "clarify"
         meta = is_meta_query(q)
         help_q = (not meta) and is_help_query(q, dec)
         product = (not meta) and (help_q or is_product_query(q, dec))
@@ -628,7 +671,9 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
                 "export_intent": export_intent,
                 "task_mode": task_mode,
                 "analytical_mode": analytical,
-                "measure_id": measure_hit.measure.id if measure_hit else None,
+                "measure_id": turn.measure_id or (measure_hit.measure.id if measure_hit else None),
+                "turn_job": turn.job,
+                "serve_status": turn.serve_status,
                 "recency_tier": recency,
                 "query_enriched": bool(enrich.get("enriched")),
                 "decompose_llm_ms": decompose_llm_ms,
@@ -648,15 +693,15 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             "task_mode": task_mode,
             "analytical_mode": analytical,
             "enriched_query": q if enrich.get("enriched") else None,
-            "measure_id": measure_hit.measure.id if measure_hit else None,
+            "measure_id": turn.measure_id or (measure_hit.measure.id if measure_hit else None),
             "recency_tier": recency,
+            "turn_contract": turn.to_dict(),
             "route_candidate": route_candidate,
             "early_short_circuit": False,
             "skipped_decompose_llm": skipped_decompose_llm,
-            "skipped_retrieval": False,
+            "skipped_retrieval": not turn.should_retrieve_vector(),
             "decompose_llm_ms": decompose_llm_ms,
         }
-        # Downstream nodes read state["query"]; keep enriched text as the working query.
         if enrich.get("enriched"):
             out["query"] = q
         return out
@@ -1007,12 +1052,39 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     )
     task_mode = str(state.get("task_mode") or "chat")
     domain_tags = decomposition.get("corpus_domain_tags")
+    tc_raw = state.get("turn_contract")
+    contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
+    contract_job = contract.job if contract.measure_id or contract.job != "fact" else contract.job
+    if not contract.should_retrieve_vector():
+        return {
+            "vector_news_results": [],
+            "vector_academic_papers_results": [],
+            "vector_policies_results": [],
+            "vector_public_reports_results": [],
+            "vector_formation_results": [],
+            "vector_ota_results": [],
+            "vector_results": [],
+            "corpus_selection": {"active": [], "boosts": {}, "rationale": "turn_contract_skip_vector"},
+            "corpus_count": 0,
+            "vector_ms": 0.0,
+            "cascade_level": 0,
+        }
     selection = select_corpora(
         decomposition,
         plan_type=str(state.get("plan_type") or "") or None,
         query=str(state.get("query") or ""),
         task_mode=task_mode,
         corpus_domain_tags=list(domain_tags) if isinstance(domain_tags, list) else None,
+        contract_job=contract_job,
+        **(
+            {
+                "vector_allow": contract.vector_allow,
+                "vector_block": contract.vector_block,
+                "vector_policy": contract.vector_policy,
+            }
+            if contract.measure_id
+            else {}
+        ),
     )
     active = set(selection.active)
     boosts = selection.boosts
@@ -1170,6 +1242,13 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
         analytical_mode=analytical,
         task_mode=task_mode,
     )
+    tc_raw = state.get("turn_contract")
+    contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
+    if contract.skip_bq:
+        plan = {**plan, "skip_bq": True}
+    template_key = str((contract.sql_plan or {}).get("template") or "").strip()
+    if template_key:
+        plan = {**plan, "template_key": template_key}
     hints = list(plan.get("table_hints") or [])
     cands = [
         {
@@ -1331,6 +1410,15 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         )
     except ValueError:
         bq_timeout = 10.0 if task_mode in ("fact_lookup", "data_export_only") else 15.0
+    tc_raw = state.get("turn_contract")
+    contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
+    contract_kwargs: dict[str, Any] = {}
+    if contract.measure_id or contract.serve_status != "served":
+        contract_kwargs = {
+            "serve_status": contract.serve_status,
+            "contract_sql_only": contract.contract_sql_only,
+            "template_key": str((contract.sql_plan or {}).get("template") or ""),
+        }
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             fut = ex.submit(
@@ -1346,6 +1434,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
                 domains=domains,
                 task_mode=task_mode,
                 **bq_geo,
+                **contract_kwargs,
                 crop_required=bool(plan.get("crop_required", True)),
                 geography_required=bool(plan.get("geography_required", True)),
                 decomposition=dec,
@@ -1358,17 +1447,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
             results = fut.result(timeout=bq_timeout)
     except FuturesTimeoutError:
         update_current_span_metadata({"bq_timeout": True, "status": "timeout"})
-        results = [
-            {
-                "content": f"BigQuery retrieve timed out after {bq_timeout}s",
-                "metadata": {
-                    "status": "bq_timeout",
-                    "bq_timeout_s": bq_timeout,
-                    "task_mode": task_mode,
-                },
-                "score": 0.0,
-            }
-        ]
+        results = []
     except Exception:
         logger.exception("BQ retrieve failed")
         results = []
@@ -1575,6 +1654,19 @@ def node_rerank(state: RAGGraphState) -> dict[str, Any]:
         top_k=None,
         task_mode=task_mode,
     )
+    tc_raw = state.get("turn_contract")
+    contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
+    bq_results = state.get("bq_results") or []
+    bq_failed = not any(is_usable_structured_bq_row(r) for r in bq_results)
+    if contract.measure_id or contract.job != "fact":
+        packed = typed_context_pack(
+            packed,
+            contract,
+            top_k=top_k if top_k > 0 else None,
+            bq_failed=bq_failed,
+        )
+    elif should_zero_pack(contract, bq_failed=bq_failed, context_items=packed):
+        packed = []
     # Honor explicit rerank_top_k as an upper bound after diversity packing.
     if top_k > 0 and len(packed) > top_k:
         packed = packed[:top_k]
@@ -1761,7 +1853,7 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
     dec_dict = dec if isinstance(dec, dict) else None
     context = filter_context_items(state.get("reranked_context") or [])
     bq_results = state.get("bq_results") or []
-    usable_bq = [r for r in bq_results if is_usable_context_item(r)]
+    usable_bq = [r for r in bq_results if is_usable_structured_bq_row(r)]
     analytical = bool(state.get("analytical_mode"))
     task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
     if (
@@ -1835,8 +1927,55 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         plan_type=str(state.get("plan_type") or "") or None,
         category=str(state.get("category") or "") or None,
         measure_id=str(mid) if mid else None,
+        turn_contract=state.get("turn_contract") if isinstance(state.get("turn_contract"), dict) else None,
     )
     gkw["generation_plan"] = gen_plan.to_dict()
+    tc_raw = state.get("turn_contract")
+    if isinstance(tc_raw, dict):
+        gkw["turn_contract"] = tc_raw
+    if isinstance(tc_raw, dict):
+        tc = TurnContract.from_dict(tc_raw)
+        academic_count = sum(
+            1 for it in (state.get("reranked_context") or [])
+            if str((it.get("metadata") or {}).get("context_kind") or it.get("_context_kind") or "").lower()
+            in ("academic", "public_report")
+        )
+        empty_tpl = empty_answer_for_contract(
+            tc,
+            query=str(query),
+            academic_count=academic_count,
+            category=gen_plan.effective_category,
+        )
+        if gen_plan.output_type == "insufficient" and empty_tpl:
+            return {
+                "answer": empty_tpl,
+                "citations": [],
+                "answer_lang": str(state.get("answer_lang") or detect_answer_language(query)),
+                "generation_plan": gen_plan.to_dict(),
+                **acf_result_to_state(no_evidence_acf()),
+            }
+        if empty_tpl and (
+            not context
+            or should_zero_pack(tc, bq_failed=not usable_bq, context_items=context)
+        ):
+            return {
+                "answer": empty_tpl,
+                "citations": [],
+                "answer_lang": str(state.get("answer_lang") or detect_answer_language(query)),
+                "generation_plan": gen_plan.to_dict(),
+                **acf_result_to_state(no_evidence_acf()),
+            }
+        if tc.is_fail_closed() and tc.serve_status != "clarify" and tc.vector_policy != "fallback_only":
+            from ml.rag.chatbot.answer_language import insufficient_context_answer
+
+            hint = unsupported_answer_hint(tc) or empty_tpl
+            return {
+                "answer": hint or insufficient_context_answer(query=str(query)),
+                "citations": [],
+                "answer_lang": str(state.get("answer_lang") or detect_answer_language(query)),
+                "generation_plan": gen_plan.to_dict(),
+                **acf_result_to_state(no_evidence_acf()),
+            }
     if gen_plan.effective_category:
         gkw["category"] = gen_plan.effective_category
     gen_t0 = time.perf_counter()
@@ -2054,6 +2193,10 @@ def build_graph():
             return "generate_language_help"
         if state.get("task_mode") == "clarify":
             return "generate_clarify"
+        tc_raw = state.get("turn_contract")
+        contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
+        if not contract.should_retrieve_vector():
+            return "bq_reason"
         return "parallel_retrieve"
 
     graph.add_conditional_edges("decompose", _route_after_decompose)

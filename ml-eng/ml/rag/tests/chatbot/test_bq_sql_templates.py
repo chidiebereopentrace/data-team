@@ -3,11 +3,16 @@ from __future__ import annotations
 
 from ml.rag.chatbot.bq_sql_templates import (
     build_mart_food_security_sql,
+    build_mart_latest_price_sql,
     build_mart_point_fact_sql,
+    build_mart_season_climate_sql,
     match_mart_country_rank,
     match_mart_country_series,
     match_mart_food_security_snapshot,
+    match_mart_latest_price,
     match_mart_point_fact,
+    match_mart_regional_panel,
+    match_mart_season_climate,
     try_sql_template,
 )
 from ml.rag.chatbot.bq_sql_validate import (
@@ -240,3 +245,88 @@ def test_mart_food_security_snapshot() -> None:
     assert "stg_" not in sql
     assert "fct_food_security" in sql
     assert "ETH" in sql or "Ethiopia" in sql
+
+
+def test_match_mart_latest_price_current_retail() -> None:
+    assert match_mart_latest_price(
+        query="What is the current retail price of maize in Bamako, Mali?",
+        selected_tables={"fct_prices"},
+        entities=["maize", "Bamako", "Mali"],
+        geo_country="Mali",
+    )
+
+
+def test_build_mart_latest_price_sql_orders_by_as_of_date() -> None:
+    sql = build_mart_latest_price_sql(
+        project_id="proj",
+        dataset="mart_dev",
+        table_id="fct_prices",
+        country_labels=["Mali"],
+        blob="current retail price maize Bamako",
+        primary_measures=["market_price"],
+        query="current retail price maize Bamako Mali",
+    )
+    assert "fct_prices" in sql
+    assert "ORDER BY as_of_date DESC" in sql
+    assert "MLI" in sql
+
+
+def test_build_mart_food_security_ipc_phase3_sql() -> None:
+    sql = build_mart_food_security_sql(
+        project_id="proj",
+        dataset="mart_dev",
+        table_id="fct_food_security",
+        year=2024,
+        countries=["Ethiopia"],
+        blob="How many people in Ethiopia are in IPC Phase 3 or higher right now?",
+    )
+    assert "population_3+" in sql
+    assert "measure_type = 'population'" in sql
+    assert "Current Situation" in sql
+
+
+def test_match_mart_regional_panel_west_africa() -> None:
+    assert match_mart_regional_panel(
+        query="trend of production maize and rice across West Africa in 2022",
+        selected_tables={"fct_production"},
+        time_start="2022-01-01",
+        time_end="2022-12-31",
+        geo_countries=["Ghana", "Nigeria", "Mali"],
+    )
+
+
+def test_sanitize_yield_over_production_intent() -> None:
+    from ml.rag.chatbot.ontology_context import sanitize_decomposition_for_bq
+
+    dec = sanitize_decomposition_for_bq(
+        {
+            "query": "What was sorghum yield in Tahoua, Niger this season?",
+            "entities": ["sorghum", "Tahoua", "Niger"],
+            "primary_measures": ["production"],
+        },
+        primary_measures=["production"],
+    )
+    assert dec["primary_measures"][0] == "yield"
+
+
+def test_match_mart_season_climate_western_kenya() -> None:
+    assert match_mart_season_climate(
+        query="When does the main rainy season start in western Kenya for planting maize?",
+        selected_tables={"fct_yield", "fct_climate"},
+        entities=["maize", "Kenya"],
+        geo_country="Kenya",
+    )
+
+
+def test_build_mart_season_climate_sql_uses_fct_yield() -> None:
+    sql = build_mart_season_climate_sql(
+        project_id="proj",
+        dataset="mart_dev",
+        table_id="fct_yield",
+        country_labels=["Kenya"],
+        blob="rainy season planting maize western Kenya",
+        primary_measures=["yield"],
+        query="When does the main rainy season start in western Kenya for planting maize?",
+    )
+    assert "fct_yield" in sql
+    assert "KEN" in sql

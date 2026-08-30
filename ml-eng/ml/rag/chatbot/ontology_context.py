@@ -1,6 +1,7 @@
 """Unified ontology context for BQ compile, reason, validate, and UX."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -151,6 +152,12 @@ _CONFLICTING_ENTITIES: dict[str, frozenset[str]] = {
     "yield": frozenset({"production", "trade", "export", "import"}),
 }
 
+_PRODUCTION_VOLUME_RE = re.compile(
+    r"\b(total production|tonnes produced|tons produced|production volume|"
+    r"how much was produced|output in tonnes)\b",
+    re.IGNORECASE,
+)
+
 
 def sanitize_decomposition_for_bq(
     decomposition: dict[str, Any] | None,
@@ -170,6 +177,26 @@ def sanitize_decomposition_for_bq(
         return dec
 
     primary = pm[0]
+    entity_blob = " ".join(
+        str(e) for e in (dec.get("entities") or []) if str(e).strip()
+    ).lower()
+    query_blob = " ".join(
+        str(x)
+        for x in (
+            dec.get("query"),
+            dec.get("original_query"),
+        )
+        if str(x).strip()
+    ).lower()
+    blob = f"{query_blob} {entity_blob}".strip()
+    if (
+        primary in ("production", "prod")
+        and re.search(r"\byields?\b", query_blob)
+        and not _PRODUCTION_VOLUME_RE.search(blob)
+    ):
+        primary = "yield"
+        dec["primary_measures"] = ["yield"] + [m for m in pm[1:] if m != "yield"]
+
     drop = _CONFLICTING_ENTITIES.get(primary, frozenset())
 
     entities = dec.get("entities")

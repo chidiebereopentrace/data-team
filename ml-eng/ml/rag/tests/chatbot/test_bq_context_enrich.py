@@ -371,7 +371,6 @@ def test_build_prompt_structured_bq_numeric_available_guard() -> None:
     )
     sys_msg = messages[0]["content"]
     assert "CRITICAL" in sys_msg
-    assert "statistical figures" in sys_msg.lower()
     assert "authoritative" in sys_msg.lower()
     assert "structured bigquery" not in sys_msg.lower()
 
@@ -383,8 +382,8 @@ def test_build_prompt_structured_bq_comparative_available_guard() -> None:
         structured_bq_comparative_available=True,
     )
     sys_msg = messages[0]["content"]
-    assert "comparative statistics" in sys_msg.lower()
-    assert "policy drivers" in sys_msg.lower()
+    assert "structured data" in sys_msg.lower()
+    assert "comparisons" in sys_msg.lower() or "comparative" in sys_msg.lower()
     assert "authoritative" not in sys_msg.lower()
     assert "CRITICAL" not in sys_msg
 

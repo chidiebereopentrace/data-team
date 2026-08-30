@@ -73,6 +73,7 @@ _CAPABILITY_PATTERNS: tuple[str, ...] = (
     r"\bwhat can i use (?:you|ask adza|adza|opentrace) for\b",
     r"\bhow (?:can|do) i use (?:you|ask adza|adza|opentrace)\b",
     r"\bwhat (?:can|do) you (?:do|help with|answer)\b",
+    r"\bwhat can ask adza help(?: me)? with\b",
     r"\bwhat questions can i ask\b",
     r"\bwhat kind of questions?\b",
     r"\bwhat kinds of questions?\b",

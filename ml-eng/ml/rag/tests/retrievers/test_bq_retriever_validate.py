@@ -614,3 +614,66 @@ def test_prepare_sql_accepts_nigeria_maize_agg_time_key() -> None:
     assert err is None, err
     assert validated is not None
     assert "time_key = 2022" in validated
+
+
+def test_retrieve_market_price_uses_template_not_nl2sql() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    template_sql = (
+        "SELECT price, as_of_date FROM `proj.mart_dev.fct_prices` "
+        "WHERE country_iso3 = 'MLI' AND product_name = 'Maize' "
+        "ORDER BY as_of_date DESC LIMIT 1"
+    )
+    client = MagicMock()
+    client.query.return_value.result.return_value = [
+        {"price": 320.0, "as_of_date": "2024-06-01"}
+    ]
+    with patch.object(retriever, "_nl_to_sql_queries") as nl:
+        with patch.object(retriever, "_get_client", return_value=client):
+            with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
+                with patch(
+                    "ml.rag.retrievers.bq_retriever.try_sql_template",
+                    return_value={
+                        "sql": template_sql,
+                        "template": "mart_latest_price",
+                        "table_id": "fct_prices",
+                    },
+                ):
+                    with patch(
+                        "ml.rag.retrievers.bq_retriever.try_sql_patterns",
+                        return_value=[],
+                    ):
+                        items = retriever.retrieve(
+                            "current retail price of maize in Bamako Mali",
+                            selected_tables=["fct_prices"],
+                            task_mode="fact_lookup",
+                            primary_measures=["market_price"],
+                            geo_country="Mali",
+                        )
+    nl.assert_not_called()
+    assert len(items) == 1
+    assert items[0]["metadata"]["sql_source"] == "template"
+
+
+def test_retrieve_food_security_skips_nl2sql_when_template_misses() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    with patch.object(retriever, "_nl_to_sql_queries") as nl:
+        with patch.object(retriever, "_get_client", return_value=MagicMock()):
+            with patch(
+                "ml.rag.retrievers.bq_retriever.try_sql_template",
+                return_value=None,
+            ):
+                with patch(
+                    "ml.rag.retrievers.bq_retriever.try_sql_patterns",
+                    return_value=[],
+                ):
+                    items = retriever.retrieve(
+                        "How many people in Ethiopia are in IPC Phase 3 or higher right now?",
+                        selected_tables=["fct_food_security"],
+                        task_mode="fact_lookup",
+                        primary_measures=["food_security_ipc"],
+                        geo_country="Ethiopia",
+                    )
+    nl.assert_not_called()
+    assert len(items) == 1
+    assert items[0]["metadata"]["status"] == "no_valid_sql"
+

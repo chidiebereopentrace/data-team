@@ -10,7 +10,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from ml.rag.llm_chat import llm_chat_complete, llm_configured, llm_default_timeout_s, llm_model_id
 from ml.rag.chatbot.plan_policy import model_for_plan
@@ -24,6 +24,7 @@ from ml.rag.chat_memory import (
 from ml.rag.chatbot.acf_scoring import ACFResult, no_evidence_acf, score_cited_evidence
 from ml.rag.chatbot.answer_language import (
     detect_answer_language,
+    insufficient_context_answer,
     is_english_answer_lang,
     language_instruction,
 )
@@ -32,6 +33,7 @@ from ml.rag.chatbot.export_intent import want_inline_citations
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.plan_policy import instruction_for_category, plan_generation_addendum
+from ml.rag.chatbot.output_format import export_caption_instruction
 from ml.rag.chatbot.stakeholder_prompts import prose_register_addendum
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
@@ -96,12 +98,21 @@ _PREAMBLE_OPENER_RE = re.compile(
 )
 _MAX_PREAMBLE_UNWIND = 3
 
+_PRICE_TREND_RE = re.compile(
+    r"\b("
+    r"going up|going down|up or down|trending|"
+    r"prices (?:are|were) (?:rising|falling|increasing|decreasing)"
+    r")\b",
+    re.IGNORECASE,
+)
+
 _BQ_FAILURE_MARKERS = (
     "[bq execution error",
     "[bq validation failed",
     "[bq no_project",
     "[bq no_valid_sql",
     "[bq empty_result",
+    "bigquery retrieve timed out",
 )
 _BQ_ROW_HINT_KEYS = (
     "country",
@@ -336,12 +347,14 @@ class GenerationResult:
     generate_input_chars: int | None = None
 
 
+EvidenceTier = Literal["strong", "partial", "empty"]
+
 _TASK_MODE_MAX_TOKENS: dict[str, int] = {
-    "fact_lookup": 384,
-    "chat": 384,
-    "briefing": 640,
+    "fact_lookup": 512,
+    "chat": 512,
+    "briefing": 768,
     "data_export_only": 256,
-    "analytical": 1280,
+    "analytical": 1536,
     "research": 1024,
     "clarify": 512,
 }
@@ -357,9 +370,60 @@ _TASK_MODE_CONTEXT_CHARS: dict[str, int] = {
 }
 
 _EXPORT_CAPTION_BLOCK = (
-    "\n\nARTIFACT EXPORT MODE: Write only a 2–5 sentence caption summarizing the "
-    "table/chart/report the user will download. No multi-section brief, no essay, "
-    "no Key Findings or other report headings in the chat answer."
+    "\n\nARTIFACT EXPORT MODE: "
+    + export_caption_instruction().replace("\n", " ")
+)
+
+_SLIM_BASE_PROMPT = (
+    "You are Ask ADZA, OpenTrace Africa's agricultural intelligence assistant. "
+    "Lead with the direct answer. Be precise and compact. "
+    "Use only evidence in Context from numbered [Source N] chunks. "
+    "Never invent statistics, rankings, or dates. "
+    "Never mention warehouses, datasets, table IDs, SQL, vector DBs, or pipelines. "
+    "Attribute structured figures to public sources (FAOSTAT, FEWS NET, ILRI, WFP, etc.) "
+    "or the neutral label OpenTrace agricultural data (country=…, year=…, product=…). "
+    "Put a blank line before every ## heading. "
+    "If evidence is insufficient, say so in 2–4 sentences and stop — no report skeleton. "
+    "Never open with Unfortunately, Based on the context, or The context provided."
+)
+
+_PARTIAL_EVIDENCE_RULES = (
+    "\n\nPARTIAL EVIDENCE: Only state claims clearly supported by Context. "
+    "One short closing line on years or coverage limits is enough. "
+    "No ## Key Findings or multi-section report headings."
+)
+
+_YIELD_ONLY_RULE = (
+    "\n\nYIELD DATA ONLY: Context rows are crop yields (t/ha), not production tonnage. "
+    "Do not describe a single yield observation as a multi-year production trend. "
+    "State yield for the specific year shown."
+)
+
+_CROP_TOKEN_RE = re.compile(
+    r"\b(maize|rice|wheat|sorghum|millet|cocoa|coffee|tomato|cassava|bean|soybean|cotton|"
+    r"livestock|cattle|dairy|groundnut|yam|cowpea|barley|tea|sugar)\b",
+    re.IGNORECASE,
+)
+
+_INTERNAL_ID_RE = re.compile(
+    r"\b(?:mart_dev|staging_dev|BQ_DATASET(?:_\w+)?|bigquery)\b|`[^`]+`|\b(?:fct|agg|stg|dim|bridge)_[\w]+\b",
+    re.IGNORECASE,
+)
+
+_PRODUCTION_TREND_MISLABEL_RE = re.compile(
+    r"\bproduction trend\b.*\b(19|20)\d{2}\b.*\b(19|20)\d{2}\b",
+    re.IGNORECASE,
+)
+
+_NARRATIVE_KINDS = frozenset(
+    {
+        "news",
+        "academic",
+        "policy",
+        "public_report",
+        "ota_insight",
+        "formation",
+    }
 )
 
 
@@ -459,6 +523,10 @@ def is_usable_context_item(item: dict[str, Any]) -> bool:
     meta = _item_metadata(item)
     if meta.get("validation_failed") or meta.get("execution_error"):
         return False
+    if meta.get("semantic_row_rejected"):
+        return False
+    if str(meta.get("source") or "").strip().lower() == "mart_yaml":
+        return False
     status = str(meta.get("status") or "").strip().lower()
     if status in {
         "no_project",
@@ -466,10 +534,182 @@ def is_usable_context_item(item: dict[str, Any]) -> bool:
         "validation_failed",
         "execution_error",
         "empty_result",
+        "bq_timeout",
     }:
         return False
     raw = str(item.get("content") or item.get("text") or "").strip().lower()
     return not any(marker in raw for marker in _BQ_FAILURE_MARKERS)
+
+
+def is_usable_structured_bq_row(item: dict[str, Any]) -> bool:
+    """True when a BQ item carries a real numeric fact for generation or export."""
+    if not is_usable_context_item(item):
+        return False
+    if str(item.get("source") or "") != "bigquery":
+        return False
+    meta = _item_metadata(item)
+    semantics = meta.get("value_semantics")
+    if not isinstance(semantics, dict):
+        return False
+    measure_val = semantics.get("measure_value")
+    if measure_val is None:
+        return False
+    if isinstance(measure_val, (int, float)):
+        col = str(semantics.get("measure_column") or "").strip().lower()
+        if col in ("bq_timeout_s", "bq_timeout"):
+            return False
+    return True
+
+
+def _context_has_structured_numeric(context_items: list[dict[str, Any]] | None) -> bool:
+    for item in filter_context_items(list(context_items or [])):
+        if is_usable_structured_bq_row(item):
+            return True
+        meta = _item_metadata(item)
+        if meta.get("semantic_row_rejected"):
+            continue
+        semantics = meta.get("value_semantics")
+        if isinstance(semantics, dict) and semantics.get("measure_value") is not None:
+            col = str(semantics.get("measure_column") or "").strip().lower()
+            if col not in ("bq_timeout_s", "bq_timeout"):
+                return True
+    return False
+
+
+def _query_topic_tokens(query: str, decomposition: dict[str, Any] | None) -> set[str]:
+    tokens: set[str] = set()
+    for match in _CROP_TOKEN_RE.finditer(query or ""):
+        tokens.add(match.group(1).lower())
+    if isinstance(decomposition, dict):
+        for raw in decomposition.get("entities") or []:
+            text = str(raw).strip().lower()
+            if len(text) >= 3:
+                tokens.add(text)
+    return tokens
+
+
+def _item_text_blob(item: dict[str, Any]) -> str:
+    meta = _item_metadata(item)
+    parts = [str(item.get("content") or "")]
+    for key in (
+        "country",
+        "country_name",
+        "product",
+        "product_name",
+        "title",
+        "geo_countries",
+        "published_at",
+    ):
+        val = meta.get(key)
+        if val is not None and str(val).strip():
+            parts.append(str(val))
+    return " ".join(parts).lower()
+
+
+def _narrative_overlaps_query(
+    item: dict[str, Any],
+    query: str,
+    decomposition: dict[str, Any] | None,
+) -> bool:
+    blob = _item_text_blob(item)
+    countries = _query_target_countries(decomposition)
+    if countries and not any(c.lower() in blob for c in countries):
+        return False
+    topics = _query_topic_tokens(query, decomposition)
+    if topics:
+        return any(t in blob for t in topics)
+    return bool(countries)
+
+
+def _structured_row_on_topic(
+    item: dict[str, Any],
+    decomposition: dict[str, Any] | None,
+) -> bool:
+    if not is_usable_structured_bq_row(item):
+        return False
+    countries = _query_target_countries(decomposition)
+    if not countries:
+        return True
+    blob = _item_text_blob(item)
+    return any(c.lower() in blob for c in countries)
+
+
+def classify_evidence_tier(
+    query: str,
+    context_items: list[dict[str, Any]] | None,
+    decomposition: dict[str, Any] | None = None,
+    *,
+    structured_bq_numeric_available: bool = False,
+    answer_shape: str = "",
+) -> EvidenceTier:
+    """Classify retrieval context strength before generation."""
+    if str(answer_shape or "").strip() == "gap_ack":
+        return "empty"
+    usable = filter_context_items(list(context_items or []))
+    if not usable:
+        return "empty"
+    if structured_bq_numeric_available:
+        return "strong"
+
+    on_topic_structured = sum(
+        1 for item in usable if _structured_row_on_topic(item, decomposition)
+    )
+    on_topic_narrative = sum(
+        1
+        for item in usable
+        if normalize_context_kind(item) in _NARRATIVE_KINDS
+        and _narrative_overlaps_query(item, query, decomposition)
+    )
+    geo_matched = sum(
+        1
+        for item in usable
+        if _narrative_overlaps_query(item, query, decomposition)
+        or (
+            not _query_target_countries(decomposition)
+            or any(
+                c.lower() in _item_text_blob(item)
+                for c in _query_target_countries(decomposition)
+            )
+        )
+    )
+
+    if on_topic_structured >= 1 or on_topic_narrative >= 2:
+        return "strong"
+
+    only_web = all(
+        normalize_context_kind(item) in ("web_wikipedia", "web_search") for item in usable
+    )
+    if only_web and on_topic_narrative == 0:
+        return "empty"
+
+    if on_topic_narrative >= 1 or geo_matched >= 1:
+        return "partial"
+
+    return "empty"
+
+
+def context_is_yield_only(context_items: list[dict[str, Any]] | None) -> bool:
+    """True when all structured rows are yield measures, not production tonnage."""
+    rows = [
+        item
+        for item in filter_context_items(list(context_items or []))
+        if is_usable_structured_bq_row(item)
+    ]
+    if not rows:
+        return False
+    for item in rows:
+        meta = _item_metadata(item)
+        element = str(meta.get("element") or "").lower()
+        metric = str(meta.get("metric") or "").lower()
+        semantics = meta.get("value_semantics")
+        if isinstance(semantics, dict):
+            element = element or str(semantics.get("element") or "").lower()
+            metric = metric or str(semantics.get("metric") or "").lower()
+        if "production" in element and "yield" not in element:
+            return False
+        if "production" in metric and "yield" not in metric:
+            return False
+    return True
 
 
 def is_ranking_numeric_query(query: str) -> bool:
@@ -1008,149 +1248,35 @@ def _build_prompt(
     inline_citations: bool = False,
     generation_plan: dict[str, Any] | None = None,
     export_intent: str | None = None,
+    evidence_tier: EvidenceTier = "strong",
+    yield_only: bool = False,
 ) -> list[dict[str, str]]:
     lang = (answer_lang or "").strip() or detect_answer_language(query)
     mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
     if analytical_mode and mode == "chat":
         mode = "analytical"
+
+    system = _SLIM_BASE_PROMPT + language_instruction(lang, inline_citations=inline_citations)
+
+    if evidence_tier == "partial":
+        system += _PARTIAL_EVIDENCE_RULES
+    elif evidence_tier == "empty":
+        system += (
+            "\n\nINSUFFICIENT EVIDENCE: Reply in 2–4 sentences that you cannot answer "
+            "from the sources provided. Do not use report headings or invent facts."
+        )
+
     if inline_citations:
-        cite_rules = (
-            "When stating a specific fact, number, or claim from the context, name the source in readable "
-            "prose using the Citation line (author or organization, title or outlet, and year when present), "
-            "then add the matching footnote number [N] — the same N as [Source N]. "
-            "Never cite with a bare number alone (wrong: 'According to [6]'; right: 'According to Branca et al. "
-            "(2012), agriculture's GDP share rose.[6]'). "
-            "Never refer to in-document labels from the context such as 'Table 6.1', 'Figure 2', "
-            "'Fig. 3', or 'Appendix A' — paraphrase the finding and cite with the Citation line + [N] only. "
-            "Only cite sources that appear in Context with a Citation line / [Source N]. "
-            "Inline markers must be plain [N] only — never [Source N], [Source 1, 3], or [Wikipedia | …]. "
-            "Do not invent author-year references that are not on a Context Citation line. "
-            "Do not repeat the same [N] twice in a row. "
-            "Each ## heading must be on its own line with a blank line before it. "
+        system += (
+            "\n\nCITATION HYGIENE: Use plain [N] only — never [Source N], [Source 1, 3], "
+            "or [Wikipedia | …]. Do not repeat the same [N] twice in a row. "
+            "Blank line before every ## heading."
         )
     else:
-        cite_rules = (
-            "When stating a specific fact, number, or claim from the context, you may name the source in "
-            "readable prose using the Citation line (author or organization, title or outlet, and year when "
-            "present). Do NOT insert [N], [Source N], or bare Source N footnote markers — the system returns "
-            "structured citations separately for the client. "
-            "Never refer to in-document labels from the context such as 'Table 6.1', 'Figure 2', "
-            "'Fig. 3', or 'Appendix A' — paraphrase the finding instead. "
-            "Only cite sources that appear in Context with a Citation line. "
-            "Do not invent author-year references that are not on a Context Citation line. "
-            "Each ## heading must be on its own line with a blank line before it. "
+        system += (
+            "\n\nDo NOT insert [N] or [Source N] footnote markers — structured citations "
+            "are returned separately for the client."
         )
-    mode_replaces_length = mode in {"analytical", "fact_lookup", "briefing", "data_export_only"}
-    length_rules = (
-        "Never pad with filler, restatements of the question, or hedges. "
-        "Include specific numbers, dates, and regions when present in the context. "
-        "Match length to the question: 2–4 sentences for simple lookups; a structured brief "
-        "for complex multi-country or trend questions. "
-        if mode_replaces_length
-        else
-        "Length matches the question: 2–4 sentences for a simple lookup, 2–4 short paragraphs "
-        "for a complex synthesis. Never pad with filler, restatements of the question, or hedges to fill space. "
-        "For complex questions structure the answer as: (1) direct answer first, "
-        "(2) supporting evidence by theme, region, or time period, (3) brief limits or gaps. "
-        "For compare or trend questions, organize by region or time period when the context provides that breakdown. "
-        "Include specific numbers, dates, and regions when present in the context. "
-    )
-    system = (
-        "You are an agricultural business-intelligence assistant for OpenTrace stakeholders "
-        "(government, NGOs, agribusiness, finance, farmers, and policy actors). "
-        "Your role is to produce clear, decisive, decision-ready analysis on African agriculture, "
-        "food systems, climate, markets, production, trade, prices, and related policy. "
-        "Write as an external intelligence analyst, not as a system explaining its own internal "
-        "data coverage. "
-        "OpenTrace / Ask ADZA is scoped to African agriculture, food systems, climate, "
-        "markets, and related policy — unless the user explicitly names a non-African place. "
-        "For unscoped which-country or continental rankings, answer from African OpenTrace "
-        "evidence (especially structured data). Do not crown a non-African country from "
-        "Wikipedia or general knowledge when Africa-scoped evidence is missing. "
-        "Your first sentence is the direct answer to the user's question — no preamble, "
-        "no 'According to the context...', no 'According to the available sources...', "
-        "no 'It is important to note...', no scene-setting. "
-        "After the direct answer, support it with the relevant evidence in plain prose. "
-        "Write clear, decisive prose for decision-makers — not a database console, not an academic paper. "
-        "Answer ONLY using facts in the Context below from numbered OpenTrace sources "
-        "(each chunk is labeled [Source N] with Type and Citation lines when available). "
-        "Synthesize evidence across all numbered sources — do not rely on a single snippet. "
-        "Do not invent figures, rankings, or year values that are not present in the Context. "
-        + cite_rules
-        + "When a structured data source has a clear institutional origin, attribute it by that "
-        "institution's name (FAOSTAT, FEWS NET, ILRI, WFP, NASA POWER, Copernicus ERA5, ISRIC, "
-        "iSDA, UNDP/HDI, World Bank/GDP). When the institutional source is not definitive, use "
-        "the neutral label: Structured data — OpenTrace agricultural data. "
-        "Do not paste raw context headers, Type lines, Citation lines, or pipe-delimited "
-        "[Source N | ...] strings into the answer. "
-        "Do not output a Sources, References, or Bibliography section; the system appends one. "
-        "Never echo BigQuery or SQL table identifiers (e.g. stg_*, bronze table names) in the prose. "
-        "Never mention staging, SQL, pipeline status, or tell the user that a query was attempted "
-        "and failed. Never claim that structured data is missing or unavailable as a product status. "
-        "Sources labeled Type: Wikipedia or Type: Web search are supplemental external context — "
-        "prefer OpenTrace news, research, and structured data when available; treat web sources as "
-        "partial background and state limits when relying on them. "
-        + length_rules
-        + "Forbidden openings — never start with: 'The context provided', 'Based on the context', "
-        "'Unfortunately', 'It is important to note', 'It is worth noting', 'This study examines', "
-        "'The evidence suggests', 'In recent years', 'Across the literature', "
-        "'According to the available sources', or any similar academic / "
-        "meta-commentary opener. Start with the substantive answer instead. "
-        + language_instruction(lang, inline_citations=inline_citations)
-        + " "
-        "Produce the strongest possible analysis from the evidence that is present. "
-        "Place any coverage limitations only at the end, in short neutral language. "
-        "Never turn missing data into the main subject of the answer. Never write multi-paragraph "
-        "discussions of data gaps in the body. "
-        "Never mention internal system status, BigQuery availability, structured-data gaps, "
-        "or product data limitations in the main body of the answer. "
-        "When writing analytical or multi-country answers, prioritise a clean intelligence product "
-        "over exhaustive transparency about missing series. "
-        "Do not invent sources, cite Source IDs not in the Context, or invent statistics. "
-        "Never output SQL, query code, table DDL, pipeline steps, or instructions to run BigQuery. "
-        "Never mention bigquery-public-data or other external warehouses. "
-        "Do not suggest example queries the user should run. "
-        "Keep all country, region, and year claims aligned with what appears in the Context. "
-        "Never mention BigQuery, staging, SQL, or internal system status in the answer body. "
-        "Never write that a structured query returned no rows, that no reliable trend can be made, "
-        "or that the answer is a data gap. "
-        "When coverage is limited, use only neutral professional wording such as: "
-        "'Coverage for [year / region / commodity] remains limited in available sources.'"
-    )
-    kinds = [str(k).strip().lower() for k in (context_source_kinds or []) if str(k).strip()]
-    unique_kinds = list(dict.fromkeys(kinds))
-    if len(unique_kinds) >= 2:
-        system = (
-            system
-            + "\n\nCROSS-DOMAIN SYNTHESIS: Context includes multiple source Types ("
-            + ", ".join(unique_kinds)
-            + "). Domains reinforce each other — weave them together. "
-            "Use OpenTrace figures for levels, trends, and comparisons when present; "
-            "use news, policy, public reports, and research for mechanisms, events, and "
-            "stakeholder context. Do not answer from only one Type when others are relevant. "
-            "If structured figures are missing, still synthesize across the narrative corpora "
-            "that are present; do not invent yields, IPC phases, or exact production totals."
-        )
-    intent_tone = ""
-    if decomposition:
-        intent = str(decomposition.get("intent") or "").strip().lower()
-        if intent == "predictive":
-            intent_tone = (
-                " The user's primary intent is forward-looking: clearly separate what the context shows "
-                "from speculation; state uncertainty and limits of the data; avoid presenting guesses as facts."
-            )
-        elif intent == "diagnostic":
-            intent_tone = (
-                " The user's primary intent asks why or what drives outcomes: do not claim causation "
-                "unless the context explicitly supports it; distinguish correlation from causation."
-            )
-        elif intent in ("compare", "decision_support"):
-            intent_tone = (
-                " Prefer a fuller synthesis when multiple sources agree or contrast; "
-                "organize evidence so decision-makers can compare regions, time periods, or drivers."
-            )
-    if intent_tone:
-        system = system + intent_tone
 
     effective_category = (category or "").strip()
     answer_shape = ""
@@ -1169,7 +1295,7 @@ def _build_prompt(
         inline_citations=inline_citations,
     )
     if register_block:
-        system = system + "\n\n" + register_block
+        system += "\n\n" + register_block
 
     cat_tone = instruction_for_category(
         effective_category or None,
@@ -1177,93 +1303,109 @@ def _build_prompt(
         recency_tier=recency_tier,
     ) if (effective_category or measure_id or recency_tier) else ""
     if cat_tone:
-        system = system + "\n\n" + cat_tone
+        system += "\n\n" + cat_tone
+
     plan_addendum = plan_generation_addendum(plan_type) if plan_type else ""
     if plan_addendum:
-        system = system + "\n\n" + plan_addendum
+        system += "\n\n" + plan_addendum
+
     if generation_plan:
         from ml.rag.chatbot.generation_plan import generation_plan_addendum
 
         gen_plan_addendum = generation_plan_addendum(generation_plan)
         if gen_plan_addendum:
-            system = system + "\n\n" + gen_plan_addendum
+            system += "\n\n" + gen_plan_addendum
 
-    from ml.rag.chatbot.generation_plan import (
-        ANALYTICAL_VOICE_RULES,
-        analytical_outline_addendum,
-        format_template_for_shape,
-    )
+    from ml.rag.chatbot.generation_plan import format_template_for_shape
 
-    if analytical_mode or mode == "analytical":
-        if not export_intent:
-            outline_block = analytical_outline_addendum(generation_plan)
-            if outline_block:
-                system = system + "\n\n" + outline_block
-            system = system + "\n\n" + ANALYTICAL_VOICE_RULES
-    elif mode == "fact_lookup":
-        system = (
-            system
-            + "\n\nFACT LOOKUP MODE: Give a short direct answer (1–3 sentences) using structured "
-            "data first when present. Lead with the number, country, crop, and year. "
-            "Do not write a multi-section report."
+    if mode == "fact_lookup":
+        system += (
+            "\n\nFACT LOOKUP: First sentence = number/fact + unit + year + [N] when citing. "
+            "No report headings."
         )
     elif mode == "briefing":
-        system = (
-            system
-            + "\n\nBRIEFING MODE: Write a short situational briefing with 3–6 bullet points. "
-            "Prefer the most recent news and OTA insights. End with one line on confidence limits."
+        system += (
+            "\n\nBRIEFING: 3–6 bullet points from the most recent narrative sources; "
+            "one closing line on limits."
         )
     elif mode == "research":
-        system = (
-            system
-            + "\n\nRESEARCH SYNTHESIS MODE: Synthesize academic/policy evidence in plain "
-            "stakeholder language. Prefer peer-reviewed and policy corpora; use statistical "
-            "series only for bibliographic/project facts. Do not invent citations."
+        system += (
+            "\n\nRESEARCH: Synthesize academic/policy evidence; do not invent citations."
         )
     elif mode == "data_export_only":
-        system = system + _EXPORT_CAPTION_BLOCK.replace("ARTIFACT EXPORT MODE", "DATA EXPORT MODE")
-    elif answer_shape:
-        shape_fmt = format_template_for_shape(
-            answer_shape,
-            use_bullets=use_bullet_layout,
+        system += _EXPORT_CAPTION_BLOCK.replace("ARTIFACT EXPORT MODE", "DATA EXPORT MODE")
+    elif answer_shape and evidence_tier != "empty":
+        from ml.rag.chatbot.output_format import (
+            format_prompt_for_type,
+            output_type_from_plan,
+            persona_implications_block,
         )
-        if shape_fmt:
-            system = system + "\n\n" + shape_fmt
+
+        out_type = output_type_from_plan(generation_plan)
+        gw = str((generation_plan or {}).get("grain_window_line") or "").strip()
+        answer_subtopics = tuple((generation_plan or {}).get("answer_subtopics") or ())
+        has_spine = bool((generation_plan or {}).get("has_usable_spine"))
+        persona = effective_category
+        plan_type_s = str((generation_plan or {}).get("plan_type") or "").strip()
+        include_impl = bool(
+            (persona or plan_type_s)
+            and evidence_tier != "empty"
+            and has_spine
+            and out_type != "insufficient"
+        )
+        impl_text = ""
+        if include_impl and persona:
+            impl = persona_implications_block(persona, out_type, has_spine=has_spine)
+            if impl:
+                impl_text = impl
+        type_fmt = format_prompt_for_type(
+            out_type,
+            persona=persona,
+            grain_window_line=gw,
+            include_implications=include_impl and bool(impl_text),
+            answer_subtopics=answer_subtopics,
+            implications_text=impl_text,
+        )
+        if type_fmt:
+            system += "\n\n" + type_fmt
+        else:
+            shape_fmt = format_template_for_shape(answer_shape, use_bullets=use_bullet_layout)
+            if shape_fmt:
+                system += "\n\n" + shape_fmt
+
     if export_intent and mode != "data_export_only":
-        system = system + _EXPORT_CAPTION_BLOCK
-    # Keep category plainness/precision when answering in a named non-English language
-    # (avoids English academic bleed on e.g. Igbo + Farmers).
+        system += _EXPORT_CAPTION_BLOCK
+
+    if yield_only:
+        system += _YIELD_ONLY_RULE
+
     if effective_category and cat_tone and not is_english_answer_lang(lang) and lang not in ("unknown", ""):
-        system = (
-            system
-            + "\n\nAnswer in the user's language while keeping the category audience rules "
-            "(plainness, framing, and jargon limits) — do not switch to English academic prose."
+        system += (
+            "\n\nAnswer in the user's language while keeping the category audience rules."
         )
-    if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
-        system = (
-            "Note for this turn: no structured numeric rows are available in Context for the "
-            "requested measure. Do not invent specific production totals, precise yields, prices, "
-            "GDP figures, or ranked country answers. Synthesise the strongest available narrative "
-            "evidence (news, policy, research, reports). Place any coverage limits only in a short "
-            "final Data Notes section if writing an analytical brief; otherwise state limits briefly "
-            "at the end. Never mention BigQuery, structured-data availability, or internal system "
-            "status in the answer prose.\n\n"
-        ) + system
+
+    kinds = [str(k).strip().lower() for k in (context_source_kinds or []) if str(k).strip()]
+    unique_kinds = list(dict.fromkeys(kinds))
+    if evidence_tier == "strong" and len(unique_kinds) >= 2:
+        system += (
+            "\n\nCross-source synthesis: weave structured figures with narrative sources "
+            "when both are relevant; do not invent numbers."
+        )
+
     if structured_bq_numeric_available:
         system = (
-            "CRITICAL: Context includes OpenTrace statistical figures with explicit "
-            "measure labels and units. For numeric answers (totals, yields, prices, GDP, "
-            "population counts, rankings), use those figures as the authoritative "
-            "source. Do not override them with policy, news, or web narrative that cites "
-            "a different number, unit, or country.\n\n"
+            "CRITICAL: Context includes authoritative OpenTrace figures with units. "
+            "Use them for numeric answers; do not override with conflicting narrative.\n\n"
         ) + system
     elif structured_bq_comparative_available:
         system = (
-            "Context includes OpenTrace structured data with measure labels and units. "
-            "Use it for comparative statistics (production levels, yields, prices, trends, "
-            "regional benchmarks). Use policy, research, and news sources for causal "
-            "explanations and policy drivers. Do not invent numbers; cite structured data "
-            "when stating quantitative comparisons.\n\n"
+            "Context includes OpenTrace structured data — use it for comparisons; "
+            "use narrative sources for drivers only.\n\n"
+        ) + system
+    elif structured_bq_unavailable and is_numeric_data_query(query, decomposition):
+        system = (
+            "No structured numeric rows match this question — do not invent totals, "
+            "yields, prices, or rankings. Synthesise only supported narrative evidence.\n\n"
         ) + system
 
     mb = (memory_block.strip() + "\n\n") if memory_block.strip() else ""
@@ -1328,6 +1470,138 @@ def _strip_sql_from_answer(text: str) -> str:
     return cleaned or text.strip()
 
 
+def _strip_internal_identifiers(text: str) -> str:
+    if not text:
+        return text
+    cleaned = _INTERNAL_ID_RE.sub("", text)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip() or text.strip()
+
+
+def _strip_forbidden_headings(
+    text: str,
+    output_type: str = "",
+    allowed_subtopics: tuple[str, ...] = (),
+) -> str:
+    if not text or not output_type:
+        return text
+    from ml.rag.chatbot.output_format import forbidden_headings_for_type
+
+    forbidden = {
+        h.lower()
+        for h in forbidden_headings_for_type(
+            output_type,  # type: ignore[arg-type]
+            allowed_subtopics=allowed_subtopics,
+        )
+    }
+    allowed_subtopic_set = {s.lower() for s in allowed_subtopics}
+    if output_type in ("fact", "insufficient", "export"):
+        forbidden |= {"trend", "comparison", "context for drivers"}
+
+    heading_re = re.compile(r"^(#{1,3})\s+(.+)$", re.MULTILINE)
+    matches = list(heading_re.finditer(text))
+    if not matches:
+        return text.strip()
+
+    parts: list[str] = []
+    if matches[0].start() > 0:
+        parts.append(text[: matches[0].start()].rstrip())
+
+    for i, m in enumerate(matches):
+        title = m.group(2).strip().lower()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start:end]
+        if title in allowed_subtopic_set:
+            parts.append(f"{m.group(0)}{body.rstrip()}")
+            continue
+        if title in forbidden:
+            body_stripped = body.lstrip("\n")
+            if "\n\n" in body_stripped:
+                _, _, trailing = body_stripped.partition("\n\n")
+                if trailing.strip():
+                    parts.append(trailing.strip())
+            continue
+        parts.append(f"{m.group(0)}{body.rstrip()}")
+
+    return re.sub(r"\n{3,}", "\n\n", "\n\n".join(p for p in parts if p)).strip()
+
+
+def _strip_empty_analytical_skeleton(text: str, evidence_tier: EvidenceTier) -> str:
+    if not text:
+        return text
+    out = text
+    if evidence_tier != "strong":
+        for heading in _KNOWN_ANALYTICAL_HEADINGS:
+            pattern = rf"(#{{2,3}}\s+{re.escape(heading)})\s*\n\s*(?=#{{2,3}}|\Z)"
+            out = re.sub(pattern, "", out, flags=re.IGNORECASE)
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
+
+
+def _cap_export_caption(text: str, *, max_sentences: int = 5) -> str:
+    if not text or not text.strip():
+        return text
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    if len(parts) <= max_sentences:
+        return text.strip()
+    return " ".join(parts[:max_sentences]).strip()
+
+
+def _sanitize_citation_text(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for cite in citations:
+        row = dict(cite)
+        raw = str(row.get("text") or "").strip()
+        if not raw:
+            continue
+        one_line = re.sub(r"\s+", " ", raw)
+        if len(one_line) > 200:
+            one_line = one_line[:197].rstrip() + "..."
+        if one_line.lower() in seen:
+            continue
+        seen.add(one_line.lower())
+        row["text"] = one_line
+        out.append(row)
+    return out
+
+
+def _fix_yield_mislabeled_as_production(text: str, *, yield_only: bool) -> str:
+    if not yield_only or not text:
+        return text
+    if _PRODUCTION_TREND_MISLABEL_RE.search(text):
+        return re.sub(
+            r"\bproduction trend\b",
+            "yield",
+            text,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    return text
+
+
+def _cap_acf_for_evidence_tier(acf: ACFResult, evidence_tier: EvidenceTier) -> ACFResult:
+    if evidence_tier == "empty":
+        return no_evidence_acf()
+    if evidence_tier != "partial":
+        return acf
+    if acf.band in ("very_strong", "strong", "moderate"):
+        return ACFResult(
+            band="limited",
+            band_label="Limited confidence",
+            score=min(acf.score, 45),
+            explanation=acf.explanation,
+            note=acf.explanation,
+            components=acf.components,
+            applied_ceiling="partial_evidence",
+            config_version=acf.config_version,
+            claim_level=acf.claim_level,
+            question_type=acf.question_type,
+        )
+    return acf
+
+
 def _strip_preamble_openers(text: str) -> str:
     """
     Sprint 1, Week 3 (direct-answer-first): deterministic backstop for the "no
@@ -1358,7 +1632,15 @@ def _strip_preamble_openers(text: str) -> str:
     return out
 
 
-def _clean_answer(text: str) -> str:
+def _clean_answer(
+    text: str,
+    *,
+    evidence_tier: EvidenceTier = "strong",
+    export_intent: str | None = None,
+    yield_only: bool = False,
+    output_type: str = "",
+    allowed_subtopics: tuple[str, ...] = (),
+) -> str:
     """Remove Llama chat template echoes and other non-answer artifacts from LLM output."""
     if not text:
         return text
@@ -1370,6 +1652,12 @@ def _clean_answer(text: str) -> str:
     text = _strip_sql_from_answer(text) or text.strip()
     text = _strip_doc_table_figure_labels(text) or text.strip()
     text = _strip_model_sources_appendix(text)
+    text = _strip_internal_identifiers(text)
+    text = _strip_forbidden_headings(text, output_type, allowed_subtopics=allowed_subtopics)
+    text = _strip_empty_analytical_skeleton(text, evidence_tier)
+    text = _fix_yield_mislabeled_as_production(text, yield_only=yield_only)
+    if export_intent:
+        text = _cap_export_caption(text)
     return _strip_preamble_openers(text)
 
 
@@ -1535,6 +1823,22 @@ def _no_data_fallback_message(
     )
 
 
+def _compact_gap_message(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+    answer_lang: str | None = None,
+) -> str:
+    """Short 2–4 sentence gap when evidence tier is EMPTY."""
+    lang = (answer_lang or "").strip() or detect_answer_language(query)
+    lead = insufficient_context_answer(lang=lang, query=query)
+    geo = _decomposition_geo_hint(decomposition)
+    if geo:
+        detail = f"Name a specific crop or metric and time period for {geo}."
+    else:
+        detail = "Name a specific country, crop or metric, and time period."
+    return f"{lead} {detail}"
+
+
 def _query_target_countries(decomposition: dict[str, Any] | None) -> list[str]:
     """Normalized list of countries the query is scoped to (zone labels excluded)."""
     if not isinstance(decomposition, dict):
@@ -1636,6 +1940,11 @@ def _finalize_generation_result(
     decomposition: dict[str, Any] | None = None,
     inline_citations: bool = False,
     generate_input_chars: int | None = None,
+    evidence_tier: EvidenceTier = "strong",
+    export_intent: str | None = None,
+    yield_only: bool = False,
+    output_type: str = "",
+    allowed_subtopics: tuple[str, ...] = (),
 ) -> GenerationResult:
     """Attach structured citations and score ACF Path B on cited sources only."""
     t0 = time.perf_counter()
@@ -1645,9 +1954,18 @@ def _finalize_generation_result(
             prose = _strip_invalid_citation_markers(prose, source_registry)
         else:
             prose = _strip_all_inline_citation_markers(prose)
+        prose = _clean_answer(
+            prose,
+            evidence_tier=evidence_tier,
+            export_intent=export_intent,
+            yield_only=yield_only,
+            output_type=output_type,
+            allowed_subtopics=allowed_subtopics,
+        )
         citations = referenced_citations(
             prose, source_registry, inline_citations=inline_citations
         )
+        citations = _sanitize_citation_text(citations)
         if _append_sources_to_answer() and citations:
             lines = [f"{c['id']}. {c['text']}" for c in citations]
             prose = (prose.rstrip() + "\n\nSources\n" + "\n".join(lines)).strip()
@@ -1676,6 +1994,8 @@ def _finalize_generation_result(
         else:
             acf = no_evidence_acf()
             acf_status = "no_citations"
+
+        acf = _cap_acf_for_evidence_tier(acf, evidence_tier)
 
         update_current_span_metadata(
             {
@@ -1791,6 +2111,33 @@ def generate(
                 ),
             )
 
+    shape = str((generation_plan or {}).get("answer_shape") or "")
+    from ml.rag.chatbot.output_format import output_type_from_plan
+
+    output_type = output_type_from_plan(generation_plan)
+    answer_subtopics = tuple((generation_plan or {}).get("answer_subtopics") or ())
+    if (
+        task_mode == "fact_lookup"
+        and shape == "numeric_fact"
+        and is_numeric_data_query(query, decomposition)
+        and not _PRICE_TREND_RE.search(query or "")
+        and not _context_has_structured_numeric(context_items)
+    ):
+        usable = filter_context_items(context_items or [])
+        has_narrative = any(
+            normalize_context_kind(it) in _NARRATIVE_KINDS for it in usable
+        )
+        if not has_narrative:
+            return GenerationResult(
+                answer=_no_data_fallback_message(query, decomposition),
+                citations=[],
+                acf=no_evidence_acf(
+                    explanation=(
+                        "No structured OpenTrace numeric data matched this question."
+                    )
+                ),
+            )
+
     if not context_items:
         allow_ungrounded = os.environ.get("RAG_ALLOW_UNGROUNDED", "").strip().lower() in (
             "1",
@@ -1820,17 +2167,12 @@ def generate(
                 inline_citations=inline_citations,
                 generation_plan=generation_plan,
                 export_intent=export_intent_s,
+                evidence_tier="empty",
             )
             if messages and messages[0].get("role") == "system":
                 messages[0]["content"] = (
                     "CRITICAL: The Context below is empty ('[No external context]'). "
-                    "Do NOT synthesise, do NOT draw on general knowledge, do NOT produce "
-                    "academic prose. Reply in exactly this shape:\n"
-                    "  Line 1: 'I don't have OpenTrace data for this question.'\n"
-                    "  Then a short 'What would help' list (3 bullets: country/region, "
-                    "crop or commodity, time period).\n"
-                    "  Then a final line: 'ACF: no evidence.'\n"
-                    "No other prose. No hedging. No caveats beyond the ACF line.\n\n"
+                    "Reply in 2–4 sentences only that you cannot answer from sources.\n\n"
                 ) + messages[0]["content"]
             gen_max = _generate_max_tokens(task_mode)
             input_chars = sum(len(str(m.get("content") or "")) for m in messages)
@@ -1841,7 +2183,9 @@ def generate(
                 max_tokens=gen_max,
             )
             if llama_answer:
-                cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
+                cleaned = _normalize_inline_citations(
+                    _clean_answer(llama_answer, evidence_tier="empty")
+                )
                 return _finalize_generation_result(
                     cleaned,
                     [],
@@ -1849,11 +2193,12 @@ def generate(
                     decomposition=decomposition,
                     inline_citations=inline_citations,
                     generate_input_chars=input_chars,
+                    evidence_tier="empty",
                 )
         # Default (RAG_ALLOW_UNGROUNDED off or LLM returned nothing): structured
         # gap message so testers can distinguish "no data" from "low confidence".
         return GenerationResult(
-            answer=_no_data_fallback_message(query, decomposition),
+            answer=_compact_gap_message(query, decomposition, answer_lang),
             citations=[],
             acf=no_evidence_acf(),
         )
@@ -1868,16 +2213,30 @@ def generate(
         analytical=analytical_mode or task_mode == "analytical",
     )
 
-    # Sprint 1 (Jul 2026): if geo/error filtering leaves too little usable context,
-    # return the structured gap message instead of letting the model pad thin or
-    # irrelevant context with general-knowledge prose (test-1 finding).
-    min_usable = _min_usable_context()
-    if len(usable_context) <= min_usable:
-        return GenerationResult(
-            answer=_no_data_fallback_message(query, decomposition),
-            citations=[],
-            acf=no_evidence_acf(),
+    plan_tier = str((generation_plan or {}).get("evidence_tier") or "").strip()
+    if plan_tier in ("strong", "partial", "empty"):
+        evidence_tier: EvidenceTier = plan_tier  # type: ignore[assignment]
+    else:
+        evidence_tier = classify_evidence_tier(
+            query,
+            usable_context,
+            decomposition,
+            structured_bq_numeric_available=structured_bq_numeric_available,
+            answer_shape=shape,
         )
+
+    yield_only = context_is_yield_only(usable_context)
+
+    min_usable = _min_usable_context()
+    if len(usable_context) <= min_usable or evidence_tier == "empty":
+        if task_mode == "data_export_only" and export_intent_s:
+            pass
+        else:
+            return GenerationResult(
+                answer=_compact_gap_message(query, decomposition, answer_lang),
+                citations=[],
+                acf=no_evidence_acf(),
+            )
 
     ctx_budget = _context_max_chars(
         memory_block,
@@ -1911,6 +2270,8 @@ def generate(
         inline_citations=inline_citations,
         generation_plan=generation_plan,
         export_intent=export_intent_s,
+        evidence_tier=evidence_tier,
+        yield_only=yield_only,
     )
     gen_max = _generate_max_tokens(task_mode)
     input_chars = sum(len(str(m.get("content") or "")) for m in messages)
@@ -1919,6 +2280,7 @@ def generate(
             "generate_max_tokens": gen_max,
             "generate_input_chars": input_chars,
             "task_mode": task_mode,
+            "evidence_tier": evidence_tier,
         }
     )
     llama_answer = _call_llama(
@@ -1928,7 +2290,16 @@ def generate(
         max_tokens=gen_max,
     )
     if llama_answer:
-        cleaned = _normalize_inline_citations(_clean_answer(llama_answer))
+        cleaned = _normalize_inline_citations(
+            _clean_answer(
+                llama_answer,
+                evidence_tier=evidence_tier,
+                export_intent=export_intent_s,
+                yield_only=yield_only,
+                output_type=output_type,
+                allowed_subtopics=answer_subtopics,
+            )
+        )
         return _finalize_generation_result(
             cleaned,
             source_registry,
@@ -1936,6 +2307,11 @@ def generate(
             decomposition=decomposition,
             inline_citations=inline_citations,
             generate_input_chars=input_chars,
+            evidence_tier=evidence_tier,
+            export_intent=export_intent_s,
+            yield_only=yield_only,
+            output_type=output_type,
+            allowed_subtopics=answer_subtopics,
         )
 
     if llm_configured():
@@ -1950,7 +2326,7 @@ def generate(
             "or HF_API_TOKEN for the Hugging Face router. Showing retrieved context only.]\n\n"
         )
     return GenerationResult(
-        answer=hint + f"Context:\n{context_block[:3000]}\n\nQuery: {query}",
+        answer=hint + _compact_gap_message(query, decomposition, answer_lang),
         citations=[],
         acf=no_evidence_acf(
             explanation="Generation failed before citations could be scored."

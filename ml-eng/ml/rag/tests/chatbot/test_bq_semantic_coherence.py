@@ -253,8 +253,34 @@ def test_enrich_bq_results_drops_yield_row_for_production_intent() -> None:
         for it in out
         if is_usable_enriched(it)
     ]
-    assert rejected
+    assert not rejected
     assert not enriched
+
+
+def test_try_sql_template_tahoua_yield_routes_to_fct_yield() -> None:
+    dec = sanitize_decomposition_for_bq(
+        {
+            "query": "What sorghum yield can farmers expect in Tahoua, Niger this harvest season?",
+            "entities": ["sorghum", "Tahoua", "Niger"],
+            "primary_measures": ["production"],
+        },
+        primary_measures=["production"],
+    )
+    assert dec["primary_measures"][0] == "yield"
+    hit = try_sql_template(
+        query=dec.get("query") or "",
+        project_id="proj",
+        dataset="mart_dev",
+        selected_tables=["fct_yield", "fct_production"],
+        entities=dec.get("entities"),
+        geo_country="Niger",
+        primary_measures=dec.get("primary_measures"),
+        task_mode="fact_lookup",
+    )
+    assert hit is not None
+    assert hit["table_id"] == "fct_yield"
+    assert "fct_yield" in hit["sql"]
+    assert "fct_production" not in hit["sql"]
 
 
 def is_usable_enriched(item: dict) -> bool:

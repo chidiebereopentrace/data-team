@@ -178,7 +178,7 @@ def test_ghana_rice_numeric_fact_bq_first() -> None:
     assert plan.lead_with == "structured_value"
 
 
-def test_analytical_plan_has_report_sections() -> None:
+def test_analytical_plan_has_compare_subtopics_not_report_sections() -> None:
     from ml.rag.tests.chatbot.fixtures.generation_plan_matrix import mixed_bq_news_context
 
     plan = build_generation_plan(
@@ -189,10 +189,12 @@ def test_analytical_plan_has_report_sections() -> None:
         measure_id="production",
         decomposition={"intent": "compare", "geography": ["Kenya", "Tanzania"]},
     )
-    assert plan.report_sections
+    assert plan.report_sections == ()
     assert plan.effective_category == "Government"
     assert plan.category_source == "explicit"
-    assert any("Data notes" in s.title or "data notes" in s.title.lower() for s in plan.report_sections)
+    assert "Kenya" in plan.answer_subtopics
+    assert "Tanzania" in plan.answer_subtopics
+    assert plan.has_usable_spine is True
 
 
 def test_query_induced_category_on_plan() -> None:

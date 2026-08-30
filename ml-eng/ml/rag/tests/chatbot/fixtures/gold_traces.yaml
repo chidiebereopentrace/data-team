@@ -1,0 +1,56 @@
+version: "2026.8"
+# Smoke traces — not the test strategy; property tests use synthetic_facets.
+
+traces:
+  - id: employment_share_sex_latest
+    query: "What share of employment in agriculture by men and women in Uganda (latest available)?"
+    expect_measure: employment_share
+    expect_job: fact
+    expect_breakdown: [sex]
+    expect_template: employment_share_by_sex
+    expect_output_type: fact
+
+  - id: production_trend
+    query: "How has rice production in Ghana changed over the last 5 years?"
+    expect_measure: production
+    expect_job: trend
+
+  - id: admin2_unsupported_rain
+    query: "Which districts in Malawi had the highest rainfall in 2023?"
+    expect_measure: rainfall
+    expect_geo_grain: admin2
+    expect_serve_status: unsupported_grain
+
+  - id: rank_production
+    query: "Which country produces the most maize?"
+    expect_job: rank
+    expect_output_type: compare
+
+  - id: ipc_outlook
+    query: "What is the food security outlook for Somalia next lean season?"
+    expect_job: outlook
+    expect_output_type: outlook
+
+  - id: ecf_prevalence_tanzania
+    query: "What is the prevalence of east coast fever in smallholder dairy herds in Tanzania?"
+    expect_measure: disease_prevalence
+    expect_job: fact
+    expect_serve_status: unsupported_grain
+    expect_vector_policy: fallback_only
+
+  - id: maize_price_2024
+    query: "Compare maize prices in Kenya and Uganda in 2024"
+    expect_job: compare
+
+  - id: maize_volatility_three_country
+    query: "Compare retail maize price volatility in Kenya, Tanzania, and Uganda over 2024"
+    expect_job: compare
+    expect_measure: market_price
+
+  - id: employment_sex_latest_uganda
+    query: "What share of employment in agriculture by men and women in Uganda (latest available)?"
+    expect_measure: employment_share
+    expect_job: fact
+    expect_template: employment_share_by_sex
+    expect_vector_policy: companion
+    expect_output_type: fact
