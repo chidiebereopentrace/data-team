@@ -57,6 +57,8 @@ _SOCIAL_PHRASES: dict[str, tuple[tuple[str, SocialSubKind], ...]] = {
         ("whats up", "greeting"),
         ("wassup", "greeting"),
         ("sup", "greeting"),
+        ("how are you", "greeting"),
+        ("how are you doing", "greeting"),
     ),
     "fr": (
         ("bonjour", "greeting"),
@@ -369,6 +371,8 @@ def _matches_phrase(normalized: str, phrase: str) -> bool:
     if not target or not normalized:
         return False
     if normalized == target:
+        return True
+    if normalized.startswith(target + " "):
         return True
     # Mild elongation for Latin greetings: hiii → hi, mercii → merci
     if target.isascii() and normalized.startswith(target):

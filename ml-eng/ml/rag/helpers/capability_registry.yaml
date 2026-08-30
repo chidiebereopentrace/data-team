@@ -1,0 +1,146 @@
+version: "2026.8"
+# (measure, geo_grain, time_grain [, breakdown]) → warehouse capability. Fail closed when no row matches.
+
+entries:
+  - measure: production
+    geo_grain: africa
+    time_grain: year
+    table: agg_production_annual
+    template: mart_regional_panel
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: production
+    geo_grain: region
+    time_grain: year
+    table: agg_production_annual
+    template: mart_regional_panel
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: production
+    geo_grain: country
+    time_grain: year
+    table: agg_production_annual
+    alt_table: fct_production
+    template: mart_country_series
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: production
+    geo_grain: africa
+    time_grain: year
+    table: agg_production_annual
+    template: mart_regional_panel
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: yield
+    geo_grain: country
+    time_grain: season
+    table: fct_yield
+    template: mart_season_climate
+    max_geo_level: sub_national
+    contract_sql_only: true
+
+  - measure: market_price
+    geo_grain: country
+    time_grain: year
+    table: fct_prices
+    alt_table: agg_prices_country_month
+    template: mart_latest_price
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: food_security_ipc
+    geo_grain: country
+    time_grain: season
+    table: fct_food_security
+    template: mart_food_security_snapshot
+    max_geo_level: sub_national
+    contract_sql_only: true
+
+  - measure: employment_share
+    geo_grain: country
+    time_grain: year
+    breakdown: [sex]
+    table: fct_employment
+    template: employment_share_by_sex
+    required_filters: [country_iso3, sector_agriculture, unit_percent, sex]
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: employment_share
+    geo_grain: country
+    time_grain: latest
+    breakdown: [sex]
+    table: fct_employment
+    template: employment_share_by_sex
+    required_filters: [country_iso3, sector_agriculture, unit_percent, sex]
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: employment_share
+    geo_grain: country
+    time_grain: year
+    table: fct_employment
+    template: employment_share_total
+    required_filters: [country_iso3, sector_agriculture, unit_percent]
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: employment_share
+    geo_grain: admin2
+    time_grain: year
+    status: unsupported_grain
+    max_geo_level: national
+    reason: Employment share is national-only in fct_employment
+
+  - measure: rainfall
+    geo_grain: admin2
+    time_grain: year
+    status: unsupported_grain
+    max_geo_level: national
+    reason: Subnational rainfall not in mart at admin2 grain
+
+  - measure: disease_prevalence
+    geo_grain: country
+    time_grain: latest
+    population: dairy
+    status: unsupported_grain
+    reason: fct_animal_health is household×species; no national dairy-herd ECF prevalence
+    fallback_corpora: [academic_papers, public_reports]
+    skip_bq: true
+    vector_policy: fallback_only
+    contract_sql_only: true
+
+  - measure: hdi
+    geo_grain: country
+    time_grain: year
+    table: fct_hdi
+    alt_table: agg_hdi_latest
+    template: null
+    max_geo_level: national
+    contract_sql_only: false
+
+  - measure: gdp
+    geo_grain: country
+    time_grain: year
+    table: fct_economics
+    template: null
+    max_geo_level: national
+    contract_sql_only: false
+
+geo_level_order:
+  point: 0
+  admin2: 1
+  admin1: 2
+  country: 3
+  region: 4
+  africa: 5
+
+max_geo_level_rank:
+  national: 3
+  sub_national: 2
+  community: 1
+  point: 0

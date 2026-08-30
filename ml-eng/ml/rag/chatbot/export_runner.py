@@ -13,12 +13,65 @@ from ml.rag.chatbot.exports.csv_builder import build_csv
 from ml.rag.chatbot.exports.docx_builder import build_docx
 from ml.rag.chatbot.exports.pdf_builder import build_pdf
 from ml.rag.chatbot.exports.tabular import report_topic, rows_from_bq_results
+from ml.rag.chatbot.output_format import SLOT_TEMPLATES
 from ml.rag.chatbot.plan_policy import allows_export
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
 
 logger = logging.getLogger(__name__)
 
 _HEADING_RE = re.compile(r"^#{1,3}\s+(.+)$", re.MULTILINE)
+_EXPORT_REFUSAL_RE = re.compile(
+    r"not available in the provided context|"
+    r"no pdf report|"
+    r"i don't have opentrace data|"
+    r"would be required to compile|"
+    r"no accurate csv export|"
+    r"\*\*gap\*\*",
+    re.IGNORECASE,
+)
+
+
+def export_substantive_enough(
+    *,
+    query: str,
+    answer: str,
+    rows: list[dict[str, Any]],
+    export_kind: ExportKind,
+    decomposition: dict[str, Any] | None = None,
+) -> bool:
+    """Return False when an export would only wrap a refusal or poison rows."""
+    if _EXPORT_REFUSAL_RE.search(answer or ""):
+        return False
+
+    usable_rows = [r for r in rows if _row_is_exportable(r)]
+    if export_kind in {"csv", "chart", "multi"} and not usable_rows:
+        return False
+    geo = decomposition.get("geography") if isinstance(decomposition, dict) else None
+    multi_geo = isinstance(geo, list) and len([g for g in geo if str(g).strip()]) >= 3
+    if export_kind in {"pdf", "docx", "multi"}:
+        if not usable_rows:
+            return False
+        if multi_geo and len(usable_rows) < 2:
+            return False
+    if export_kind == "chart" and len(usable_rows) < 2:
+        return False
+    return True
+
+
+def _row_is_exportable(row: dict[str, Any]) -> bool:
+    if not row:
+        return False
+    if row.get("bq_timeout_s") is not None and len(row) <= 4:
+        return False
+    value = row.get("value")
+    if value is None:
+        return False
+    return bool(
+        row.get("country_iso3")
+        or row.get("country_name")
+        or row.get("product_name")
+        or row.get("metric")
+    )
 
 
 def _acf_summary(state: dict[str, Any]) -> str:
@@ -92,13 +145,15 @@ def _report_sections(query: str, answer: str) -> list[dict[str, str]]:
 def _caption_sections(query: str, answer: str) -> list[dict[str, str]]:
     """Short caption-only sections for data_export_only mode."""
     text = (answer or "").strip()
-    # Keep a short caption body for PDF/DOCX wrappers.
     if len(text) > 600:
         cut = text[:600]
         stop = max(cut.rfind(". "), cut.rfind(".\n"))
         text = cut[: stop + 1].strip() if stop > 120 else cut.strip() + "…"
+    heading = "Export caption"
+    guidance = SLOT_TEMPLATES["export"].lead
+    body = text or guidance
     return [
-        {"heading": "Data summary", "body": text or "Structured data export."},
+        {"heading": heading, "body": body},
         {"heading": "Question", "body": query},
     ]
 
@@ -158,6 +213,14 @@ def run_exports(
     task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
     data_export_only = task_mode == "data_export_only"
     data_export = export_kind in {"csv", "chart", "multi"} or data_export_only
+    if not export_substantive_enough(
+        query=query,
+        answer=answer,
+        rows=rows,
+        export_kind=export_kind,
+        decomposition=dec if isinstance(dec := state.get("decomposition"), dict) else None,
+    ):
+        return []
     if data_export and not rows:
         return []
 

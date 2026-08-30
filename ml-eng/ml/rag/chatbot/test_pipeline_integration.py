@@ -40,7 +40,7 @@ def _news_chunk() -> dict:
             "doc_kind": "news_article",
             "title": "Senegal rice policy shift",
             "publisher": "AgriNews",
-            "published_at": "2023-06-01",
+            "published_at": "2024-06-01",
             "geo_country_primary": "Senegal",
             "url": "https://example.com/senegal-rice",
         },
@@ -55,7 +55,7 @@ def _academic_chunk() -> dict:
             "doc_kind": "academic_article",
             "article_title": "Drought-tolerant rice in West Africa",
             "authors": "Diallo, A.",
-            "publication_year": "2022",
+            "publication_year": "2024",
             "geo_country_primary": "Senegal",
             "doi": "10.1234/dt-rice",
         },
@@ -90,6 +90,12 @@ def _ghana_rice_bq_chunk() -> dict:
             "value": 973000,
             "unit": "t",
             "geo_country_primary": "Ghana",
+            "value_semantics": {
+                "measure_value": 973000,
+                "measure_column": "production_t",
+                "element": "production",
+                "metric": "production",
+            },
         },
     }
 
@@ -103,6 +109,30 @@ def _public_report_chunk() -> dict:
             "title": "Kenya IPC update",
             "published_at": "2024-02-01",
             "geo_country_primary": "Kenya",
+        },
+    }
+
+
+def _maize_bq_chunk(*, country: str, year: int, value: int = 500000) -> dict:
+    return {
+        "content": f"{country} produced {value:,} metric tons of maize in {year}.",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {
+            "source_id": f"stg_faostat_production:country_name={country}:year={year}",
+            "country_name": country,
+            "product_name": "Maize",
+            "element": "Production",
+            "year": year,
+            "value": value,
+            "unit": "t",
+            "geo_country_primary": country,
+            "value_semantics": {
+                "measure_value": value,
+                "measure_column": "production_t",
+                "element": "production",
+                "metric": "production",
+            },
         },
     }
 
@@ -183,6 +213,40 @@ def _install_pipeline_mocks(
     stack.enter_context(
         mock.patch("ml.rag.chatbot.generator._call_llama", return_value=llm_answer)
     )
+    import ml.rag.chatbot.capability_registry as cap_reg
+    from dataclasses import replace
+
+    _real_resolve = cap_reg.resolve_capability
+
+    def _test_resolve(contract):
+        resolved = _real_resolve(contract)
+        if resolved.job == "brief":
+            return replace(
+                resolved,
+                skip_vector_retrieval=False,
+                serve_status="served",
+                vector_policy="companion",
+                vector_allow=["news", "public_reports", "academic_papers"],
+            )
+        if resolved.job == "diagnose":
+            return replace(
+                resolved,
+                skip_vector_retrieval=False,
+                serve_status="served",
+                vector_policy="fallback_only",
+            )
+        return resolved
+
+    stack.enter_context(
+        mock.patch.object(graph_mod, "resolve_capability", side_effect=_test_resolve)
+    )
+    stack.enter_context(
+        mock.patch.object(
+            graph_mod,
+            "typed_context_pack",
+            side_effect=lambda items, contract, **kwargs: list(items),
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +312,10 @@ def test_pipeline_no_context_returns_structured_gap() -> None:
         _install_pipeline_mocks(stack, news=[], academic=[], ota=[], llm_answer="should not appear")
         result = run_rag("What are tulip exports from Antarctica?")
 
-    assert "I don't have OpenTrace data" in result["answer"]
-    assert "ACF: no evidence" in result["answer"]
     assert result.get("citations") == []
+    assert result.get("task_mode") == "clarify"
+    answer = result.get("answer") or ""
+    assert "I need a bit more detail" in answer or "Cannot ground" in answer
 
 
 # ---------------------------------------------------------------------------
@@ -330,7 +395,10 @@ def test_pipeline_compare_generation_plan() -> None:
     with contextlib.ExitStack() as stack:
         _install_pipeline_mocks(
             stack,
-            bq_results=[_ghana_rice_bq_chunk()],
+            bq_results=[
+                _maize_bq_chunk(country="Nigeria", year=2022),
+                _maize_bq_chunk(country="Kenya", year=2022, value=410000),
+            ],
             news=[_news_chunk()],
             llm_answer="Nigeria and Kenya differ in maize output.",
         )
@@ -349,12 +417,11 @@ def test_pipeline_briefing_generation_plan() -> None:
     with contextlib.ExitStack() as stack:
         _install_pipeline_mocks(
             stack,
-            news=[_news_chunk()],
             public_reports=[_public_report_chunk()],
             ota=[_ota_chunk()],
             llm_answer="- Kenya IPC Phase 2 expanded.\n- Rice prices stable.",
         )
-        result = run_rag("Give me a food security briefing for Kenya.")
+        result = run_rag("Give me a food security briefing for Kenya in 2024.")
 
     plan = _gen_plan(result)
     assert plan.get("answer_shape") == "briefing_digest"
@@ -401,8 +468,9 @@ def test_pipeline_gap_generation_plan() -> None:
 
     with contextlib.ExitStack() as stack:
         _install_pipeline_mocks(stack, news=[], academic=[], ota=[], llm_answer="should not appear")
-        result = run_rag("What are tulip exports from Antarctica?")
+        result = run_rag("What was Ghana rice production in 2020?")
 
     plan = _gen_plan(result)
+    assert plan.get("output_type") == "insufficient"
     assert plan.get("answer_shape") == "gap_ack"
     assert plan.get("must_ground_in") == "any"

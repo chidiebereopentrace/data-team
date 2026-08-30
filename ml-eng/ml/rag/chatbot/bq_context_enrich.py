@@ -1132,7 +1132,7 @@ def enrich_bq_results(
         for item in group:
             enriched.append(_enrich_single_item(item, table_id=table_id, decomposition=dec))
 
-    return diagnostics + enriched
+    return enriched
 
 
 __all__ = [

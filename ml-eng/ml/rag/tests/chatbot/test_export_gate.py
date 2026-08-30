@@ -66,3 +66,58 @@ def test_node_export_skips_csv_when_bq_prep_fails() -> None:
     merged = out.get("answer") or answer
     assert "Downloadable files" not in merged
     assert "prep_error" not in merged
+
+
+def test_node_export_skips_docx_on_gap_answer() -> None:
+    answer = "I don't have OpenTrace data for tomato prices near Kano."
+    out = node_export(
+        {
+            "export_intent": "docx",
+            "export_enabled": True,
+            "plan_type": "Agribusinesses",
+            "query": "tomato prices near Kano Nigeria",
+            "answer": answer,
+            "bq_results": [
+                {
+                    "source": "bigquery",
+                    "content": "15 units",
+                    "metadata": {
+                        "status": "ok",
+                        "raw_row": {"value": 15, "unit": "units", "country_name": "Nigeria"},
+                    },
+                }
+            ],
+            "citations": [],
+        }
+    )
+    assert out["artifacts"] == []
+    merged = out.get("answer") or answer
+    assert "Downloadable files" not in merged
+
+
+def test_node_export_skips_pdf_on_gap_answer() -> None:
+    answer = "No PDF report on the trend is available in the provided context."
+    out = node_export(
+        {
+            "export_intent": "pdf",
+            "export_enabled": True,
+            "plan_type": "Agribusinesses",
+            "query": "give me a pdf report of maize across West Africa in 2022",
+            "answer": answer,
+            "bq_results": [
+                {
+                    "source": "bigquery",
+                    "content": "timeout",
+                    "metadata": {
+                        "status": "bq_timeout",
+                        "bq_timeout_s": 15,
+                        "raw_row": {"bq_timeout_s": 15, "task_mode": "fact_lookup"},
+                    },
+                }
+            ],
+            "citations": [],
+        }
+    )
+    assert out["artifacts"] == []
+    merged = out.get("answer") or answer
+    assert "Downloadable files" not in merged

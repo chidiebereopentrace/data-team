@@ -156,8 +156,36 @@ def select_corpora(
     query: str = "",
     task_mode: str | None = None,
     corpus_domain_tags: list[str] | None = None,
+    contract_job: str | None = None,
+    vector_allow: list[str] | None = None,
+    vector_block: list[str] | None = None,
+    vector_policy: str | None = None,
 ) -> CorpusSelection:
-    """Heuristic gate/boost over the six corpora. Never returns an empty active set."""
+    """Heuristic gate/boost over the six corpora."""
+    job = (contract_job or "").strip().lower()
+    policy = (vector_policy or "").strip().lower() if vector_policy is not None else ""
+    allow = [str(x).strip() for x in (vector_allow or []) if str(x).strip()]
+    block = {str(x).strip() for x in (vector_block or []) if str(x).strip()}
+
+    if vector_policy is not None:
+        if policy in ("companion", "fallback_only") and allow:
+            active = [k for k in allow if k in ALL_CORPUS_KEYS and k not in block]
+            return CorpusSelection(
+                active=active,
+                boosts=default_boosts(),
+                rationale=f"vector_policy_{policy}",
+            )
+        if policy == "none" or job in ("help", "social"):
+            return CorpusSelection(active=[], boosts={}, rationale=f"vector_policy_{policy or job}")
+
+    if job in ("help", "social"):
+        return CorpusSelection(active=[], boosts={}, rationale=f"turn_contract_job_{job}")
+    if job == "outlook":
+        return CorpusSelection(
+            active=["ota", "public_reports"],
+            boosts=default_boosts(),
+            rationale="turn_contract_job_outlook",
+        )
     boosts = default_boosts()
     if not corpus_router_enabled():
         return CorpusSelection(

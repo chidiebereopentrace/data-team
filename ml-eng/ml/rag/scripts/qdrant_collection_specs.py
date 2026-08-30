@@ -133,6 +133,9 @@ PAYLOAD_INDEXES: dict[str, list[tuple[str, models.PayloadSchemaType]]] = {
     "news": [
         ("doc_kind", models.PayloadSchemaType.KEYWORD),
         ("published_at", models.PayloadSchemaType.KEYWORD),
+        ("period_start", models.PayloadSchemaType.KEYWORD),
+        ("period_end", models.PayloadSchemaType.KEYWORD),
+        ("year", models.PayloadSchemaType.KEYWORD),
         ("geo_country_primary", models.PayloadSchemaType.KEYWORD),
         ("country", models.PayloadSchemaType.KEYWORD),
         # TEXT index enables MatchText substring filter on the semicolon-list payload.
@@ -152,6 +155,9 @@ PAYLOAD_INDEXES: dict[str, list[tuple[str, models.PayloadSchemaType]]] = {
         ("content_type", models.PayloadSchemaType.KEYWORD),
         ("semantic_lane", models.PayloadSchemaType.KEYWORD),
         ("publication_year", models.PayloadSchemaType.KEYWORD),
+        ("period_start", models.PayloadSchemaType.KEYWORD),
+        ("period_end", models.PayloadSchemaType.KEYWORD),
+        ("year", models.PayloadSchemaType.KEYWORD),
         ("journal", models.PayloadSchemaType.KEYWORD),
         ("doi", models.PayloadSchemaType.KEYWORD),
         *_ACF_PAYLOAD_INDEXES,

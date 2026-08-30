@@ -13,6 +13,7 @@ _REPORT_RE = re.compile(
     r"comparative\s+(analytics?|analysis|report)|"
     r"analytics?|benchmark(?:ing)?|"
     r"past\s+\d+\s+years?|last\s+\d+\s+years?|over\s+the\s+(past|last)\s+\d+|"
+    r"trends?|"
     r"multi[- ]country|all\s+the\s+countr(?:y|ies)|across\s+countries|"
     r"time\s+series|historical\s+trends?|"
     r"assessment|assess(?:ing|ed)?\b|food\s+security\s+risk|hunger\s+pressure|"
