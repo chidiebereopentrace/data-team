@@ -418,6 +418,18 @@ Deterministic post-retrieval reasoner — runs inside **`node_generate`** after 
 
 **Rule layers:** gap (no usable context) → task mode base shape → measure ontology evidence priority → context fingerprint (BQ present + numeric query elevates BQ) → query heuristics (`is_ranking_numeric_query`, etc.) → analytical outline + persona register.
 
+### 7.2.3 Optimal Reasoner — dictionary + bundles + slots ([`chatbot/global_reasoner.py`](chatbot/global_reasoner.py))
+
+All numeric jobs compile a **slot path** (`slot_path=True`); Government / Agribusiness / Integrated also set `heavy_path` for full enricher depth:
+
+1. **Intent bundles** ([`intent_bundles.py`](chatbot/intent_bundles.py), [`helpers/intent_bundles.yaml`](helpers/intent_bundles.yaml)) — multi-measure handles (e.g. agricultural activities → production + trade).
+2. **Global Reasoner** (`compile_reasoner_plan`) — job compiler pins job, time window, geos; `resolve_measure()` is **hint-only** ([`agri_measure_ontology.py`](chatbot/agri_measure_ontology.py)).
+3. **Plan enricher** ([`plan_enricher.py`](chatbot/plan_enricher.py)) — bundles → `subquestions[]`; tables from `get_measure().candidate_tables` (no duplicate table maps).
+4. **Parallel execution** — BQ reasoner emits one SQL intent per slot ([`reasoner_plan_to_bq_plan`](chatbot/global_reasoner.py)); per-slot capability via [`resolve_slot_capability`](chatbot/capability_registry.py).
+5. **Composer** ([`composer.py`](chatbot/composer.py)) — dual bags on every slot path; coverage law per required slot; sentinels banned.
+
+Farmers / NGOs use the same slot contract with **light** depth (fewer optional slots). Turn-level `fact_bq_plan` / `analytical_forced_*` are skipped when `reasoner_job` or bundles are set. Property tests: [`tests/chatbot/test_global_reasoner_properties.py`](tests/chatbot/test_global_reasoner_properties.py) (T1–T10), [`tests/chatbot/test_optimal_reasoner_properties.py`](tests/chatbot/test_optimal_reasoner_properties.py) (B1–B10).
+
 `generation_plan_addendum()` renders a short strategy block (&lt;400 chars). **`analytical_outline_addendum()`** renders the dynamic report outline; **`ANALYTICAL_VOICE_RULES`** replaces the legacy fixed Key Findings → Data Notes template.
 
 ```mermaid

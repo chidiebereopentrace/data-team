@@ -1,0 +1,66 @@
+version: "2026.8"
+# Intent bundles: multi-measure turns. Tables come from MeasureSpec — not listed here.
+
+bundles:
+  - id: agricultural_activities
+    trigger_patterns:
+      - "agricultural activities"
+      - "agri activities"
+      - "agri report"
+      - "country by country"
+      - "country-by-country"
+      - "activities by country"
+    required_measures:
+      - production
+      - trade
+    excluded_primary_measures:
+      - food_security_ipc
+
+  - id: food_balance_panel
+    trigger_patterns:
+      - "food balance"
+      - "import dependency"
+      - "imports vs consumption"
+      - "production vs imports"
+      - "self-sufficiency"
+      - "self sufficiency"
+    required_measures:
+      - production
+      - trade
+      - food_balance
+
+  - id: protected_area
+    trigger_patterns:
+      - "protected area"
+      - "protected areas"
+      - "wdpa"
+      - "protected planet"
+      - "terrestrial protected"
+      - "national park"
+    required_measures:
+      - protected_area
+    excluded_primary_measures:
+      - land_inputs
+      - fertilizer
+      - pesticide
+
+  - id: employment_by_sex
+    trigger_patterns:
+      - "by sex"
+      - "men and women"
+      - "male and female"
+      - "gender"
+    required_measures:
+      - employment_share
+    requires_breakdown:
+      - sex
+
+  - id: outlook_overlay
+    trigger_patterns:
+      - "ipc phase"
+      - "lean season"
+      - "food security outlook"
+      - "fews"
+    optional_measures:
+      - food_security_ipc
+    vector_only: true

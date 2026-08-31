@@ -1250,6 +1250,7 @@ def _build_prompt(
     export_intent: str | None = None,
     evidence_tier: EvidenceTier = "strong",
     yield_only: bool = False,
+    composer_addendum: str = "",
 ) -> list[dict[str, str]]:
     lang = (answer_lang or "").strip() or detect_answer_language(query)
     mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
@@ -1315,6 +1316,9 @@ def _build_prompt(
         gen_plan_addendum = generation_plan_addendum(generation_plan)
         if gen_plan_addendum:
             system += "\n\n" + gen_plan_addendum
+
+    if composer_addendum:
+        system += "\n\n" + composer_addendum
 
     from ml.rag.chatbot.generation_plan import format_template_for_shape
 
@@ -2088,6 +2092,7 @@ def generate(
     recency_tier = str(kwargs.get("recency_tier") or "").strip() or None
     export_intent = kwargs.get("export_intent")
     export_intent_s = str(export_intent).strip() if export_intent else None
+    composer_addendum = str(kwargs.get("composer_addendum") or "").strip()
     generation_plan = kwargs.get("generation_plan")
     if generation_plan is not None and not isinstance(generation_plan, dict):
         generation_plan = None
@@ -2272,6 +2277,7 @@ def generate(
         export_intent=export_intent_s,
         evidence_tier=evidence_tier,
         yield_only=yield_only,
+        composer_addendum=composer_addendum,
     )
     gen_max = _generate_max_tokens(task_mode)
     input_chars = sum(len(str(m.get("content") or "")) for m in messages)

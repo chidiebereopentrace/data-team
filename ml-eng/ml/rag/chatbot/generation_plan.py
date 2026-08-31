@@ -244,6 +244,57 @@ def _shape_from_contract_job(job: str, *, breakdown: list[str] | None = None) ->
     return answer_shape_from_output_type(out)  # type: ignore[return-value]
 
 
+def _flatten_slot_rows(rows_by_subquestion: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(rows_by_subquestion, dict):
+        return []
+    out: list[dict[str, Any]] = []
+    for bag in rows_by_subquestion.values():
+        if isinstance(bag, list):
+            out.extend(r for r in bag if isinstance(r, dict))
+    return out
+
+
+def _reasoner_has_bq_slots(reasoner_plan: dict[str, Any] | None) -> bool:
+    if not isinstance(reasoner_plan, dict):
+        return False
+    subs = reasoner_plan.get("subquestions")
+    if not isinstance(subs, list):
+        return False
+    return any(
+        isinstance(s, dict) and str(s.get("library") or "bq").strip().lower() == "bq"
+        for s in subs
+    )
+
+
+def _shape_from_reasoner_plan(
+    reasoner_plan: dict[str, Any] | None,
+    *,
+    task_mode: str,
+) -> AnswerShape | None:
+    if not isinstance(reasoner_plan, dict) or not _reasoner_has_bq_slots(reasoner_plan):
+        return None
+    job = str(reasoner_plan.get("job") or "fact").strip().lower()
+    export_raw = reasoner_plan.get("export")
+    export = str(export_raw).strip().lower() if isinstance(export_raw, str) else "none"
+    if task_mode == "data_export_only" or export not in ("", "none"):
+        return "export_table"
+    by_job: dict[str, AnswerShape] = {
+        "compare": "comparison",
+        "rank": "ranking",
+        "trend": "trend",
+        "list": "ranking",
+        "breakdown": "breakdown",
+        "outlook": "briefing_digest",
+        "report": "comparison",
+        "synthesis": "research_synthesis",
+        "brief": "briefing_digest",
+        "diagnosis": "trend",
+        "diagnose": "trend",
+        "fact": "numeric_fact",
+    }
+    return by_job.get(job, "comparison")
+
+
 def _base_shape_from_task_mode(task_mode: str) -> AnswerShape:
     mode = (task_mode or "chat").strip().lower()
     if mode == "fact_lookup":
@@ -462,10 +513,13 @@ def build_generation_plan(
     category: str | None = None,
     measure_id: str | None = None,
     turn_contract: dict[str, Any] | None = None,
+    reasoner_plan: dict[str, Any] | None = None,
+    rows_by_subquestion: dict[str, Any] | None = None,
 ) -> GenerationPlan:
     """Deterministic post-retrieval strategy for generation."""
     tc = TurnContract.from_dict(turn_contract)
-    use_contract_shape = bool(turn_contract and tc.measure_id)
+    slot_reasoner = _reasoner_has_bq_slots(reasoner_plan)
+    use_contract_shape = bool(turn_contract and tc.measure_id) and not slot_reasoner
     effective_category, category_source = resolve_effective_category(
         category=category,
         plan_type=plan_type,
@@ -473,6 +527,9 @@ def build_generation_plan(
         decomposition=decomposition,
     )
     usable = filter_context_items(list(reranked_context or []))
+    slot_rows = _flatten_slot_rows(rows_by_subquestion)
+    if slot_reasoner and slot_rows:
+        usable = filter_context_items(list(usable) + slot_rows)
     counts = _context_kind_counts(usable)
     has_bq = _has_usable_bq(usable)
 
@@ -503,6 +560,7 @@ def build_generation_plan(
         tc.is_fail_closed()
         and tc.serve_status != "clarify"
         and tc.job in NUMERIC_JOBS
+        and not slot_reasoner
     )
     if not has_usable or numeric_fail_closed:
         evidence_tier: EvidenceTier = "empty"
@@ -523,7 +581,13 @@ def build_generation_plan(
             priority = ()
             rationale = "gap_no_on_topic_evidence"
         else:
-            if use_contract_shape:
+            reasoner_shape = _shape_from_reasoner_plan(reasoner_plan, task_mode=task_mode)
+            if slot_reasoner and reasoner_shape:
+                shape = reasoner_shape
+                output_type = output_type_from_job(
+                    str(reasoner_plan.get("job") or tc.job or "fact")  # type: ignore[union-attr]
+                )
+            elif use_contract_shape:
                 output_type = output_type_from_contract(
                     tc,
                     evidence_tier=evidence_tier,

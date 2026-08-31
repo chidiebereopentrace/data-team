@@ -14,6 +14,18 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
 
 _STAPLES = ("Maize", "Rice", "Cassava", "Sorghum", "Millet")
 
+_AGRI_ACTIVITIES_RE = re.compile(
+    r"\b("
+    r"agricultural activities|agri activities|agri report|"
+    r"country.by.country|country by country"
+    r")\b",
+    re.I,
+)
+_FS_OUTLOOK_RE = re.compile(
+    r"\b(ipc|fews|food security outlook|lean season|phase [34]|outlook)\b",
+    re.I,
+)
+
 _FOOD_SECURITY_TABLES = (
     "fct_food_security",
     "fct_prices",
@@ -45,6 +57,19 @@ def _asked_products(query: str, decomposition: dict[str, Any]) -> list[str]:
 
 def _wants_trade(query: str) -> bool:
     return bool(re.search(r"\b(trade|export|import)\b", query or "", re.IGNORECASE))
+
+
+def _should_use_food_security_plan(query: str, decomposition: dict[str, Any]) -> bool:
+    """IPC/FEWS spine only for outlook-style questions — not regional ag-activities reports."""
+    matched = decomposition.get("matched_bundles")
+    if isinstance(matched, list) and "agricultural_activities" in matched:
+        return False
+    if _AGRI_ACTIVITIES_RE.search(query or ""):
+        return False
+    if _FS_OUTLOOK_RE.search(query or ""):
+        return True
+    intent = str(decomposition.get("intent") or "").strip().lower()
+    return intent in ("outlook", "food_security", "monitoring")
 
 
 def build_food_security_bq_plan(
@@ -171,11 +196,16 @@ def build_analytical_bq_plan(
     Prefer ontology composite (e.g. investor_best_country); food_security_ipc → FEWS;
     else production-centered multi-intent with trade/yield companions. Never sets skip_bq.
     """
+    if decomposition.get("reasoner_job"):
+        return None
     hit = resolve_measure(query, decomposition)
     if hit is not None and hit.measure.id == "food_security_ipc":
-        fs = build_food_security_bq_plan(query, decomposition=decomposition, known_tables=known_tables)
-        if fs is not None:
-            return fs
+        if _should_use_food_security_plan(query, decomposition):
+            fs = build_food_security_bq_plan(
+                query, decomposition=decomposition, known_tables=known_tables
+            )
+            if fs is not None:
+                return fs
 
     if hit is not None and (
         hit.measure.id == "investor_best_country"

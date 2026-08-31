@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, MeasureSpec
+from ml.rag.chatbot.intent_bundles import MatchedBundle, bundle_required_measures, bundles_block_primary
 from ml.rag.chatbot.query_decomposer import _extract_year_range, _CROP_ENTITY_RE
 from ml.rag.chatbot.turn_contract import (
     BreakdownDim,
@@ -36,6 +37,10 @@ _RANK_RE = re.compile(
     re.IGNORECASE,
 )
 _COMPARE_RE = re.compile(r"\b(compare|versus|vs\.?|compared\s+to)\b", re.IGNORECASE)
+_AGRI_PANEL_REPORT_RE = re.compile(
+    r"\b(agricultural activities|agri activities|country.by.country|country by country)\b",
+    re.IGNORECASE,
+)
 _OUTLOOK_RE = re.compile(
     r"\b(outlook|projected|projection|forecast|likely|next\s+lean|lean\s+season)\b",
     re.IGNORECASE,
@@ -182,6 +187,8 @@ def compile_job(
         return "outlook"
     if _DIAGNOSE_RE.search(q) or intent == "diagnostic":
         return "diagnose"
+    if _AGRI_PANEL_REPORT_RE.search(q):
+        return "report"
     if _BRIEF_RE.search(q):
         return "brief"
     if _COMPARE_RE.search(q) or intent == "compare":
@@ -217,9 +224,17 @@ def compile_measure(
     measure_hit: MeasureHit | None,
     *,
     breakdown: list[BreakdownDim],
+    matched_bundles: tuple[MatchedBundle, ...] | None = None,
 ) -> tuple[str, str]:
     q = (query or "").strip()
     sector = ""
+    bundles = matched_bundles or ()
+    bundle_measures = bundle_required_measures(bundles)
+    if bundle_measures:
+        mid = bundle_measures[0]
+        if mid == "employment_share":
+            sector = "agriculture"
+        return mid, sector
     if _PREVALENCE_RE.search(q) or _ECF_RE.search(q):
         return "disease_prevalence", sector
     if re.search(r"\b(rainfall|rainfall anomaly|precipitation)\b", q, re.I):
@@ -232,6 +247,8 @@ def compile_measure(
         return "employment_share", sector
     if measure_hit is not None:
         mid = measure_hit.measure.id
+        if bundles_block_primary(mid, bundles) and bundle_measures:
+            return bundle_measures[0], sector
         if mid == "socio_economic" and (
             re.search(r"\b(employment|share\s+of)\b", q, re.I) or "sex" in breakdown
         ):
@@ -251,6 +268,7 @@ def _apply_clarify_if_incomplete(
     measure_spec: MeasureSpec | None,
     *,
     query: str = "",
+    matched_bundles: tuple[MatchedBundle, ...] | None = None,
 ) -> TurnContract:
     if contract.job in ("help", "social", "clarify"):
         contract.serve_status = "clarify"
@@ -264,8 +282,18 @@ def _apply_clarify_if_incomplete(
         contract.job = "clarify"
         return contract
     if measure_spec is not None:
+        bundle_measures = bundle_required_measures(matched_bundles or ())
+        multi_measure_panel = len(bundle_measures) >= 2 or contract.job in (
+            "report",
+            "synthesis",
+            "compare",
+            "list",
+        )
         if measure_spec.crop_required and not contract.entities:
-            if not _CROP_ENTITY_RE.search(query or ""):
+            if (
+                not multi_measure_panel
+                and not _CROP_ENTITY_RE.search(query or "")
+            ):
                 contract.serve_status = "clarify"
                 contract.serve_reason = "crop_required"
                 contract.plan_type = "gap"
@@ -290,10 +318,17 @@ def compile_turn_contract(
     answer_lang: str = "en",
     measure_hit: MeasureHit | None = None,
     task_mode_hint: str = "",
+    matched_bundles: tuple[MatchedBundle, ...] | None = None,
 ) -> TurnContract:
     dec = decomposition if isinstance(decomposition, dict) else {}
     breakdown = compile_breakdown(query)
-    measure_id, sector = compile_measure(query, dec, measure_hit, breakdown=breakdown)
+    measure_id, sector = compile_measure(
+        query,
+        dec,
+        measure_hit,
+        breakdown=breakdown,
+        matched_bundles=matched_bundles,
+    )
     pathogen_id = compile_pathogen(query)
     population = compile_population(query)
     job = compile_job(query, dec, task_mode_hint=task_mode_hint)
@@ -334,5 +369,10 @@ def compile_turn_contract(
     measure_spec = MEASURES.get(measure_id) if measure_id else None
     if measure_hit is not None and measure_spec is None:
         measure_spec = measure_hit.measure
-    contract = _apply_clarify_if_incomplete(contract, measure_spec, query=query)
+    contract = _apply_clarify_if_incomplete(
+        contract,
+        measure_spec,
+        query=query,
+        matched_bundles=matched_bundles,
+    )
     return contract

@@ -245,6 +245,13 @@ def reason_bq_sql_plan(
     """
     known = _known_table_ids()
     dec = decomposition if isinstance(decomposition, dict) else {}
+    if dec.get("reasoner_job") or dec.get("matched_bundles"):
+        return {
+            "selected_tables": [],
+            "query_intents": [],
+            "skip_bq": True,
+            "rationale": "slot_reasoner_owned",
+        }
     max_tables = _max_tables()
     mode = (task_mode or ("analytical" if analytical_mode else "chat")).strip().lower()
     hit = resolve_measure(query, dec)

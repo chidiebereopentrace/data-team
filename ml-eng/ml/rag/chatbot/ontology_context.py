@@ -37,11 +37,14 @@ class OntologyContext:
 
     def to_reasoner_block(self) -> str:
         lines = ["Ontology contract (MUST honor in SQL filters):"]
+        lines.append(
+            "- resolve_measure() scores hints only; bundles + reasoner slots own the turn"
+        )
         if self.primary_measures:
             lines.append(f"- primary_measures: {', '.join(self.primary_measures)}")
         for ic in self.indicator_classes[:4]:
             facts = ", ".join(ic.primary_facts[:4]) or "-"
-            lines.append(f"- indicator {ic.code} ({ic.name}): tables {facts}")
+            lines.append(f"- indicator_filter_hint {ic.code} ({ic.name}): tables {facts}")
             for claim in ic.example_claims[:2]:
                 lines.append(f"  example: {claim}")
         for hint in self.filter_hints[:6]:
@@ -89,18 +92,21 @@ def build_ontology_context(
     query: str,
     decomposition: dict[str, Any] | None = None,
 ) -> OntologyContext:
-    """Merge measure ontology, indicator classes, and decomposition facets."""
+    """Merge measure dictionary, bundles, and decomposition facets (hint-only scoring)."""
     dec = dict(decomposition or {})
     hits = resolve_measures(query, dec)
     pm: list[str] = []
-    if hits:
-        pm.append(hits[0].measure.id)
     declared = dec.get("primary_measures")
     if isinstance(declared, list):
         for m in declared:
             mid = str(m).strip().lower()
             if mid and mid not in pm:
                 pm.append(mid)
+    if not pm and hits:
+        pm.append(hits[0].measure.id)
+    for h in hits[1:4]:
+        if h.measure.id not in pm:
+            pm.append(h.measure.id)
 
     ic_codes = class_for_query(query)
     ic_contexts = [c for code in ic_codes if (c := _load_class_context(code))]
@@ -110,27 +116,46 @@ def build_ontology_context(
 
     tables: list[str] = []
     seen: set[str] = set()
-    if hits:
-        for tid in hits[0].measure.candidate_tables:
+    for mid in pm:
+        spec = MEASURES.get(mid)
+        if spec is None:
+            continue
+        for tid in spec.candidate_tables:
             bare = str(tid).split(".")[-1].lower()
             if bare and bare not in seen:
                 seen.add(bare)
                 tables.append(bare)
-    for code in ic_codes:
-        for tid in facts_for_classes([code]):
-            bare = str(tid).split(".")[-1].lower()
-            if bare and bare not in seen:
-                seen.add(bare)
-                tables.append(bare)
+    if not pm:
+        for code in ic_codes:
+            for tid in facts_for_classes([code]):
+                bare = str(tid).split(".")[-1].lower()
+                if bare and bare not in seen:
+                    seen.add(bare)
+                    tables.append(bare)
 
     hints: list[str] = []
-    if hits:
+    for mid in pm[:3]:
+        spec = MEASURES.get(mid)
+        if spec is None:
+            continue
+        hint = str(spec.filter_hints or "").strip()
+        if hint:
+            hints.append(hint)
+    if not hints and hits:
         hint = str(hits[0].measure.filter_hints or "").strip()
         if hint:
             hints.append(hint)
 
-    crop_required = hits[0].measure.crop_required if hits else True
-    geography_required = hits[0].measure.geography_required if hits else True
+    crop_required = True
+    geography_required = True
+    if pm:
+        spec0 = MEASURES.get(pm[0])
+        if spec0:
+            crop_required = spec0.crop_required
+            geography_required = spec0.geography_required
+    elif hits:
+        crop_required = hits[0].measure.crop_required
+        geography_required = hits[0].measure.geography_required
 
     return OntologyContext(
         query=query,

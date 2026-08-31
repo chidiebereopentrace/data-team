@@ -31,7 +31,7 @@ from ml.rag.chatbot.plan_policy import (
 )
 from ml.rag.chatbot.task_mode import clarify_answer, resolve_task_mode
 from ml.rag.chatbot.query_enricher import enrich_query_with_memory
-from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_measure, resolve_recency_tier
+from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_measure, resolve_measures, resolve_recency_tier
 from ml.rag.chatbot.product_knowledge import is_help_query, is_product_query
 from ml.rag.chatbot.query_gate import (
     classify_social_query,
@@ -49,15 +49,24 @@ from ml.rag.chatbot.bq_ranking_cache import (
 )
 from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
 from ml.rag.chatbot.context_diversity import diversify_context_pack
-from ml.rag.chatbot.corpus_catalog import select_corpora
+from ml.rag.chatbot.corpus_catalog import CorpusSelection, select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
-from ml.rag.chatbot.facet_compiler import compile_turn_contract
-from ml.rag.chatbot.capability_registry import resolve_capability, unsupported_answer_hint
+from ml.rag.chatbot.facet_compiler import compile_turn_contract, compile_breakdown
+from ml.rag.chatbot.intent_bundles import bundle_required_measures, match_intent_bundles
+from ml.rag.chatbot.capability_registry import apply_reasoner_to_turn, resolve_capability, unsupported_answer_hint
 from ml.rag.chatbot.empty_answer_templates import empty_answer_for_contract
 from ml.rag.chatbot.time_retrieval import sync_decomposition_time, time_fallback_enabled, time_kwargs_from_contract
 from ml.rag.chatbot.turn_contract import NUMERIC_JOBS, TurnContract
 from ml.rag.chatbot.typed_pack import typed_context_pack, should_zero_pack
 from ml.rag.chatbot.generation_plan import build_generation_plan
+from ml.rag.chatbot.global_reasoner import compile_reasoner_plan, reasoner_plan_to_bq_plan
+from ml.rag.chatbot.composer import (
+    composer_addendum,
+    composer_context_block,
+    partition_bq_by_subquestion,
+)
+from ml.rag.chatbot.reasoner_plan import ReasonerPlan, is_heavy_plan_type
+from ml.rag.chatbot.qdrant_planner import plan_vector_corpora_for_reasoner
 from ml.rag.chatbot.generator import (
     _generate_max_tokens,
     filter_context_items,
@@ -506,6 +515,11 @@ class RAGGraphState(TypedDict, total=False):
     recency_tier: str | None
     turn_contract: dict[str, Any] | None
     generation_plan: dict[str, Any] | None
+    reasoner_plan: dict[str, Any] | None
+    rows_by_subquestion: dict[str, Any] | None
+    passages: list[dict[str, Any]] | None
+    heavy_path: bool | None
+    slot_path: bool | None
     # Latency / cost observability (internal; not part of the public API schema)
     route_candidate: str | None
     early_short_circuit: bool | None
@@ -524,6 +538,18 @@ class RAGGraphState(TypedDict, total=False):
     generate_ms: float | None
     generate_max_tokens: int | None
     generate_input_chars: int | None
+
+
+def _reasoner_from_state(state: RAGGraphState) -> ReasonerPlan | None:
+    raw = state.get("reasoner_plan")
+    return ReasonerPlan.from_dict(raw if isinstance(raw, dict) else None)
+
+
+def _slot_path_active(state: RAGGraphState) -> bool:
+    if not state.get("slot_path"):
+        return False
+    rp = _reasoner_from_state(state)
+    return rp is not None and bool(rp.bq_subquestions())
 
 
 def _early_route_decompose_state(raw_q: str, route: str) -> dict[str, Any]:
@@ -589,7 +615,6 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         dec = dec_raw
         profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
         country = str((profile or {}).get("country") or "").strip() or None
-        measure_hit = resolve_measure(q, dec)
         task_mode = resolve_task_mode(q, dec, profile_country=country)
         analytical = task_mode == "analytical"
         # Always expand known Africa zones for retrieval / geo purity (all plan tiers).
@@ -605,16 +630,23 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         dec = _apply_ui_scope_overrides(dec, state)
         # Grounded entity/domain enrich → multi-measure retrieval contract tags.
         dec = enrich_decomposition_facets(q, dec)
+        matched_bundles = match_intent_bundles(q, dec, breakdown=compile_breakdown(q))
+        if matched_bundles:
+            dec["matched_bundles"] = [mb.spec.id for mb in matched_bundles]
         contract = build_retrieval_contract(q, decomposition=dec, known_tables=set())
         if contract.corpus_domain_tags:
             dec["corpus_domain_tags"] = list(contract.corpus_domain_tags)
-        if contract.primary_measures:
+        bundle_pm = list(bundle_required_measures(matched_bundles))
+        if bundle_pm:
+            dec["primary_measures"] = bundle_pm
+        elif contract.primary_measures:
             dec["primary_measures"] = list(contract.primary_measures)
         dec = sanitize_decomposition_for_bq(dec, primary_measures=dec.get("primary_measures"))
         if contract.companion_measures:
             dec["companion_measures"] = list(contract.companion_measures)
+        measure_hints = resolve_measures(q, dec)
+        measure_hit = measure_hints[0] if measure_hints else None
         # Re-resolve after gates/overrides may change geography or time.
-        measure_hit = resolve_measure(q, dec)
         task_mode = resolve_task_mode(q, dec, profile_country=country)
         analytical = task_mode == "analytical"
         recency = resolve_recency_tier(q, measure_hit)
@@ -625,11 +657,9 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
             answer_lang=answer_lang,
             measure_hit=measure_hit,
             task_mode_hint=task_mode,
+            matched_bundles=matched_bundles,
         )
         turn = resolve_capability(turn)
-        if turn.measure_id:
-            dec["primary_measures"] = [turn.measure_id]
-            measure_hit = resolve_measure(q, dec)
         if turn.is_fail_closed() and turn.job == "clarify":
             task_mode = "clarify"
         meta = is_meta_query(q)
@@ -704,6 +734,38 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         }
         if enrich.get("enriched"):
             out["query"] = q
+        rp = compile_reasoner_plan(
+            q,
+            decomposition=dec,
+            turn_contract=turn,
+            plan_type=str(state.get("plan_type") or ""),
+            task_mode=task_mode,
+            matched_bundles=matched_bundles,
+        )
+        if rp is not None:
+            turn = apply_reasoner_to_turn(turn, rp)
+            out["reasoner_plan"] = rp.to_dict()
+            out["heavy_path"] = rp.heavy_path
+            out["slot_path"] = bool(rp.bq_subquestions())
+            dec["reasoner_job"] = rp.job
+            dec["reasoner_shape"] = rp.shape
+            if rp.geos:
+                dec["geography"] = list(rp.geos)
+            if rp.time_start:
+                dec["time_start"] = rp.time_start
+            if rp.time_end:
+                dec["time_end"] = rp.time_end
+            if rp.primary_measure:
+                dec["primary_measures"] = list(
+                    bundle_required_measures(matched_bundles)
+                    or [rp.primary_measure]
+                )
+            out["decomposition"] = dec
+            out["turn_contract"] = turn.to_dict()
+            out["measure_id"] = turn.measure_id or rp.primary_measure
+        else:
+            out["heavy_path"] = False
+            out["slot_path"] = False
         return out
 
 
@@ -1086,6 +1148,27 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
             else {}
         ),
     )
+    heavy = bool(state.get("heavy_path"))
+    rp = _reasoner_from_state(state)
+    planner_meta: dict[str, Any] = {}
+    if (heavy or _slot_path_active(state)) and rp:
+        planner = plan_vector_corpora_for_reasoner(
+            query=str(state.get("query") or ""),
+            reasoner=rp,
+            turn_contract=contract,
+            plan_type=str(state.get("plan_type") or "") or None,
+            decomposition=decomposition,
+        )
+        selection = CorpusSelection(
+            active=list(planner.get("active_corpora") or selection.active),
+            boosts=selection.boosts,
+            rationale=f"{selection.rationale}|reasoner_planner",
+        )
+        planner_meta = {
+            "hard_time_filter": bool(planner.get("hard_time_filter")),
+            "news_allowed": bool(planner.get("news_allowed", True)),
+            "reasoner_planner": True,
+        }
     active = set(selection.active)
     boosts = selection.boosts
 
@@ -1222,7 +1305,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
         + list(formation_out)
         + list(legacy_out),
         "vector_results": combined,
-        "corpus_selection": selection.to_dict(),
+        "corpus_selection": {**selection.to_dict(), **planner_meta},
         "vector_ms": meta_update["vector_ms"],
         "corpus_count": len(selection.active),
         "cascade_level": 1 if task_mode in ("fact_lookup", "data_export_only") else None,
@@ -1234,17 +1317,22 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
     analytical = bool(state.get("analytical_mode"))
     task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
-    plan = reason_bq_sql_plan(
-        q,
-        decomposition=state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None,
-        plan_type=str(state.get("plan_type") or "") or None,
-        category=str(state.get("category") or "") or None,
-        analytical_mode=analytical,
-        task_mode=task_mode,
-    )
+    rp_raw = state.get("reasoner_plan")
+    reasoner = ReasonerPlan.from_dict(rp_raw if isinstance(rp_raw, dict) else None)
+    if reasoner and reasoner.bq_subquestions():
+        plan = reasoner_plan_to_bq_plan(reasoner)
+    else:
+        plan = reason_bq_sql_plan(
+            q,
+            decomposition=state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None,
+            plan_type=str(state.get("plan_type") or "") or None,
+            category=str(state.get("category") or "") or None,
+            analytical_mode=analytical,
+            task_mode=task_mode,
+        )
     tc_raw = state.get("turn_contract")
     contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
-    if contract.skip_bq:
+    if contract.skip_bq and not plan.get("heavy_path") and not plan.get("slot_path"):
         plan = {**plan, "skip_bq": True}
     template_key = str((contract.sql_plan or {}).get("template") or "").strip()
     if template_key:
@@ -1418,6 +1506,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
             "serve_status": contract.serve_status,
             "contract_sql_only": contract.contract_sql_only,
             "template_key": str((contract.sql_plan or {}).get("template") or ""),
+            "heavy_path": bool(plan.get("heavy_path")),
         }
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
@@ -1592,6 +1681,17 @@ def node_merge(state: RAGGraphState) -> dict[str, Any]:
             if "_ofia_tier" not in chunk:
                 chunk["_ofia_tier"] = infer_source_tier(chunk)
 
+        if _slot_path_active(state):
+            rp = _reasoner_from_state(state)
+            assert rp is not None
+            rows_by = partition_bq_by_subquestion(list(state.get("bq_results") or []), rp)
+            serializable = {k: v for k, v in rows_by.items()}
+            return {
+                "merged_context": other_merged,
+                "passages": other_merged,
+                "rows_by_subquestion": serializable,
+            }
+
         return {"merged_context": merged}
 
 
@@ -1656,8 +1756,24 @@ def node_rerank(state: RAGGraphState) -> dict[str, Any]:
     )
     tc_raw = state.get("turn_contract")
     contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
+    slot_active = _slot_path_active(state)
+    reasoner = _reasoner_from_state(state)
+    rows_raw = state.get("rows_by_subquestion")
+    rows_by_slot: dict[str, list[dict[str, Any]]] = {}
+    if isinstance(rows_raw, dict):
+        for k, v in rows_raw.items():
+            if isinstance(v, list):
+                rows_by_slot[str(k)] = [r for r in v if isinstance(r, dict)]
     bq_results = state.get("bq_results") or []
+    if slot_active and reasoner and not rows_by_slot and bq_results:
+        rows_by_slot = partition_bq_by_subquestion(list(bq_results), reasoner)
     bq_failed = not any(is_usable_structured_bq_row(r) for r in bq_results)
+    if slot_active and reasoner and rows_by_slot:
+        bq_failed = not any(
+            is_usable_structured_bq_row(r)
+            for bag in rows_by_slot.values()
+            for r in bag
+        )
     if contract.measure_id or contract.job != "fact":
         packed = typed_context_pack(
             packed,
@@ -1917,6 +2033,19 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
             "primary_measures": dec_dict.get("primary_measures") or [],
             "companion_measures": dec_dict.get("companion_measures") or [],
         }
+    slot_active = _slot_path_active(state)
+    reasoner = _reasoner_from_state(state)
+    rows_raw = state.get("rows_by_subquestion")
+    rows_by: dict[str, list[dict[str, Any]]] = {}
+    if isinstance(rows_raw, dict):
+        for k, v in rows_raw.items():
+            if isinstance(v, list):
+                rows_by[str(k)] = [r for r in v if isinstance(r, dict)]
+    if slot_active and reasoner and not rows_by and usable_bq:
+        rows_by = partition_bq_by_subquestion(list(bq_results), reasoner)
+    reasoner_dict = (
+        state.get("reasoner_plan") if isinstance(state.get("reasoner_plan"), dict) else None
+    )
     gen_plan = build_generation_plan(
         str(query),
         task_mode=task_mode,
@@ -1928,8 +2057,32 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         category=str(state.get("category") or "") or None,
         measure_id=str(mid) if mid else None,
         turn_contract=state.get("turn_contract") if isinstance(state.get("turn_contract"), dict) else None,
+        reasoner_plan=reasoner_dict,
+        rows_by_subquestion=rows_by if slot_active else None,
     )
     gkw["generation_plan"] = gen_plan.to_dict()
+    has_required_bq_rows = False
+    if slot_active and reasoner:
+        passages = filter_context_items(
+            state.get("passages") or list(reranked) or context
+        )
+        comp_block = composer_context_block(
+            rows_by_slot=rows_by,
+            passages=passages,
+            reasoner=reasoner,
+        )
+        context = [
+            {
+                "content": comp_block,
+                "_context_kind": "composer",
+                "metadata": {"context_kind": "composer"},
+            },
+            *passages,
+        ]
+        gkw["composer_addendum"] = composer_addendum(reasoner, rows_by)
+        has_required_bq_rows = any(
+            rows_by.get(sq.id) for sq in reasoner.bq_subquestions() if sq.required
+        )
     tc_raw = state.get("turn_contract")
     if isinstance(tc_raw, dict):
         gkw["turn_contract"] = tc_raw
@@ -1946,7 +2099,7 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
             academic_count=academic_count,
             category=gen_plan.effective_category,
         )
-        if gen_plan.output_type == "insufficient" and empty_tpl:
+        if gen_plan.output_type == "insufficient" and empty_tpl and not (slot_active and has_required_bq_rows):
             return {
                 "answer": empty_tpl,
                 "citations": [],
@@ -1957,7 +2110,7 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         if empty_tpl and (
             not context
             or should_zero_pack(tc, bq_failed=not usable_bq, context_items=context)
-        ):
+        ) and not (slot_active and has_required_bq_rows):
             return {
                 "answer": empty_tpl,
                 "citations": [],
@@ -1965,7 +2118,12 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
                 "generation_plan": gen_plan.to_dict(),
                 **acf_result_to_state(no_evidence_acf()),
             }
-        if tc.is_fail_closed() and tc.serve_status != "clarify" and tc.vector_policy != "fallback_only":
+        if (
+            tc.is_fail_closed()
+            and tc.serve_status != "clarify"
+            and tc.vector_policy != "fallback_only"
+            and not (slot_active and has_required_bq_rows)
+        ):
             from ml.rag.chatbot.answer_language import insufficient_context_answer
 
             hint = unsupported_answer_hint(tc) or empty_tpl

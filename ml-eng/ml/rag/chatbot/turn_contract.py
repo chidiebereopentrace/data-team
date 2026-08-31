@@ -8,6 +8,7 @@ GeoGrain = Literal["point", "admin2", "admin1", "country", "region", "africa"]
 TimeGrain = Literal["year", "year_range", "season", "latest", "panel"]
 Job = Literal[
     "fact",
+    "breakdown",
     "trend",
     "rank",
     "compare",
@@ -15,6 +16,8 @@ Job = Literal[
     "outlook",
     "diagnose",
     "brief",
+    "report",
+    "synthesis",
     "clarify",
     "help",
     "social",
@@ -31,7 +34,9 @@ PlanType = Literal["numeric", "narrative", "gap", "unsupported"]
 VectorPolicy = Literal["none", "companion", "fallback_only"]
 TimeRole = Literal["observation", "publication", "either", "historical"]
 
-NUMERIC_JOBS: frozenset[str] = frozenset({"fact", "trend", "rank", "compare", "list"})
+NUMERIC_JOBS: frozenset[str] = frozenset(
+    {"fact", "breakdown", "trend", "rank", "compare", "list", "report", "synthesis"}
+)
 NARRATIVE_ALLOWED_JOBS: frozenset[str] = frozenset({"outlook", "diagnose", "brief"})
 NON_RAG_JOBS: frozenset[str] = frozenset({"help", "social", "clarify"})
 FAIL_CLOSED_STATUSES: frozenset[str] = frozenset(
@@ -123,8 +128,8 @@ class TurnContract:
             geo_grain = "country"
         job = str(raw.get("job") or "fact").strip().lower()
         valid_jobs = (
-            "fact", "trend", "rank", "compare", "list", "outlook",
-            "diagnose", "brief", "clarify", "help", "social",
+            "fact", "breakdown", "trend", "rank", "compare", "list", "outlook",
+            "diagnose", "brief", "report", "synthesis", "clarify", "help", "social",
         )
         if job not in valid_jobs:
             job = "fact"

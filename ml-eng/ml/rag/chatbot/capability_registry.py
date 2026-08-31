@@ -13,6 +13,7 @@ from ml.rag.chatbot.turn_contract import (
     TurnContract,
     VectorPolicy,
 )
+from ml.rag.chatbot.reasoner_plan import ReasonerPlan
 
 _REGISTRY_PATH = Path(__file__).resolve().parents[1] / "helpers" / "capability_registry.yaml"
 _MEASURE_POLICY_PATH = Path(__file__).resolve().parents[1] / "helpers" / "measure_corpus_policy.yaml"
@@ -322,6 +323,65 @@ def resolve_capability(contract: TurnContract) -> TurnContract:
     )
     apply_vector_policy(contract, entry=matched)
     return contract
+
+
+def resolve_slot_capability(
+    measure_id: str,
+    *,
+    geo_grain: str,
+    time_grain: str,
+    breakdown: tuple[str, ...] = (),
+    population: str = "",
+) -> str:
+    """Per-slot warehouse capability (does not mutate turn contract)."""
+    from ml.rag.chatbot.turn_contract import TimeSpec
+
+    slot_contract = TurnContract(
+        measure_id=(measure_id or "").strip().lower(),
+        geo_grain=geo_grain,  # type: ignore[arg-type]
+        time_spec=TimeSpec(grain=time_grain),  # type: ignore[arg-type]
+        breakdown=list(breakdown),  # type: ignore[arg-type]
+        population=population,
+        job="fact",
+    )
+    resolved = resolve_capability(slot_contract)
+    return str(resolved.serve_status or "served")
+
+
+def apply_reasoner_to_turn(turn: TurnContract, reasoner: ReasonerPlan) -> TurnContract:
+    """Slot-level capability: turn stays served if any required BQ slot is served."""
+    required = [sq for sq in reasoner.bq_subquestions() if sq.required]
+    if not required:
+        if reasoner.primary_measure:
+            turn.measure_id = reasoner.primary_measure
+        return turn
+
+    statuses = [
+        resolve_slot_capability(
+            sq.measure,
+            geo_grain=turn.geo_grain,
+            time_grain=turn.time_spec.grain,
+            breakdown=tuple(turn.breakdown),
+            population=turn.population,
+        )
+        for sq in required
+    ]
+    if any(st == "served" for st in statuses):
+        turn.serve_status = "served"
+        turn.skip_bq = False
+        turn.plan_type = "numeric"
+        turn.contract_sql_only = False
+    elif statuses and all(str(st).startswith("unsupported") for st in statuses):
+        turn.serve_status = statuses[0]  # type: ignore[assignment]
+        turn.serve_reason = f"all_slots_unsupported:{','.join(sq.measure for sq in required)}"
+
+    primary = reasoner.primary_measure or required[0].measure
+    if primary:
+        turn.measure_id = primary
+    if reasoner.job:
+        turn.job = reasoner.job  # type: ignore[assignment]
+    apply_vector_policy(turn)
+    return turn
 
 
 def unsupported_answer_hint(contract: TurnContract) -> str:

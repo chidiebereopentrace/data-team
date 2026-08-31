@@ -20,6 +20,8 @@ def build_fact_bq_plan(
     task_mode: str = "fact_lookup",
 ) -> dict[str, Any] | None:
     """Ontology-aware forced plan (skip_bq=false) with one or two focused intents."""
+    if decomposition.get("reasoner_job") or decomposition.get("matched_bundles"):
+        return None
     hit = resolve_measure(query, decomposition)
     if hit is not None:
         ontology_plan = fallback_plan(

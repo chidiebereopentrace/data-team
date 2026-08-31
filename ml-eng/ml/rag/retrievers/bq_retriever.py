@@ -1039,8 +1039,12 @@ class BQRetriever(BaseRetriever):
         serve_status = str(kwargs.get("serve_status") or "served").strip().lower()
         contract_sql_only = bool(kwargs.get("contract_sql_only"))
         template_key = str(kwargs.get("template_key") or "").strip()
+        heavy_path = bool(kwargs.get("heavy_path"))
 
-        if serve_status in ("unsupported_grain", "unsupported_measure", "unsupported_dimension"):
+        if (
+            not heavy_path
+            and serve_status in ("unsupported_grain", "unsupported_measure", "unsupported_dimension")
+        ):
             update_current_span_metadata(
                 {
                     "status": serve_status,
@@ -1068,6 +1072,8 @@ class BQRetriever(BaseRetriever):
             explicit_sql = bool(sql_queries)
 
         fast_fact = task_mode in ("fact_lookup", "data_export_only")
+        if heavy_path:
+            fast_fact = False
 
         template_meta: dict[str, Any] | None = None
         pattern_meta: dict[str, Any] | None = None
@@ -1077,6 +1083,14 @@ class BQRetriever(BaseRetriever):
         pattern_sqls: list[str] = []
         nl2sql_sqls: list[str] = []
         leftover_intents: list[Any] = []
+        pattern_slot_ids: list[str] = []
+        intent_slot_by_index: dict[int, str] = {}
+        if isinstance(query_intents, list):
+            for idx, intent in enumerate(query_intents):
+                if isinstance(intent, dict):
+                    sid = str(intent.get("subquestion_id") or "").strip()
+                    if sid:
+                        intent_slot_by_index[idx] = sid
 
         def _try_template_sql() -> list[str]:
             nonlocal template_meta, sql_source
@@ -1131,6 +1145,13 @@ class BQRetriever(BaseRetriever):
                     pattern_sqls = [
                         str(h["sql"]) for h in pattern_hits if str(h.get("sql") or "").strip()
                     ]
+                    pattern_slot_ids = []
+                    for h in pattern_hits:
+                        if not str(h.get("sql") or "").strip():
+                            continue
+                        ii = h.get("intent_index")
+                        sid = intent_slot_by_index.get(ii, "") if isinstance(ii, int) else ""
+                        pattern_slot_ids.append(sid)
                     compiled_idx = {h.get("intent_index") for h in pattern_hits}
                     if isinstance(query_intents, list):
                         leftover_intents = [
@@ -1260,7 +1281,12 @@ class BQRetriever(BaseRetriever):
         queries_left = max_queries
         execute_t0 = time.perf_counter()
 
-        def _run_sql_batch(batch: list[str], *, source: str) -> None:
+        def _run_sql_batch(
+            batch: list[str],
+            *,
+            source: str,
+            slot_ids: list[str] | None = None,
+        ) -> None:
             nonlocal budget, any_usable_rows, prepared_ok, queries_left
             for idx, raw_sql in enumerate(batch):
                 if budget <= 0 or queries_left <= 0:
@@ -1416,6 +1442,12 @@ class BQRetriever(BaseRetriever):
                             "nl2sql_model": _nl2sql_model_id(),
                         }
                     )
+                    slot_id = ""
+                    if slot_ids and idx < len(slot_ids):
+                        slot_id = str(slot_ids[idx] or "").strip()
+                    if slot_id:
+                        meta["subquestion_id"] = slot_id
+                        meta["slot_id"] = slot_id
                     if template_meta and source == "template":
                         meta["template"] = template_meta.get("template")
                     if pattern_meta and source == "pattern":
@@ -1434,7 +1466,7 @@ class BQRetriever(BaseRetriever):
             _run_sql_batch(sql_queries, source="explicit")
         elif pattern_sqls or nl2sql_sqls:
             if pattern_sqls:
-                _run_sql_batch(pattern_sqls, source="pattern")
+                _run_sql_batch(pattern_sqls, source="pattern", slot_ids=pattern_slot_ids or None)
             if nl2sql_sqls:
                 _run_sql_batch(nl2sql_sqls, source="nl2sql")
         else:

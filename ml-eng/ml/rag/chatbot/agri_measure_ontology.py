@@ -1,6 +1,8 @@
 """Canonical agri measure ontology: aliases → slots → candidate BQ tables.
 
 Aids the SQL reasoner (scoped prompts / fallback plans). Does not replace the LLM.
+``resolve_measure()`` is a **hint API** for NL2SQL context — not turn authority.
+Turn planning uses intent bundles + job compiler + plan enricher (see intent_bundles.py).
 """
 from __future__ import annotations
 
@@ -112,6 +114,46 @@ MEASURES: dict[str, MeasureSpec] = {
         default_task_mode="fact_lookup",
         recency_tier="historical_ok",
         indicator_classes=("FVC",),
+    ),
+    "food_balance": MeasureSpec(
+        id="food_balance",
+        aliases=(
+            "food balance",
+            "food balance sheet",
+            "fbs",
+            "consumption",
+            "domestic supply",
+            "import dependency",
+            "self-sufficiency",
+        ),
+        corpus_domains=("Agricultural Nutrition & Food Security",),
+        bq_index_domains=("food_balance", "fvc"),
+        candidate_tables=("fct_food_balance",),
+        filter_hints="production vs imports vs consumption; country_iso3; year",
+        crop_required=False,
+        default_task_mode="analytical",
+        recency_tier="historical_ok",
+        indicator_classes=("FVC", "PROD"),
+    ),
+    "protected_area": MeasureSpec(
+        id="protected_area",
+        aliases=(
+            "protected area",
+            "protected areas",
+            "wdpa",
+            "protected planet",
+            "terrestrial protected",
+            "national park",
+            "park coverage",
+        ),
+        corpus_domains=("Land Use & Soil Health", "Agricultural Environmental & Climate"),
+        bq_index_domains=("protected", "biodiversity"),
+        candidate_tables=("fct_protected_areas",),
+        filter_hints="WDPA terrestrial protected area; never fertilizer/pesticide/machinery",
+        crop_required=False,
+        default_task_mode="analytical",
+        recency_tier="historical_ok",
+        indicator_classes=("ENV", "BIO"),
     ),
     "market_price": MeasureSpec(
         id="market_price",
@@ -580,6 +622,8 @@ _PRIORITY_IDS: tuple[str, ...] = (
     "research_synthesis",
     "news_briefing",
     "food_security_ipc",
+    "food_balance",
+    "protected_area",
     "market_price",
     "spatial_vegetation",
     "research_meta",
