@@ -1420,6 +1420,27 @@ def aggregate_bq_sql_debug(results: list[dict[str, Any]]) -> tuple[list[str], li
     return bq_sql_queries, bq_sql_debug
 
 
+def bq_failure_debug_row(
+    retriever: BQRetriever,
+    *,
+    status: str,
+    prep_error: str,
+) -> dict[str, Any]:
+    """Synthetic inspector row when BQ retrieve times out or raises before returning items."""
+    row: dict[str, Any] = {
+        "sql": "",
+        "status": status,
+        "prep_error": prep_error[:500],
+    }
+    raw_r = getattr(retriever, "_last_nl2sql_raws", None)
+    if isinstance(raw_r, list) and raw_r:
+        row["nl2sql_raw"] = "; ".join(str(x) for x in raw_r)[:500]
+    src = getattr(retriever, "last_sql_source", None)
+    if src:
+        row["sql_source"] = str(src)
+    return row
+
+
 def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
     raw_dec = state.get("decomposition")
@@ -1508,6 +1529,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
             "template_key": str((contract.sql_plan or {}).get("template") or ""),
             "heavy_path": bool(plan.get("heavy_path")),
         }
+    bq_failure_row: dict[str, Any] | None = None
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             fut = ex.submit(
@@ -1537,9 +1559,19 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     except FuturesTimeoutError:
         update_current_span_metadata({"bq_timeout": True, "status": "timeout"})
         results = []
-    except Exception:
+        bq_failure_row = bq_failure_debug_row(
+            retriever,
+            status="bq_timeout",
+            prep_error=f"BQ retrieve exceeded {bq_timeout:.0f}s timeout",
+        )
+    except Exception as exc:
         logger.exception("BQ retrieve failed")
         results = []
+        bq_failure_row = bq_failure_debug_row(
+            retriever,
+            status="bq_error",
+            prep_error=str(exc)[:500],
+        )
     finally:
         if env_bumped:
             if prev_max_sql is None:
@@ -1556,6 +1588,10 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     if ctx_truncated:
         update_current_span_metadata({"bq_context_truncated": True})
     bq_sql_queries, bq_sql_debug = aggregate_bq_sql_debug(results)
+    if bq_failure_row and not bq_sql_debug:
+        bq_sql_debug = [bq_failure_row]
+    elif bq_failure_row:
+        bq_sql_debug = list(bq_sql_debug) + [bq_failure_row]
     cache_entry = cache_entry_from_bq_results(results, query=q, decomposition=dec)
     sql_source = getattr(retriever, "last_sql_source", None)
     if not sql_source:

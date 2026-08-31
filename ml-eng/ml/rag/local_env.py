@@ -176,8 +176,6 @@ def apply_lm_studio_defaults() -> None:
     base = os.environ.get("RAG_LLM_BASE_URL", "").strip().rstrip("/")
     if not base:
         return
-    if "openrouter.ai" in base and not os.environ.get("RAG_LLM_MODEL_ID", "").strip():
-        os.environ["RAG_LLM_MODEL_ID"] = "openrouter/owl-alpha"
     for key, value in (
         # Note: RAG_LLM_RERANK is intentionally not seeded here anymore.
         # The reranker now defaults to a cross-encoder backend (see
@@ -220,6 +218,9 @@ def load_rag_dotenv(repo_root: Path) -> None:
     bootstrap_gcp_credentials(fail_on_legacy_invalid=bool(bq_project))
     apply_ml_eng_path_defaults(repo_root)
     apply_lm_studio_defaults()
+    from ml.rag.llm_model_config import log_resolved_llm_models
+
+    log_resolved_llm_models()
     # #region agent log
     _agent_debug_log(
         "local_env.py:load_rag_dotenv:after",

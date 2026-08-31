@@ -46,6 +46,29 @@ from ml.rag.session_store import delete_session, get_session_blob, redis_status,
 
 logger = logging.getLogger("ml.rag.api")
 
+_TRACE_BQ_SQL_DEBUG_MAX = 20
+
+
+def _slim_bq_sql_plan_for_trace(plan: Any) -> dict[str, Any] | None:
+    if not isinstance(plan, dict) or not plan:
+        return None
+    return {
+        "selected_tables": plan.get("selected_tables"),
+        "query_intents": plan.get("query_intents"),
+        "skip_bq": plan.get("skip_bq"),
+        "rationale": plan.get("rationale"),
+        "slot_path": plan.get("slot_path"),
+        "reasoner_job": plan.get("reasoner_job"),
+    }
+
+
+def _trace_bq_sql_debug_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = result.get("bq_sql_debug")
+    if not isinstance(raw, list):
+        return []
+    rows = [row for row in raw if isinstance(row, dict)]
+    return rows[:_TRACE_BQ_SQL_DEBUG_MAX]
+
 
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI):
@@ -275,6 +298,9 @@ async def ready():
     }
     if redis_info:
         payload["redis"] = redis_info
+    from ml.rag.llm_model_config import resolved_llm_models
+
+    payload["llm_models"] = resolved_llm_models()
     return payload
 
 
@@ -407,6 +433,13 @@ async def _run_query(
                 "merged_context_count": len(result.get("merged_context") or []),
                 "reranked_context_count": len(result.get("reranked_context") or []),
                 "langfuse_trace_id": langfuse_trace_id,
+                "bq_sql_queries": list(result.get("bq_sql_queries") or []),
+                "bq_sql_debug": _trace_bq_sql_debug_rows(result),
+                "bq_sql_plan": _slim_bq_sql_plan_for_trace(result.get("bq_sql_plan")),
+                "sql_source": result.get("sql_source"),
+                "bq_cache_hit": result.get("bq_cache_hit"),
+                "bq_nl2sql_ms": result.get("bq_nl2sql_ms"),
+                "bq_execute_ms": result.get("bq_execute_ms"),
             }
 
         answer = result.get("answer", "") or ""

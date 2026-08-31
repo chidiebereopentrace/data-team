@@ -193,6 +193,79 @@ def debug_default_enabled() -> bool:
     return raw not in ("0", "false", "off", "no")
 
 
+def normalize_query_response(
+    payload: dict[str, Any],
+    *,
+    latency_ms: float,
+    query: str,
+    kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Map POST /query/{plan} JSON (QueryResponse) into inspector shape.
+
+    When include_trace is true, trace carries decomposition, retrieval counts,
+    and BQ SQL debug fields for the pipeline inspector.
+    """
+    trace = _as_dict(payload.get("trace"))
+    usage_raw = payload.get("usage")
+    usage: dict[str, int] = {}
+    if isinstance(usage_raw, dict):
+        usage = {
+            "input_tokens": int(usage_raw.get("input_tokens") or 0),
+            "output_tokens": int(usage_raw.get("output_tokens") or 0),
+            "total_tokens": int(usage_raw.get("total_tokens") or 0),
+        }
+
+    acf = _as_dict(payload.get("acf"))
+    plan_type = kwargs.get("plan_type")
+    user_profile = kwargs.get("user_profile")
+    bq_sql_plan = trace.get("bq_sql_plan") if trace else None
+    if not isinstance(bq_sql_plan, dict):
+        bq_sql_plan = {}
+
+    return {
+        "answer": payload.get("answer") or "",
+        "citations": payload.get("citations") or [],
+        "error": payload.get("error"),
+        "session_id": payload.get("session_id"),
+        "usage": usage,
+        "latency_ms": latency_ms,
+        "plan_type": plan_type,
+        "category": _as_dict(user_profile).get("category"),
+        "user_profile": user_profile,
+        "langfuse_trace_id": payload.get("langfuse_trace_id") or trace.get("langfuse_trace_id"),
+        "artifacts": payload.get("artifacts") or [],
+        "acf_band": acf.get("band") or "",
+        "acf_band_label": acf.get("band_label") or "",
+        "acf_score": acf.get("score"),
+        "acf_explanation": acf.get("explanation") or acf.get("note") or "",
+        "acf_claim_level": acf.get("claim_level"),
+        "acf_question_type": acf.get("question_type"),
+        "decomposition": trace.get("decomposition") if trace else {},
+        "bq_sql_plan": bq_sql_plan,
+        "bq_sql_queries": list(trace.get("bq_sql_queries") or []) if trace else [],
+        "bq_sql_debug": list(trace.get("bq_sql_debug") or []) if trace else [],
+        "sql_source": trace.get("sql_source") if trace else None,
+        "bq_cache_hit": trace.get("bq_cache_hit") if trace else None,
+        "bq_nl2sql_ms": trace.get("bq_nl2sql_ms") if trace else None,
+        "bq_execute_ms": trace.get("bq_execute_ms") if trace else None,
+        "bq_table_candidates": [],
+        "vector_news_results": [],
+        "vector_academic_papers_results": [],
+        "vector_policies_results": [],
+        "vector_public_reports_results": [],
+        "vector_formation_results": [],
+        "vector_academic_results": [],
+        "bq_results": [],
+        "vector_ota_results": [],
+        "merged_context": [],
+        "reranked_context": [],
+        "web_results": [],
+        "_backend_mode": "http_api",
+        "_http_trace": trace,
+        "_query": query,
+    }
+
+
 def normalize_http_response(
     payload: dict[str, Any],
     *,
@@ -269,26 +342,39 @@ def query_via_http_api(
     trace_id: str | None = None,
     timeout_s: float = 300.0,
 ) -> dict[str, Any]:
-    """POST /v1/chat/{plan} and return a normalized inspector result dict.
+    """POST /query/{plan} with include_trace and return a normalized inspector result dict.
 
-    Targets the plan-scoped production routes (ML-034) which return ChatSuccessResponse.
-    Plan slug is derived from kwargs['plan_type']; defaults to 'integrated' when unset.
-    ChatRequest has extra='forbid' — only message, session_id, user_profile are sent.
+    Uses the RAG API debug trace (decomposition, retrieval counts, BQ SQL) for the
+    pipeline inspector. Plan slug is derived from kwargs['plan_type']; defaults to
+    'integrated' when unset.
     """
     import time
 
-    # Derive plan slug from kwargs['plan_type']; lowercase maps all plan IDs to slugs.
     plan_type = str(kwargs.get("plan_type") or "").strip()
     plan_slug = plan_type.lower() if plan_type else "integrated"
-    url = base_url.rstrip("/") + f"/v1/chat/{plan_slug}"
+    url = base_url.rstrip("/") + f"/query/{plan_slug}"
 
-    # ChatRequest fields only — no include_trace, no internal top_k params.
-    body: dict[str, Any] = {"message": query}
+    body: dict[str, Any] = {"query": query, "include_trace": True}
     if session_id:
         body["session_id"] = session_id
     profile = kwargs.get("user_profile")
-    if isinstance(profile, dict) and profile.get("plan_type") and profile.get("category"):
+    if isinstance(profile, dict) and profile:
         body["user_profile"] = profile
+    for key in (
+        "time_start_override",
+        "time_end_override",
+        "news_top_k",
+        "academic_top_k",
+        "bq_top_k",
+        "rerank_top_k",
+        "ota_top_k",
+    ):
+        val = kwargs.get(key)
+        if val is not None:
+            if isinstance(val, str):
+                val = val.strip()
+            if val != "":
+                body[key] = val
 
     t0 = time.perf_counter()
     headers: dict[str, str] = {}
@@ -299,9 +385,8 @@ def query_via_http_api(
     resp.raise_for_status()
     payload = resp.json()
     if not isinstance(payload, dict):
-        raise ValueError(f"Unexpected /v1/chat response type: {type(payload)!r}")
-    result = normalize_http_response(payload, latency_ms=latency_ms, query=query, kwargs=kwargs)
-    return result
+        raise ValueError(f"Unexpected /query response type: {type(payload)!r}")
+    return normalize_query_response(payload, latency_ms=latency_ms, query=query, kwargs=kwargs)
 
 
 def render_chunk_rows(items: list[dict[str, Any]], *, preview_chars: int = 600) -> None:
@@ -538,6 +623,48 @@ def _bq_was_attempted(result: dict[str, Any]) -> bool:
     return False
 
 
+def _render_sql_debug_meta(entry: dict[str, Any]) -> None:
+    """Show per-attempt SQL metadata in the inspector."""
+    bits: list[str] = []
+    for key, label in (
+        ("sql_source", "source"),
+        ("nl2sql_model", "model"),
+        ("template", "template"),
+        ("pattern", "pattern"),
+        ("subquestion_id", "slot"),
+    ):
+        val = entry.get(key)
+        if val:
+            bits.append(f"{label}={val}")
+    if bits:
+        st.caption(" · ".join(bits))
+
+
+def _render_bq_sql_plan_summary(plan: dict[str, Any]) -> None:
+    st.caption("Reasoner plan")
+    summary: dict[str, Any] = {
+        "selected_tables": plan.get("selected_tables"),
+        "skip_bq": plan.get("skip_bq"),
+        "rationale": plan.get("rationale"),
+        "slot_path": plan.get("slot_path"),
+        "reasoner_job": plan.get("reasoner_job"),
+    }
+    intents = plan.get("query_intents")
+    if isinstance(intents, list) and intents:
+        summary["query_intents"] = [
+            {
+                "goal": i.get("goal"),
+                "tables": i.get("tables"),
+                "pattern": i.get("pattern"),
+                "subquestion_id": i.get("subquestion_id"),
+                "measure": i.get("measure"),
+            }
+            for i in intents
+            if isinstance(i, dict)
+        ]
+    st.json(summary)
+
+
 def render_sql_panel(result: dict[str, Any]) -> None:
     """Always show BQ SQL / failure diagnostics in the pipeline inspector when BQ ran."""
     if not _bq_was_attempted(result):
@@ -571,15 +698,29 @@ def render_sql_panel(result: dict[str, Any]) -> None:
     with st.expander(title, expanded=True):
         if show_sql_debug():
             st.caption("Inspector always shows BQ SQL attempts. RAG_SHOW_SQL_DEBUG also gates public answer SQL.")
+        sql_source = str(result.get("sql_source") or "").strip()
+        cache_hit = result.get("bq_cache_hit")
+        if sql_source or cache_hit is not None:
+            bits = []
+            if sql_source:
+                bits.append(f"sql_source={sql_source}")
+            if cache_hit is True:
+                bits.append("cache_hit=true")
+            st.caption(" · ".join(bits))
         if debug_rows:
             for i, entry in enumerate(debug_rows, start=1):
                 status = str(entry.get("status") or "unknown")
                 st.caption(f"Attempt {i} — status={status}")
+                _render_sql_debug_meta(entry)
                 sql = str(entry.get("sql") or "").strip()
                 if sql:
                     st.code(sql, language="sql")
                 else:
                     st.warning("No SQL generated for this attempt.")
+                raw = str(entry.get("nl2sql_raw") or "").strip()
+                if raw:
+                    with st.expander("NL2SQL raw output", expanded=False):
+                        st.code(raw, language="text")
                 prep = entry.get("prep_error")
                 if prep:
                     st.error(f"prep_error: {prep}")
@@ -604,14 +745,7 @@ def render_sql_panel(result: dict[str, Any]) -> None:
                     "Check BQ_PROJECT, NL2SQL LLM, and bq_sql_plan in raw JSON."
                 )
             if plan:
-                st.caption("Reasoner plan (selected_tables)")
-                st.json(
-                    {
-                        "selected_tables": plan.get("selected_tables"),
-                        "skip_bq": plan.get("skip_bq"),
-                        "rationale": plan.get("rationale"),
-                    }
-                )
+                _render_bq_sql_plan_summary(plan)
 
 def render_retrieval_tabs(result: dict[str, Any]) -> None:
     reranked = list(result.get("reranked_context") or [])
