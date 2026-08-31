@@ -162,17 +162,30 @@ def build_retrieval_contract(
 
     primary_ids: list[str] = []
     companion_ids: list[str] = []
-    if hits:
+    declared_pm = enriched.get("primary_measures")
+    if isinstance(declared_pm, list) and declared_pm:
+        primary_ids = [str(m).strip().lower() for m in declared_pm if str(m).strip()]
+    elif hits:
         primary_ids.append(hits[0].measure.id)
         declared = set(hits[0].measure.companions)
         for h in hits[1:]:
             if h.measure.id in declared or h.matched_alias.startswith("companion_of_"):
                 companion_ids.append(h.measure.id)
 
+    matched_bundles = enriched.get("matched_bundles")
+    ag_activities = (
+        isinstance(matched_bundles, list) and "agricultural_activities" in matched_bundles
+    )
+
     # Prefer specialized multi-intent builder when food_security is the top activated measure.
     bq_tables: list[str] = []
     bq_intents: list[dict[str, Any]] = []
-    if hits and hits[0].measure.id == "food_security_ipc":
+    if (
+        not ag_activities
+        and not enriched.get("reasoner_job")
+        and hits
+        and hits[0].measure.id == "food_security_ipc"
+    ):
         fs = build_food_security_bq_plan(query, decomposition=enriched, known_tables=known)
         if fs is not None and not fs.get("skip_bq"):
             bq_tables = [str(t) for t in (fs.get("selected_tables") or []) if str(t).strip()]

@@ -177,6 +177,12 @@ def _install_pipeline_mocks(
                 return_value={"skip_bq": True, "selected_tables": [], "query_intents": []},
             )
         )
+        stack.enter_context(
+            mock.patch(
+                "ml.rag.chatbot.graph.BQRetriever.retrieve",
+                return_value=[],
+            )
+        )
     stack.enter_context(
         mock.patch.object(graph_mod, "_retrieve_news", return_value=news or [])
     )

@@ -10,6 +10,8 @@ MEASURES = ("production", "yield", "employment_share", "market_price", "food_sec
 JOBS = ("fact", "trend", "rank", "list", "compare")
 GEO_GRAINS = ("country", "admin2", "admin1")
 TIME_GRAINS = ("year", "year_range", "latest")
+HEAVY_PLAN_TYPES = ("government", "agribusiness", "integrated")
+WEST_AFRICA_GEOS = ("Nigeria", "Ghana", "Senegal", "Mali", "Burkina Faso", "Niger")
 
 
 def synthetic_numeric_facets(*, limit: int = 200) -> Iterator[dict[str, Any]]:
@@ -54,3 +56,79 @@ def facet_to_query(facet: dict[str, Any]) -> str:
     if job == "fact":
         return f"What was {crop} production in {country} in 2022?"
     return f"Compare {crop} production in {country} versus neighbours"
+
+
+def synthetic_heavy_reasoner_facets(*, limit: int = 24) -> Iterator[dict[str, Any]]:
+    """Synthetic facets for Global Reasoner property tests (T1–T10)."""
+    templates: list[dict[str, Any]] = [
+        {
+            "id": "agri_activities_panel",
+            "plan_type": "government",
+            "job": "report",
+            "geos": list(WEST_AFRICA_GEOS[:6]),
+            "query": (
+                "Prepare an agricultural activities report for West Africa country by country, "
+                "including production and trade, 2015 to latest."
+            ),
+        },
+        {
+            "id": "protected_wdpa",
+            "plan_type": "integrated",
+            "job": "compare",
+            "geos": ["Kenya", "Uganda", "Tanzania"],
+            "query": "Compare terrestrial protected area (WDPA) coverage in Kenya, Uganda, and Tanzania.",
+        },
+        {
+            "id": "trend_last_years",
+            "plan_type": "agribusiness",
+            "job": "trend",
+            "geos": ["Nigeria"],
+            "query": "How has maize production in Nigeria changed over the last 5 years?",
+        },
+        {
+            "id": "food_balance",
+            "plan_type": "government",
+            "job": "compare",
+            "geos": ["Senegal", "Mali"],
+            "query": (
+                "Compare food balance and import dependency for Senegal and Mali — "
+                "production vs imports vs consumption."
+            ),
+        },
+        {
+            "id": "employment_sex",
+            "plan_type": "government",
+            "job": "fact",
+            "geos": ["Ghana"],
+            "query": "What share of agricultural employment in Ghana by men and women?",
+            "breakdown": ["sex"],
+        },
+        {
+            "id": "outlook_ipc",
+            "plan_type": "government",
+            "job": "outlook",
+            "geos": ["Somalia"],
+            "query": "Food security outlook and IPC phase for Somalia lean season 2024.",
+        },
+        {
+            "id": "farmers_simple_fact",
+            "plan_type": "farmers",
+            "job": "fact",
+            "geos": ["Kenya"],
+            "query": "What was maize production in Kenya in 2022?",
+        },
+    ]
+    for idx, tpl in enumerate(templates):
+        if idx >= limit:
+            break
+        yield tpl
+
+
+def heavy_facet_decomposition(facet: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "geography": list(facet.get("geos") or []),
+        "entities": list(facet.get("entities") or []),
+        "intent": facet.get("job") or "fact",
+        "time_start": facet.get("time_start") or "",
+        "time_end": facet.get("time_end") or "",
+    }

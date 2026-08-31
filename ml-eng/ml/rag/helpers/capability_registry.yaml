@@ -96,6 +96,38 @@ entries:
     max_geo_level: national
     reason: Employment share is national-only in fct_employment
 
+  - measure: trade
+    geo_grain: country
+    time_grain: year
+    table: fct_trade
+    template: mart_country_series
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: trade
+    geo_grain: region
+    time_grain: year
+    table: fct_trade
+    template: mart_regional_panel
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: protected_area
+    geo_grain: country
+    time_grain: year
+    table: fct_protected_areas
+    template: null
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: food_balance
+    geo_grain: country
+    time_grain: year
+    table: fct_food_balance
+    template: null
+    max_geo_level: national
+    contract_sql_only: true
+
   - measure: rainfall
     geo_grain: admin2
     time_grain: year

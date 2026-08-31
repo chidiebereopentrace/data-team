@@ -15,6 +15,7 @@ OutputType = Literal[
     "outlook",
     "diagnosis",
     "brief",
+    "report",
     "insufficient",
     "export",
 ]
@@ -30,6 +31,9 @@ _JOB_TO_OUTPUT: dict[str, OutputType] = {
     "outlook": "outlook",
     "diagnose": "diagnosis",
     "brief": "brief",
+    "breakdown": "fact",
+    "report": "report",
+    "synthesis": "report",
     "clarify": "insufficient",
     "help": "insufficient",
     "social": "insufficient",
@@ -56,6 +60,7 @@ _OUTPUT_TO_SHAPE: dict[OutputType, str] = {
     "outlook": "trend",
     "diagnosis": "research_synthesis",
     "brief": "briefing_digest",
+    "report": "comparison",
     "insufficient": "gap_ack",
     "export": "export_table",
 }
@@ -140,6 +145,14 @@ SLOT_TEMPLATES: dict[OutputType, OutputSlots] = {
         interpretation=None,
         implications="4–8 lines: implications for THIS audience only — no new numbers.",
         limits="Limits: 1–3 lines.",
+        allow_headings=frozenset(),
+    ),
+    "report": OutputSlots(
+        lead="Punch-line takeaway first; then unpack by geography or theme.",
+        spine="Panel table(s) from structured rows — one subsection per required subquestion.",
+        interpretation="Drivers only when narrative Context supports them.",
+        implications=None,
+        limits="Coverage limits per slot; never lead with gaps.",
         allow_headings=frozenset(),
     ),
     "insufficient": OutputSlots(
@@ -432,7 +445,9 @@ def render_insufficient(
     """Deterministic insufficient answer — lead with miss, then alternatives."""
     job = job_label or contract.job or "answer"
     grain = contract.geo_grain or "requested grain"
-    place = ", ".join(contract.geo[:2]) if contract.geo else "requested place"
+    place = ", ".join(contract.geo[:8]) if contract.geo else "requested place"
+    if contract.geo and len(contract.geo) > 8:
+        place = f"{place}, … ({len(contract.geo)} places)"
     ts = contract.time_spec
     time_part = ""
     if ts.start and ts.end:

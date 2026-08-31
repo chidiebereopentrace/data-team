@@ -45,6 +45,16 @@ _observe_span = get_observe_decorator()
 _WIKI_API = "https://en.wikipedia.org/w/api.php"
 _WIKI_REST = "https://en.wikipedia.org/api/rest_v1/page/summary"
 _WIKI_UA = {"User-Agent": "OpenTrace-RAG/1.0 (agricultural advisory)"}
+_OFFICIAL_WEB_DOMAINS = frozenset(
+    {
+        "faostat.org",
+        "fao.org",
+        "fews.net",
+        "ipcinfo.org",
+        "protectedplanet.net",
+        "wdpa.org",
+    }
+)
 _SUMMARY_THIN_CHARS = 120
 _SECTION_EXTRACT_CAP = 1000
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -852,6 +862,70 @@ def _finalize_web_trace(
     return result
 
 
+def _url_domain(url: str) -> str:
+    from urllib.parse import urlparse
+
+    try:
+        host = urlparse(url).netloc.lower()
+    except ValueError:
+        return ""
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _is_official_web_url(url: str) -> bool:
+    domain = _url_domain(url)
+    if not domain:
+        return False
+    return domain in _OFFICIAL_WEB_DOMAINS or any(
+        domain.endswith("." + d) or d in domain for d in _OFFICIAL_WEB_DOMAINS
+    )
+
+
+def _external_web_label(url: str) -> str:
+    domain = _url_domain(url)
+    if "faostat" in domain or domain.endswith("fao.org"):
+        return "external (FAOSTAT/FAO)"
+    if "protectedplanet" in domain or "wdpa" in domain:
+        return "external (WDPA/Protected Planet)"
+    if "fews" in domain:
+        return "external (FEWS NET)"
+    if "ipcinfo" in domain:
+        return "external (IPC)"
+    return "external"
+
+
+def _label_external_web_item(item: dict[str, Any]) -> dict[str, Any]:
+    meta = dict(item.get("metadata") or {})
+    url = str(meta.get("url") or meta.get("source_url") or "")
+    label = _external_web_label(url)
+    meta["external_label"] = label
+    meta["official_source"] = _is_official_web_url(url)
+    content = str(item.get("content") or "").strip()
+    if content and not content.startswith("["):
+        content = f"[{label}] {content}"
+    return {**item, "content": content, "metadata": meta}
+
+
+def _typed_web_allowlist_only(decomposition: dict[str, Any] | None, query: str) -> bool:
+    blob = (query or "").lower()
+    if isinstance(decomposition, dict):
+        blob += " " + " ".join(str(e) for e in (decomposition.get("entities") or []))
+        blob += " " + str(decomposition.get("intent") or "")
+    cues = (
+        "protected area",
+        "wdpa",
+        "food balance",
+        "import dependency",
+        "ipc phase",
+        "lean season",
+        "fews",
+        "outlook",
+    )
+    return any(c in blob for c in cues)
+
+
 def _wiki_entity_tokens(decomposition: dict[str, Any] | None) -> list[str]:
     tokens: list[str] = []
     for ent in _dec_entities(decomposition):
@@ -912,6 +986,7 @@ def retrieve_web_fallback_detailed(
     wiki_top_k = _env_int("RAG_WEB_WIKI_TOP_K", 2)
     tavily_top_k = _env_int("RAG_WEB_TAVILY_TOP_K", 2)
     total_cap = _env_int("RAG_WEB_TOP_K", 3)
+    official_only = _typed_web_allowlist_only(dec, query)
 
     wiki_stats: dict[str, Any] = {
         "wiki_queries": wiki_queries,
@@ -921,39 +996,40 @@ def retrieve_web_fallback_detailed(
     }
     wiki_items: list[dict[str, Any]] = []
     seen_titles: set[str] = set()
-    for wq in wiki_queries:
-        need = wiki_top_k - len(wiki_items)
-        if need <= 0:
-            break
-        q_stats: dict[str, Any] = {
-            "wiki_filtered_out": 0,
-            "wiki_section_used": False,
-        }
-        batch = _retrieve_wikipedia(
-            wq,
-            top_k=need,
-            timeout_s=timeout_s,
-            countries=countries,
-            entity_tokens=entity_tokens,
-            africa_default=africa_default,
-            stats=q_stats,
-        )
-        if q_stats.get("wiki_api") and q_stats["wiki_api"] != "none":
-            wiki_stats["wiki_api"] = q_stats["wiki_api"]
-        wiki_stats["wiki_filtered_out"] = int(wiki_stats["wiki_filtered_out"]) + int(
-            q_stats.get("wiki_filtered_out") or 0
-        )
-        if q_stats.get("wiki_section_used"):
-            wiki_stats["wiki_section_used"] = True
-        for item in batch:
-            title_key = str((item.get("metadata") or {}).get("title") or "").strip().lower()
-            if title_key and title_key in seen_titles:
-                continue
-            if title_key:
-                seen_titles.add(title_key)
-            wiki_items.append(item)
-        if len(wiki_items) >= wiki_top_k:
-            break
+    if not official_only:
+        for wq in wiki_queries:
+            need = wiki_top_k - len(wiki_items)
+            if need <= 0:
+                break
+            q_stats: dict[str, Any] = {
+                "wiki_filtered_out": 0,
+                "wiki_section_used": False,
+            }
+            batch = _retrieve_wikipedia(
+                wq,
+                top_k=need,
+                timeout_s=timeout_s,
+                countries=countries,
+                entity_tokens=entity_tokens,
+                africa_default=africa_default,
+                stats=q_stats,
+            )
+            if q_stats.get("wiki_api") and q_stats["wiki_api"] != "none":
+                wiki_stats["wiki_api"] = q_stats["wiki_api"]
+            wiki_stats["wiki_filtered_out"] = int(wiki_stats["wiki_filtered_out"]) + int(
+                q_stats.get("wiki_filtered_out") or 0
+            )
+            if q_stats.get("wiki_section_used"):
+                wiki_stats["wiki_section_used"] = True
+            for item in batch:
+                title_key = str((item.get("metadata") or {}).get("title") or "").strip().lower()
+                if title_key and title_key in seen_titles:
+                    continue
+                if title_key:
+                    seen_titles.add(title_key)
+                wiki_items.append(item)
+            if len(wiki_items) >= wiki_top_k:
+                break
 
     if wiki_items:
         return _finalize_web_trace(
@@ -968,7 +1044,15 @@ def retrieve_web_fallback_detailed(
         time_start=time_start,
         time_end=time_end,
     )
-    if status == "ok":
+    if official_only:
+        tavily_items = [
+            _label_external_web_item(it)
+            for it in tavily_items
+            if _is_official_web_url(str((it.get("metadata") or {}).get("url") or ""))
+        ]
+    else:
+        tavily_items = [_label_external_web_item(it) for it in tavily_items]
+    if status == "ok" and tavily_items:
         return _finalize_web_trace(
             WebFallbackResult(items=tavily_items[:total_cap], status="ok", reason="tavily"),
             start=t0,
