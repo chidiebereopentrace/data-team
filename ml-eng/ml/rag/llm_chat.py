@@ -88,8 +88,11 @@ def add_llm_usage(raw: dict[str, Any] | None) -> None:
         _request_usage["total_tokens"] += total
 
 
+DEFAULT_LLM_MODEL_ID = "qwen/qwen3-30b-a3b-instruct-2507"
+
+
 def llm_model_id() -> str:
-    return os.environ.get("RAG_LLM_MODEL_ID", "qwen/qwen3-30b-a3b-instruct-2507").strip()
+    return os.environ.get("RAG_LLM_MODEL_ID", DEFAULT_LLM_MODEL_ID).strip() or DEFAULT_LLM_MODEL_ID
 
 
 def llm_default_timeout_s() -> float:

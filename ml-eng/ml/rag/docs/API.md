@@ -328,9 +328,33 @@ Plan-scoped routes inherit the same response. Export gate: `/query/agribusinesse
   "vector_news_count": 8,
   "vector_academic_count": 12,
   "merged_context_count": 20,
-  "reranked_context_count": 10
+  "reranked_context_count": 10,
+  "langfuse_trace_id": "…",
+  "bq_sql_queries": ["SELECT … FROM `project.mart_dev.fct_production` …"],
+  "bq_sql_debug": [
+    {
+      "sql": "SELECT …",
+      "status": "ok",
+      "sql_source": "pattern",
+      "nl2sql_model": "deepseek/deepseek-chat"
+    }
+  ],
+  "bq_sql_plan": {
+    "selected_tables": ["fct_production"],
+    "query_intents": [{ "goal": "…", "tables": ["fct_production"], "pattern": "time_series", "subquestion_id": "sq1" }],
+    "skip_bq": false,
+    "rationale": "global_reasoner_slots",
+    "slot_path": true,
+    "reasoner_job": "trend"
+  },
+  "sql_source": "pattern",
+  "bq_cache_hit": false,
+  "bq_nl2sql_ms": 120.5,
+  "bq_execute_ms": 45.0
 }
 ```
+
+`bq_sql_debug` is capped at 20 rows per response. Use these fields in the Streamlit pipeline inspector (HTTP mode) or any QA client that sets `include_trace: true`.
 
 ### Error responses
 

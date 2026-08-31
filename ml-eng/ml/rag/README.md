@@ -239,7 +239,7 @@ Open http://localhost:8501. The **pipeline inspector** panel (enabled by default
 | Mode | Use |
 |------|-----|
 | **In-process** (default) | Full chunk detail via `run_rag()` |
-| **HTTP API** | `POST /query` with `include_trace` — counts only; set `RAG_API_BASE_URL` |
+| **HTTP API** | `POST /query/{plan}` with `include_trace: true` — decomposition, SQL debug, retrieval counts; set `RAG_API_BASE_URL` |
 
 Env: `RAG_STREAMLIT_DEBUG_DEFAULT=1`, `RAG_SHOW_SQL_DEBUG=1` (optional SQL panel).
 

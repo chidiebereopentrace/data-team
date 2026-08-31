@@ -14,7 +14,7 @@ Loads ``data/local/.env`` and ``config/.env`` (same rules as ``local_env.load_ra
 Env:
 
 - ``HF_API_TOKEN`` / ``HUGGINGFACE_HUB_TOKEN`` / ``HF_TOKEN``
-- ``RAG_LLM_MODEL_ID`` (default ``meta-llama/Llama-3.1-8B-Instruct``)
+- ``RAG_LLM_MODEL_ID`` (default from ``llm_chat.DEFAULT_LLM_MODEL_ID``)
 """
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ import requests
 
 from ml.rag.hf_chat import hf_chat_sync
 from ml.rag.hf_token import get_hf_api_token
+from ml.rag.llm_chat import llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 
 
@@ -64,7 +65,7 @@ def main() -> int:
     except Exception:
         print("   OK — response was not JSON (unexpected but HTTP 200).")
 
-    model = os.environ.get("RAG_LLM_MODEL_ID", "meta-llama/Llama-3.1-8B-Instruct").strip()
+    model = llm_model_id()
     print(
         f"\n2) InferenceClient chat (non-stream; generator uses streaming) — model={model!r}…"
     )

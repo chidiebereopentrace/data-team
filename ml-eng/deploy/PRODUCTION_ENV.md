@@ -64,6 +64,10 @@ Unset or align per-plan vars so they do not override chat to a larger model:
 
 - `RAG_LLM_MODEL_FREE`, `RAG_LLM_MODEL_FARMERS`, `RAG_LLM_MODEL_GOVERNMENT`, etc.
 
+**Never use `openrouter/*` router models** (e.g. `openrouter/owl-alpha`) in production — OpenRouter resolves them to arbitrary backends (Llama 70B may appear in logs). Set explicit slugs above.
+
+**Verify after deploy:** `GET /ready` returns `llm_models` with the slugs actually used (`chat_default`, `bq_nl2sql`, `plan_models`, …).
+
 ### BigQuery (mart YAML reasoner + deterministic SQL + NL2SQL fallback)
 
 ```bash

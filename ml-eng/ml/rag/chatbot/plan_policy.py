@@ -9,6 +9,7 @@ from ml.rag.chatbot.stakeholder_prompts import (
     instruction_for_category,
     is_valid_category,
 )
+from ml.rag.llm_chat import DEFAULT_LLM_MODEL_ID
 
 # Map URL path slugs → canonical plan_type IDs (for plan-scoped API routes).
 PLAN_ROUTE_SLUGS: dict[str, str] = {
@@ -217,16 +218,13 @@ def default_category_for_plan(plan_type: str | None) -> str | None:
     return _defaults.get((plan_type or "").strip())
 
 
-_DEFAULT_CHAT_MODEL = "qwen/qwen3-30b-a3b-instruct-2507"
-
-
 def model_for_plan(plan_type: str | None) -> str | None:
     """Return the configured OpenRouter model ID for a plan tier (ML-041).
 
-    Reads per-plan env vars; falls back to the shared 8B default when unset.
+    Reads per-plan env vars; falls back to the shared default when unset.
     Returns None when plan_type is unknown — callers fall back to RAG_LLM_MODEL_ID.
 
-    All plan tiers default to the same chat model (``qwen/qwen3-30b-a3b-instruct-2507``).
+    All plan tiers default to the same chat model (``DEFAULT_LLM_MODEL_ID``).
     Per-plan env overrides still work when explicitly set.
     """
     pt = (plan_type or "").strip()
@@ -241,7 +239,7 @@ def model_for_plan(plan_type: str | None) -> str | None:
     if not pt or pt not in _env_keys:
         return None  # unknown plan — caller falls back to RAG_LLM_MODEL_ID
     env_key = _env_keys[pt]
-    return os.environ.get(env_key, _DEFAULT_CHAT_MODEL).strip() or _DEFAULT_CHAT_MODEL
+    return os.environ.get(env_key, DEFAULT_LLM_MODEL_ID).strip() or DEFAULT_LLM_MODEL_ID
 
 
 __all__ = [

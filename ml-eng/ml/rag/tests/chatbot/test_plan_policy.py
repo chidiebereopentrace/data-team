@@ -13,7 +13,7 @@ from ml.rag.chatbot.plan_policy import (
     model_for_plan,
     plan_generation_addendum,
 )
-from ml.rag.llm_chat import llm_model_id
+from ml.rag.llm_chat import DEFAULT_LLM_MODEL_ID, llm_model_id
 
 
 def test_valid_enums() -> None:
@@ -95,7 +95,7 @@ def test_all_plan_models_default_to_8b(monkeypatch) -> None:
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("RAG_LLM_MODEL_ID", raising=False)
-    expected = "qwen/qwen3-30b-a3b-instruct-2507"
+    expected = DEFAULT_LLM_MODEL_ID
     assert llm_model_id() == expected
     for plan in ("Free", "Farmers", "Government", "NGOs", "Agribusinesses", "Integrated"):
         assert model_for_plan(plan) == expected

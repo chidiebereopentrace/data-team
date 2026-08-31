@@ -80,13 +80,13 @@ def _is_filter_relevant_label_column(table_name: str, column_name: str) -> bool:
     return col_l.endswith(HUMAN_LABEL_SUFFIXES)
 
 
-def _column_profile_mode(col: ColumnMeta, acf_desc: dict[str, str]) -> str:
+def _column_profile_mode(col: ColumnMeta, column_roles: dict[tuple[str, str], str]) -> str:
     """Return 'samples', 'stats', or 'omit' for YAML emission."""
     if _is_complex_type(col.data_type):
         return "stats"
     col_l = col.column_name.lower()
     dtype = col.data_type.upper()
-    role = str((acf_desc.get(col.column_name) or {}).get("role") or "")).lower()
+    role = column_roles.get((col.table_name, col.column_name), "").lower()
 
     if col_l.endswith(SURROGATE_SUFFIXES) and col_l not in TIME_DIM_COLS:
         if col_l.endswith("_name") or col_l.endswith("_code"):
@@ -208,6 +208,30 @@ def _load_acf_descriptions() -> dict[str, str]:
         meaning = str(entry.get("meaning") or "").strip()
         if col and meaning:
             out[col] = meaning
+    return out
+
+
+def _load_column_roles() -> dict[tuple[str, str], str]:
+    """Table/column roles from mart_entity_dictionary_seed column_overrides."""
+    if not ENTITY_SEED.is_file():
+        return {}
+    data = yaml.safe_load(ENTITY_SEED.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return {}
+    out: dict[tuple[str, str], str] = {}
+    overrides = data.get("column_overrides") or {}
+    if not isinstance(overrides, dict):
+        return out
+    for table_name, cols in overrides.items():
+        if not isinstance(cols, dict):
+            continue
+        tn = str(table_name).strip()
+        for col_name, meta in cols.items():
+            if not isinstance(meta, dict):
+                continue
+            role = str(meta.get("role") or "").strip()
+            if tn and col_name and role:
+                out[(tn, str(col_name))] = role
     return out
 
 
@@ -355,10 +379,11 @@ def profile_column(
     col: ColumnMeta,
     profiled_at: str,
     acf_desc: dict[str, str],
+    column_roles: dict[tuple[str, str], str],
 ) -> ColumnProfile:
     distinct_count, null_count, total_rows = _column_stats(client, project, dataset, col)
     non_null = max(total_rows - null_count, 0)
-    mode = _column_profile_mode(col, acf_desc)
+    mode = _column_profile_mode(col, column_roles)
     sample_limit = MAX_FILTER_SAMPLES if mode == "samples" else MAX_LABELS
 
     if mode == "samples":
@@ -633,6 +658,7 @@ def main() -> int:
 
     entity_meta = _load_entity_metadata()
     acf_desc = _load_acf_descriptions()
+    column_roles = _load_column_roles()
 
     candidates = _load_table_list()
     client = bigquery.Client(project=project)
@@ -658,7 +684,9 @@ def main() -> int:
         for col in columns:
             try:
                 profiles.append(
-                    profile_column(client, project, dataset, col, profiled_at, acf_desc)
+                    profile_column(
+                        client, project, dataset, col, profiled_at, acf_desc, column_roles
+                    )
                 )
             except Exception as exc:
                 print(f"  skip {col.column_name}: {exc}", file=sys.stderr)
