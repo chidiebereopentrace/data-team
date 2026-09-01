@@ -24,6 +24,7 @@ class EngineResult:
     rows: list[dict[str, Any]] = field(default_factory=list)
     caveats: list[str] = field(default_factory=list)
     value_hits: dict[str, Any] = field(default_factory=dict)
+    sql_plans: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -34,6 +35,7 @@ class EngineResult:
             "rows": self.rows,
             "caveats": list(self.caveats),
             "value_hits": dict(self.value_hits),
+            "sql_plans": list(self.sql_plans),
         }
 
 

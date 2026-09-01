@@ -1,0 +1,66 @@
+table_name: opentrace-prod-5ga4.mart_dev.agg_production_country_year
+description: Physical production by country, product, and year (agg from fct_production).
+source:
+  layer: mart_dev
+profiled_at: '2026-09-01T00:00:00+00:00'
+columns:
+- name: agg_production_country_year_key
+  type: STRING
+  description: Surrogate key
+- name: geography_key
+  type: STRING
+  description: FK to dim_geography
+- name: date_key
+  type: STRING
+  description: Year as date key
+- name: country_iso3
+  type: STRING
+  description: ISO3 country code
+- name: country_name
+  type: STRING
+  description: Country name
+- name: product_key
+  type: STRING
+  description: FK to dim_product
+- name: year
+  type: INT64
+  description: Calendar year
+- name: source_key
+  type: STRING
+  description: FK to dim_source
+- name: area_harvested
+  type: FLOAT64
+  description: Area harvested
+- name: production_qty
+  type: FLOAT64
+  description: Production quantity (physical grain)
+- name: yield_recomputed
+  type: FLOAT64
+  description: Yield recomputed from qty / area
+- name: row_count
+  type: INT64
+  description: Source row count
+- name: loaded_at
+  type: TIMESTAMP
+  description: Load timestamp
+country_iso3_value_samples:
+- GHA
+- NGA
+- KEN
+- BFA
+- MLI
+- SEN
+- TGO
+- BEN
+- CIV
+- NER
+year_value_stats:
+  distinct_count: 65
+  null_count: 0
+  is_truncated: false
+  min_value: '1961'
+  max_value: '2024'
+production_qty_value_stats:
+  distinct_count: 0
+  null_count: 0
+  is_truncated: false

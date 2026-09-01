@@ -1408,8 +1408,9 @@ def _build_prompt(
         ) + system
     elif structured_bq_unavailable and is_numeric_data_query(query, decomposition):
         system = (
-            "No structured numeric rows match this question — do not invent totals, "
-            "yields, prices, or rankings. Synthesise only supported narrative evidence.\n\n"
+            "OpenTrace warehouse returned no rows or timed out for the scoped filters — "
+            "say so clearly. Do not invent totals, yields, prices, or rankings, and do not "
+            "substitute unrelated web product anecdotes.\n\n"
         ) + system
 
     mb = (memory_block.strip() + "\n\n") if memory_block.strip() else ""

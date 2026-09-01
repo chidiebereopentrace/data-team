@@ -23,7 +23,13 @@ columns:
   year:
     role: time_filter
     prompt_mode: stats_only
-  value:
+  production_qty:
+    role: measure
+    prompt_mode: stats_only
+  area_harvested:
+    role: measure
+    prompt_mode: stats_only
+  yield_recomputed:
     role: measure
     prompt_mode: stats_only
 exclude_prompt_columns:

@@ -151,6 +151,7 @@ classes:
       - dim_product
       - dim_geography
       - dim_source
+      - agg_production_country_year
     do_not_mix:
       - tables: [fct_production, fct_yield]
         reason: FAOSTAT country-year production vs FNID-season yield — never mix
@@ -169,6 +170,9 @@ classes:
       - id: agg_country_year
         table: agg_production_annual
         filters: Prefer for national annual rollups
+      - id: agg_production_country_year_panel
+        table: agg_production_country_year
+        filters: Multi-country national annual production panel
 
   PRC:
     code: PRC

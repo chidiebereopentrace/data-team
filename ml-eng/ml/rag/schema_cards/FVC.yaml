@@ -14,6 +14,7 @@ hard_rules:
   - Prefer metric slugs over element string matching
   - Filter year INT64 or as_of_date BETWEEN; never EXTRACT(YEAR FROM as_of_date) in WHERE
   - source_natural_key values from complete index only
+  - Agri-activities panel uses fct_food_balance + fct_trade (trade_grain family); never union
 columns:
   metric:
     role: filter_enum

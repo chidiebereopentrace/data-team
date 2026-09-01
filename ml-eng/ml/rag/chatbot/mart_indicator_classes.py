@@ -88,6 +88,13 @@ def facts_for_classes(codes: list[str]) -> list[str]:
     return out
 
 
+def families_for_class(code: str) -> list[dict[str, Any]]:
+    spec = _class_spec(code)
+    if not spec:
+        return []
+    return [f for f in (spec.get("families") or []) if isinstance(f, dict)]
+
+
 def families_for_fact(table_id: str) -> list[dict[str, Any]]:
     bare = _bare_table(table_id)
     out: list[dict[str, Any]] = []
@@ -163,6 +170,7 @@ __all__ = [
     "do_not_mix_tables",
     "facts_for_class",
     "facts_for_classes",
+    "families_for_class",
     "families_for_fact",
     "family_do_not_mix",
     "indicator_classes_for_table",

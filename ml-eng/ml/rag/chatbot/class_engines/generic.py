@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ml.rag.chatbot.bq_table_schema_yaml import measure_columns_mart
 from ml.rag.chatbot.class_engines.base import ClassEngine, EngineResult
 from ml.rag.chatbot.class_engines.shared import (
     bind_value_hits,
@@ -10,9 +11,10 @@ from ml.rag.chatbot.class_engines.shared import (
     pack_engine_prompt,
     validate_engine_sql,
 )
-from ml.rag.chatbot.mart_indicator_classes import facts_for_class
+from ml.rag.chatbot.class_table_router import select_table_plans
+from ml.rag.chatbot.intent_bundles import match_intent_bundles
 from ml.rag.chatbot.schema_card import load_schema_card
-from ml.rag.chatbot.value_index import complete_enum, resolve_country
+from ml.rag.chatbot.value_index import complete_enum, resolve_geography_iso3
 
 
 class GenericEngine(ClassEngine):
@@ -27,23 +29,35 @@ class GenericEngine(ClassEngine):
         card: dict[str, Any] | None = None,
     ) -> EngineResult:
         card = card or load_schema_card(self.class_code) or {}
-        table = str(card.get("default_table") or "")
-        if not table:
-            facts = facts_for_class(self.class_code)
-            table = facts[0] if facts else ""
-        if not table:
+        bundles = match_intent_bundles(query, facets)
+        geography = facets.get("geography") if isinstance(facets.get("geography"), list) else []
+        expanded = facets.get("expanded_regions") if isinstance(facets.get("expanded_regions"), list) else None
+        iso_list = resolve_geography_iso3(query, geography=geography, expanded_regions=expanded)
+
+        plans = select_table_plans(
+            self.class_code,
+            query=query,
+            facets=facets,
+            bundles=bundles,
+            card=card,
+            iso_list=iso_list,
+        )
+        if not plans:
             return EngineResult(
                 class_code=self.class_code,
                 status="planner_error",
                 table_id="",
                 sql=None,
-                caveats=["no_default_table"],
+                caveats=["no_table_plans"],
             )
+
+        plan = plans[0]
+        table = plan.table_id
         hits = bind_value_hits(card, query=query, facets=facets)
-        geography = facets.get("geography") if isinstance(facets.get("geography"), list) else []
-        iso = resolve_country(query, geography=geography)
-        if iso:
-            hits.setdefault("country_iso3", [iso])
+        if iso_list:
+            hits["country_iso3"] = iso_list
+        elif not hits.get("country_iso3"):
+            hits["country_iso3"] = ["GHA"]
 
         ts = str(facets.get("time_start") or "2010")[:4]
         te = str(facets.get("time_end") or "2024")[:4]
@@ -52,21 +66,33 @@ class GenericEngine(ClassEngine):
         except ValueError:
             y0, y1 = 2010, 2024
 
-        iso_val = (hits.get("country_iso3") or ["GHA"])[0]
+        iso_vals = hits.get("country_iso3") or ["GHA"]
+        if len(iso_vals) >= 2:
+            iso_in = ", ".join(f"'{c}'" for c in iso_vals)
+            iso_clause = f"country_iso3 IN ({iso_in})"
+            limit = "LIMIT 500"
+        else:
+            iso_clause = f"country_iso3 = '{iso_vals[0]}'"
+            limit = "LIMIT 40"
+
         grain_clause = ""
         if complete_enum(table, "production_grain"):
             grain_clause = "\n  AND production_grain = 'physical'"
         elif complete_enum(table, "measure_type") and self.class_code == "FS":
             grain_clause = "\n  AND measure_type IN ('population', 'classification')"
 
-        sql = f"""SELECT country_iso3, year, value, unit, metric
+        measures = measure_columns_mart(table)
+        measure_col = measures[0] if measures else "value"
+        metric_col = ", metric" if complete_enum(table, "metric") else ""
+
+        sql = f"""SELECT country_iso3, year, {measure_col} AS value, unit{metric_col}
 FROM {mart_table_fqn(table)}
-WHERE country_iso3 = '{iso_val}'{grain_clause}
+WHERE {iso_clause}{grain_clause}
   AND year BETWEEN {y0} AND {y1}
 ORDER BY year DESC
-LIMIT 40"""
+{limit}"""
 
-        ok, reason = validate_engine_sql(sql, table_id=table, selected_tables=[table])
+        ok, reason = validate_engine_sql(sql, table_id=table, selected_tables=[table], allowed_iso3=iso_vals)
         _ = pack_engine_prompt(card, query=query, facets=facets, value_hits=hits)
         return EngineResult(
             class_code=self.class_code,

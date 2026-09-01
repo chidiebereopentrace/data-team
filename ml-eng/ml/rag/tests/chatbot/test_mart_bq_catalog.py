@@ -76,5 +76,6 @@ def test_choose_agg_vs_fact_national_production():
         query="national maize production by country",
         multi_country=True,
         year_hint="2022",
+        iso_count=16,
     )
-    assert routed == "agg_production_annual"
+    assert routed == "agg_production_country_year"

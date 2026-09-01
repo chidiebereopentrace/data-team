@@ -5,6 +5,7 @@ from ml.rag.chatbot.bq_sql_validate import validate_sql_complete_index_literals
 from ml.rag.chatbot.class_engine_runner import engine_results_to_bq_plan, run_class_engines
 from ml.rag.chatbot.class_engines.fvc import FvcEngine
 from ml.rag.chatbot.class_supervisor import compile_supervisor_plan
+from ml.rag.chatbot.geo_regions import expand_regions_in_decomposition
 from ml.rag.chatbot.intent_bundles import match_intent_bundles
 from ml.rag.chatbot.value_index import complete_enum, resolve_labels
 
@@ -55,14 +56,22 @@ LIMIT 10"""
 
 def test_west_africa_deferred_third_engine() -> None:
     q = "West Africa agricultural activities by country 2015 to date"
-    bundles = match_intent_bundles(q, {})
-    sp = compile_supervisor_plan(q, decomposition={}, matched_bundles=bundles)
+    dec = expand_regions_in_decomposition({"geography": []}, q)
+    bundles = match_intent_bundles(q, dec)
+    sp = compile_supervisor_plan(q, decomposition=dec, matched_bundles=bundles)
     assert "PROD" in sp.classes
-    results = run_class_engines(q, supervisor_plan=sp, facets={})
-    statuses = [r.status for r in results]
-    assert "deferred" in statuses or len(results) >= 2
+    assert "FVC" in sp.secondary
+    assert "PRC" not in sp.secondary
+    results = run_class_engines(q, supervisor_plan=sp, facets=dec)
+    prod = next(r for r in results if r.class_code == "PROD")
+    assert prod.status == "planned", prod.caveats
+    assert "country_iso3 IN (" in (prod.sql or "")
+    fvc = next(r for r in results if r.class_code == "FVC")
+    assert fvc.status == "planned", fvc.caveats
+    assert len(fvc.sql_plans) >= 2
     plan = engine_results_to_bq_plan(results)
-    assert plan.get("bq_sql_debug") or plan.get("engine_results")
+    debug_tables = {row["table_id"] for row in plan.get("bq_sql_debug") or [] if row.get("table_id")}
+    assert len(debug_tables) >= 3
 
 
 def test_outlook_supervisor_fs() -> None:
@@ -70,6 +79,26 @@ def test_outlook_supervisor_fs() -> None:
     bundles = match_intent_bundles(q, {"geography": ["Somalia"]})
     sp = compile_supervisor_plan(q, decomposition={"geography": ["Somalia"]}, matched_bundles=bundles)
     assert sp.classes[0] == "FS"
+
+
+def test_agri_activities_adds_prc_when_prices_mentioned() -> None:
+    q = "West Africa agricultural activities and rice prices by country"
+    dec = expand_regions_in_decomposition({"geography": []}, q)
+    bundles = match_intent_bundles(q, dec)
+    sp = compile_supervisor_plan(q, decomposition=dec, matched_bundles=bundles)
+    assert sp.classes == ("PROD",)
+    assert "FVC" in sp.secondary
+    assert "PRC" in sp.secondary
+
+
+def test_generic_engine_fs_picks_food_security_table() -> None:
+    from ml.rag.chatbot.class_engines.generic import GenericEngine
+
+    q = "How many people are in IPC Phase 3 in Ethiopia?"
+    facets = {"geography": ["Ethiopia"], "time_start": "2020-01-01", "time_end": "2024-12-31"}
+    result = GenericEngine("FS").run_plan(q, facets=facets, card=None)
+    assert result.status == "planned", result.caveats
+    assert result.table_id == "fct_food_security"
 
 
 def test_bq_reasoner_no_skip_on_bundles_without_slot_flag(monkeypatch) -> None:

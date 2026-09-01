@@ -177,7 +177,7 @@ def web_fallback_enabled() -> bool:
 
 
 def _web_timeout_s() -> float:
-    return _env_float("RAG_WEB_TIMEOUT_S", 5.0)
+    return _env_float("RAG_WEB_TIMEOUT_S", 6.0)
 
 
 # --- Tavily daily quota counter (in-process, per UTC day) ---
@@ -245,6 +245,8 @@ def needs_web_fallback(
     enabled: bool | None = None,
     task_mode: str | None = None,
     has_usable_bq: bool | None = None,
+    bq_warehouse_attempted: bool = False,
+    heavy_path: bool = False,
 ) -> bool:
     """
     Return True when supplemental web retrieval should run.
@@ -259,6 +261,11 @@ def needs_web_fallback(
         return False
 
     mode = (task_mode or "").strip().lower()
+    if mode == "analytical" or heavy_path:
+        return False
+    if bq_warehouse_attempted:
+        return False
+
     usable = _usable_reranked(reranked_context)
     min_chunks = _env_int("RAG_WEB_FALLBACK_MIN_CHUNKS", 3)
 
@@ -291,6 +298,22 @@ def needs_web_fallback(
     return False
 
 
+def _warehouse_attempt_blocks_web(state: dict[str, Any]) -> bool:
+    """Do not web-search to cover a BQ timeout or engine plan attempt."""
+    plan = state.get("bq_sql_plan") if isinstance(state.get("bq_sql_plan"), dict) else {}
+    block_statuses = {"planned", "timeout", "planner_error", "execution_error"}
+    for er in plan.get("engine_results") or []:
+        if isinstance(er, dict) and str(er.get("status") or "") in block_statuses:
+            return True
+    for row in list(plan.get("bq_sql_debug") or []) + list(state.get("bq_sql_debug") or []):
+        if isinstance(row, dict) and str(row.get("status") or "") in block_statuses:
+            if row.get("sql"):
+                return True
+    if state.get("bq_sql_queries"):
+        return True
+    return False
+
+
 def route_after_rerank(state: dict[str, Any]) -> str:
     """Graph routing: 'web_fallback' or 'generate'."""
     reranked = state.get("reranked_context") or []
@@ -303,6 +326,8 @@ def route_after_rerank(state: dict[str, Any]) -> str:
         reranked,
         task_mode=str(state.get("task_mode") or ""),
         has_usable_bq=has_bq,
+        bq_warehouse_attempted=_warehouse_attempt_blocks_web(state),
+        heavy_path=bool(state.get("heavy_path")),
     ):
         return "web_fallback"
     return "generate"
@@ -947,6 +972,9 @@ def retrieve_web_fallback_detailed(
     geo_override: str = "",
     time_start: str | None = None,
     time_end: str | None = None,
+    plan_type: str = "",
+    task_mode: str = "",
+    heavy_path: bool = False,
 ) -> WebFallbackResult:
     """
     Fetch supplemental web chunks with structured status reporting.
@@ -986,7 +1014,14 @@ def retrieve_web_fallback_detailed(
     wiki_top_k = _env_int("RAG_WEB_WIKI_TOP_K", 2)
     tavily_top_k = _env_int("RAG_WEB_TAVILY_TOP_K", 2)
     total_cap = _env_int("RAG_WEB_TOP_K", 3)
-    official_only = _typed_web_allowlist_only(dec, query)
+    task_mode = str(task_mode or dec.get("task_mode") or "").strip().lower()
+    plan_type = str(plan_type or dec.get("plan_type") or "").strip().lower()
+    skip_wikipedia = (
+        task_mode == "analytical"
+        or heavy_path
+        or plan_type in ("government", "agribusinesses", "integrated")
+    )
+    official_only = skip_wikipedia or _typed_web_allowlist_only(dec, query)
 
     wiki_stats: dict[str, Any] = {
         "wiki_queries": wiki_queries,
