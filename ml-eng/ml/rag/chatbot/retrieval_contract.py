@@ -17,6 +17,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     pack_mart_table_hints,
 )
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
+from ml.rag.chatbot.intent_bundles import bundle_primary_measures, bundles_from_ids
 from ml.rag.chatbot.mart_indicator_classes import class_for_query, do_not_mix_tables
 
 
@@ -163,8 +164,17 @@ def build_retrieval_contract(
     primary_ids: list[str] = []
     companion_ids: list[str] = []
     declared_pm = enriched.get("primary_measures")
+    matched_bundles_raw = enriched.get("matched_bundles")
+    matched_bundle_ids = (
+        [str(b).strip() for b in matched_bundles_raw if str(b).strip()]
+        if isinstance(matched_bundles_raw, list)
+        else []
+    )
     if isinstance(declared_pm, list) and declared_pm:
         primary_ids = [str(m).strip().lower() for m in declared_pm if str(m).strip()]
+    elif matched_bundle_ids:
+        bundles = bundles_from_ids(matched_bundle_ids)
+        primary_ids = list(bundle_primary_measures(bundles, query))
     elif hits:
         primary_ids.append(hits[0].measure.id)
         declared = set(hits[0].measure.companions)
@@ -193,7 +203,10 @@ def build_retrieval_contract(
 
     if not bq_intents and bq_hits:
         seen_tables: set[str] = set()
-        for h in bq_hits[:1]:
+        target_measures = set(primary_ids + companion_ids) if primary_ids else None
+        for h in bq_hits:
+            if target_measures is not None and h.measure.id not in target_measures:
+                continue
             for tid in effective_tables(h):
                 routed = choose_agg_vs_fact(
                     tid, query=query, multi_country=multi, year_hint=year_hint
@@ -246,7 +259,7 @@ def build_retrieval_contract(
             seen_tags.add(tl.lower())
             corpus_tags.append(tl)
 
-    skip_bq = bool(hits) and not bq_hits
+    skip_bq = bool(hits) and not bq_hits and not bq_tables
 
     rationale = "contract_from_entities"
     if mix_note:

@@ -1,0 +1,13 @@
+class: BIO
+default_table: fct_biodiversity
+tables:
+- fct_biodiversity
+- fct_protected_areas
+- fct_germplasm
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

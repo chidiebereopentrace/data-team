@@ -20,6 +20,8 @@ bundles:
     trigger_patterns:
       - "food balance"
       - "import dependency"
+      - "import share"
+      - "domestic supply"
       - "imports vs consumption"
       - "production vs imports"
       - "self-sufficiency"

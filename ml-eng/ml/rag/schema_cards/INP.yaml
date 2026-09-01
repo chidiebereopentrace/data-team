@@ -1,0 +1,14 @@
+class: INP
+default_table: fct_land_inputs
+tables:
+- fct_land_inputs
+- fct_machinery
+- fct_fertilizer
+- fct_pesticide
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

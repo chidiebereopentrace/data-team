@@ -440,6 +440,9 @@ async def _run_query(
                 "bq_cache_hit": result.get("bq_cache_hit"),
                 "bq_nl2sql_ms": result.get("bq_nl2sql_ms"),
                 "bq_execute_ms": result.get("bq_execute_ms"),
+                "supervisor_plan": result.get("supervisor_plan"),
+                "value_hits": result.get("value_hits")
+                or (result.get("bq_sql_plan") or {}).get("value_hits"),
             }
 
         answer = result.get("answer", "") or ""

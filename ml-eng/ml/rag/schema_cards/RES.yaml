@@ -1,0 +1,16 @@
+class: RES
+default_table: fct_investment
+tables:
+- fct_investment
+- fct_researchers
+- fct_research_expenditure
+- dim_research_project
+- dim_organisation
+- dim_indicator
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

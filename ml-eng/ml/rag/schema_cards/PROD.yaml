@@ -1,0 +1,31 @@
+class: PROD
+default_table: agg_production_country_year
+tables:
+  - agg_production_country_year
+  - fct_production
+  - fct_yield
+  - agg_production_country_season
+hard_rules:
+  - production_grain=physical for fct_production volume
+  - Never mix fct_yield with FAOSTAT country-year production
+columns:
+  production_grain:
+    role: filter_enum
+    prompt_mode: full_list
+  product_name:
+    role: filter_enum
+    prompt_mode: resolved_only
+    join: dim_product
+    scope: fact_distinct
+  country_iso3:
+    role: filter_enum
+    prompt_mode: resolved_only
+  year:
+    role: time_filter
+    prompt_mode: stats_only
+  value:
+    role: measure
+    prompt_mode: stats_only
+exclude_prompt_columns:
+  - geo_key
+  - product_key

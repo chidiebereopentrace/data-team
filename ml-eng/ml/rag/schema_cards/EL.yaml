@@ -1,0 +1,15 @@
+class: EL
+default_table: fct_employment
+tables:
+- fct_employment
+- fct_economics
+- fct_household
+- dim_indicator
+- dim_geography
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

@@ -1,0 +1,13 @@
+class: CLIM
+default_table: fct_climate
+tables:
+- fct_climate
+- dim_indicator
+- dim_geography
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

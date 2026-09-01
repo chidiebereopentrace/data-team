@@ -64,6 +64,13 @@ def _load_bundle_specs() -> tuple[IntentBundleSpec, ...]:
     return tuple(specs)
 
 
+def bundles_from_ids(bundle_ids: list[str]) -> tuple[MatchedBundle, ...]:
+    wanted = {str(b).strip() for b in bundle_ids if str(b).strip()}
+    if not wanted:
+        return ()
+    return tuple(MatchedBundle(spec=s) for s in _load_bundle_specs() if s.id in wanted)
+
+
 def _tuple_str(raw: Any) -> tuple[str, ...]:
     if not isinstance(raw, list):
         return ()
@@ -131,6 +138,42 @@ def bundle_required_measures(bundles: tuple[MatchedBundle, ...]) -> tuple[str, .
     return tuple(out)
 
 
+_FOOD_BALANCE_PRIMARY_RE = re.compile(
+    r"\b("
+    r"food\s+balance|import\s+(dependency|share|ratio|s)?|domestic\s+supply|"
+    r"self[-\s]?sufficien|imports?\s+vs\s+consumption|production\s+vs\s+imports"
+    r")\b",
+    re.I,
+)
+
+
+def bundle_primary_measure(
+    bundles: tuple[MatchedBundle, ...],
+    query: str = "",
+) -> str:
+    """Primary measure for bundle routing — never blindly use required_measures[0]."""
+    if has_bundle(bundles, "food_balance_panel"):
+        if _FOOD_BALANCE_PRIMARY_RE.search(query or ""):
+            return "food_balance"
+        measures = bundle_required_measures(bundles)
+        if "food_balance" in measures:
+            return "food_balance"
+    measures = bundle_required_measures(bundles)
+    return measures[0] if measures else ""
+
+
+def bundle_primary_measures(
+    bundles: tuple[MatchedBundle, ...],
+    query: str = "",
+) -> tuple[str, ...]:
+    """Ordered measure list with bundle-aware primary first."""
+    primary = bundle_primary_measure(bundles, query)
+    if not primary:
+        return bundle_required_measures(bundles)
+    rest = [m for m in bundle_required_measures(bundles) if m != primary]
+    return (primary, *rest)
+
+
 def bundles_block_primary(measure_id: str, bundles: tuple[MatchedBundle, ...]) -> bool:
     mid = (measure_id or "").strip().lower()
     if not mid:
@@ -150,6 +193,9 @@ __all__ = [
     "MatchedBundle",
     "match_intent_bundles",
     "bundle_required_measures",
+    "bundle_primary_measure",
+    "bundle_primary_measures",
+    "bundles_from_ids",
     "bundles_block_primary",
     "has_bundle",
 ]

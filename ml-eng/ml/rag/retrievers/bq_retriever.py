@@ -27,6 +27,7 @@ from ml.rag.chatbot.bq_sql_validate import (
     validate_required_metric_filters,
     validate_semantic_coherence,
     validate_sql_column_allowlist,
+    validate_sql_complete_index_literals,
     validate_sql_table_allowlist,
     validate_sql_value_samples,
 )
@@ -678,6 +679,9 @@ class BQRetriever(BaseRetriever):
             sample_err = validate_sql_value_samples(sql, selected_tables or None)
             if sample_err:
                 return sample_err
+            index_err = validate_sql_complete_index_literals(sql, selected_tables or None)
+            if index_err:
+                return index_err
             coherence_err = validate_semantic_coherence(
                 sql,
                 query=question or query or "",

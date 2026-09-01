@@ -47,12 +47,14 @@ from ml.rag.chatbot.bq_ranking_cache import (
     cache_entry_from_bq_results,
     is_ranking_follow_up,
 )
-from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan
+from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan, _slot_reasoner_active
+from ml.rag.chatbot.class_engine_runner import engine_results_to_bq_plan, run_class_engines
+from ml.rag.chatbot.class_supervisor import SupervisorPlan, compile_supervisor_plan
 from ml.rag.chatbot.context_diversity import diversify_context_pack
 from ml.rag.chatbot.corpus_catalog import CorpusSelection, select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
 from ml.rag.chatbot.facet_compiler import compile_turn_contract, compile_breakdown
-from ml.rag.chatbot.intent_bundles import bundle_required_measures, match_intent_bundles
+from ml.rag.chatbot.intent_bundles import bundle_primary_measures, bundle_required_measures, match_intent_bundles
 from ml.rag.chatbot.capability_registry import apply_reasoner_to_turn, resolve_capability, unsupported_answer_hint
 from ml.rag.chatbot.empty_answer_templates import empty_answer_for_contract
 from ml.rag.chatbot.time_retrieval import sync_decomposition_time, time_fallback_enabled, time_kwargs_from_contract
@@ -636,7 +638,7 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         contract = build_retrieval_contract(q, decomposition=dec, known_tables=set())
         if contract.corpus_domain_tags:
             dec["corpus_domain_tags"] = list(contract.corpus_domain_tags)
-        bundle_pm = list(bundle_required_measures(matched_bundles))
+        bundle_pm = list(bundle_primary_measures(matched_bundles, q) or bundle_required_measures(matched_bundles))
         if bundle_pm:
             dec["primary_measures"] = bundle_pm
         elif contract.primary_measures:
@@ -734,14 +736,19 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         }
         if enrich.get("enriched"):
             out["query"] = q
-        rp = compile_reasoner_plan(
-            q,
-            decomposition=dec,
-            turn_contract=turn,
-            plan_type=str(state.get("plan_type") or ""),
-            task_mode=task_mode,
-            matched_bundles=matched_bundles,
-        )
+        sp = compile_supervisor_plan(q, decomposition=dec, matched_bundles=matched_bundles)
+        out["supervisor_plan"] = sp.to_dict()
+        if _slot_reasoner_active():
+            rp = compile_reasoner_plan(
+                q,
+                decomposition=dec,
+                turn_contract=turn,
+                plan_type=str(state.get("plan_type") or ""),
+                task_mode=task_mode,
+                matched_bundles=matched_bundles,
+            )
+        else:
+            rp = None
         if rp is not None:
             turn = apply_reasoner_to_turn(turn, rp)
             out["reasoner_plan"] = rp.to_dict()
@@ -757,7 +764,8 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
                 dec["time_end"] = rp.time_end
             if rp.primary_measure:
                 dec["primary_measures"] = list(
-                    bundle_required_measures(matched_bundles)
+                    bundle_primary_measures(matched_bundles, q)
+                    or bundle_required_measures(matched_bundles)
                     or [rp.primary_measure]
                 )
             out["decomposition"] = dec
@@ -1313,26 +1321,46 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
 
 
 def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
-    """YAML-index SQL reasoner: select mart_dev tables and query intents."""
+    """YAML-index SQL reasoner or class engines: select mart_dev tables and query intents."""
     q = (state.get("query") or "").strip()
     analytical = bool(state.get("analytical_mode"))
     task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
-    rp_raw = state.get("reasoner_plan")
-    reasoner = ReasonerPlan.from_dict(rp_raw if isinstance(rp_raw, dict) else None)
-    if reasoner and reasoner.bq_subquestions():
-        plan = reasoner_plan_to_bq_plan(reasoner)
+    dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
+    sp = SupervisorPlan.from_dict(
+        state.get("supervisor_plan") if isinstance(state.get("supervisor_plan"), dict) else None
+    )
+    if sp is None and not _slot_reasoner_active():
+        matched_raw = dec.get("matched_bundles")
+        bundles = match_intent_bundles(q, dec, breakdown=compile_breakdown(q))
+        sp = compile_supervisor_plan(q, decomposition=dec, matched_bundles=bundles)
+
+    plan: dict[str, Any]
+    if sp and sp.classes and not _slot_reasoner_active():
+        engine_results = run_class_engines(q, supervisor_plan=sp, facets=dec)
+        plan = engine_results_to_bq_plan(engine_results, rationale=sp.rationale)
+        plan["supervisor_plan"] = sp.to_dict()
     else:
-        plan = reason_bq_sql_plan(
-            q,
-            decomposition=state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None,
-            plan_type=str(state.get("plan_type") or "") or None,
-            category=str(state.get("category") or "") or None,
-            analytical_mode=analytical,
-            task_mode=task_mode,
-        )
+        rp_raw = state.get("reasoner_plan")
+        reasoner = ReasonerPlan.from_dict(rp_raw if isinstance(rp_raw, dict) else None)
+        if reasoner and reasoner.bq_subquestions() and _slot_reasoner_active():
+            plan = reasoner_plan_to_bq_plan(reasoner)
+        else:
+            plan = reason_bq_sql_plan(
+                q,
+                decomposition=dec,
+                plan_type=str(state.get("plan_type") or "") or None,
+                category=str(state.get("category") or "") or None,
+                analytical_mode=analytical,
+                task_mode=task_mode,
+            )
     tc_raw = state.get("turn_contract")
     contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
-    if contract.skip_bq and not plan.get("heavy_path") and not plan.get("slot_path"):
+    if (
+        contract.skip_bq
+        and not plan.get("heavy_path")
+        and not plan.get("slot_path")
+        and not plan.get("bq_sql_queries")
+    ):
         plan = {**plan, "skip_bq": True}
     template_key = str((contract.sql_plan or {}).get("template") or "").strip()
     if template_key:
@@ -1359,6 +1387,7 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
     return {
         "bq_sql_plan": plan,
         "bq_table_candidates": cands,
+        "value_hits": plan.get("value_hits"),
     }
 
 
@@ -1530,6 +1559,8 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
             "heavy_path": bool(plan.get("heavy_path")),
         }
     bq_failure_row: dict[str, Any] | None = None
+    pre_debug = list(plan.get("bq_sql_debug") or [])
+    pre_queries = list(plan.get("bq_sql_queries") or [])
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             fut = ex.submit(
@@ -1544,6 +1575,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
                 entities=entities,
                 domains=domains,
                 task_mode=task_mode,
+                sql=pre_queries if pre_queries else None,
                 **bq_geo,
                 **contract_kwargs,
                 crop_required=bool(plan.get("crop_required", True)),
@@ -1588,6 +1620,17 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     if ctx_truncated:
         update_current_span_metadata({"bq_context_truncated": True})
     bq_sql_queries, bq_sql_debug = aggregate_bq_sql_debug(results)
+    if pre_debug:
+        seen_sql = {d.get("sql") for d in bq_sql_debug if d.get("sql")}
+        for row in pre_debug:
+            sql = str(row.get("sql") or "").strip()
+            if sql and sql not in seen_sql:
+                bq_sql_debug.insert(0, row)
+                seen_sql.add(sql)
+                if sql not in bq_sql_queries:
+                    bq_sql_queries.insert(0, sql)
+            elif not sql and row not in bq_sql_debug:
+                bq_sql_debug.insert(0, row)
     if bq_failure_row and not bq_sql_debug:
         bq_sql_debug = [bq_failure_row]
     elif bq_failure_row:
@@ -1842,6 +1885,22 @@ def _has_usable_internal_context(reranked: list[dict[str, Any]]) -> bool:
     return len(usable) >= min_chunks
 
 
+def _warehouse_attempt_made(state: RAGGraphState) -> bool:
+    """True when BQ/class engines produced SQL debug or planned queries."""
+    if state.get("bq_sql_debug") or state.get("bq_sql_queries"):
+        return True
+    plan = state.get("bq_sql_plan")
+    if isinstance(plan, dict):
+        if plan.get("bq_sql_debug") or plan.get("bq_sql_queries"):
+            return True
+        if plan.get("engine_results"):
+            return True
+    sp = state.get("supervisor_plan")
+    if isinstance(sp, dict) and sp.get("classes"):
+        return True
+    return False
+
+
 def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
     """Append Wikipedia / Tavily chunks when internal retrieval is weak.
 
@@ -1891,7 +1950,8 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
             out["web_fallback_status"] = "error"
             out["web_fallback_reason"] = "exception in retrieve_web_fallback_detailed"
             if not _has_usable_internal_context(reranked):
-                out["insufficient_context"] = True
+                if _warehouse_attempt_made(state):
+                    out["insufficient_context"] = True
             update_current_span_metadata(
                 {
                     "web_fallback_status": out["web_fallback_status"],

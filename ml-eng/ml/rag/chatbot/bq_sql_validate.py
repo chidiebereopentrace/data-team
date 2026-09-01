@@ -17,6 +17,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     value_samples_for_tables,
     year_column,
 )
+from ml.rag.chatbot.value_index import complete_enum
 from ml.rag.helpers.mart_semantic_relationships import SEMANTIC_RELATIONSHIPS
 
 _SHARED_DICTIONARY_COLUMNS = frozenset({"product_name"})
@@ -757,6 +758,49 @@ def validate_sql_column_allowlist(sql: str, table_ids: set[str] | None = None) -
         f"Allowed columns include: {allowed_preview}. "
         "Use only exact column names from the table hints; do not invent bronze/raw names."
     )
+
+
+def validate_sql_complete_index_literals(
+    sql: str,
+    table_ids: set[str] | None = None,
+) -> str | None:
+    """Reject string literals not present in complete value index (closed-world)."""
+    refs = validation_table_refs(sql, table_ids)
+    if not refs:
+        return None
+
+    def _ok(table: str, col: str, literal: str) -> bool:
+        allowed = complete_enum(table, col)
+        if not allowed:
+            return True
+        lit = literal.replace("''", "'").strip()
+        return lit in allowed or lit.lower() in {a.lower() for a in allowed}
+
+    bad: list[str] = []
+    for match in _EQ_FILTER_RE.finditer(sql or ""):
+        col, lit = match.group(1), match.group(2)
+        for ref in refs:
+            if _ok(ref, col, lit):
+                break
+        else:
+            if complete_enum(next(iter(refs), ""), col):
+                bad.append(f"{col}='{lit}'")
+    for match in _IN_FILTER_RE.finditer(sql or ""):
+        col = match.group(1)
+        body = match.group(2)
+        if "select" in body.lower():
+            continue
+        for lit_m in re.finditer(r"'((?:''|[^'])*)'", body):
+            lit = lit_m.group(1)
+            for ref in refs:
+                if _ok(ref, col, lit):
+                    break
+            else:
+                if complete_enum(next(iter(refs), ""), col):
+                    bad.append(f"{col} IN … '{lit}'")
+    if not bad:
+        return None
+    return f"SQL uses labels not in complete value index: {', '.join(bad[:8])}"
 
 
 def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> str | None:
