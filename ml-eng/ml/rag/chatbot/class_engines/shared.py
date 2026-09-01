@@ -1,36 +1,17 @@
 """Shared engine helpers: prompt pack, SQL validate hooks."""
 from __future__ import annotations
 
-import os
-import re
 from typing import Any
 
-from ml.rag.chatbot.bq_sql_validate import (
-    validate_sql_column_allowlist,
-    validate_sql_table_allowlist,
-)
-from ml.rag.chatbot.bundle_metrics import unsupported_grain_for_panel
-from ml.rag.chatbot.geo_iso3 import validate_sql_country_iso3_subset
-from ml.rag.chatbot.schema_card import load_schema_card, prompt_mode_for_column
+from ml.rag.chatbot.bq_engine_validate import validate_engine_sql
+from ml.rag.chatbot.bq_mart_sql import mart_table_fqn
+from ml.rag.chatbot.schema_card import prompt_mode_for_column
 from ml.rag.chatbot.value_index import (
     complete_enum,
     numeric_stats,
     resolve_geography_iso3,
     resolve_labels,
 )
-
-_PROJECT = os.environ.get("BQ_PROJECT", "opentrace-prod-5ga4")
-_DATASET = os.environ.get("BQ_DATASET", "mart_dev")
-
-_EXTRACT_YEAR_WHERE_RE = re.compile(
-    r"extract\s*\(\s*year\s+from\s+as_of_date\s*\)",
-    re.I,
-)
-
-
-def mart_table_fqn(table_id: str) -> str:
-    bare = table_id.split(".")[-1]
-    return f"`{_PROJECT}.{_DATASET}.{bare}`"
 
 
 def pack_engine_prompt(
@@ -97,36 +78,6 @@ def bind_value_hits(
                 geography=geography,
             )
     return hits
-
-
-def validate_engine_sql(
-    sql: str,
-    *,
-    table_id: str,
-    selected_tables: list[str] | None = None,
-    allowed_iso3: list[str] | None = None,
-) -> tuple[bool, str]:
-    if _EXTRACT_YEAR_WHERE_RE.search(sql or ""):
-        return False, "EXTRACT(YEAR FROM as_of_date) forbidden in WHERE"
-    if re.search(r"\bgeo_key\s*=", sql or "", re.I):
-        return False, "geo_key hash filter forbidden"
-    if not re.search(r"\blimit\s+\d+", sql or "", re.I):
-        return False, "LIMIT required"
-    iso_count = len(allowed_iso3 or [])
-    if unsupported_grain_for_panel(table_id, iso_count=iso_count):
-        return False, f"unsupported_grain for panel on {table_id}"
-    if allowed_iso3:
-        geo_err = validate_sql_country_iso3_subset(sql, allowed_iso3)
-        if geo_err:
-            return False, geo_err
-    tables = set(selected_tables or [table_id])
-    err = validate_sql_table_allowlist(sql, tables)
-    if err:
-        return False, err
-    err = validate_sql_column_allowlist(sql, tables)
-    if err:
-        return False, err or ""
-    return True, ""
 
 
 __all__ = [

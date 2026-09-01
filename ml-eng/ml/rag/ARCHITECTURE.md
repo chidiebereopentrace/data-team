@@ -292,13 +292,13 @@ When `RAG_SQL_COMPILER=1` (default), **only class engines + [`sql_compiler.py`](
 |-------|------|----------|
 | [`query_decomposer`](chatbot/query_decomposer.py) + [`facet_compiler`](chatbot/facet_compiler.py) | job, geos, time, entities, shape | SQL |
 | [`class_supervisor`](chatbot/class_supervisor.py) | 1–2 classes + secondary, out_of_scope, must_search_qdrant | SQL, skip_bq |
-| [`SqlRequest`](chatbot/sql_compiler.py) + class engines | SELECT from schema card + bound value hits | Question understanding |
+| [`SqlRequest`](chatbot/sql_request.py) + class engines | SELECT from schema card + bound value hits | Question understanding |
 | [`bq_retriever`](retrievers/bq_retriever.py) | execute only (`engine_execute_only`) | NL2SQL for engine path |
 | [`generator`](chatbot/generator.py) | prose from evidence | Invent warehouse numbers |
 
 [`global_reasoner`](chatbot/global_reasoner.py) and [`intent_bundles.yaml`](chatbot/intent_bundles.yaml) remain for multi-measure **intent** (panel / compare / share / outlook shapes) until schema cards encode those shapes fully. `RAG_SLOT_REASONER=on` is a kill switch only; if both slot and compiler flags are set, **compiler wins for BQ** and slot metadata may still inform vectors.
 
-PROD/FVC engines build [`SqlRequest`](chatbot/sql_compiler.py) from supervisor facets (geo list, time window, panel shape) via `build_sql_request_from_facets()` — they do not re-parse geography or years from raw query text.
+All class engines (PROD, FVC, and GenericEngine for the other 13 codes) build [`SqlRequest`](chatbot/sql_request.py) from supervisor facets (geo list, time window, panel shape) via `build_sql_request_from_facets()` — they do not re-parse geography or years from raw query text. [`sql_compiler.py`](chatbot/sql_compiler.py) assembles and validates SQL only.
 
 ---
 

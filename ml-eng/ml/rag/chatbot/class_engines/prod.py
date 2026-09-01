@@ -19,7 +19,7 @@ from ml.rag.chatbot.class_engines.shared import (
 from ml.rag.chatbot.class_table_router import select_table_plans
 from ml.rag.chatbot.intent_bundles import match_intent_bundles
 from ml.rag.chatbot.schema_card import load_schema_card
-from ml.rag.chatbot.sql_compiler import SqlRequest, build_sql_request_from_facets
+from ml.rag.chatbot.sql_request import SqlRequest, build_sql_request_from_facets
 from ml.rag.chatbot.value_index import resolve_geography_iso3
 
 
