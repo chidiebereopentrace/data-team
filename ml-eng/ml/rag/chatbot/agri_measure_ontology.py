@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from ml.rag.chatbot.mart_indicator_classes import class_for_query, facts_for_classes
+from ml.rag.chatbot.query_normalize import normalize_query_text
 
 RecencyTier = Literal["live", "near_term", "historical_ok", "point_in_time"]
 TaskModeName = Literal[
@@ -719,7 +720,10 @@ def _score_measure(
         if tl and (tl in domain_blob or tl in query_lower):
             score = max(score, 5)
             matched = matched or tag
-        # Partial token overlap for long domain labels.
+        # Partial token overlap for long domain labels — skip for production when only
+        # crop-triggered PROD domain would falsely activate production measure.
+        if mid == "production":
+            continue
         for token in re.findall(r"[a-z]{4,}", tl):
             if token in entity_blob or token in domain_blob or token in query_lower:
                 score = max(score, 4)
@@ -766,7 +770,7 @@ def resolve_measures(
     Companion measure ids declared on the primary hit are appended when scorable
     or always included at a soft floor score so spines stay multi-domain.
     """
-    q = (query or "").strip()
+    q = normalize_query_text((query or "").strip())
     if not q:
         return []
     ql = q.lower()
@@ -838,6 +842,29 @@ def resolve_measures(
             )
         out.append(c_hit)
         seen.add(companion_id)
+    if re.search(r"\bhuman development index\b", ql) or re.search(r"\bhdi\b", ql):
+        for i, h in enumerate(out):
+            if h.measure.id == "hdi":
+                boosted = MeasureHit(
+                    h.measure,
+                    score=max(h.score, 25),
+                    matched_alias=h.matched_alias or "human development index",
+                )
+                out = [boosted] + [x for j, x in enumerate(out) if j != i]
+                break
+        else:
+            hdi_hit = _score_measure(
+                "hdi", query_lower=ql, entity_blob=entity_blob, domain_blob=domain_blob
+            )
+            if hdi_hit is not None:
+                out.insert(
+                    0,
+                    MeasureHit(
+                        hdi_hit.measure,
+                        score=max(hdi_hit.score, 25),
+                        matched_alias="human development index",
+                    ),
+                )
     return out[: max(k, len(out))]
 
 

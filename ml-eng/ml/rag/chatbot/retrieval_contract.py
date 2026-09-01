@@ -19,6 +19,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
 from ml.rag.chatbot.intent_bundles import bundle_primary_measures, bundles_from_ids
 from ml.rag.chatbot.mart_indicator_classes import class_for_query, do_not_mix_tables
+from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
 
 
 @dataclass
@@ -158,6 +159,7 @@ def build_retrieval_contract(
 
     indicator_classes = class_for_query(query)
     analytical = str(enriched.get("task_mode") or "") == "analytical"
+    compiler_bq_disabled = sql_compiler_enabled() and not analytical
 
     bq_hits = [
         h
@@ -194,7 +196,7 @@ def build_retrieval_contract(
     # Prefer specialized multi-intent builder when food_security is the top activated measure.
     bq_tables: list[str] = []
     bq_intents: list[dict[str, Any]] = []
-    if (
+    if not compiler_bq_disabled and (
         not ag_activities
         and not enriched.get("reasoner_job")
         and hits
@@ -205,7 +207,7 @@ def build_retrieval_contract(
             bq_tables = [str(t) for t in (fs.get("selected_tables") or []) if str(t).strip()]
             bq_intents = list(fs.get("query_intents") or [])
 
-    if not bq_intents and bq_hits:
+    if not compiler_bq_disabled and not bq_intents and bq_hits:
         seen_tables: set[str] = set()
         target_measures = set(primary_ids + companion_ids) if primary_ids else None
         for h in bq_hits:

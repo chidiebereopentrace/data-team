@@ -1,4 +1,5 @@
 class: INP
+empty_policy: generate_weak
 default_table: fct_land_inputs
 tables:
 - fct_land_inputs

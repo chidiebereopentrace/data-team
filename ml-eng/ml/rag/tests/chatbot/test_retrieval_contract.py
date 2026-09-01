@@ -1,6 +1,8 @@
 """Tests for entity → multi-measure retrieval contracts."""
 from __future__ import annotations
 
+import pytest
+
 from ml.rag.chatbot.agri_measure_ontology import resolve_measure, resolve_measures
 from ml.rag.chatbot.corpus_catalog import select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
@@ -26,7 +28,8 @@ def test_resolve_measures_maize_kenya_yield() -> None:
     assert resolve_measure(q, dec) is not None
 
 
-def test_contract_maize_kenya_includes_production_tables() -> None:
+def test_contract_maize_kenya_includes_production_tables(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_SQL_COMPILER", "0")
     q = "What was maize yield in Kenya in 2020?"
     dec = {
         "geography": ["Kenya"],
@@ -43,7 +46,23 @@ def test_contract_maize_kenya_includes_production_tables() -> None:
     assert not contract.skip_bq
 
 
-def test_contract_sahel_food_security_multi_table() -> None:
+def test_contract_compiler_path_skips_bq_intents(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_SQL_COMPILER", "1")
+    q = "What was maize yield in Kenya in 2020?"
+    dec = {
+        "geography": ["Kenya"],
+        "entities": ["maize", "yield"],
+        "domains": ["Agricultural Production & Yield"],
+        "time_end": "2020-12-31",
+    }
+    contract = build_retrieval_contract(q, decomposition=dec, known_tables=_KNOWN)
+    assert contract.primary_measures
+    assert contract.bq_tables == []
+    assert contract.bq_intents == []
+
+
+def test_contract_sahel_food_security_multi_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_SQL_COMPILER", "0")
     q = "Assess food security risk across the Sahel"
     dec = {
         "geography": ["Mali", "Niger", "Burkina Faso"],

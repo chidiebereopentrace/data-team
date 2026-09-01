@@ -21,7 +21,8 @@ from ml.rag.chat_memory import (
     default_summary_max_chars,
     default_verbatim_max_chars,
 )
-from ml.rag.chatbot.acf_scoring import ACFResult, apply_bq_execute_ceiling, no_evidence_acf, score_cited_evidence
+from ml.rag.chatbot.acf_scoring import ACFResult, apply_bq_execute_ceiling, no_evidence_acf, score_cited_evidence, weak_orientation_acf
+from ml.rag.chatbot.continental_scope import RANKING_QUERY_RE as _RANKING_QUERY_RE
 from ml.rag.chatbot.answer_language import (
     detect_answer_language,
     insufficient_context_answer,
@@ -251,18 +252,6 @@ def _public_source_label(table_id: str | None, meta: dict[str, Any] | None = Non
         return "World Bank / GDP"
     return None
 
-_RANKING_QUERY_RE = re.compile(
-    r"\b("
-    r"highest|lowest|top\s+\d+|bottom\s+\d+|"
-    r"which\s+(?:\w+\s+){0,3}countr(?:y|ies)|"
-    r"rank(?:ing|ed)?|most\s+(?:produced|production)|"
-    r"produces?\s+the\s+most|the\s+most\s+\w+|"
-    r"least\s+(?:produced|production)|"
-    r"largest|smallest|biggest"
-    r")\b",
-    re.IGNORECASE,
-)
-
 _NUMERIC_QUANTITY_RE = re.compile(
     r"\b("
     r"how\s+much|how\s+many|what\s+is\s+the|what\s+was\s+the|"
@@ -347,7 +336,18 @@ class GenerationResult:
     generate_input_chars: int | None = None
 
 
-EvidenceTier = Literal["strong", "partial", "empty"]
+EvidenceTier = Literal["strong", "partial", "empty", "weak"]
+
+_WEAK_ORIENTATION_RULES = (
+    "\n\nEvidence tier: ungrounded_orientation\n"
+    "ACF: forced no_evidence / weak\n"
+    "You may answer helpfully from general agricultural knowledge.\n"
+    "You must not invent country-year statistics, prices, IPC phases, "
+    "hectares, percentages, or ranks as if they came from OpenTrace.\n"
+    "If you mention a figure, say it is not from the federated layer.\n"
+    "Name the filter that returned nothing: place, time, entity, class.\n"
+    "Invite a tighter ask only if it helps — do not pad."
+)
 
 _TASK_MODE_MAX_TOKENS: dict[str, int] = {
     "fact_lookup": 512,
@@ -1265,6 +1265,8 @@ def _build_prompt(
 
     if evidence_tier == "partial":
         system += _PARTIAL_EVIDENCE_RULES
+    elif evidence_tier == "weak":
+        system += _WEAK_ORIENTATION_RULES
     elif evidence_tier == "empty":
         system += (
             "\n\nINSUFFICIENT EVIDENCE: Reply in 2–4 sentences that you cannot answer "
@@ -1611,6 +1613,8 @@ def _fix_yield_mislabeled_as_production(text: str, *, yield_only: bool) -> str:
 
 
 def _cap_acf_for_evidence_tier(acf: ACFResult, evidence_tier: EvidenceTier) -> ACFResult:
+    if evidence_tier == "weak":
+        return weak_orientation_acf()
     if evidence_tier == "empty":
         return no_evidence_acf()
     if evidence_tier != "partial":
@@ -1746,8 +1750,11 @@ def _referenced_source_refs(
     source_registry: list[SourceRef],
     *,
     inline_citations: bool = True,
+    suppress_unreferenced: bool = False,
 ) -> list[SourceRef]:
     if not source_registry:
+        return []
+    if suppress_unreferenced:
         return []
     if not inline_citations:
         # No inline markers expected — return all packed sources for the citation block.
@@ -1757,6 +1764,8 @@ def _referenced_source_refs(
         cited_ids = extract_referenced_source_ids(answer)
         if cited_ids:
             return [r for r in source_registry if r.source_id in cited_ids]
+        if suppress_unreferenced:
+            return []
         # Author-year-only prose with inline on: attach packed registry rather than [].
         return list(source_registry)
     return list(source_registry)
@@ -1767,10 +1776,16 @@ def referenced_citations(
     source_registry: list[SourceRef],
     *,
     inline_citations: bool = True,
+    suppress_unreferenced: bool = False,
 ) -> list[dict[str, Any]]:
     """Build structured citation objects for referenced (or all) sources."""
     prose = _strip_model_sources_appendix(answer)
-    refs = _referenced_source_refs(prose, source_registry, inline_citations=inline_citations)
+    refs = _referenced_source_refs(
+        prose,
+        source_registry,
+        inline_citations=inline_citations,
+        suppress_unreferenced=suppress_unreferenced,
+    )
     return [_source_ref_to_citation_dict(r) for r in refs]
 
 
@@ -1994,8 +2009,24 @@ def _finalize_generation_result(
             output_type=output_type,
             allowed_subtopics=allowed_subtopics,
         )
+        suppress_citations = evidence_tier in ("empty", "weak") or (
+            bool(bq_exec_flags)
+            and not usable_bq
+            and any(
+                bq_exec_flags.get(k)
+                for k in (
+                    "structured_bq_compile_error",
+                    "structured_bq_unavailable",
+                    "structured_bq_never_executed",
+                    "structured_bq_validation_failed",
+                )
+            )
+        )
         citations = referenced_citations(
-            prose, source_registry, inline_citations=inline_citations
+            prose,
+            source_registry,
+            inline_citations=inline_citations,
+            suppress_unreferenced=suppress_citations,
         )
         citations = _sanitize_citation_text(citations)
         if _append_sources_to_answer() and citations:
@@ -2014,7 +2045,10 @@ def _finalize_generation_result(
                 continue
 
         cited_refs = _referenced_source_refs(
-            prose, source_registry, inline_citations=inline_citations
+            prose,
+            source_registry,
+            inline_citations=inline_citations,
+            suppress_unreferenced=suppress_citations,
         )
         if cited_refs:
             acf = score_cited_evidence(
@@ -2146,6 +2180,7 @@ def generate(
     export_intent_s = str(export_intent).strip() if export_intent else None
     composer_addendum = str(kwargs.get("composer_addendum") or "").strip()
     generation_plan = kwargs.get("generation_plan")
+    generate_weak = bool(kwargs.get("generate_weak"))
     if generation_plan is not None and not isinstance(generation_plan, dict):
         generation_plan = None
     inline_citations = want_inline_citations(
@@ -2157,7 +2192,7 @@ def generate(
     if structured_bq_unavailable and is_numeric_data_query(query, decomposition) and not pre_queries:
         usable_preview = filter_context_items(context_items or [])
         has_narrative = any(is_usable_context_item(item) for item in usable_preview)
-        if not has_narrative:
+        if not has_narrative and not generate_weak:
             return GenerationResult(
                 answer=_no_data_fallback_message(query, decomposition),
                 citations=[],
@@ -2179,21 +2214,77 @@ def generate(
         and is_numeric_data_query(query, decomposition)
         and not _PRICE_TREND_RE.search(query or "")
         and not _context_has_structured_numeric(context_items)
+        and not generate_weak
     ):
-        usable = filter_context_items(context_items or [])
-        has_narrative = any(
-            normalize_context_kind(it) in _NARRATIVE_KINDS for it in usable
+        return GenerationResult(
+            answer=_no_data_fallback_message(query, decomposition),
+            citations=[],
+            acf=no_evidence_acf(
+                explanation=(
+                    "No structured OpenTrace numeric data matched this question."
+                )
+            ),
         )
-        if not has_narrative:
-            return GenerationResult(
-                answer=_no_data_fallback_message(query, decomposition),
-                citations=[],
-                acf=no_evidence_acf(
-                    explanation=(
-                        "No structured OpenTrace numeric data matched this question."
-                    )
-                ),
+
+    if generate_weak or (not context_items and kwargs.get("evidence_tier") == "weak"):
+        context_block = "[No federated evidence]"
+        if context_items:
+            parts = [str(it.get("content") or "").strip() for it in context_items if str(it.get("content") or "").strip()]
+            if parts:
+                context_block = "\n\n".join(parts)
+        messages = _build_prompt(
+            query,
+            context_block=context_block,
+            decomposition=decomposition,
+            memory_block=memory_block,
+            category=category,
+            plan_type=plan_type,
+            answer_lang=answer_lang,
+            structured_bq_unavailable=structured_bq_unavailable,
+            structured_bq_timed_out=structured_bq_timed_out,
+            structured_bq_never_executed=structured_bq_never_executed,
+            structured_bq_empty=structured_bq_empty,
+            structured_bq_validation_failed=structured_bq_validation_failed,
+            structured_bq_numeric_available=structured_bq_numeric_available,
+            structured_bq_comparative_available=structured_bq_comparative_available,
+            analytical_mode=analytical_mode,
+            task_mode=task_mode,
+            measure_id=measure_id,
+            recency_tier=recency_tier,
+            inline_citations=False,
+            generation_plan=generation_plan,
+            export_intent=export_intent_s,
+            evidence_tier="weak",
+        )
+        gen_max = _generate_max_tokens(task_mode)
+        input_chars = sum(len(str(m.get("content") or "")) for m in messages)
+        llama_answer = _call_llama(
+            messages,
+            purpose="generate_weak",
+            model=model_for_plan(plan_type),
+            max_tokens=gen_max,
+        )
+        if llama_answer:
+            cleaned = _normalize_inline_citations(
+                _clean_answer(llama_answer, evidence_tier="weak")
             )
+            return _finalize_generation_result(
+                cleaned,
+                [],
+                query=query,
+                decomposition=decomposition,
+                inline_citations=False,
+                generate_input_chars=input_chars,
+                evidence_tier="weak",
+                bq_exec_flags=bq_exec_flags,
+                usable_bq=usable_bq,
+                bq_sql_debug=bq_sql_debug,
+            )
+        return GenerationResult(
+            answer=_compact_gap_message(query, decomposition, answer_lang),
+            citations=[],
+            acf=weak_orientation_acf(),
+        )
 
     if not context_items:
         allow_ungrounded = os.environ.get("RAG_ALLOW_UNGROUNDED", "").strip().lower() in (

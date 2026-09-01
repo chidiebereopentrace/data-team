@@ -1,4 +1,5 @@
 class: SOIL
+empty_policy: generate_weak
 default_table: fct_soil_health
 tables:
 - fct_soil_health

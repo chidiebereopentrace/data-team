@@ -1,4 +1,5 @@
 class: FS
+empty_policy: generate_weak
 default_table: fct_food_security
 tables:
   - fct_food_security

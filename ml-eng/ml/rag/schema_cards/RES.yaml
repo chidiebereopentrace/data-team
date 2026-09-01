@@ -1,4 +1,5 @@
 class: RES
+empty_policy: generate_weak
 default_table: fct_investment
 tables:
 - fct_investment

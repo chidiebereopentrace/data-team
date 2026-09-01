@@ -1,4 +1,5 @@
 class: PRC
+empty_policy: generate_weak
 default_table: fct_prices
 tables:
   - fct_prices

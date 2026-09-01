@@ -9,6 +9,7 @@ def bq_execute_flags(
     *,
     pre_queries: list[str],
     usable_bq: bool,
+    compile_error: bool = False,
 ) -> dict[str, bool]:
     debug = [d for d in bq_sql_debug if isinstance(d, dict)]
     has_engine_sql = bool(pre_queries)
@@ -26,17 +27,20 @@ def bq_execute_flags(
     timed_out = has_engine_sql and any_timeout and any_job
     empty = has_engine_sql and any_job and not usable_bq and not any_timeout
     validation_failed = has_engine_sql and any_validation_failed and not any_job
+    compile_err = compile_error and not usable_bq and not has_engine_sql
     return {
         "structured_bq_timed_out": timed_out,
         "structured_bq_never_executed": never_executed,
         "structured_bq_empty": empty,
         "structured_bq_validation_failed": validation_failed,
+        "structured_bq_compile_error": compile_err,
         "structured_bq_unavailable": (
             not usable_bq
             and not never_executed
             and not timed_out
             and not empty
             and not validation_failed
+            and not compile_err
         ),
     }
 

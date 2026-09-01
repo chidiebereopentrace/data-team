@@ -80,6 +80,26 @@ def no_evidence_acf(*, explanation: str | None = None) -> ACFResult:
     )
 
 
+def weak_orientation_acf(*, explanation: str | None = None) -> ACFResult:
+    """Forced low confidence for ungrounded orientation after federated miss."""
+    expl = explanation or (
+        "No federated rows or scored documents for this filter. "
+        "Answer is general orientation, not OpenTrace structured data."
+    )
+    return ACFResult(
+        band="low",
+        band_label="Low confidence",
+        score=20,
+        explanation=expl,
+        note=expl,
+        components=None,
+        applied_ceiling="weak_orientation",
+        config_version="weak_orientation_v1",
+        claim_level=None,
+        question_type=None,
+    )
+
+
 def _components_to_dict(components: dict[str, Any] | None) -> dict[str, Any] | None:
     if not components:
         return None

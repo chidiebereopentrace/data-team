@@ -88,7 +88,7 @@ def test_shape_wiki_queries_entity_country_primary() -> None:
 def test_shape_wiki_africa_default_appends_africa() -> None:
     shaped = _shape_wiki_queries(
         "which country has the best agricultural activity in 2020",
-        {"entities": ["agricultural activity"], "geography": [], "africa_default": True},
+        {"entities": [], "geography": [], "africa_default": True},
     )
     assert any("africa" in s.lower() for s in shaped)
 

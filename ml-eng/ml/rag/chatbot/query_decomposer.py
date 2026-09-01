@@ -15,6 +15,14 @@ from datetime import date
 from typing import Any
 
 from ml.rag.llm_chat import llm_chat_complete, llm_model_id
+from ml.rag.chatbot.query_normalize import normalize_query_text
+from ml.rag.chatbot.agri_entities import CROP_ENTITY_RE as _CROP_ENTITY_RE
+from ml.rag.chatbot.continental_scope import (
+    CONTINENTAL_PANEL_RE as _AFRICA_PANEL_RE,
+    CONTINENTAL_RANK_RE as _RANKING_SCOPE_RE,
+    wants_africa_default_scope as _continental_wants_default,
+    wants_africa_panel_scope as _continental_wants_panel,
+)
 from ml.rag.chatbot.geo_regions import all_non_country_geo_labels
 from ml.rag.observability import trace_elapsed_ms
 
@@ -158,29 +166,6 @@ _GEO_STOPWORDS: frozenset[str] = frozenset(
     }
 )
 
-_RANKING_SCOPE_RE = re.compile(
-    r"\b("
-    r"which\s+country|which\s+countries|which\s+african\s+countr(?:y|ies)|"
-    r"highest|lowest|top\s+\d+|bottom\s+\d+|"
-    r"rank(?:ing|ed)?|largest|smallest|biggest|best|worst|"
-    r"most\s+(?:produced|production)|least\s+(?:produced|production)"
-    r")\b",
-    re.IGNORECASE,
-)
-
-_AFRICA_PANEL_RE = re.compile(
-    r"\b("
-    r"all\s+african\s+countr(?:y|ies)|"
-    r"every\s+african\s+countr(?:y|ies)|"
-    r"by\s+african\s+countr(?:y|ies)|"
-    r"across\s+(?:all\s+)?african\s+countr(?:y|ies)|"
-    r"for\s+all\s+african\s+countr(?:y|ies)|"
-    r"african\s+countr(?:y|ies)\s+panel|"
-    r"each\s+african\s+countr(?:y|ies)"
-    r")\b",
-    re.IGNORECASE,
-)
-
 _AGRI_SCOPE_RE = re.compile(
     r"\b("
     r"agricultur(?:e|al)|farming|crop|production|yield|livestock|"
@@ -237,28 +222,17 @@ def normalize_geography_for_filter(geography: list[str] | None) -> list[str]:
 
 def wants_africa_default_scope(query: str) -> bool:
     """
-    True for unscoped which-country / ranking questions.
+    True for unscoped which-country / ranking / count questions.
 
     OpenTrace is Africa-first: when the user does not name a country, continental
     rankings default to African agricultural intelligence.
     """
-    q = (query or "").strip()
-    if not q:
-        return False
-    # Full panels are not which-country rankings.
-    if wants_africa_panel_scope(q):
-        return False
-    if _extract_countries(q):
-        return False
-    if not _RANKING_SCOPE_RE.search(q):
-        return False
-    # Prefer agri-shaped rankings; still default Africa for bare which-country ranks.
-    return True
+    return _continental_wants_default(query, extract_countries=bool(_extract_countries(query)))
 
 
 def wants_africa_panel_scope(query: str) -> bool:
     """True when the user wants values for every African country (~54-country panel)."""
-    return bool(_AFRICA_PANEL_RE.search(query or ""))
+    return _continental_wants_panel(query)
 
 
 def apply_africa_default_scope(decomposition: dict[str, Any], query: str) -> dict[str, Any]:
@@ -270,10 +244,10 @@ def apply_africa_default_scope(decomposition: dict[str, Any], query: str) -> dic
         out.pop("africa_default", None)
         out.pop("africa_panel", None)
         return out
-    entities = list(out.get("entities") or [])
-    if not any(str(e).strip().lower() == "africa" for e in entities):
-        entities.append("Africa")
-    out["entities"] = entities
+    expanded = list(out.get("expanded_regions") or [])
+    if not any(str(r).strip().lower() in ("africa", "african") for r in expanded):
+        expanded.append("Africa")
+    out["expanded_regions"] = expanded
     if panel:
         out["africa_panel"] = True
         # Panel is not a missing-country clarify case; keep geography empty for GROUP BY.
@@ -526,15 +500,6 @@ _BRIEFING_CUES_RE = re.compile(
     re.IGNORECASE,
 )
 
-_CROP_ENTITY_RE = re.compile(
-    r"\b("
-    r"maize|corn|rice|cassava|sorghum|millet|wheat|soybean|soy|cotton|cocoa|"
-    r"coffee|tea|sugarcane|groundnut|cowpea|beans|tomato|onion|potato|yam|"
-    r"livestock|cattle|goat|sheep|poultry|fish"
-    r")\b",
-    re.IGNORECASE,
-)
-
 _LLM_REQUIRED_INTENTS = frozenset(
     {"compare", "decision_support", "diagnostic", "predictive", "locate", "monitoring"}
 )
@@ -625,7 +590,7 @@ def decompose_query(query: str, *, use_llm: bool = True) -> dict[str, Any]:
     Internal keys ``_decompose_llm_ms`` and ``_skipped_decompose_llm`` are
     attached for observability; callers should strip them before downstream use.
     """
-    q = (query or "").strip()
+    q = normalize_query_text((query or "").strip())
     if not q:
         return {
             "intent": "descriptive",
@@ -705,6 +670,13 @@ def decompose_query(query: str, *, use_llm: bool = True) -> dict[str, Any]:
     # Drop LLM-hallucinated places/entities not evidenced in the user text.
     out["geography"] = _ground_facets_in_query(out.get("geography"), q)
     out["entities"] = _ground_facets_in_query(out.get("entities"), q)
+    crop_hits = [m.group(0).lower() for m in _CROP_ENTITY_RE.finditer(q)]
+    if crop_hits:
+        seen = {str(e).strip().lower() for e in out["entities"]}
+        for crop in crop_hits:
+            if crop not in seen:
+                out["entities"].append(crop)
+                seen.add(crop)
     out["geography"] = normalize_geography_for_filter(out.get("geography"))
     out["intent"] = _normalize_intent(out.get("intent"))
     out = apply_africa_default_scope(out, q)

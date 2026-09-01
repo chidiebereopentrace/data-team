@@ -1,4 +1,5 @@
 class: GYI
+empty_policy: generate_weak
 default_table: fct_gender_inclusion
 tables:
 - fct_gender_inclusion

@@ -1,0 +1,37 @@
+version: "2026.9"
+# Class-aware Qdrant corpora — aligned with OpenTrace Mart Complete Guide §6.
+
+defaults:
+  corpora: [public_reports, academic_papers, ota]
+
+classes:
+  PRC:
+    corpora: [news, public_reports, ota]
+  FS:
+    corpora: [public_reports, ota, news]
+  PROD:
+    corpora: [public_reports, academic_papers, ota]
+  FVC:
+    corpora: [public_reports, policies, ota]
+  CLIM:
+    corpora: [public_reports, academic_papers]
+  SOIL:
+    corpora: [public_reports, academic_papers]
+  ENV:
+    corpora: [public_reports, academic_papers]
+  EL:
+    corpora: [public_reports, academic_papers]
+  HDI:
+    corpora: [public_reports, academic_papers]
+  GYI:
+    corpora: [public_reports, academic_papers]
+  AH:
+    corpora: [academic_papers, public_reports]
+  VEG:
+    corpora: [academic_papers, public_reports]
+  BIO:
+    corpora: [academic_papers, public_reports]
+  RES:
+    corpora: [academic_papers, public_reports]
+  INP:
+    corpora: [public_reports, academic_papers]

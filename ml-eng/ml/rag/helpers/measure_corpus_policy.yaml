@@ -5,6 +5,10 @@ defaults:
   companion_allow: [academic_papers, public_reports, news]
   companion_block: [policies, formation]
 
+market_price:
+  companion_allow: [news, public_reports, ota]
+  companion_block: [formation, policies]
+
 employment_share:
   companion_allow: [academic_papers]
   companion_block: [policies, formation, news, ota, public_reports]

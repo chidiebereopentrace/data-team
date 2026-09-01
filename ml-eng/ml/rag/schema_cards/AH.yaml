@@ -1,4 +1,5 @@
 class: AH
+empty_policy: generate_weak
 default_table: fct_animal_health
 tables:
 - fct_animal_health

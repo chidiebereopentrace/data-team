@@ -1,4 +1,5 @@
 class: EL
+empty_policy: generate_weak
 default_table: fct_employment
 tables:
   - fct_employment
