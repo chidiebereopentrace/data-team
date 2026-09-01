@@ -1542,13 +1542,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         env_bumped = True
     task_mode = str(state.get("task_mode") or "chat").strip().lower()
     has_engine_sql = bool(plan.get("bq_sql_queries") or plan.get("engine_results"))
-    analytical = task_mode == "analytical" or bool(state.get("analytical_mode"))
-    if task_mode in ("fact_lookup", "data_export_only") and not has_engine_sql:
-        default_bq_timeout = 10.0
-    elif analytical or has_engine_sql:
-        default_bq_timeout = 25.0
-    else:
-        default_bq_timeout = 15.0
+    default_bq_timeout = 60.0
     try:
         bq_timeout = float(os.environ.get("RAG_BQ_RETRIEVE_TIMEOUT_S", str(default_bq_timeout)) or default_bq_timeout)
     except ValueError:

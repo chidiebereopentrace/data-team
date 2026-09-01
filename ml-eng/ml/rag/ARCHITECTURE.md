@@ -640,6 +640,11 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_BQ_NL2SQL_MODE` | `per_hint` or `batch` |
 | `RAG_BQ_NL2SQL_PARALLEL` | Parallel per-hint calls (`off` for single-slot LM Studio; `on` for Railway/OpenRouter) |
 | `RAG_BQ_NL2SQL_PARALLEL_WORKERS` | Thread pool size when parallel is on (default 4) |
+| `RAG_BQ_EXECUTE_PARALLEL` | Run validated BQ jobs concurrently within a batch (default **on**) |
+| `RAG_BQ_EXECUTE_PARALLEL_WORKERS` | Thread pool size for BQ execution (default 4) |
+| `RAG_BQ_RETRIEVE_TIMEOUT_S` | Whole `node_bq_retrieve` wall clock in seconds (default **60**) |
+| `RAG_BQ_JOB_TIMEOUT_AGG_S` | Per-statement timeout for `agg_*` SQL (default **60**) |
+| `RAG_BQ_JOB_TIMEOUT_FACT_S` | Per-statement timeout for fact tables (default **60**) |
 | `RAG_BQ_SKIP_LIVE_SCHEMA` | Use hint-only schema text (faster prompts) |
 | `RAG_BQ_ROWS_PER_QUERY` | Rows per executed SQL |
 | `RAG_BQ_HINT_MAX_CHARS` | Truncate each table hint in prompt |
