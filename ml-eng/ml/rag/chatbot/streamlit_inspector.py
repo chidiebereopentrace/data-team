@@ -14,6 +14,7 @@ import requests
 import streamlit as st
 
 from ml.rag.chatbot.generator import usable_context_after_geo_purity
+from ml.rag.chatbot.schema_card import card_maturity, load_schema_card
 
 BackendMode = Literal["in_process", "http_api"]
 
@@ -632,12 +633,18 @@ def _render_sql_debug_meta(entry: dict[str, Any]) -> None:
         ("template", "template"),
         ("pattern", "pattern"),
         ("subquestion_id", "slot"),
+        ("job_id", "job_id"),
+        ("bq_ms", "bq_ms"),
+        ("bytes_processed", "bytes"),
+        ("row_count", "rows"),
     ):
         val = entry.get(key)
-        if val:
+        if val is not None and val != "":
             bits.append(f"{label}={val}")
     if bits:
         st.caption(" · ".join(bits))
+    elif str(entry.get("status") or "") not in ("ready", "planned") and entry.get("sql"):
+        st.caption("No BigQuery job_id — warehouse may not have run for this attempt.")
 
 
 def _render_bq_sql_plan_summary(plan: dict[str, Any]) -> None:
@@ -669,6 +676,44 @@ def render_sql_panel(result: dict[str, Any]) -> None:
     """Always show BQ SQL / failure diagnostics in the pipeline inspector when BQ ran."""
     if not _bq_was_attempted(result):
         return
+
+    sp = result.get("supervisor_plan") or (result.get("bq_sql_plan") or {}).get("supervisor_plan")
+    if isinstance(sp, dict) and sp:
+        with st.expander("Supervisor plan", expanded=False):
+            st.json(sp)
+    engine_results = (result.get("bq_sql_plan") or {}).get("engine_results")
+    if isinstance(engine_results, list) and engine_results:
+        with st.expander("Engine results", expanded=False):
+            st.json(engine_results)
+        class_codes = sorted(
+            {
+                str(er.get("class_code") or "").strip().upper()
+                for er in engine_results
+                if isinstance(er, dict) and er.get("class_code")
+            }
+        )
+        if class_codes:
+            maturity_rows = []
+            for code in class_codes:
+                card = load_schema_card(code)
+                mat = card_maturity(card)
+                maturity_rows.append(
+                    f"**{code}**: {mat.get('status')} ({mat.get('column_count', 0)} columns)"
+                    + (f" — {mat.get('reason')}" if mat.get("reason") else "")
+                )
+            st.caption("Schema card maturity: " + " · ".join(maturity_rows))
+    exec_bits = []
+    for key in (
+        "structured_bq_timed_out",
+        "structured_bq_never_executed",
+        "structured_bq_empty",
+        "structured_bq_validation_failed",
+        "structured_bq_unavailable",
+    ):
+        if result.get(key):
+            exec_bits.append(key.replace("structured_bq_", ""))
+    if exec_bits:
+        st.caption("BQ execute flags: " + ", ".join(exec_bits))
 
     debug_rows = [d for d in (result.get("bq_sql_debug") or []) if isinstance(d, dict)]
     bq_sql_list = list(result.get("bq_sql_queries") or [])
@@ -715,7 +760,9 @@ def render_sql_panel(result: dict[str, Any]) -> None:
                 vh = {}
                 for d in result.get("bq_sql_debug") or []:
                     if isinstance(d, dict) and d.get("value_hits"):
-                        vh = {**vh, **d.get("value_hits")}
+                        hits = d.get("value_hits")
+                        if isinstance(hits, dict):
+                            vh = {**vh, **hits}
             if vh:
                 with st.expander("Value hits (resolved labels)", expanded=False):
                     st.json(vh)

@@ -284,6 +284,22 @@ Passed from Streamlit, API, or CLI wrappers: `geo_override`, `time_start_overrid
 
 **BQ enrich + ACF stamping:** After execute, [`chatbot/bq_context_enrich.py`](chatbot/bq_context_enrich.py) resolves mart table semantics, stamps warehouse contract fields (`tier`, `place_scope`, `source_id`, …) via [`acf_metadata.project_bq_row_acf`](chatbot/acf_metadata.py), maps YoY SQL pairs through `stamp_temporal_direction`, and attaches ranked production trends via [`bq_trend_companion.fetch_mart_production_trend_companion`](chatbot/bq_trend_companion.py) on `fct_production`. NL2SQL prompts request contract columns on `fct_*` facts. Path B ACF ([`acf_scoring.py`](chatbot/acf_scoring.py)) scores **cited** evidence only at generation time.
 
+### 5.3 Reasoner vs assembler (SQL ownership)
+
+When `RAG_SQL_COMPILER=1` (default), **only class engines + [`sql_compiler.py`](chatbot/sql_compiler.py) write warehouse SQL**. Reasoning layers never emit SELECT strings on the default path.
+
+| Layer | Owns | Must not |
+|-------|------|----------|
+| [`query_decomposer`](chatbot/query_decomposer.py) + [`facet_compiler`](chatbot/facet_compiler.py) | job, geos, time, entities, shape | SQL |
+| [`class_supervisor`](chatbot/class_supervisor.py) | 1–2 classes + secondary, out_of_scope, must_search_qdrant | SQL, skip_bq |
+| [`SqlRequest`](chatbot/sql_compiler.py) + class engines | SELECT from schema card + bound value hits | Question understanding |
+| [`bq_retriever`](retrievers/bq_retriever.py) | execute only (`engine_execute_only`) | NL2SQL for engine path |
+| [`generator`](chatbot/generator.py) | prose from evidence | Invent warehouse numbers |
+
+[`global_reasoner`](chatbot/global_reasoner.py) and [`intent_bundles.yaml`](chatbot/intent_bundles.yaml) remain for multi-measure **intent** (panel / compare / share / outlook shapes) until schema cards encode those shapes fully. `RAG_SLOT_REASONER=on` is a kill switch only; if both slot and compiler flags are set, **compiler wins for BQ** and slot metadata may still inform vectors.
+
+PROD/FVC engines build [`SqlRequest`](chatbot/sql_compiler.py) from supervisor facets (geo list, time window, panel shape) via `build_sql_request_from_facets()` — they do not re-parse geography or years from raw query text.
+
 ---
 
 ## 6. Retrieval subsystems
@@ -642,9 +658,9 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_BQ_NL2SQL_PARALLEL_WORKERS` | Thread pool size when parallel is on (default 4) |
 | `RAG_BQ_EXECUTE_PARALLEL` | Run validated BQ jobs concurrently within a batch (default **on**) |
 | `RAG_BQ_EXECUTE_PARALLEL_WORKERS` | Thread pool size for BQ execution (default 4) |
-| `RAG_BQ_RETRIEVE_TIMEOUT_S` | Whole `node_bq_retrieve` wall clock in seconds (default **60**) |
-| `RAG_BQ_JOB_TIMEOUT_AGG_S` | Per-statement timeout for `agg_*` SQL (default **60**) |
-| `RAG_BQ_JOB_TIMEOUT_FACT_S` | Per-statement timeout for fact tables (default **60**) |
+| `RAG_BQ_RETRIEVE_TIMEOUT_S` | Whole `node_bq_retrieve` wall clock in seconds (default **25**) |
+| `RAG_BQ_JOB_TIMEOUT_AGG_S` | Per-statement timeout for `agg_*` SQL (default **12**) |
+| `RAG_BQ_JOB_TIMEOUT_FACT_S` | Per-statement timeout for fact tables (default **12**) |
 | `RAG_BQ_SKIP_LIVE_SCHEMA` | Use hint-only schema text (faster prompts) |
 | `RAG_BQ_ROWS_PER_QUERY` | Rows per executed SQL |
 | `RAG_BQ_HINT_MAX_CHARS` | Truncate each table hint in prompt |

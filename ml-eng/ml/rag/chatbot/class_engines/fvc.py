@@ -20,6 +20,7 @@ from ml.rag.chatbot.class_engines.shared import (
 from ml.rag.chatbot.class_table_router import TablePlan, select_table_plans
 from ml.rag.chatbot.intent_bundles import match_intent_bundles
 from ml.rag.chatbot.schema_card import load_schema_card
+from ml.rag.chatbot.sql_compiler import build_sql_request_from_facets
 from ml.rag.chatbot.value_index import complete_enum, resolve_geography_iso3, resolve_labels, resolve_metric
 
 _SHARE_RE = re.compile(
@@ -28,7 +29,9 @@ _SHARE_RE = re.compile(
 )
 
 
-def _year_bounds(facets: dict[str, Any]) -> tuple[int, int]:
+def _year_bounds(facets: dict[str, Any], *, req_years: tuple[int, int] | None = None) -> tuple[int, int]:
+    if req_years:
+        return req_years
     ts = str(facets.get("time_start") or "2010")[:4]
     te = str(facets.get("time_end") or "2024")[:4]
     try:
@@ -236,11 +239,20 @@ class FvcEngine(ClassEngine):
         iso_list = resolve_geography_iso3(query, geography=geography, expanded_regions=expanded)
         panel = is_agri_activities_panel(query, facets, bundles=bundles)
         multi = is_multi_country_panel(iso_list)
-        y0, y1 = _year_bounds(facets)
-
         base_hits = bind_value_hits(card, query=query, facets=facets)
         if iso_list:
             base_hits["country_iso3"] = iso_list
+        req = build_sql_request_from_facets(
+            class_code="FVC",
+            table_id=str(card.get("default_table") or "fct_food_balance"),
+            query=query,
+            facets=facets,
+            card=card,
+            value_hits=base_hits,
+            iso_list=iso_list,
+            bundles=bundles,
+        )
+        y0, y1 = _year_bounds(facets, req_years=(req.year_start, req.year_end))
 
         if not iso_list:
             return EngineResult(
@@ -311,7 +323,7 @@ class FvcEngine(ClassEngine):
                     "table_id": plan.table_id,
                     "sql": sql,
                     "value_hits": plan_hits,
-                    "status": "planned",
+                    "status": "ready",
                     "family_id": plan.family_id,
                     "role": plan.role,
                 }
@@ -327,13 +339,13 @@ class FvcEngine(ClassEngine):
                 value_hits=merged_hits,
             )
 
-        status = "planned" if len(sql_plans) == len(plans) else "planner_error"
+        status = "ready" if len(sql_plans) == len(plans) else "planner_error"
         return EngineResult(
             class_code="FVC",
             status=status,
             table_id=primary_table,
             sql=primary_sql,
-            caveats=all_caveats if status != "planned" else [],
+            caveats=all_caveats if status != "ready" else [],
             value_hits=merged_hits,
             sql_plans=tuple(sql_plans),
         )

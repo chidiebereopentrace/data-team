@@ -34,6 +34,7 @@ from urllib.parse import quote
 
 import requests
 
+from ml.rag.chatbot.bq_gap_messages import warehouse_blocks_web
 from ml.rag.chatbot.generator import filter_context_items, is_usable_context_item
 from ml.rag.chatbot.query_decomposer import resolve_retrieval_geographies, wants_africa_default_scope
 from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
@@ -299,19 +300,8 @@ def needs_web_fallback(
 
 
 def _warehouse_attempt_blocks_web(state: dict[str, Any]) -> bool:
-    """Do not web-search to cover a BQ timeout or engine plan attempt."""
-    plan = state.get("bq_sql_plan") if isinstance(state.get("bq_sql_plan"), dict) else {}
-    block_statuses = {"planned", "timeout", "planner_error", "execution_error"}
-    for er in plan.get("engine_results") or []:
-        if isinstance(er, dict) and str(er.get("status") or "") in block_statuses:
-            return True
-    for row in list(plan.get("bq_sql_debug") or []) + list(state.get("bq_sql_debug") or []):
-        if isinstance(row, dict) and str(row.get("status") or "") in block_statuses:
-            if row.get("sql"):
-                return True
-    if state.get("bq_sql_queries"):
-        return True
-    return False
+    """Block web only when warehouse did not produce a trustworthy job_id outcome."""
+    return warehouse_blocks_web(state)
 
 
 def route_after_rerank(state: dict[str, Any]) -> str:
@@ -1020,6 +1010,8 @@ def retrieve_web_fallback_detailed(
         task_mode == "analytical"
         or heavy_path
         or plan_type in ("government", "agribusinesses", "integrated")
+        or str(dec.get("job") or "").strip().lower()
+        in ("fact", "series", "panel", "share", "compare", "report", "data_export_only")
     )
     official_only = skip_wikipedia or _typed_web_allowlist_only(dec, query)
 

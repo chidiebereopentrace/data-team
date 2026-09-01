@@ -1,15 +1,40 @@
 class: EL
 default_table: fct_employment
 tables:
-- fct_employment
-- fct_economics
-- fct_household
-- dim_indicator
-- dim_geography
-columns: {}
-hard_rules: []
+  - fct_employment
+  - fct_economics
+  - fct_household
+  - dim_indicator
+  - dim_geography
+default_measures:
+  series:
+    - employment_rate
+  panel:
+    - employment_rate
+columns:
+  country_iso3:
+    role: filter_enum
+    prompt_mode: resolved_only
+  year:
+    role: time_filter
+    prompt_mode: stats_only
+  metric:
+    role: measure
+    prompt_mode: resolved_only
+  sex_key:
+    role: filter_enum
+    prompt_mode: resolved_only
+  indicator_key:
+    role: entity
+    prompt_mode: resolved_only
+  value:
+    role: measure
+    prompt_mode: stats_only
+hard_rules:
+  - Use indicator_key from resolved labels only
+  - Do not mix household and national employment without compare intent
 exclude_prompt_columns:
-- geo_key
-- scenario_key
-- classification_key
-- product_key
+  - geo_key
+  - scenario_key
+  - classification_key
+  - product_key

@@ -136,6 +136,95 @@ def adapt_cited_claims(cited_items: list[Any]) -> list[ExtractedClaim]:
     return claims
 
 
+def apply_bq_execute_ceiling(
+    result: ACFResult,
+    exec_flags: dict[str, bool] | None,
+    *,
+    usable_bq: bool = False,
+    bq_sql_debug: list[dict[str, Any]] | None = None,
+) -> ACFResult:
+    """Cap ACF when warehouse execute state does not support strong confidence."""
+    flags = exec_flags or {}
+    debug = [d for d in (bq_sql_debug or []) if isinstance(d, dict)]
+    pre_count = sum(1 for d in debug if str(d.get("sql") or "").strip())
+    timeout_count = sum(1 for d in debug if str(d.get("status") or "") == "timeout")
+    all_jobs_timed_out = bool(pre_count) and timeout_count >= pre_count and not usable_bq
+
+    if flags.get("structured_bq_timed_out"):
+        if usable_bq and not all_jobs_timed_out:
+            expl = (
+                "Warehouse panel partially timed out — confidence reflects cited structured "
+                "rows only; some companion queries did not finish."
+            )
+            coverage = result.components.get("coverage") if isinstance(result.components, dict) else None
+            components = dict(result.components) if isinstance(result.components, dict) else {}
+            if isinstance(coverage, (int, float)):
+                components["coverage"] = max(0.0, float(coverage) * 0.75)
+            return ACFResult(
+                band=result.band if result.score > 45 else "limited",
+                band_label=result.band_label,
+                score=min(result.score, max(45, int(result.score * 0.85))),
+                explanation=expl,
+                note=expl,
+                components=components,
+                applied_ceiling="partial_panel",
+                config_version=result.config_version,
+                claim_level=result.claim_level,
+                question_type=result.question_type,
+            )
+        expl = (
+            "Warehouse query timed out for the scoped filter — confidence is capped "
+            "until structured rows are returned."
+        )
+        return ACFResult(
+            band="low",
+            band_label="Low confidence",
+            score=min(result.score, 35),
+            explanation=expl,
+            note=expl,
+            components=result.components,
+            applied_ceiling="bq_timeout",
+            config_version=result.config_version,
+            claim_level=result.claim_level,
+            question_type=result.question_type,
+        )
+    if flags.get("structured_bq_never_executed") or flags.get("structured_bq_validation_failed"):
+        expl = (
+            "Structured warehouse evidence was not executed — confidence cannot reflect "
+            "FAOSTAT or mart figures for this filter."
+        )
+        return ACFResult(
+            band="no_evidence",
+            band_label="No evidence",
+            score=0,
+            explanation=expl,
+            note=expl,
+            components=result.components,
+            applied_ceiling="bq_never_executed",
+            config_version=result.config_version,
+            claim_level=result.claim_level,
+            question_type=result.question_type,
+        )
+    if flags.get("structured_bq_empty"):
+        expl = (
+            "Warehouse returned zero rows for the scoped filter — narrative sources only "
+            "where cited."
+        )
+        return ACFResult(
+            band="limited",
+            band_label="Limited confidence",
+            score=min(result.score, 45),
+            explanation=expl,
+            note=expl,
+            components=result.components,
+            applied_ceiling="bq_empty",
+            config_version=result.config_version,
+            claim_level=result.claim_level,
+            question_type=result.question_type,
+        )
+    return result
+
+
 def score_cited_evidence(
     cited_items: list[Any],
     *,

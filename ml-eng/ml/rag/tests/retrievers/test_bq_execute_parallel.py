@@ -1,4 +1,4 @@
-"""Parallel BigQuery execution and 60s job timeout defaults."""
+"""Parallel BigQuery execution and per-job timeout defaults."""
 from __future__ import annotations
 
 import time
@@ -75,11 +75,11 @@ def _retrieve_explicit_batch(
             )
 
 
-def test_job_timeout_defaults_60(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_job_timeout_defaults_12(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RAG_BQ_JOB_TIMEOUT_AGG_S", raising=False)
     monkeypatch.delenv("RAG_BQ_JOB_TIMEOUT_FACT_S", raising=False)
-    assert _bq_job_timeout_s("SELECT 1 FROM agg_production_country_year LIMIT 1") == 60.0
-    assert _bq_job_timeout_s("SELECT 1 FROM fct_production LIMIT 1") == 60.0
+    assert _bq_job_timeout_s("SELECT 1 FROM agg_production_country_year LIMIT 1") == 12.0
+    assert _bq_job_timeout_s("SELECT 1 FROM fct_production LIMIT 1") == 12.0
 
 
 def test_bq_execute_parallel_default_on(monkeypatch: pytest.MonkeyPatch) -> None:

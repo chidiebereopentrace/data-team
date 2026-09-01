@@ -19,15 +19,19 @@ from ml.rag.chatbot.class_engines.shared import (
 from ml.rag.chatbot.class_table_router import select_table_plans
 from ml.rag.chatbot.intent_bundles import match_intent_bundles
 from ml.rag.chatbot.schema_card import load_schema_card
+from ml.rag.chatbot.sql_compiler import SqlRequest, build_sql_request_from_facets
 from ml.rag.chatbot.value_index import resolve_geography_iso3
 
 
 def _year_bounds(
-    facets: dict[str, Any],
+    req: SqlRequest,
     *,
     query: str,
+    facets: dict[str, Any],
     bundles: tuple[Any, ...],
 ) -> tuple[int, int]:
+    if req.year_start and req.year_end:
+        return req.year_start, req.year_end
     ts = str(facets.get("time_start") or "")[:4]
     te = str(facets.get("time_end") or "")[:4]
     if not ts or not te:
@@ -178,7 +182,17 @@ class ProdEngine(ClassEngine):
         hits["country_iso3"] = iso_list
         products = resolve_staple_products(query, facets, bundles=bundles)
         hits["product_name"] = products
-        y0, y1 = _year_bounds(facets, query=query, bundles=bundles)
+        req = build_sql_request_from_facets(
+            class_code="PROD",
+            table_id=table_id,
+            query=query,
+            facets=facets,
+            card=card,
+            value_hits=hits,
+            iso_list=iso_list,
+            bundles=bundles,
+        )
+        y0, y1 = _year_bounds(req, query=query, facets=facets, bundles=bundles)
 
         try:
             sql = _build_prod_sql(
@@ -206,7 +220,7 @@ class ProdEngine(ClassEngine):
         )
         return EngineResult(
             class_code="PROD",
-            status="planned" if ok else "planner_error",
+            status="ready" if ok else "planner_error",
             table_id=table_id,
             sql=sql,
             caveats=[] if ok else [reason],

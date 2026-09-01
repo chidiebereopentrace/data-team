@@ -1,13 +1,38 @@
 class: CLIM
 default_table: fct_climate
 tables:
-- fct_climate
-- dim_indicator
-- dim_geography
-columns: {}
-hard_rules: []
+  - fct_climate
+  - dim_indicator
+  - dim_geography
+default_measures:
+  series:
+    - precipitation
+  panel:
+    - precipitation
+columns:
+  country_iso3:
+    role: filter_enum
+    prompt_mode: resolved_only
+  year:
+    role: time_filter
+    prompt_mode: stats_only
+  metric:
+    role: measure
+    prompt_mode: resolved_only
+  geo_scope:
+    role: filter_enum
+    prompt_mode: resolved_only
+  value:
+    role: measure
+    prompt_mode: stats_only
+  unit:
+    role: filter_enum
+    prompt_mode: stats_only
+hard_rules:
+  - Prefer country_model grain for national climate questions
+  - Do not mix point_obs and country_model without explicit compare intent
 exclude_prompt_columns:
-- geo_key
-- scenario_key
-- classification_key
-- product_key
+  - geo_key
+  - scenario_key
+  - classification_key
+  - product_key

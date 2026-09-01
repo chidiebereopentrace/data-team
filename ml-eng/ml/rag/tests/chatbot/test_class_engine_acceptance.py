@@ -22,7 +22,7 @@ def test_fvc_engine_ghana_wheat_sql() -> None:
     q = "What share of Ghana's wheat domestic supply was imported in the latest food balance year?"
     facets = {"geography": ["Ghana"], "time_start": "2010-01-01", "time_end": "2024-12-31"}
     result = FvcEngine().run_plan(q, facets=facets, card=None)
-    assert result.status == "planned"
+    assert result.status == "ready"
     assert result.table_id == "fct_food_balance"
     assert result.sql
     assert "fct_food_balance" in result.sql
@@ -64,10 +64,10 @@ def test_west_africa_deferred_third_engine() -> None:
     assert "PRC" not in sp.secondary
     results = run_class_engines(q, supervisor_plan=sp, facets=dec)
     prod = next(r for r in results if r.class_code == "PROD")
-    assert prod.status == "planned", prod.caveats
+    assert prod.status == "ready", prod.caveats
     assert "country_iso3 IN (" in (prod.sql or "")
     fvc = next(r for r in results if r.class_code == "FVC")
-    assert fvc.status == "planned", fvc.caveats
+    assert fvc.status == "ready", fvc.caveats
     assert len(fvc.sql_plans) >= 2
     plan = engine_results_to_bq_plan(results)
     debug_tables = {row["table_id"] for row in plan.get("bq_sql_debug") or [] if row.get("table_id")}
@@ -97,7 +97,7 @@ def test_generic_engine_fs_picks_food_security_table() -> None:
     q = "How many people are in IPC Phase 3 in Ethiopia?"
     facets = {"geography": ["Ethiopia"], "time_start": "2020-01-01", "time_end": "2024-12-31"}
     result = GenericEngine("FS").run_plan(q, facets=facets, card=None)
-    assert result.status == "planned", result.caveats
+    assert result.status == "ready", result.caveats
     assert result.table_id == "fct_food_security"
 
 
