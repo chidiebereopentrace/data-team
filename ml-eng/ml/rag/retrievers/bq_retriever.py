@@ -48,6 +48,27 @@ from ml.rag.session_store import get_bq_schema_cache, set_bq_schema_cache
 
 logger = logging.getLogger(__name__)
 
+_AGG_TABLE_RE = re.compile(r"\bagg_", re.I)
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, str(default)) or default)
+    except ValueError:
+        return default
+
+
+def _bq_job_timeout_s(sql: str) -> float:
+    if _AGG_TABLE_RE.search(sql or ""):
+        return _env_float("RAG_BQ_JOB_TIMEOUT_AGG_S", 12.0)
+    return _env_float("RAG_BQ_JOB_TIMEOUT_FACT_S", 15.0)
+
+
+def _remaining_deadline_s(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    return max(0.1, deadline - time.perf_counter())
+
 _observe_span = get_observe_decorator()
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -1284,6 +1305,12 @@ class BQRetriever(BaseRetriever):
         prepared_ok = False
         queries_left = max_queries
         execute_t0 = time.perf_counter()
+        deadline: float | None = kwargs.get("deadline")
+        if deadline is not None:
+            try:
+                deadline = float(deadline)
+            except (TypeError, ValueError):
+                deadline = None
 
         def _run_sql_batch(
             batch: list[str],
@@ -1294,6 +1321,20 @@ class BQRetriever(BaseRetriever):
             nonlocal budget, any_usable_rows, prepared_ok, queries_left
             for idx, raw_sql in enumerate(batch):
                 if budget <= 0 or queries_left <= 0:
+                    break
+                if deadline is not None and time.perf_counter() >= deadline:
+                    items.append(
+                        {
+                            "content": "[BQ node wall deadline reached before starting query]",
+                            "source": "bigquery",
+                            "metadata": {
+                                "sql": raw_sql,
+                                "status": "timeout",
+                                "prep_error": "node_bq_retrieve wall deadline",
+                                "sql_source": source,
+                            },
+                        }
+                    )
                     break
                 queries_left -= 1
                 point_fact_cap = (
@@ -1359,11 +1400,40 @@ class BQRetriever(BaseRetriever):
                     _max_b = max_bytes_billed_for_source(source)
                     _jcfg = _QJC(maximum_bytes_billed=_max_b) if _max_b > 0 else None
                     job = client.query(validated, job_config=_jcfg)
-                    rows = list(job.result())
+                    job_cap = _bq_job_timeout_s(validated)
+                    remain = _remaining_deadline_s(deadline)
+                    if remain is not None:
+                        job_cap = min(job_cap, remain)
+                    rows = list(job.result(timeout=job_cap))
                     billed = int(getattr(job, "total_bytes_billed", 0) or 0)
                     if billed:
                         logger.info("BQ bytes billed sql#%d source=%s: %s", idx + 1, source, billed)
                 except Exception as exc:
+                    exc_s = str(exc).lower()
+                    is_timeout = "timeout" in exc_s or "deadline" in exc_s or exc.__class__.__name__ == "TimeoutError"
+                    if is_timeout:
+                        logger.warning(
+                            "BQ job timeout sql#%d source=%s after %.1fs",
+                            idx + 1,
+                            source,
+                            _bq_job_timeout_s(validated),
+                        )
+                        items.append(
+                            {
+                                "content": "[BQ query timed out]",
+                                "source": "bigquery",
+                                "metadata": {
+                                    "sql": validated,
+                                    "sql_index": idx + 1,
+                                    "sql_count": len(batch),
+                                    "status": "timeout",
+                                    "execution_error": str(exc)[:500],
+                                    "sql_source": source,
+                                    "nl2sql_model": _nl2sql_model_id(),
+                                },
+                            }
+                        )
+                        continue
                     logger.warning(
                         "BQ execution failed for validated SQL #%d: %s (sql: %s)",
                         idx + 1, str(exc)[:200], validated[:200]
@@ -1426,7 +1496,11 @@ class BQRetriever(BaseRetriever):
                                     _QJC(maximum_bytes_billed=_max_b) if _max_b > 0 else None
                                 )
                                 job = client.query(revalidated, job_config=_jcfg)
-                                rows = list(job.result())
+                                job_cap = _bq_job_timeout_s(revalidated)
+                                remain = _remaining_deadline_s(deadline)
+                                if remain is not None:
+                                    job_cap = min(job_cap, remain)
+                                rows = list(job.result(timeout=job_cap))
                                 validated = revalidated
                             except Exception as exc:
                                 logger.warning(

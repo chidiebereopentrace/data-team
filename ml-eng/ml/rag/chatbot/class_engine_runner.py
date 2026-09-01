@@ -68,6 +68,21 @@ def run_class_engines(
     return results
 
 
+def _iter_sql_entries(er: EngineResult) -> list[dict[str, Any]]:
+    if er.sql_plans:
+        return list(er.sql_plans)
+    if er.sql and er.table_id:
+        return [
+            {
+                "table_id": er.table_id,
+                "sql": er.sql,
+                "value_hits": er.value_hits,
+                "status": er.status,
+            }
+        ]
+    return []
+
+
 def engine_results_to_bq_plan(
     results: list[EngineResult],
     *,
@@ -84,33 +99,44 @@ def engine_results_to_bq_plan(
         if er.status == "deferred":
             debug.append({**er.to_dict(), "sql": None})
             continue
-        if er.table_id and er.table_id not in selected:
-            selected.append(er.table_id)
-        if er.sql:
-            sql_queries.append(er.sql)
-            debug.append(
-                {
-                    "sql": er.sql,
-                    "status": er.status,
-                    "class_code": er.class_code,
-                    "table_id": er.table_id,
-                    "value_hits": er.value_hits,
-                    "sql_source": "engine",
-                }
-            )
-        if er.sql and er.table_id:
-            intents.append(
-                {
-                    "goal": f"{er.class_code} from {er.table_id}",
-                    "tables": [er.table_id],
-                    "filters": "",
-                    "notes": er.class_code,
-                    "pattern": "custom",
-                    "metric": "value",
-                    "grain": [],
-                    "order_by": "year DESC",
-                }
-            )
+        entries = _iter_sql_entries(er)
+        if not entries and er.status != "planned":
+            debug.append({**er.to_dict(), "sql": er.sql})
+            continue
+        for entry in entries:
+            table_id = str(entry.get("table_id") or er.table_id or "")
+            sql = entry.get("sql")
+            sub_status = str(entry.get("status") or er.status)
+            sub_hits = entry.get("value_hits") if isinstance(entry.get("value_hits"), dict) else er.value_hits
+            if table_id and table_id not in selected:
+                selected.append(table_id)
+            if sql:
+                sql_queries.append(str(sql))
+                debug.append(
+                    {
+                        "sql": sql,
+                        "status": sub_status,
+                        "class_code": er.class_code,
+                        "table_id": table_id,
+                        "value_hits": sub_hits,
+                        "sql_source": "engine",
+                        "family_id": entry.get("family_id"),
+                        "role": entry.get("role"),
+                    }
+                )
+            if sql and table_id:
+                intents.append(
+                    {
+                        "goal": f"{er.class_code} from {table_id}",
+                        "tables": [table_id],
+                        "filters": "",
+                        "notes": er.class_code,
+                        "pattern": "custom",
+                        "metric": "value",
+                        "grain": [],
+                        "order_by": "year DESC",
+                    }
+                )
         value_hits_all[er.class_code] = er.value_hits
 
     return {

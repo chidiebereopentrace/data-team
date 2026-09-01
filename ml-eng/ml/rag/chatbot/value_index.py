@@ -11,6 +11,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     load_mart_table_schema,
     value_samples_for_mart_tables,
 )
+from ml.rag.chatbot.geo_iso3 import infer_country_iso3_from_query, name_to_iso3
 
 _DEFAULT_DIR = Path(__file__).resolve().parents[1] / "value_index"
 _SAMPLE_SUFFIX = "_value_samples"
@@ -115,17 +116,10 @@ def _column_dtype(schema: dict[str, Any], column: str) -> str:
 def resolve_country(query: str, *, geography: list[str] | None = None) -> str | None:
     if geography:
         for g in geography:
-            g = str(g).strip()
-            if len(g) == 3 and g.isalpha():
-                return g.upper()
-    q = _norm(query)
-    for name, iso in _COUNTRY_ALIASES.items():
-        if name in q:
-            return iso
-    for iso in complete_enum("fct_food_balance", "country_iso3"):
-        if _norm(iso) in q:
-            return iso.upper()
-    return None
+            iso = name_to_iso3(str(g).strip())
+            if iso:
+                return iso
+    return infer_country_iso3_from_query(query)
 
 
 def resolve_labels(
@@ -138,15 +132,12 @@ def resolve_labels(
 ) -> list[str]:
     """ALL matching labels for query — no score cutoff."""
     if column == "country_iso3":
-        if geography:
-            out: list[str] = []
-            for g in geography:
-                iso = resolve_country(str(g), geography=None)
-                if iso and iso not in out:
-                    out.append(iso)
-            if out:
-                return out
-        iso = resolve_country(query, geography=None)
+        from ml.rag.chatbot.geo_iso3 import resolve_geography_iso3
+
+        iso_list = resolve_geography_iso3(query, geography=geography)
+        if iso_list:
+            return iso_list
+        iso = resolve_country(query, geography=geography)
         return [iso] if iso else []
 
     labels = complete_enum(table_id, column)
@@ -204,6 +195,17 @@ def resolve_metric(query: str, *, class_code: str = "FVC", table_id: str = "fct_
     return resolve_labels(table_id, "metric", query)
 
 
+def resolve_geography_iso3(
+    query: str,
+    *,
+    geography: list[str] | None = None,
+    expanded_regions: list[str] | None = None,
+) -> list[str]:
+    from ml.rag.chatbot.geo_iso3 import resolve_geography_iso3 as _resolve
+
+    return _resolve(query, geography=geography, expanded_regions=expanded_regions)
+
+
 def resolve_source_natural_key(table_id: str, query: str = "") -> list[str]:
     return complete_enum(table_id, "source_natural_key")
 
@@ -215,4 +217,5 @@ __all__ = [
     "resolve_metric",
     "resolve_source_natural_key",
     "numeric_stats",
+    "resolve_geography_iso3",
 ]

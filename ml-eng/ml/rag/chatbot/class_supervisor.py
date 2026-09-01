@@ -29,6 +29,10 @@ _OUTLOOK_RE = re.compile(
     r"\b(ipc\s+phase|lean\s+season|food\s+security\s+outlook|fews)\b",
     re.I,
 )
+_PRC_MARKET_RE = re.compile(
+    r"\b(price|prices|market|retail|wholesale|inflation)\b",
+    re.I,
+)
 
 
 def _slot_reasoner_active() -> bool:
@@ -97,8 +101,12 @@ def compile_supervisor_plan(
         rationale_parts.append("food_balance_share→FVC")
     elif _AGRI_ACTIVITIES_RE.search(q) or has_bundle(bundles, "agricultural_activities"):
         primary = "PROD"
-        secondary = ["FVC", "PRC"]
-        rationale_parts.append("agri_activities→PROD+FVC+PRC")
+        secondary = ["FVC"]
+        if _PRC_MARKET_RE.search(q):
+            secondary.append("PRC")
+        rationale_parts.append(
+            "agri_activities→PROD+FVC" + ("+PRC" if "PRC" in secondary else "")
+        )
     elif _OUTLOOK_RE.search(q) or has_bundle(bundles, "outlook_overlay"):
         primary = "FS"
         rationale_parts.append("outlook→FS")

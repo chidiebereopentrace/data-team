@@ -9,11 +9,13 @@ from ml.rag.chatbot.bq_sql_validate import (
     validate_sql_column_allowlist,
     validate_sql_table_allowlist,
 )
+from ml.rag.chatbot.bundle_metrics import unsupported_grain_for_panel
+from ml.rag.chatbot.geo_iso3 import validate_sql_country_iso3_subset
 from ml.rag.chatbot.schema_card import load_schema_card, prompt_mode_for_column
 from ml.rag.chatbot.value_index import (
     complete_enum,
     numeric_stats,
-    resolve_country,
+    resolve_geography_iso3,
     resolve_labels,
 )
 
@@ -70,9 +72,10 @@ def bind_value_hits(
     table = str(card.get("default_table") or "")
     hits: dict[str, Any] = {}
     geography = facets.get("geography") if isinstance(facets.get("geography"), list) else []
-    iso = resolve_country(query, geography=geography)
-    if iso:
-        hits["country_iso3"] = [iso]
+    expanded = facets.get("expanded_regions") if isinstance(facets.get("expanded_regions"), list) else None
+    iso_list = resolve_geography_iso3(query, geography=geography, expanded_regions=expanded)
+    if iso_list:
+        hits["country_iso3"] = iso_list
     cols = card.get("columns") or {}
     if not isinstance(cols, dict):
         cols = {}
@@ -81,8 +84,6 @@ def bind_value_hits(
             continue
         mode = str(spec.get("prompt_mode") or prompt_mode_for_column(card, col))
         if col == "country_iso3":
-            if iso:
-                hits[col] = [iso]
             continue
         if mode == "full_list":
             hits[col] = complete_enum(table, col)
@@ -103,6 +104,7 @@ def validate_engine_sql(
     *,
     table_id: str,
     selected_tables: list[str] | None = None,
+    allowed_iso3: list[str] | None = None,
 ) -> tuple[bool, str]:
     if _EXTRACT_YEAR_WHERE_RE.search(sql or ""):
         return False, "EXTRACT(YEAR FROM as_of_date) forbidden in WHERE"
@@ -110,6 +112,13 @@ def validate_engine_sql(
         return False, "geo_key hash filter forbidden"
     if not re.search(r"\blimit\s+\d+", sql or "", re.I):
         return False, "LIMIT required"
+    iso_count = len(allowed_iso3 or [])
+    if unsupported_grain_for_panel(table_id, iso_count=iso_count):
+        return False, f"unsupported_grain for panel on {table_id}"
+    if allowed_iso3:
+        geo_err = validate_sql_country_iso3_subset(sql, allowed_iso3)
+        if geo_err:
+            return False, geo_err
     tables = set(selected_tables or [table_id])
     err = validate_sql_table_allowlist(sql, tables)
     if err:

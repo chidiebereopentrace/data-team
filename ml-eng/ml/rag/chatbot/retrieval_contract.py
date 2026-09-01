@@ -92,17 +92,21 @@ def choose_agg_vs_fact(
     multi_country: bool,
     year_hint: str,
     single_country: bool = False,
+    iso_count: int = 0,
 ) -> str:
     """Prefer agg_* for national annual rollups when question scope fits."""
     q = (query or "").lower()
     national = (
         multi_country
         or single_country
+        or iso_count >= 1
         or "national" in q
         or "country" in q
     )
     annual = "month" not in q and "season" not in q and "fnid" not in q
     if table_id == "fct_production" and national and annual:
+        if multi_country or iso_count >= 2:
+            return "agg_production_country_year"
         return "agg_production_annual"
     if table_id == "fct_food_security" and national and "month" in q:
         return "agg_food_security_monthly"

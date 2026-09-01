@@ -92,6 +92,7 @@ from ml.rag.retrievers.bq_retriever import BQRetriever
 from ml.rag.retrievers.vector_retriever import VectorRetriever
 from ml.rag.llm_chat import get_llm_usage, reset_llm_usage
 from ml.rag.retrievers.web_retriever import (
+    _warehouse_attempt_blocks_web,
     format_web_chunk_for_context,
     needs_web_fallback,
     retrieve_web_fallback_detailed,
@@ -1236,7 +1237,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     jobs: dict[Any, str] = {}
     workers = max(1, min(6, len(active) + (1 if _use_legacy_research_collection() else 0)))
     try:
-        corpus_timeout = float(os.environ.get("RAG_CORPUS_RETRIEVE_TIMEOUT_S", "8") or 8)
+        corpus_timeout = float(os.environ.get("RAG_CORPUS_RETRIEVE_TIMEOUT_S", "4") or 4)
     except ValueError:
         corpus_timeout = 8.0
     vector_t0 = time.perf_counter()
@@ -1325,12 +1326,14 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
     q = (state.get("query") or "").strip()
     analytical = bool(state.get("analytical_mode"))
     task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
-    dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
+    dec_raw = state.get("decomposition")
+    dec: dict[str, Any] = (
+        cast(dict[str, Any], dec_raw) if isinstance(dec_raw, dict) else {}
+    )
     sp = SupervisorPlan.from_dict(
         state.get("supervisor_plan") if isinstance(state.get("supervisor_plan"), dict) else None
     )
     if sp is None and not _slot_reasoner_active():
-        matched_raw = dec.get("matched_bundles")
         bundles = match_intent_bundles(q, dec, breakdown=compile_breakdown(q))
         sp = compile_supervisor_plan(q, decomposition=dec, matched_bundles=bundles)
 
@@ -1538,16 +1541,18 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         os.environ["RAG_BQ_MAX_SQL_QUERIES"] = str(floor)
         env_bumped = True
     task_mode = str(state.get("task_mode") or "chat").strip().lower()
+    has_engine_sql = bool(plan.get("bq_sql_queries") or plan.get("engine_results"))
+    analytical = task_mode == "analytical" or bool(state.get("analytical_mode"))
+    if task_mode in ("fact_lookup", "data_export_only") and not has_engine_sql:
+        default_bq_timeout = 10.0
+    elif analytical or has_engine_sql:
+        default_bq_timeout = 25.0
+    else:
+        default_bq_timeout = 15.0
     try:
-        bq_timeout = float(
-            os.environ.get(
-                "RAG_BQ_RETRIEVE_TIMEOUT_S",
-                "10" if task_mode in ("fact_lookup", "data_export_only") else "15",
-            )
-            or (10 if task_mode in ("fact_lookup", "data_export_only") else 15)
-        )
+        bq_timeout = float(os.environ.get("RAG_BQ_RETRIEVE_TIMEOUT_S", str(default_bq_timeout)) or default_bq_timeout)
     except ValueError:
-        bq_timeout = 10.0 if task_mode in ("fact_lookup", "data_export_only") else 15.0
+        bq_timeout = default_bq_timeout
     tc_raw = state.get("turn_contract")
     contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
     contract_kwargs: dict[str, Any] = {}
@@ -1561,6 +1566,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     bq_failure_row: dict[str, Any] | None = None
     pre_debug = list(plan.get("bq_sql_debug") or [])
     pre_queries = list(plan.get("bq_sql_queries") or [])
+    retrieve_deadline = time.perf_counter() + bq_timeout
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             fut = ex.submit(
@@ -1576,6 +1582,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
                 domains=domains,
                 task_mode=task_mode,
                 sql=pre_queries if pre_queries else None,
+                deadline=retrieve_deadline,
                 **bq_geo,
                 **contract_kwargs,
                 crop_required=bool(plan.get("crop_required", True)),
@@ -1919,6 +1926,8 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
             reranked,
             task_mode=str(state.get("task_mode") or ""),
             has_usable_bq=has_bq,
+            bq_warehouse_attempted=_warehouse_attempt_blocks_web(cast(dict[str, Any], state)),
+            heavy_path=bool(state.get("heavy_path")),
         ):
             update_current_span_metadata({"web_fallback_status": "skipped"})
             return {}
@@ -1939,6 +1948,9 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
                 geo_override=str(state.get("geo_override") or ""),
                 time_start=ts or None,
                 time_end=te or None,
+                plan_type=str(state.get("plan_type") or ""),
+                task_mode=str(state.get("task_mode") or ""),
+                heavy_path=bool(state.get("heavy_path")),
             )
         except Exception:
             logger.exception("Web fallback retrieval raised; treating as error")
