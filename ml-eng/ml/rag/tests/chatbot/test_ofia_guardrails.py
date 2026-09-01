@@ -12,7 +12,8 @@ from ml.rag.chatbot.class_engine_runner import run_class_engines
 from ml.rag.chatbot.class_supervisor import compile_supervisor_plan
 from ml.rag.chatbot.graph import _typed_bq_hard_return
 from ml.rag.chatbot.schema_card import card_maturity, load_schema_card
-from ml.rag.chatbot.sql_compiler import build_sql_request_from_facets, sql_compiler_enabled
+from ml.rag.chatbot.sql_request import build_sql_request_from_facets
+from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
 
 
 def test_dual_flag_compiler_wins_for_supervisor(monkeypatch) -> None:
