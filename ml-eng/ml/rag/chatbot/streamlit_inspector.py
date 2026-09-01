@@ -707,6 +707,18 @@ def render_sql_panel(result: dict[str, Any]) -> None:
             if cache_hit is True:
                 bits.append("cache_hit=true")
             st.caption(" · ".join(bits))
+        if result.get("value_hits") or any(
+            isinstance(d, dict) and d.get("value_hits") for d in (result.get("bq_sql_debug") or [])
+        ):
+            vh = result.get("value_hits")
+            if not vh:
+                vh = {}
+                for d in result.get("bq_sql_debug") or []:
+                    if isinstance(d, dict) and d.get("value_hits"):
+                        vh = {**vh, **d.get("value_hits")}
+            if vh:
+                with st.expander("Value hits (resolved labels)", expanded=False):
+                    st.json(vh)
         if debug_rows:
             for i, entry in enumerate(debug_rows, start=1):
                 status = str(entry.get("status") or "unknown")

@@ -1,0 +1,13 @@
+class: HDI
+default_table: fct_hdi
+tables:
+- fct_hdi
+- fct_economics
+- agg_hdi_latest
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

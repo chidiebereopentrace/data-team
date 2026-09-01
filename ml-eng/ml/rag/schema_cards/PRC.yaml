@@ -1,0 +1,15 @@
+class: PRC
+default_table: fct_prices
+tables:
+- fct_prices
+- dim_market
+- dim_geography
+- dim_product
+- agg_prices_country_month
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

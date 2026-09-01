@@ -71,6 +71,10 @@ def _known_table_ids() -> set[str]:
     return {str(r["table_id"]) for r in list_mart_table_index()}
 
 
+def _slot_reasoner_active() -> bool:
+    return os.environ.get("RAG_SLOT_REASONER", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _extract_json_obj(raw: str) -> dict[str, Any] | None:
     text = (raw or "").strip()
     if not text:
@@ -245,7 +249,7 @@ def reason_bq_sql_plan(
     """
     known = _known_table_ids()
     dec = decomposition if isinstance(decomposition, dict) else {}
-    if dec.get("reasoner_job") or dec.get("matched_bundles"):
+    if _slot_reasoner_active() and (dec.get("reasoner_job") or dec.get("matched_bundles")):
         return {
             "selected_tables": [],
             "query_intents": [],

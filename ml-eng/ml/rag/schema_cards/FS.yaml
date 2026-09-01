@@ -1,0 +1,31 @@
+class: FS
+default_table: fct_food_security
+tables:
+  - fct_food_security
+  - agg_food_security_country_month
+coverage:
+  agg_food_security_monthly:
+    country_iso3:
+      - MLI
+      - ZWE
+      - CAF
+hard_rules:
+  - If geo not in monthly agg coverage use fct_food_security
+  - measure_type population vs classification
+columns:
+  measure_type:
+    role: filter_enum
+    prompt_mode: full_list
+  scenario_name:
+    role: filter_enum
+    prompt_mode: resolved_only
+  country_iso3:
+    role: filter_enum
+    prompt_mode: resolved_only
+  year:
+    role: time_filter
+    prompt_mode: stats_only
+exclude_prompt_columns:
+  - geo_key
+  - scenario_key
+  - classification_key

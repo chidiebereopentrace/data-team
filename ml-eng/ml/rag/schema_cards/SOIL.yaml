@@ -1,0 +1,15 @@
+class: SOIL
+default_table: fct_soil_health
+tables:
+- fct_soil_health
+- fct_land_inputs
+- fct_land_degradation
+- agg_soil_admin
+- bridge_geography_aez
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

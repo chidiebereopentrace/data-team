@@ -5,7 +5,12 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, MeasureSpec
-from ml.rag.chatbot.intent_bundles import MatchedBundle, bundle_required_measures, bundles_block_primary
+from ml.rag.chatbot.intent_bundles import (
+    MatchedBundle,
+    bundle_primary_measure,
+    bundle_required_measures,
+    bundles_block_primary,
+)
 from ml.rag.chatbot.query_decomposer import _extract_year_range, _CROP_ENTITY_RE
 from ml.rag.chatbot.turn_contract import (
     BreakdownDim,
@@ -231,7 +236,7 @@ def compile_measure(
     bundles = matched_bundles or ()
     bundle_measures = bundle_required_measures(bundles)
     if bundle_measures:
-        mid = bundle_measures[0]
+        mid = bundle_primary_measure(bundles, q) or bundle_measures[0]
         if mid == "employment_share":
             sector = "agriculture"
         return mid, sector

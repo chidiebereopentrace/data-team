@@ -1,0 +1,13 @@
+class: AH
+default_table: fct_animal_health
+tables:
+- fct_animal_health
+- fct_food_hazards
+- fct_insurance
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

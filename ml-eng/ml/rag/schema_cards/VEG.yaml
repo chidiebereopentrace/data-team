@@ -1,0 +1,11 @@
+class: VEG
+default_table: fct_vegetation
+tables:
+- fct_vegetation
+columns: {}
+hard_rules: []
+exclude_prompt_columns:
+- geo_key
+- scenario_key
+- classification_key
+- product_key

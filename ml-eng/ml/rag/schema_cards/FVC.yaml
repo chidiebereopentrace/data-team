@@ -1,0 +1,48 @@
+class: FVC
+default_table: fct_food_balance
+tables:
+  - fct_food_balance
+  - fct_trade
+  - fct_prices
+  - fct_economics
+  - fct_forestry
+do_not_use:
+  - fct_value_chain
+joins_when_needed:
+  - dim_product
+hard_rules:
+  - Prefer metric slugs over element string matching
+  - Filter year INT64 or as_of_date BETWEEN; never EXTRACT(YEAR FROM as_of_date) in WHERE
+  - source_natural_key values from complete index only
+columns:
+  metric:
+    role: filter_enum
+    prompt_mode: full_list
+  source_natural_key:
+    role: filter_enum
+    prompt_mode: full_list
+  unit:
+    role: filter_enum
+    prompt_mode: full_list
+  element:
+    role: filter_enum
+    prompt_mode: full_list
+  product_name:
+    role: filter_enum
+    prompt_mode: resolved_only
+    join: dim_product
+    scope: fact_distinct
+  country_iso3:
+    role: filter_enum
+    prompt_mode: resolved_only
+  year:
+    role: time_filter
+    prompt_mode: stats_only
+  value:
+    role: measure
+    prompt_mode: stats_only
+exclude_prompt_columns:
+  - geo_key
+  - scenario_key
+  - classification_key
+  - product_key
