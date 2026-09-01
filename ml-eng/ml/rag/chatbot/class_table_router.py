@@ -18,6 +18,7 @@ _SHARE_RE = re.compile(
 )
 _TRADE_RE = re.compile(r"\b(trade|imports?|exports?)\b", re.I)
 _PRICE_RE = re.compile(r"\b(price|prices|market|retail|wholesale)\b", re.I)
+_MARKET_DETAIL_RE = re.compile(r"\b(market|bamako|kano|nairobi|retail|wholesale|urban)\b", re.I)
 
 _TABLE_PREFIX_SKIP = ("dim_", "bridge_")
 
@@ -158,6 +159,18 @@ def select_table_plans(
             if p:
                 plans.append(p)
         return plans
+
+    if code == "PRC":
+        if _MARKET_DETAIL_RE.search(query) and len(iso) == 1:
+            p = _plan("fct_prices", family_id="fews_market")
+            if p:
+                return [p]
+        p = _plan("agg_prices_country_month", family_id="faostat_national")
+        if p:
+            return [p]
+        default = _bare_table(str(card.get("default_table") or "fct_prices"))
+        p = _plan(default)
+        return [p] if p else []
 
     if code == "FVC":
         if panel or (multi and has_bundle(bundles, "agricultural_activities")):

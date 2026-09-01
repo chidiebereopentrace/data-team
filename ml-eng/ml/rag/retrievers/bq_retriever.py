@@ -1180,7 +1180,9 @@ class BQRetriever(BaseRetriever):
             sql_source = "template"
             return [str(hit["sql"])]
 
-        if not engine_execute_only and not sql_queries and not explicit_sql and not sql_compiler_enabled():
+        if not engine_execute_only and not sql_queries and not explicit_sql and (
+            not sql_compiler_enabled() or bool(kwargs.get("nl2sql_fallback"))
+        ):
             template_sqls = _try_template_sql()
             if template_sqls:
                 sql_queries = template_sqls

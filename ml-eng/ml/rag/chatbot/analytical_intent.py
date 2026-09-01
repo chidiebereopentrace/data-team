@@ -76,8 +76,17 @@ def is_analytical_query(query: str, decomposition: dict[str, Any] | None = None)
     has_multi_geo = len([g for g in geo if str(g).strip()]) >= 2
     has_region = bool(detect_regions_in_text(q))
     export = detect_export_intent(q)
-    reportish = bool(_REPORT_RE.search(q))
     compareish = bool(_COMPARE_RE.search(q)) or intent == "compare"
+    reportish = bool(_REPORT_RE.search(q))
+    if reportish and re.search(r"\btrends?\b", q, re.IGNORECASE):
+        if not (
+            compareish
+            or has_region
+            or has_multi_geo
+            or export
+            or re.search(r"\b(analytical|report|assessment|benchmark|multi[- ]country)\b", q, re.IGNORECASE)
+        ):
+            reportish = False
     agri = bool(_AGRI_RE.search(q))
 
     if reportish and (agri or has_region or compareish or export):

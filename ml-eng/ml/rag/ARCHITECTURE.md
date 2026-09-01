@@ -298,7 +298,37 @@ When `RAG_SQL_COMPILER=1` (default), **only class engines + [`sql_compiler.py`](
 
 [`global_reasoner`](chatbot/global_reasoner.py) and [`intent_bundles.yaml`](chatbot/intent_bundles.yaml) remain for multi-measure **intent** (panel / compare / share / outlook shapes) until schema cards encode those shapes fully. `RAG_SLOT_REASONER=on` is a kill switch only; if both slot and compiler flags are set, **compiler wins for BQ** and slot metadata may still inform vectors.
 
-All class engines (PROD, FVC, and GenericEngine for the other 13 codes) build [`SqlRequest`](chatbot/sql_request.py) from supervisor facets (geo list, time window, panel shape) via `build_sql_request_from_facets()` — they do not re-parse geography or years from raw query text. [`sql_compiler.py`](chatbot/sql_compiler.py) assembles and validates SQL only.
+All class engines build [`SqlRequest`](chatbot/sql_request.py) from supervisor facets (geo list, time window, panel shape) via `build_sql_request_from_facets()` — they do not re-parse geography or years from raw query text. [`sql_compiler.py`](chatbot/sql_compiler.py) assembles and validates SQL only.
+
+### 5.4 Fifteen-class routing spine
+
+The control plane uses one taxonomy aligned with [OpenTrace Mart Complete Guide §6](../../../data-eng/docs/OpenTrace_Mart_Complete_Guide.md) and [MART_DEV_OTA_ANALYST_GUIDE.md](../../../data-eng/docs/MART_DEV_OTA_ANALYST_GUIDE.md):
+
+| Artifact | Path | Role |
+|----------|------|------|
+| 15 indicator classes | [`helpers/mart_indicator_classes.yaml`](helpers/mart_indicator_classes.yaml) | Aliases, `primary_facts`, `families`, `do_not_mix` |
+| 15 schema cards | [`schema_cards/*.yaml`](schema_cards/) | SQL compiler tables, columns, `hard_rules` |
+| Mart table YAML | [`bq_mart_tables_yaml_files/`](bq_mart_tables_yaml_files/) | Column allowlists + value samples |
+| Routing plan | [`routing_plan.py`](chatbot/routing_plan.py) | Single spine after decompose: measure, classes, corpora |
+| Class supervisor | [`class_supervisor.py`](chatbot/class_supervisor.py) | Measure-first class routing (never writes SQL) |
+| Corpus policy | [`helpers/class_corpus_policy.yaml`](helpers/class_corpus_policy.yaml) | Vector corpora per indicator class |
+
+**Flow:** `normalize_query_text` → decompose → facet enrich → `resolve_measures` → `compile_supervisor_plan(measure_hit=…)` → `build_routing_plan` → class engines → BQ execute.
+
+**Hybrid engines** ([`class_engines/registry.py`](chatbot/class_engines/registry.py)):
+
+| Engine | Classes |
+|--------|---------|
+| [`prod.py`](chatbot/class_engines/prod.py), [`fvc.py`](chatbot/class_engines/fvc.py), [`prc.py`](chatbot/class_engines/prc.py), [`fs.py`](chatbot/class_engines/fs.py) | Bespoke panel/grain logic |
+| [`card_driven.py`](chatbot/class_engines/card_driven.py) | EL, GYI, CLIM, SOIL, AH, VEG, ENV, INP, HDI, BIO, RES |
+
+**BQ policy when `RAG_SQL_COMPILER=1` (default):**
+
+- Class engines + compiler write SQL on the fact path — **not** `reason_bq_sql_plan` / retrieval-contract intents.
+- NL2SQL ([`retrievers/bq_retriever.py`](retrievers/bq_retriever.py)) is a **scoped escape hatch** only for analytical mode or when `RAG_BQ_NL2SQL_FALLBACK=1` after `compile_error`.
+- [`retrieval_contract.py`](chatbot/retrieval_contract.py) keeps corpus domain tags only on the compiler path (no duplicate BQ intents).
+
+**Anti-patterns removed:** parallel contract BQ planner on default path; academic-first corpora for PRC; intent-only plans with `sql_source=none`; gap answers with unrelated citations.
 
 ---
 

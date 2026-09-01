@@ -47,6 +47,27 @@ traces:
     expect_job: compare
     expect_measure: market_price
 
+  - id: nigeria_maize_price_2022
+    query: "What was the retail price of maize in Nigeria in 2022?"
+    expect_measure: market_price
+    expect_class: PRC
+    expect_job: fact
+
+  - id: nigeria_maize_prize_typo
+    query: "what is the prize od maize in nigeria in 2022"
+    expect_measure: market_price
+    expect_class: PRC
+    expect_job: fact
+
+  - id: africa_yam_cassava_count
+    query: "how many countries in africa produce yam and cassava"
+    expect_measure: production
+    expect_africa_default: true
+    expect_geo_grain: africa
+    expect_job: rank
+    expect_serve_status: served
+    expect_task_mode: fact_lookup
+
   - id: employment_sex_latest_uganda
     query: "What share of employment in agriculture by men and women in Uganda (latest available)?"
     expect_measure: employment_share

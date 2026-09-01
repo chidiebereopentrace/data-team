@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ml.rag.chatbot.agri_entities import query_has_crop_or_commodity
 from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, MeasureSpec
 from ml.rag.chatbot.intent_bundles import (
     MatchedBundle,
@@ -11,7 +12,13 @@ from ml.rag.chatbot.intent_bundles import (
     bundle_required_measures,
     bundles_block_primary,
 )
+from ml.rag.chatbot.continental_scope import (
+    CONTINENTAL_COUNT_RE,
+    decomposition_has_africa_scope,
+    is_continental_rank_query,
+)
 from ml.rag.chatbot.query_decomposer import _extract_year_range, _CROP_ENTITY_RE
+from ml.rag.chatbot.slot_validator import validate_turn_slots
 from ml.rag.chatbot.turn_contract import (
     BreakdownDim,
     GeoGrain,
@@ -139,6 +146,8 @@ def compile_geo_grain(query: str, decomposition: dict[str, Any] | None) -> GeoGr
         return "africa"
     if dec.get("africa_default"):
         return "africa"
+    if decomposition_has_africa_scope(dec) and is_continental_rank_query(q):
+        return "africa"
     if _ADMIN2_RE.search(q) or _LIST_RE.search(q):
         return "admin2"
     if _ADMIN1_RE.search(q):
@@ -198,7 +207,7 @@ def compile_job(
         return "brief"
     if _COMPARE_RE.search(q) or intent == "compare":
         return "compare"
-    if _RANK_RE.search(q):
+    if _RANK_RE.search(q) or CONTINENTAL_COUNT_RE.search(q):
         return "rank"
     if _TREND_RE.search(q) or intent in ("monitoring", "descriptive") and ("since" in ql or "from 20" in ql):
         return "trend"
@@ -265,6 +274,14 @@ def compile_measure(
         if re.search(r"\bgdp\b", q, re.I):
             return "gdp", sector
         return mid, sector
+    dec = decomposition if isinstance(decomposition, dict) else {}
+    if re.search(r"\b(produc(?:e|es|tion))\b", q, re.I) and query_has_crop_or_commodity(q, dec):
+        return "production", sector
+    raw_pm = dec.get("primary_measures")
+    if isinstance(raw_pm, list) and raw_pm:
+        mid = str(raw_pm[0]).strip()
+        if mid in MEASURES:
+            return mid, sector
     return "", sector
 
 
@@ -273,6 +290,7 @@ def _apply_clarify_if_incomplete(
     measure_spec: MeasureSpec | None,
     *,
     query: str = "",
+    decomposition: dict[str, Any] | None = None,
     matched_bundles: tuple[MatchedBundle, ...] | None = None,
 ) -> TurnContract:
     if contract.job in ("help", "social", "clarify"):
@@ -280,35 +298,26 @@ def _apply_clarify_if_incomplete(
         contract.plan_type = "gap"
         contract.skip_vector_retrieval = True
         return contract
-    if measure_spec is None and contract.job in ("fact", "trend", "rank", "list", "compare"):
+    bundle_measures = bundle_required_measures(matched_bundles or ())
+    multi_measure_panel = len(bundle_measures) >= 2 or contract.job in (
+        "report",
+        "synthesis",
+        "compare",
+        "list",
+    )
+    validation = validate_turn_slots(
+        contract,
+        measure_spec,
+        query=query,
+        decomposition=decomposition,
+        multi_measure_panel=multi_measure_panel,
+    )
+    if validation.outcome == "clarify":
         contract.serve_status = "clarify"
-        contract.serve_reason = "measure_unresolved"
+        contract.serve_reason = validation.reason or "incomplete_slots"
         contract.plan_type = "gap"
         contract.job = "clarify"
         return contract
-    if measure_spec is not None:
-        bundle_measures = bundle_required_measures(matched_bundles or ())
-        multi_measure_panel = len(bundle_measures) >= 2 or contract.job in (
-            "report",
-            "synthesis",
-            "compare",
-            "list",
-        )
-        if measure_spec.crop_required and not contract.entities:
-            if (
-                not multi_measure_panel
-                and not _CROP_ENTITY_RE.search(query or "")
-            ):
-                contract.serve_status = "clarify"
-                contract.serve_reason = "crop_required"
-                contract.plan_type = "gap"
-                contract.job = "clarify"
-                return contract
-        if measure_spec.geography_required and not contract.geo and contract.geo_grain not in ("africa", "region"):
-            contract.serve_status = "clarify"
-            contract.serve_reason = "geography_required"
-            contract.plan_type = "gap"
-            contract.job = "clarify"
     if contract.measure_id == "employment_share" and contract.job in ("diagnose", "brief"):
         contract.job = "fact"
     if contract.measure_id == "disease_prevalence" and contract.pathogen_id == "ecf" and not contract.population:
@@ -378,6 +387,7 @@ def compile_turn_contract(
         contract,
         measure_spec,
         query=query,
+        decomposition=dec,
         matched_bundles=matched_bundles,
     )
     return contract

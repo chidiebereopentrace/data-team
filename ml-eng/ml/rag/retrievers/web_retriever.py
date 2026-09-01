@@ -398,7 +398,7 @@ def _shape_wiki_queries(
         else:
             _add(stripped)
 
-    if africa_default and not country:
+    if africa_default and not country and not entity:
         _add("agriculture Africa")
         if stripped and "africa" not in stripped.lower():
             _add(f"{stripped} Africa")
@@ -499,6 +499,10 @@ def _wiki_title_passes(
         if entity_tokens and any(_whole_word(t, e) for e in entity_tokens):
             return True
         return False
+    if entity_tokens and len(entity_tokens) >= 1:
+        crop_like = [e for e in entity_tokens if len(e) >= 4]
+        if crop_like and not any(_whole_word(t, e) for e in crop_like):
+            return False
     return True
 
 

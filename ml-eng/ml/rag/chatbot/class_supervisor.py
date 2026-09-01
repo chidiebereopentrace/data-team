@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit
+from ml.rag.chatbot.class_corpus_policy import corpora_for_classes
 from ml.rag.chatbot.intent_bundles import (
     MatchedBundle,
     bundle_primary_measure,
@@ -51,6 +53,30 @@ def _warn_dual_flag_conflict() -> None:
         )
 
 
+def _classes_from_measure_hit(measure_hit: MeasureHit | None) -> tuple[str | None, list[str], str]:
+    if measure_hit is None:
+        return None, [], ""
+    iclasses = [c.upper() for c in measure_hit.measure.indicator_classes if str(c).strip()]
+    if not iclasses:
+        return None, [], ""
+    primary = iclasses[0]
+    secondary = [c for c in iclasses[1:3] if c != primary]
+    return primary, secondary, f"measure={measure_hit.measure.id}→{primary}"
+
+
+def _classes_from_primary_measures(primary_measures: list[str] | None) -> tuple[str | None, list[str], str]:
+    if not primary_measures:
+        return None, [], ""
+    mid = str(primary_measures[0] or "").strip()
+    spec = MEASURES.get(mid)
+    if spec is None or not spec.indicator_classes:
+        return None, [], ""
+    iclasses = [c.upper() for c in spec.indicator_classes]
+    primary = iclasses[0]
+    secondary = [c for c in iclasses[1:3] if c != primary]
+    return primary, secondary, f"primary_measure={mid}→{primary}"
+
+
 @dataclass(frozen=True)
 class SupervisorPlan:
     classes: tuple[str, ...]
@@ -89,11 +115,18 @@ def compile_supervisor_plan(
     *,
     decomposition: dict[str, Any] | None = None,
     matched_bundles: tuple[MatchedBundle, ...] | None = None,
+    measure_hit: MeasureHit | None = None,
+    primary_measures: list[str] | None = None,
 ) -> SupervisorPlan:
-    """Route 1-N indicator classes. Default-on unless RAG_SLOT_REASONER=1 owns BQ alone."""
+    """Route 1-N indicator classes from facets (measure-first, bundles second, query aliases last)."""
     q = (query or "").strip()
     dec = decomposition if isinstance(decomposition, dict) else {}
     bundles = matched_bundles or match_intent_bundles(q, dec)
+    pm_list = primary_measures or (
+        [str(m) for m in (dec.get("primary_measures") or []) if str(m).strip()]
+        if isinstance(dec.get("primary_measures"), list)
+        else None
+    )
     _warn_dual_flag_conflict()
 
     if (
@@ -108,11 +141,11 @@ def compile_supervisor_plan(
             rationale="slot_reasoner_owned",
         )
 
-    scored = class_for_query(q)
     primary: str | None = None
     secondary: list[str] = []
     rationale_parts: list[str] = []
 
+    # Bundle overrides (multi-class panels) — take precedence over measure-only routing.
     if has_bundle(bundles, "food_balance_panel") and _FOOD_BALANCE_SHARE_RE.search(q):
         primary = "FVC"
         rationale_parts.append("food_balance_share→FVC")
@@ -127,7 +160,21 @@ def compile_supervisor_plan(
     elif _OUTLOOK_RE.search(q) or has_bundle(bundles, "outlook_overlay"):
         primary = "FS"
         rationale_parts.append("outlook→FS")
-    elif scored:
+    else:
+        m_primary, m_secondary, m_rationale = _classes_from_measure_hit(measure_hit)
+        if m_primary:
+            primary = m_primary
+            secondary = list(m_secondary)
+            rationale_parts.append(m_rationale)
+        else:
+            p_primary, p_secondary, p_rationale = _classes_from_primary_measures(pm_list)
+            if p_primary:
+                primary = p_primary
+                secondary = list(p_secondary)
+                rationale_parts.append(p_rationale)
+
+    scored = class_for_query(q)
+    if not primary and scored:
         primary = scored[0]
         for code in scored[1:3]:
             if code != primary:
@@ -143,14 +190,15 @@ def compile_supervisor_plan(
             "food_security_ipc": "FS",
             "yield": "PROD",
             "prices": "PRC",
+            "market_price": "PRC",
         }
         if pm:
             primary = measure_to_class.get(pm, scored[0] if scored else "PROD")
             rationale_parts.append(f"bundle_primary={pm}")
 
-    if not primary:
-        primary = "PROD" if scored else ""
-        rationale_parts.append("fallback")
+    if not primary and measure_hit is not None and measure_hit.measure.indicator_classes:
+        primary = measure_hit.measure.indicator_classes[0].upper()
+        rationale_parts.append(f"measure_fallback={measure_hit.measure.id}")
 
     if not primary:
         return SupervisorPlan(
@@ -177,15 +225,11 @@ def compile_supervisor_plan(
 
 
 def corpora_for_supervisor_plan(plan: SupervisorPlan) -> list[str]:
-    """Class-aware Qdrant corpora — not default_all for warehouse-class turns."""
+    """Class-aware Qdrant corpora from YAML policy."""
     codes = {c.upper() for c in (*plan.classes, *plan.secondary)}
     if not codes:
         return []
-    if "FS" in codes:
-        return ["public_reports", "ota", "news"]
-    if codes & {"PROD", "FVC", "PRC"}:
-        return ["academic_papers", "public_reports", "policies", "ota"]
-    return ["academic_papers", "public_reports", "ota"]
+    return corpora_for_classes(tuple(plan.classes), secondary=plan.secondary)
 
 
 def tables_for_supervisor_plan(plan: SupervisorPlan) -> list[str]:

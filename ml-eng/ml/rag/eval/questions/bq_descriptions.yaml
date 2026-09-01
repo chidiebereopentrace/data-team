@@ -9,7 +9,7 @@
     - fct_food_security
   note: "FS class — measure_type population on fct_food_security"
 
-- query: "Human development index trends in Kenya 2015-2023"
+- query: "What is Kenya's human development index in 2020?"
   expect_tables:
     - fct_hdi
   note: "HDI class — socio_economic measure routes to fct_hdi"

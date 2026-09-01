@@ -678,6 +678,10 @@ def render_sql_panel(result: dict[str, Any]) -> None:
         return
 
     sp = result.get("supervisor_plan") or (result.get("bq_sql_plan") or {}).get("supervisor_plan")
+    rp = result.get("routing_plan")
+    if isinstance(rp, dict) and rp:
+        with st.expander("Routing plan (facet spine)", expanded=False):
+            st.json(rp)
     if isinstance(sp, dict) and sp:
         with st.expander("Supervisor plan", expanded=False):
             st.json(sp)
@@ -708,6 +712,7 @@ def render_sql_panel(result: dict[str, Any]) -> None:
         "structured_bq_never_executed",
         "structured_bq_empty",
         "structured_bq_validation_failed",
+        "structured_bq_compile_error",
         "structured_bq_unavailable",
     ):
         if result.get(key):

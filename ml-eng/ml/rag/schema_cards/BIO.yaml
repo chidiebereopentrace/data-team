@@ -1,4 +1,5 @@
 class: BIO
+empty_policy: generate_weak
 default_table: fct_biodiversity
 tables:
 - fct_biodiversity

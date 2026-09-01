@@ -6,20 +6,8 @@ from typing import Any
 from ml.rag.chatbot.bq_execute_state import bq_execute_flags
 from ml.rag.chatbot.empty_answer_templates import empty_answer_for_contract
 from ml.rag.chatbot.generator import filter_context_items, is_usable_structured_bq_row, normalize_context_kind
+from ml.rag.chatbot.retrieval_evidence import has_usable_narrative_context, warehouse_was_attempted
 from ml.rag.chatbot.turn_contract import TurnContract
-
-_NARRATIVE_KINDS = frozenset(
-    {
-        "news",
-        "academic",
-        "policy",
-        "public_report",
-        "ota_insight",
-        "formation",
-        "web_search",
-        "web_wikipedia",
-    }
-)
 
 
 def _scope_hint(decomposition: dict[str, Any] | None) -> str:
@@ -67,6 +55,11 @@ def typed_bq_gap_answer(
             f"OpenTrace warehouse SQL for {scope} failed validation before execution.{detail} "
             "Try narrowing geography, time, or entity filters."
         )
+    if flag == "structured_bq_compile_error":
+        return (
+            f"OpenTrace could not compile warehouse SQL for {scope} with the routed indicator class. "
+            "Try narrowing geography, time, or entity filters, or rephrase the measure (price vs production)."
+        )
     if flag == "structured_bq_never_executed":
         return (
             f"OpenTrace warehouse SQL was compiled for {scope} but was not submitted to "
@@ -98,28 +91,6 @@ def first_prep_error(bq_sql_debug: list[dict[str, Any]]) -> str:
         if prep:
             return str(prep)
     return ""
-
-
-def warehouse_was_attempted(state: dict[str, Any]) -> bool:
-    plan = state.get("bq_sql_plan")
-    if isinstance(plan, dict):
-        if plan.get("bq_sql_queries") or plan.get("selected_tables") or plan.get("engine_results"):
-            return True
-        if not plan.get("skip_bq"):
-            return bool(plan.get("query_intents"))
-    if state.get("bq_sql_queries") or state.get("bq_sql_debug"):
-        return True
-    for row in state.get("bq_sql_debug") or []:
-        if isinstance(row, dict) and str(row.get("sql") or "").strip():
-            return True
-    return False
-
-
-def has_usable_narrative_context(context_items: list[dict[str, Any]]) -> bool:
-    for item in filter_context_items(context_items):
-        if normalize_context_kind(item) in _NARRATIVE_KINDS:
-            return True
-    return False
 
 
 def warehouse_blocks_web(state: dict[str, Any]) -> bool:
@@ -154,6 +125,7 @@ def should_hard_return_bq_gap(
     usable_bq: bool,
     context_items: list[dict[str, Any]],
     is_numeric_job: bool,
+    state: dict[str, Any] | None = None,
 ) -> bool:
     """Hard-return typed BQ gap only when no structured rows and no narrative escape hatch."""
     if not pre_queries or usable_bq:
@@ -168,6 +140,18 @@ def should_hard_return_bq_gap(
         )
     ):
         return False
+    if state is not None:
+        from ml.rag.chatbot.empty_policy import (
+            broken_retrieve,
+            resolve_empty_policy,
+            weak_after_retrieval_failure_enabled,
+        )
+
+        if resolve_empty_policy(state) == "generate_weak":
+            if exec_flags.get("structured_bq_empty") or exec_flags.get("structured_bq_timed_out"):
+                if not broken_retrieve(exec_flags) or weak_after_retrieval_failure_enabled():
+                    if not has_usable_narrative_context(context_items):
+                        return False
     if exec_flags.get("structured_bq_empty") and not is_numeric_job:
         return False
     if has_usable_narrative_context(context_items):

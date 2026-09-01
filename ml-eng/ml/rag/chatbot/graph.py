@@ -50,7 +50,7 @@ from ml.rag.chatbot.bq_ranking_cache import (
 from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan, _slot_reasoner_active
 from ml.rag.chatbot.class_engine_runner import engine_results_to_bq_plan, run_class_engines
 from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
-from ml.rag.chatbot.class_supervisor import SupervisorPlan, compile_supervisor_plan, corpora_for_supervisor_plan
+from ml.rag.chatbot.class_supervisor import SupervisorPlan, compile_supervisor_plan, corpora_for_supervisor_plan, tables_for_supervisor_plan
 from ml.rag.chatbot.context_diversity import diversify_context_pack
 from ml.rag.chatbot.corpus_catalog import CORPUS_CATALOG, CorpusSelection, select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
@@ -58,6 +58,12 @@ from ml.rag.chatbot.facet_compiler import compile_turn_contract, compile_breakdo
 from ml.rag.chatbot.intent_bundles import bundle_primary_measures, bundle_required_measures, match_intent_bundles
 from ml.rag.chatbot.capability_registry import apply_reasoner_to_turn, resolve_capability, unsupported_answer_hint
 from ml.rag.chatbot.empty_answer_templates import empty_answer_for_contract
+from ml.rag.chatbot.empty_policy import (
+    build_filter_miss_block,
+    primary_class_from_state,
+    resolve_empty_policy,
+    should_generate_weak,
+)
 from ml.rag.chatbot.bq_gap_messages import (
     first_prep_error,
     forbid_generic_insufficient,
@@ -96,6 +102,8 @@ from ml.rag.chatbot.query_decomposer import (
     normalize_geography_for_filter,
     resolve_retrieval_geographies,
 )
+from ml.rag.chatbot.query_normalize import normalize_query_text
+from ml.rag.chatbot.routing_plan import RoutingPlan, build_routing_plan
 from ml.rag.chatbot.reranker import last_rerank_mode, rerank
 from ml.rag.retrievers.bq_retriever import BQRetriever
 from ml.rag.retrievers.vector_retriever import VectorRetriever
@@ -525,7 +533,9 @@ class RAGGraphState(TypedDict, total=False):
     enriched_query: str | None
     measure_id: str | None
     recency_tier: str | None
-    turn_contract: dict[str, Any] | None
+    turn_contract: dict[str, Any]
+    routing_plan: dict[str, Any]
+    supervisor_plan: dict[str, Any] | None
     generation_plan: dict[str, Any] | None
     reasoner_plan: dict[str, Any] | None
     rows_by_subquestion: dict[str, Any] | None
@@ -590,7 +600,7 @@ def _early_route_decompose_state(raw_q: str, route: str) -> dict[str, Any]:
 
 
 def node_decompose(state: RAGGraphState) -> dict[str, Any]:
-    raw_q = (state.get("query") or "").strip()
+    raw_q = normalize_query_text((state.get("query") or "").strip())
     route = early_non_rag_route(raw_q)
     if route:
         answer_lang = detect_answer_language(raw_q)
@@ -746,8 +756,21 @@ def node_decompose(state: RAGGraphState) -> dict[str, Any]:
         }
         if enrich.get("enriched"):
             out["query"] = q
-        sp = compile_supervisor_plan(q, decomposition=dec, matched_bundles=matched_bundles)
+        sp = compile_supervisor_plan(
+            q,
+            decomposition=dec,
+            matched_bundles=matched_bundles,
+            measure_hit=measure_hit,
+            primary_measures=dec.get("primary_measures") if isinstance(dec.get("primary_measures"), list) else None,
+        )
         out["supervisor_plan"] = sp.to_dict()
+        out["routing_plan"] = build_routing_plan(
+            turn=turn,
+            measure_hit=measure_hit,
+            supervisor_plan=sp,
+            matched_bundles=matched_bundles,
+            primary_measures=dec.get("primary_measures") if isinstance(dec.get("primary_measures"), list) else None,
+        ).to_dict()
         if _slot_reasoner_active():
             rp = compile_reasoner_plan(
                 q,
@@ -1342,6 +1365,45 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     }
 
 
+def _nl2sql_fallback_enabled() -> bool:
+    return os.environ.get("RAG_BQ_NL2SQL_FALLBACK", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _nl2sql_escape_allowed(
+    *,
+    task_mode: str,
+    analytical: bool,
+    plan: dict[str, Any],
+) -> bool:
+    if analytical or task_mode == "analytical":
+        return True
+    if plan.get("nl2sql_fallback"):
+        return True
+    return _nl2sql_fallback_enabled() and bool(plan.get("compile_error"))
+
+
+def _compile_error_bq_plan(
+    sp: SupervisorPlan | None,
+    *,
+    rationale: str,
+    nl2sql_fallback: bool = False,
+) -> dict[str, Any]:
+    tables = tables_for_supervisor_plan(sp) if sp else []
+    return {
+        "selected_tables": tables,
+        "query_intents": [],
+        "skip_bq": False,
+        "rationale": rationale,
+        "bq_sql_queries": [],
+        "sql_source": "compile_error",
+        "compile_error": True,
+        "nl2sql_fallback": nl2sql_fallback,
+        "supervisor_plan": sp.to_dict() if sp else {},
+        "table_hints": [],
+        "hints_truncated": False,
+    }
+
+
 def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
     """YAML-index SQL reasoner or class engines: select mart_dev tables and query intents."""
     q = (state.get("query") or "").strip()
@@ -1356,10 +1418,51 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
     )
     if sp is None and not _slot_reasoner_active():
         bundles = match_intent_bundles(q, dec, breakdown=compile_breakdown(q))
-        sp = compile_supervisor_plan(q, decomposition=dec, matched_bundles=bundles)
+        measure_hints = resolve_measures(q, dec)
+        mh = measure_hints[0] if measure_hints else None
+        sp = compile_supervisor_plan(
+            q,
+            decomposition=dec,
+            matched_bundles=bundles,
+            measure_hit=mh,
+            primary_measures=dec.get("primary_measures") if isinstance(dec.get("primary_measures"), list) else None,
+        )
 
+    use_compiler_path = sql_compiler_enabled() and task_mode != "analytical"
     plan: dict[str, Any]
-    if sp and sp.classes and sql_compiler_enabled():
+    if use_compiler_path:
+        rp_raw = state.get("reasoner_plan")
+        reasoner = ReasonerPlan.from_dict(rp_raw if isinstance(rp_raw, dict) else None)
+        if reasoner and reasoner.bq_subquestions() and _slot_reasoner_active():
+            plan = reasoner_plan_to_bq_plan(reasoner)
+        elif sp and sp.classes:
+            engine_results = run_class_engines(q, supervisor_plan=sp, facets=dec)
+            plan = engine_results_to_bq_plan(engine_results, rationale=sp.rationale)
+            plan["supervisor_plan"] = sp.to_dict()
+            if not plan.get("bq_sql_queries"):
+                allow_nl2 = _nl2sql_escape_allowed(
+                    task_mode=task_mode,
+                    analytical=analytical,
+                    plan={"compile_error": True},
+                )
+                plan = {
+                    **plan,
+                    "sql_source": "compile_error",
+                    "compile_error": True,
+                    "nl2sql_fallback": allow_nl2,
+                }
+        else:
+            allow_nl2 = _nl2sql_escape_allowed(
+                task_mode=task_mode,
+                analytical=analytical,
+                plan={"compile_error": True},
+            )
+            plan = _compile_error_bq_plan(
+                sp,
+                rationale="no_class_for_compiler_path",
+                nl2sql_fallback=allow_nl2,
+            )
+    elif sp and sp.classes and sql_compiler_enabled():
         engine_results = run_class_engines(q, supervisor_plan=sp, facets=dec)
         plan = engine_results_to_bq_plan(engine_results, rationale=sp.rationale)
         plan["supervisor_plan"] = sp.to_dict()
@@ -1553,6 +1656,7 @@ def _typed_bq_hard_return(
     priority = (
         "structured_bq_timed_out",
         "structured_bq_validation_failed",
+        "structured_bq_compile_error",
         "structured_bq_empty",
         "structured_bq_never_executed",
     )
@@ -1712,6 +1816,8 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     }
     if engine_execute_only:
         retrieve_kwargs["engine_execute_only"] = True
+    if plan.get("nl2sql_fallback"):
+        retrieve_kwargs["nl2sql_fallback"] = True
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             fut = ex.submit(
@@ -2064,7 +2170,9 @@ def node_web_fallback(state: RAGGraphState) -> dict[str, Any]:
     with observed_span("web_fallback"):
         reranked = list(state.get("reranked_context") or [])
         bq_results = state.get("bq_results") or []
-        has_bq = bool(bq_results)
+        has_bq = any(
+            is_usable_structured_bq_row(r) for r in bq_results if isinstance(r, dict)
+        )
         if not needs_web_fallback(
             reranked,
             task_mode=str(state.get("task_mode") or ""),
@@ -2165,16 +2273,60 @@ def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
     plan_dict = raw_plan if isinstance(raw_plan, dict) else {}
     pre_queries = list(plan_dict.get("bq_sql_queries") or [])
     exec_flags = bq_execute_flags(bq_debug, pre_queries=pre_queries, usable_bq=False)
+    dec = state.get("decomposition")
+    dec_dict = dec if isinstance(dec, dict) else None
+    tc_raw = state.get("turn_contract")
+    tc_dict = tc_raw if isinstance(tc_raw, dict) else None
+    tc = TurnContract.from_dict(tc_dict) if isinstance(tc_dict, dict) else None
+    context = list(state.get("reranked_context") or state.get("merged_context") or [])
+    if should_generate_weak(
+        cast(dict[str, Any], state),
+        context_items=context,
+        exec_flags=exec_flags,
+        turn_contract=tc,
+    ):
+        miss_block = build_filter_miss_block(
+            query=query,
+            decomposition=dec_dict,
+            turn_contract=tc,
+            exec_flags=exec_flags,
+            class_code=primary_class_from_state(cast(dict[str, Any], state)),
+        )
+        gen_result = generate(
+            query,
+            [{"content": miss_block, "_context_kind": "filter_miss"}],
+            generate_weak=True,
+            evidence_tier="weak",
+            task_mode=str(state.get("task_mode") or ""),
+            turn_contract=tc_dict,
+        )
+        acf = gen_result.acf or no_evidence_acf()
+        with observed_span(
+            "insufficient_context",
+            input_data={"web_fallback_status": str(status)[:80], "generate_weak": True},
+        ):
+            update_current_span_metadata(
+                {
+                    "web_fallback_status": str(status),
+                    "reason": str(reason)[:200],
+                    "answer_lang": answer_lang,
+                    "generate_weak": True,
+                    "evidence_tier": "weak",
+                }
+            )
+        return {
+            "answer": gen_result.answer,
+            "citations": [],
+            "insufficient_context": True,
+            "answer_lang": answer_lang,
+            "evidence_tier": "weak",
+            **acf_result_to_state(acf),
+        }
     hard = _typed_bq_hard_return(state, exec_flags, bq_debug=bq_debug)
     if hard:
         answer = hard["answer"]
     elif forbid_generic_insufficient(cast(dict[str, Any], state)):
-        dec = state.get("decomposition")
-        dec_dict = dec if isinstance(dec, dict) else None
-        tc_raw = state.get("turn_contract")
-        tc_dict = tc_raw if isinstance(tc_raw, dict) else None
-        if isinstance(tc_dict, dict):
-            tc = TurnContract.from_dict(tc_dict)
+        if tc is not None and isinstance(tc_dict, dict):
             answer = empty_answer_for_contract(tc, query=query) or typed_bq_gap_answer(
                 flag="structured_bq_never_executed",
                 decomposition=dec_dict,
@@ -2294,7 +2446,12 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
     raw_plan = state.get("bq_sql_plan")
     plan_dict = raw_plan if isinstance(raw_plan, dict) else {}
     pre_queries = list(plan_dict.get("bq_sql_queries") or [])
-    exec_flags = bq_execute_flags(bq_debug, pre_queries=pre_queries, usable_bq=bool(usable_bq))
+    exec_flags = bq_execute_flags(
+        bq_debug,
+        pre_queries=pre_queries,
+        usable_bq=bool(usable_bq),
+        compile_error=bool(plan_dict.get("compile_error")),
+    )
     gkw.update(exec_flags)
     gkw["pre_queries"] = pre_queries
     gkw["usable_bq"] = bool(usable_bq)
@@ -2311,6 +2468,7 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         usable_bq=bool(usable_bq),
         context_items=context,
         is_numeric_job=is_numeric_job,
+        state=cast(dict[str, Any], state),
     ):
         if hard is not None:
             return hard
@@ -2321,6 +2479,7 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
             "structured_bq_never_executed",
             "structured_bq_empty",
             "structured_bq_validation_failed",
+            "structured_bq_compile_error",
             "structured_bq_unavailable",
         )
     ):
@@ -2408,25 +2567,61 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
             academic_count=academic_count,
             category=gen_plan.effective_category,
         )
-        if gen_plan.output_type == "insufficient" and empty_tpl and not (slot_active and has_required_bq_rows):
+        weak_ok = should_generate_weak(
+            cast(dict[str, Any], state),
+            context_items=context,
+            exec_flags=exec_flags,
+            turn_contract=tc,
+        )
+        if weak_ok:
+            gen_t0_weak = time.perf_counter()
+            miss_block = build_filter_miss_block(
+                query=str(query),
+                decomposition=dec_dict,
+                turn_contract=tc,
+                exec_flags=exec_flags,
+                class_code=primary_class_from_state(cast(dict[str, Any], state)),
+            )
+            gkw_weak = dict(gkw)
+            gkw_weak["generate_weak"] = True
+            gkw_weak["evidence_tier"] = "weak"
+            gen_result = generate(
+                str(query),
+                [{"content": miss_block, "_context_kind": "filter_miss"}],
+                **gkw_weak,
+            )
+            acf = gen_result.acf or no_evidence_acf()
             return {
-                "answer": empty_tpl,
+                "answer": gen_result.answer,
                 "citations": [],
                 "answer_lang": str(state.get("answer_lang") or detect_answer_language(query)),
                 "generation_plan": gen_plan.to_dict(),
-                **acf_result_to_state(no_evidence_acf()),
+                "evidence_tier": "weak",
+                "generate_ms": trace_elapsed_ms(gen_t0_weak),
+                **acf_result_to_state(acf),
+                **{k: True for k in exec_flags if exec_flags.get(k)},
             }
+        if gen_plan.output_type == "insufficient" and empty_tpl and not (slot_active and has_required_bq_rows):
+            if resolve_empty_policy(cast(dict[str, Any], state)) != "generate_weak":
+                return {
+                    "answer": empty_tpl,
+                    "citations": [],
+                    "answer_lang": str(state.get("answer_lang") or detect_answer_language(query)),
+                    "generation_plan": gen_plan.to_dict(),
+                    **acf_result_to_state(no_evidence_acf()),
+                }
         if empty_tpl and (
             not context
             or should_zero_pack(tc, bq_failed=not usable_bq, context_items=context)
         ) and not (slot_active and has_required_bq_rows):
-            return {
-                "answer": empty_tpl,
-                "citations": [],
-                "answer_lang": str(state.get("answer_lang") or detect_answer_language(query)),
-                "generation_plan": gen_plan.to_dict(),
-                **acf_result_to_state(no_evidence_acf()),
-            }
+            if resolve_empty_policy(cast(dict[str, Any], state)) != "generate_weak":
+                return {
+                    "answer": empty_tpl,
+                    "citations": [],
+                    "answer_lang": str(state.get("answer_lang") or detect_answer_language(query)),
+                    "generation_plan": gen_plan.to_dict(),
+                    **acf_result_to_state(no_evidence_acf()),
+                }
         if (
             tc.is_fail_closed()
             and tc.serve_status != "clarify"
@@ -2529,7 +2724,11 @@ def node_generate_clarify(state: RAGGraphState) -> dict[str, Any]:
         "citations": [],
         "answer_lang": answer_lang,
         "task_mode": "clarify",
-        **acf_result_to_state(curated_product_acf()),
+        **acf_result_to_state(
+            no_evidence_acf(
+                explanation="Clarification requested — missing slot(s) before federated retrieval."
+            )
+        ),
     }
 
 

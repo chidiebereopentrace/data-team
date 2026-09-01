@@ -11,7 +11,9 @@ from ml.rag.chatbot.agri_measure_ontology import (
     wants_africa_panel,
     wants_data_export_panel,
 )
+from ml.rag.chatbot.agri_entities import query_has_crop_or_commodity
 from ml.rag.chatbot.analytical_intent import is_analytical_query
+from ml.rag.chatbot.continental_scope import decomposition_has_africa_scope
 from ml.rag.chatbot.export_intent import detect_export_intent
 from ml.rag.chatbot.generator import is_numeric_data_query, is_ranking_numeric_query
 from ml.rag.chatbot.geo_regions import detect_regions_in_text
@@ -104,18 +106,7 @@ def _geo_list(decomposition: dict[str, Any] | None) -> list[str]:
 
 
 def _has_crop_or_commodity(query: str, decomposition: dict[str, Any] | None) -> bool:
-    q = (query or "").lower()
-    if any(re.search(rf"\b{re.escape(term)}\b", q) for term in _CROP_ENTITY_TERMS):
-        return True
-    if not isinstance(decomposition, dict):
-        return False
-    entities = decomposition.get("entities")
-    if isinstance(entities, list):
-        for ent in entities:
-            text = str(ent or "").strip().lower()
-            if any(term in text for term in _CROP_ENTITY_TERMS):
-                return True
-    return False
+    return query_has_crop_or_commodity(query, decomposition)
 
 
 def _has_year(decomposition: dict[str, Any] | None, query: str) -> bool:
@@ -148,9 +139,7 @@ def needs_clarify(
         return False
     if hit and hit.measure.id in ("news_briefing", "research_synthesis", "research_meta"):
         return False
-    if isinstance(decomposition, dict) and (
-        decomposition.get("africa_default") or decomposition.get("africa_panel")
-    ):
+    if decomposition_has_africa_scope(decomposition):
         # Continental ranking / full panel: country is not a missing slot.
         crop_needed = effective_crop_required(hit) if hit else True
         if not crop_needed:
@@ -163,10 +152,7 @@ def needs_clarify(
         return False
 
     has_region = bool(detect_regions_in_text(q))
-    africa = bool(
-        isinstance(decomposition, dict)
-        and (decomposition.get("africa_default") or decomposition.get("africa_panel"))
-    )
+    africa = decomposition_has_africa_scope(decomposition)
     has_country = (
         bool(_geo_list(decomposition))
         or bool((profile_country or "").strip())
@@ -340,9 +326,10 @@ def clarify_answer(
     q = (query or "").strip()
     hit = measure_hit if measure_hit is not None else (_measure_hit(q, decomposition) if q else None)
     missing: list[str] = []
-    has_geo = bool(_geo_list(decomposition)) or bool(
-        isinstance(decomposition, dict)
-        and (decomposition.get("africa_default") or decomposition.get("africa_panel"))
+    has_geo = (
+        bool(_geo_list(decomposition))
+        or decomposition_has_africa_scope(decomposition)
+        or detect_regions_in_text(q)
     )
     has_crop = _has_crop_or_commodity(q, decomposition) if q else False
     crop_req = effective_crop_required(hit) if hit else True
@@ -350,7 +337,7 @@ def clarify_answer(
     if hit and hit.measure.country_is_answer:
         geo_req = False
 
-    if geo_req and not has_geo and not detect_regions_in_text(q):
+    if geo_req and not has_geo:
         missing.append("**Geography** — a country, region (e.g. West Africa), or continental Africa panel")
     if crop_req and not has_crop:
         missing.append("**Crop or commodity** (e.g. maize, rice, coffee) — required for this measure")
@@ -362,11 +349,12 @@ def clarify_answer(
         measure_line = f"Detected measure: `{hit.measure.id}`.\n\n"
 
     if not missing:
-        missing = [
-            "**Country or region** when the question is place-specific",
-            "**Crop or commodity** when asking production, yield, prices, or trade",
-            "**Time period** when you care about a specific year or range",
-        ]
+        return (
+            "I need a bit more detail before I can pull OpenTrace structured data.\n\n"
+            f"{measure_line}"
+            "The question is almost scoped enough — please tighten **crop**, **time**, or **place** "
+            "so OpenTrace can query the federated warehouse."
+        )
 
     examples = [
         "What was maize **yield** in Kenya in 2020?",
