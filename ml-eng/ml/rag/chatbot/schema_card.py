@@ -54,4 +54,17 @@ def prompt_mode_for_column(card: dict[str, Any], column: str, *, distinct_count:
     return "resolved_only"
 
 
-__all__ = ["load_schema_card", "prompt_mode_for_column", "_TINY_ENUM_THRESHOLD"]
+def card_maturity(card: dict[str, Any] | None) -> dict[str, Any]:
+    """Inspector-facing maturity for schema cards (stub vs ready)."""
+    if not card:
+        return {"status": "missing", "column_count": 0, "reason": "no card loaded"}
+    cols = card.get("columns") or {}
+    count = len(cols) if isinstance(cols, dict) else 0
+    if count == 0:
+        return {"status": "stub", "column_count": 0, "reason": "columns empty"}
+    if count < 3:
+        return {"status": "partial", "column_count": count}
+    return {"status": "ready", "column_count": count}
+
+
+__all__ = ["load_schema_card", "prompt_mode_for_column", "card_maturity", "_TINY_ENUM_THRESHOLD"]

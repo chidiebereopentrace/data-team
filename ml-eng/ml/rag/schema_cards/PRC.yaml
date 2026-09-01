@@ -1,15 +1,40 @@
 class: PRC
 default_table: fct_prices
 tables:
-- fct_prices
-- dim_market
-- dim_geography
-- dim_product
-- agg_prices_country_month
-columns: {}
-hard_rules: []
+  - fct_prices
+  - dim_market
+  - dim_geography
+  - dim_product
+  - agg_prices_country_month
+default_measures:
+  series:
+    - retail_price
+  panel:
+    - retail_price
+coverage: {}
+hard_rules:
+  - Use price_type and market_name from resolved labels only
+  - Do not mix wholesale and retail in one query without explicit compare intent
+columns:
+  country_iso3:
+    role: filter_enum
+    prompt_mode: resolved_only
+  year:
+    role: time_filter
+    prompt_mode: stats_only
+  price_type:
+    role: filter_enum
+    prompt_mode: resolved_only
+    scope: fact_distinct
+  product_name:
+    role: entity
+    prompt_mode: resolved_only
+    scope: fact_distinct
+  metric:
+    role: measure
+    prompt_mode: resolved_only
 exclude_prompt_columns:
-- geo_key
-- scenario_key
-- classification_key
-- product_key
+  - geo_key
+  - scenario_key
+  - classification_key
+  - product_key

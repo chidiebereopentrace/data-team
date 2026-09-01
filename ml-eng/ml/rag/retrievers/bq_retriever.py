@@ -34,6 +34,7 @@ from ml.rag.chatbot.bq_sql_validate import (
     validate_sql_value_samples,
 )
 from ml.rag.chatbot.query_decomposer import _NON_COUNTRY_GEO
+from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
 from ml.rag.chatbot.bq_table_schema_yaml import join_fragments_for_tables
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
@@ -62,8 +63,17 @@ def _env_float(name: str, default: float) -> float:
 
 def _bq_job_timeout_s(sql: str) -> float:
     if _AGG_TABLE_RE.search(sql or ""):
-        return _env_float("RAG_BQ_JOB_TIMEOUT_AGG_S", 60.0)
-    return _env_float("RAG_BQ_JOB_TIMEOUT_FACT_S", 60.0)
+        return _env_float("RAG_BQ_JOB_TIMEOUT_AGG_S", 12.0)
+    return _env_float("RAG_BQ_JOB_TIMEOUT_FACT_S", 12.0)
+
+
+def _engine_skip_dry_run() -> bool:
+    return os.environ.get("RAG_BQ_ENGINE_SKIP_DRY_RUN", "on").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def _bq_execute_parallel() -> bool:
@@ -705,6 +715,8 @@ class BQRetriever(BaseRetriever):
         if validated is None:
             return None, "validation_failed"
 
+        trusted = (sql_source or "").strip().lower() == "engine"
+
         def _post_checks(sql: str) -> str | None:
             allow_err = validate_sql_table_allowlist(sql, selected_tables)
             if allow_err:
@@ -712,6 +724,12 @@ class BQRetriever(BaseRetriever):
             col_err = validate_sql_column_allowlist(sql, selected_tables or None)
             if col_err:
                 return col_err
+            if trusted:
+                index_err = validate_sql_complete_index_literals(sql, selected_tables or None)
+                if index_err:
+                    return index_err
+                if _engine_skip_dry_run():
+                    return None
             metric_err = validate_required_metric_filters(sql, selected_tables or None)
             if metric_err:
                 return metric_err
@@ -778,9 +796,10 @@ class BQRetriever(BaseRetriever):
                         sql = revalidated
             return sql
 
-        validated = _maybe_inject(validated)
+        if not trusted:
+            validated = _maybe_inject(validated)
         check_err = _post_checks(validated)
-        if check_err and sql_retry_enabled():
+        if check_err and sql_retry_enabled() and not trusted:
             allowed_list = ", ".join(sorted(selected_tables)) or "(none)"
             retry_question = (
                 f"{question}\n\n"
@@ -1114,6 +1133,8 @@ class BQRetriever(BaseRetriever):
             sql_queries = [str(s).strip() for s in sql_input if str(s).strip()]
             explicit_sql = bool(sql_queries)
 
+        engine_execute_only = bool(kwargs.get("engine_execute_only")) and explicit_sql
+
         fast_fact = task_mode in ("fact_lookup", "data_export_only")
         if heavy_path:
             fast_fact = False
@@ -1159,7 +1180,7 @@ class BQRetriever(BaseRetriever):
             sql_source = "template"
             return [str(hit["sql"])]
 
-        if not sql_queries and not explicit_sql:
+        if not engine_execute_only and not sql_queries and not explicit_sql and not sql_compiler_enabled():
             template_sqls = _try_template_sql()
             if template_sqls:
                 sql_queries = template_sqls
@@ -1270,7 +1291,9 @@ class BQRetriever(BaseRetriever):
                 if not sql_queries:
                     sql_queries = list(pattern_sqls) + list(nl2sql_sqls)
 
-        if explicit_sql:
+        if engine_execute_only:
+            sql_source = "engine"
+        elif explicit_sql:
             sql_source = "explicit"
         elif pattern_sqls and nl2sql_sqls:
             sql_source = "pattern"
@@ -1353,12 +1376,27 @@ class BQRetriever(BaseRetriever):
                 batch_size = work.batch_size
                 slot_id = work.slot_id
                 exec_items: list[dict[str, Any]] = []
+                job: Any = None
+                exec_t0 = time.perf_counter()
+
+                def _job_telemetry(*, row_count: int, status: str) -> dict[str, Any]:
+                    return {
+                        "job_id": getattr(job, "job_id", None) if job is not None else None,
+                        "bytes_processed": int(getattr(job, "total_bytes_processed", 0) or 0)
+                        if job is not None
+                        else 0,
+                        "bq_ms": int((time.perf_counter() - exec_t0) * 1000),
+                        "row_count": row_count,
+                        "status": status,
+                    }
+
                 try:
                     from google.cloud.bigquery import QueryJobConfig as _QJC
 
                     _max_b = max_bytes_billed_for_source(source)
                     _jcfg = _QJC(maximum_bytes_billed=_max_b) if _max_b > 0 else None
                     job = client.query(validated, job_config=_jcfg)
+                    submitted_at_ms = int((time.perf_counter() - exec_t0) * 1000)
                     job_cap = _bq_job_timeout_s(validated)
                     remain = _remaining_deadline_s(deadline)
                     if remain is not None:
@@ -1374,6 +1412,7 @@ class BQRetriever(BaseRetriever):
                         or "deadline" in exc_s
                         or exc.__class__.__name__ == "TimeoutError"
                     )
+                    telem = _job_telemetry(row_count=0, status="timeout" if is_timeout else "execution_error")
                     if is_timeout:
                         logger.warning(
                             "BQ job timeout sql#%d source=%s after %.1fs",
@@ -1393,6 +1432,7 @@ class BQRetriever(BaseRetriever):
                                     "execution_error": str(exc)[:500],
                                     "sql_source": source,
                                     "nl2sql_model": _nl2sql_model_id(),
+                                    **telem,
                                 },
                             }
                         )
@@ -1411,6 +1451,7 @@ class BQRetriever(BaseRetriever):
                         "execution_error": str(exc)[:500],
                         "sql_source": source,
                         "nl2sql_model": _nl2sql_model_id(),
+                        **telem,
                     }
                     if template_meta and source == "template":
                         exec_meta["template"] = template_meta.get("template")
@@ -1425,7 +1466,7 @@ class BQRetriever(BaseRetriever):
                     )
                     return exec_items, True
 
-                if not rows:
+                if not rows and source != "engine":
                     broadened = broaden_empty_sql_once(
                         validated,
                         crop_required=crop_required,
@@ -1475,6 +1516,7 @@ class BQRetriever(BaseRetriever):
                                     str(exc)[:200],
                                 )
 
+                telem = _job_telemetry(row_count=min(len(rows), limit), status="ok")
                 for row in rows[:limit]:
                     d = dict(row)
                     row_meta = project_bq_row_acf(
@@ -1485,6 +1527,7 @@ class BQRetriever(BaseRetriever):
                             "sql_count": batch_size,
                             "sql_source": source,
                             "nl2sql_model": _nl2sql_model_id(),
+                            **telem,
                         }
                     )
                     if slot_id:
@@ -1643,7 +1686,7 @@ class BQRetriever(BaseRetriever):
                     _merge_execute_result(exec_items, mark_prepared=mark_prepared)
 
         if explicit_sql:
-            _run_sql_batch(sql_queries, source="explicit")
+            _run_sql_batch(sql_queries, source=sql_source)
         elif pattern_sqls or nl2sql_sqls:
             if pattern_sqls:
                 _run_sql_batch(pattern_sqls, source="pattern", slot_ids=pattern_slot_ids or None)
@@ -1654,7 +1697,8 @@ class BQRetriever(BaseRetriever):
 
         # After NL2SQL/pattern prepare failures or 0-row success, try deterministic SQL.
         if (
-            sql_source in {"nl2sql", "pattern"}
+            not engine_execute_only
+            and sql_source in {"nl2sql", "pattern"}
             and not any_usable_rows
             and selected_tables
         ):

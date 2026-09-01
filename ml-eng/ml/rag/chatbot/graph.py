@@ -49,14 +49,23 @@ from ml.rag.chatbot.bq_ranking_cache import (
 )
 from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan, _slot_reasoner_active
 from ml.rag.chatbot.class_engine_runner import engine_results_to_bq_plan, run_class_engines
-from ml.rag.chatbot.class_supervisor import SupervisorPlan, compile_supervisor_plan
+from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
+from ml.rag.chatbot.class_supervisor import SupervisorPlan, compile_supervisor_plan, corpora_for_supervisor_plan
 from ml.rag.chatbot.context_diversity import diversify_context_pack
-from ml.rag.chatbot.corpus_catalog import CorpusSelection, select_corpora
+from ml.rag.chatbot.corpus_catalog import CORPUS_CATALOG, CorpusSelection, select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
 from ml.rag.chatbot.facet_compiler import compile_turn_contract, compile_breakdown
 from ml.rag.chatbot.intent_bundles import bundle_primary_measures, bundle_required_measures, match_intent_bundles
 from ml.rag.chatbot.capability_registry import apply_reasoner_to_turn, resolve_capability, unsupported_answer_hint
 from ml.rag.chatbot.empty_answer_templates import empty_answer_for_contract
+from ml.rag.chatbot.bq_gap_messages import (
+    first_prep_error,
+    forbid_generic_insufficient,
+    should_hard_return_bq_gap,
+    typed_bq_gap_answer,
+    warehouse_was_attempted,
+)
+from ml.rag.chatbot.bq_execute_state import bq_execute_flags
 from ml.rag.chatbot.time_retrieval import sync_decomposition_time, time_fallback_enabled, time_kwargs_from_contract
 from ml.rag.chatbot.turn_contract import NUMERIC_JOBS, TurnContract
 from ml.rag.chatbot.typed_pack import typed_context_pack, should_zero_pack
@@ -1125,8 +1134,10 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
     domain_tags = decomposition.get("corpus_domain_tags")
     tc_raw = state.get("turn_contract")
     contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
+    sp_raw = state.get("supervisor_plan")
+    sp = SupervisorPlan.from_dict(sp_raw if isinstance(sp_raw, dict) else None)
     contract_job = contract.job if contract.measure_id or contract.job != "fact" else contract.job
-    if not contract.should_retrieve_vector():
+    if not contract.should_retrieve_vector() and not (sp and sp.must_search_qdrant):
         return {
             "vector_news_results": [],
             "vector_academic_papers_results": [],
@@ -1178,6 +1189,16 @@ def node_parallel_retrieve(state: RAGGraphState) -> dict[str, Any]:
             "news_allowed": bool(planner.get("news_allowed", True)),
             "reasoner_planner": True,
         }
+    if sp and sp.classes and sp.must_search_qdrant:
+        class_corpora = corpora_for_supervisor_plan(sp)
+        if class_corpora:
+            filtered = [c for c in class_corpora if c in CORPUS_CATALOG]
+            if filtered:
+                selection = CorpusSelection(
+                    active=filtered,
+                    boosts=selection.boosts,
+                    rationale=f"{selection.rationale}|class_supervisor",
+                )
     active = set(selection.active)
     boosts = selection.boosts
 
@@ -1338,7 +1359,7 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
         sp = compile_supervisor_plan(q, decomposition=dec, matched_bundles=bundles)
 
     plan: dict[str, Any]
-    if sp and sp.classes and not _slot_reasoner_active():
+    if sp and sp.classes and sql_compiler_enabled():
         engine_results = run_class_engines(q, supervisor_plan=sp, facets=dec)
         plan = engine_results_to_bq_plan(engine_results, rationale=sp.rationale)
         plan["supervisor_plan"] = sp.to_dict()
@@ -1389,7 +1410,7 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
             )
     return {
         "bq_sql_plan": plan,
-        "bq_table_candidates": cands,
+        "bq_table_candidates_inspector": cands,
         "value_hits": plan.get("value_hits"),
     }
 
@@ -1448,8 +1469,119 @@ def aggregate_bq_sql_debug(results: list[dict[str, Any]]) -> tuple[list[str], li
             row_debug["nl2sql_model"] = meta.get("nl2sql_model")
         if meta.get("nl2sql_raw"):
             row_debug["nl2sql_raw"] = str(meta.get("nl2sql_raw"))[:500]
+        for key in ("job_id", "bq_ms", "bytes_processed", "row_count", "class_code", "table_id", "value_hits"):
+            if meta.get(key) is not None:
+                row_debug[key] = meta.get(key)
         bq_sql_debug.append(row_debug)
     return bq_sql_queries, bq_sql_debug
+
+
+def _pre_debug_hits_by_sql(pre_debug: list[dict[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for row in pre_debug:
+        if not isinstance(row, dict):
+            continue
+        sql = str(row.get("sql") or "").strip()
+        hits = row.get("value_hits")
+        if sql and isinstance(hits, dict):
+            out[sql] = hits
+    return out
+
+
+def reconcile_engine_bq_debug(
+    *,
+    execute_debug: list[dict[str, Any]],
+    pre_queries: list[str],
+    pre_debug: list[dict[str, Any]],
+    node_timed_out: bool,
+    bq_timeout: float,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Build final inspector debug from execute outcomes; never leave stale planned rows."""
+    hits_by_sql = _pre_debug_hits_by_sql(pre_debug)
+    by_sql: dict[str, dict[str, Any]] = {}
+    for row in execute_debug:
+        if not isinstance(row, dict):
+            continue
+        sql = str(row.get("sql") or "").strip()
+        if sql:
+            by_sql[sql] = dict(row)
+    out_debug: list[dict[str, Any]] = []
+    out_queries: list[str] = []
+    for raw in pre_queries:
+        sql = str(raw).strip()
+        if not sql:
+            continue
+        if sql not in out_queries:
+            out_queries.append(sql)
+        if sql in by_sql:
+            row = dict(by_sql[sql])
+        elif node_timed_out:
+            row = {
+                "sql": sql,
+                "status": "timeout",
+                "prep_error": f"node_bq_retrieve wall deadline ({bq_timeout:.0f}s)",
+                "sql_source": "engine",
+            }
+        else:
+            row = {
+                "sql": sql,
+                "status": "unknown",
+                "sql_source": "engine",
+            }
+        if sql in hits_by_sql and not row.get("value_hits"):
+            row["value_hits"] = hits_by_sql[sql]
+        out_debug.append(row)
+    seen = set(out_queries)
+    for row in execute_debug:
+        if not isinstance(row, dict):
+            continue
+        sql = str(row.get("sql") or "").strip()
+        if sql and sql not in seen:
+            out_debug.append(dict(row))
+            out_queries.append(sql)
+            seen.add(sql)
+    return out_queries, out_debug
+
+
+def _typed_bq_hard_return(
+    state: RAGGraphState,
+    exec_flags: dict[str, bool],
+    *,
+    bq_debug: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Hard-return typed warehouse gap before LLM when SQL was planned."""
+    priority = (
+        "structured_bq_timed_out",
+        "structured_bq_validation_failed",
+        "structured_bq_empty",
+        "structured_bq_never_executed",
+    )
+    flag = next((k for k in priority if exec_flags.get(k)), None)
+    if not flag:
+        return None
+    dec = state.get("decomposition")
+    dec_dict = dec if isinstance(dec, dict) else None
+    tc_raw = state.get("turn_contract")
+    tc_dict = tc_raw if isinstance(tc_raw, dict) else None
+    answer = typed_bq_gap_answer(
+        flag=flag,
+        decomposition=dec_dict,
+        turn_contract=tc_dict,
+        prep_error=first_prep_error(bq_debug),
+    )
+    return {
+        "answer": answer,
+        "citations": [],
+        "answer_lang": str(state.get("answer_lang") or detect_answer_language(str(state.get("query") or ""))),
+        **acf_result_to_state(
+            no_evidence_acf(
+                explanation=(
+                    "Warehouse query did not yield scorable structured evidence "
+                    f"({flag.replace('structured_bq_', '')})."
+                )
+            )
+        ),
+    }
 
 
 def bq_failure_debug_row(
@@ -1508,6 +1640,8 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     hints = [str(h).strip() for h in (plan.get("table_hints") or []) if str(h).strip()]
     if not hints:
         cands = state.get("bq_table_candidates") or []
+        if not cands:
+            cands = state.get("bq_table_candidates_inspector") or []
         hints = [str(c.get("content") or "") for c in cands if c.get("content")]
 
     # Enrich NL2SQL leftover with reasoner intents when present; pattern SQL
@@ -1541,8 +1675,14 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         os.environ["RAG_BQ_MAX_SQL_QUERIES"] = str(floor)
         env_bumped = True
     task_mode = str(state.get("task_mode") or "chat").strip().lower()
-    has_engine_sql = bool(plan.get("bq_sql_queries") or plan.get("engine_results"))
-    default_bq_timeout = 60.0
+    pre_debug = list(plan.get("bq_sql_debug") or [])
+    pre_queries = list(plan.get("bq_sql_queries") or [])
+    engine_execute_only = (
+        plan.get("sql_source") == "engine" or bool(plan.get("engine_results"))
+    ) and bool(pre_queries)
+    if engine_execute_only:
+        intents = []
+    default_bq_timeout = 25.0
     try:
         bq_timeout = float(os.environ.get("RAG_BQ_RETRIEVE_TIMEOUT_S", str(default_bq_timeout)) or default_bq_timeout)
     except ValueError:
@@ -1558,9 +1698,20 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
             "heavy_path": bool(plan.get("heavy_path")),
         }
     bq_failure_row: dict[str, Any] | None = None
-    pre_debug = list(plan.get("bq_sql_debug") or [])
-    pre_queries = list(plan.get("bq_sql_queries") or [])
+    node_timed_out = False
     retrieve_deadline = time.perf_counter() + bq_timeout
+    retrieve_kwargs: dict[str, Any] = {
+        "crop_required": bool(plan.get("crop_required", True)),
+        "geography_required": bool(plan.get("geography_required", True)),
+        "decomposition": dec,
+        "primary_measures": (
+            dec.get("primary_measures")
+            if isinstance(dec.get("primary_measures"), list)
+            else None
+        ),
+    }
+    if engine_execute_only:
+        retrieve_kwargs["engine_execute_only"] = True
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             fut = ex.submit(
@@ -1579,24 +1730,19 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
                 deadline=retrieve_deadline,
                 **bq_geo,
                 **contract_kwargs,
-                crop_required=bool(plan.get("crop_required", True)),
-                geography_required=bool(plan.get("geography_required", True)),
-                decomposition=dec,
-                primary_measures=(
-                    dec.get("primary_measures")
-                    if isinstance(dec.get("primary_measures"), list)
-                    else None
-                ),
+                **retrieve_kwargs,
             )
             results = fut.result(timeout=bq_timeout)
     except FuturesTimeoutError:
         update_current_span_metadata({"bq_timeout": True, "status": "timeout"})
+        node_timed_out = True
         results = []
-        bq_failure_row = bq_failure_debug_row(
-            retriever,
-            status="bq_timeout",
-            prep_error=f"BQ retrieve exceeded {bq_timeout:.0f}s timeout",
-        )
+        if not engine_execute_only:
+            bq_failure_row = bq_failure_debug_row(
+                retriever,
+                status="bq_timeout",
+                prep_error=f"BQ retrieve exceeded {bq_timeout:.0f}s timeout",
+            )
     except Exception as exc:
         logger.exception("BQ retrieve failed")
         results = []
@@ -1621,20 +1767,23 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     if ctx_truncated:
         update_current_span_metadata({"bq_context_truncated": True})
     bq_sql_queries, bq_sql_debug = aggregate_bq_sql_debug(results)
-    if pre_debug:
-        seen_sql = {d.get("sql") for d in bq_sql_debug if d.get("sql")}
-        for row in pre_debug:
+    if engine_execute_only and pre_queries:
+        bq_sql_queries, bq_sql_debug = reconcile_engine_bq_debug(
+            execute_debug=bq_sql_debug,
+            pre_queries=pre_queries,
+            pre_debug=pre_debug,
+            node_timed_out=node_timed_out,
+            bq_timeout=bq_timeout,
+        )
+    elif pre_debug:
+        hits_by_sql = _pre_debug_hits_by_sql(pre_debug)
+        for row in bq_sql_debug:
             sql = str(row.get("sql") or "").strip()
-            if sql and sql not in seen_sql:
-                bq_sql_debug.insert(0, row)
-                seen_sql.add(sql)
-                if sql not in bq_sql_queries:
-                    bq_sql_queries.insert(0, sql)
-            elif not sql and row not in bq_sql_debug:
-                bq_sql_debug.insert(0, row)
+            if sql in hits_by_sql and not row.get("value_hits"):
+                row["value_hits"] = hits_by_sql[sql]
     if bq_failure_row and not bq_sql_debug:
         bq_sql_debug = [bq_failure_row]
-    elif bq_failure_row:
+    elif bq_failure_row and not engine_execute_only:
         bq_sql_debug = list(bq_sql_debug) + [bq_failure_row]
     cache_entry = cache_entry_from_bq_results(results, query=q, decomposition=dec)
     sql_source = getattr(retriever, "last_sql_source", None)
@@ -2005,17 +2154,40 @@ _INSUFFICIENT_CONTEXT_ANSWER = insufficient_context_answer("en")
 
 
 def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
-    """Deterministic, non-hallucinating response when grounding is unavailable.
-
-    Returns the canned answer plus an empty ``citations`` list — explicitly NOT
-    surfacing the weak internal chunks as if they answered the question.
-    """
+    """Deterministic, non-hallucinating response when grounding is unavailable."""
     status = state.get("web_fallback_status") or "unknown"
     reason = state.get("web_fallback_reason") or ""
     query = str(state.get("query") or "")
     answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
     canned_lang = detect_canned_insufficient_lang(query)
-    answer = insufficient_context_answer(query=query)
+    bq_debug = list(state.get("bq_sql_debug") or []) if isinstance(state.get("bq_sql_debug"), list) else []
+    raw_plan = state.get("bq_sql_plan")
+    plan_dict = raw_plan if isinstance(raw_plan, dict) else {}
+    pre_queries = list(plan_dict.get("bq_sql_queries") or [])
+    exec_flags = bq_execute_flags(bq_debug, pre_queries=pre_queries, usable_bq=False)
+    hard = _typed_bq_hard_return(state, exec_flags, bq_debug=bq_debug)
+    if hard:
+        answer = hard["answer"]
+    elif forbid_generic_insufficient(cast(dict[str, Any], state)):
+        dec = state.get("decomposition")
+        dec_dict = dec if isinstance(dec, dict) else None
+        tc_raw = state.get("turn_contract")
+        tc_dict = tc_raw if isinstance(tc_raw, dict) else None
+        if isinstance(tc_dict, dict):
+            tc = TurnContract.from_dict(tc_dict)
+            answer = empty_answer_for_contract(tc, query=query) or typed_bq_gap_answer(
+                flag="structured_bq_never_executed",
+                decomposition=dec_dict,
+                turn_contract=tc_dict,
+            )
+        else:
+            answer = typed_bq_gap_answer(
+                flag="structured_bq_never_executed",
+                decomposition=dec_dict,
+                turn_contract=tc_dict,
+            )
+    else:
+        answer = insufficient_context_answer(query=query)
     with observed_span(
         "insufficient_context",
         input_data={"web_fallback_status": str(status)[:80]},
@@ -2026,6 +2198,7 @@ def node_insufficient_context(state: RAGGraphState) -> dict[str, Any]:
                 "reason": str(reason)[:200],
                 "answer_lang": answer_lang,
                 "insufficient_canned_lang": canned_lang,
+                "warehouse_attempted": warehouse_was_attempted(cast(dict[str, Any], state)),
             }
         )
         logger.info(
@@ -2116,11 +2289,45 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         gkw["answer_lang"] = state.get("answer_lang")
     if state.get("export_intent"):
         gkw["export_intent"] = state.get("export_intent")
-    if not usable_bq:
+    raw_bq_debug = state.get("bq_sql_debug")
+    bq_debug = list(raw_bq_debug) if isinstance(raw_bq_debug, list) else []
+    raw_plan = state.get("bq_sql_plan")
+    plan_dict = raw_plan if isinstance(raw_plan, dict) else {}
+    pre_queries = list(plan_dict.get("bq_sql_queries") or [])
+    exec_flags = bq_execute_flags(bq_debug, pre_queries=pre_queries, usable_bq=bool(usable_bq))
+    gkw.update(exec_flags)
+    gkw["pre_queries"] = pre_queries
+    gkw["usable_bq"] = bool(usable_bq)
+    gkw["bq_sql_debug"] = bq_debug
+    tc_raw = state.get("turn_contract")
+    tc = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
+    is_numeric_job = bool(tc and tc.job in NUMERIC_JOBS) or is_numeric_data_query(
+        str(query), dec_dict
+    )
+    hard = _typed_bq_hard_return(state, exec_flags, bq_debug=bq_debug)
+    if should_hard_return_bq_gap(
+        exec_flags=exec_flags,
+        pre_queries=pre_queries,
+        usable_bq=bool(usable_bq),
+        context_items=context,
+        is_numeric_job=is_numeric_job,
+    ):
+        if hard is not None:
+            return hard
+    if not usable_bq and not any(
+        exec_flags.get(k)
+        for k in (
+            "structured_bq_timed_out",
+            "structured_bq_never_executed",
+            "structured_bq_empty",
+            "structured_bq_validation_failed",
+            "structured_bq_unavailable",
+        )
+    ):
         gkw["structured_bq_unavailable"] = True
-    elif is_numeric_data_query(str(query), dec_dict):
+    if usable_bq and is_numeric_data_query(str(query), dec_dict):
         gkw["structured_bq_numeric_available"] = True
-    elif is_comparative_bq_query(str(query), dec_dict):
+    elif usable_bq and is_comparative_bq_query(str(query), dec_dict):
         gkw["structured_bq_comparative_available"] = True
     reranked = state.get("reranked_context") or []
     measure_hit = None
@@ -2255,6 +2462,7 @@ def node_generate(state: RAGGraphState) -> dict[str, Any]:
         "generate_max_tokens": gen_max,
         "generate_input_chars": getattr(gen_result, "generate_input_chars", None),
         **acf_result_to_state(acf),
+        **{k: True for k in exec_flags if exec_flags.get(k)},
     }
 
 

@@ -13,9 +13,9 @@ from ml.rag.chatbot.schema_card import load_schema_card
 
 def _max_concurrent_nl2sql() -> int:
     try:
-        return max(1, min(int(os.environ.get("RAG_CLASS_ENGINE_CONCURRENCY", "2") or 2), 4))
+        return max(1, min(int(os.environ.get("RAG_CLASS_ENGINE_CONCURRENCY", "4") or 4), 6))
     except ValueError:
-        return 2
+        return 4
 
 
 def run_class_engines(
@@ -24,13 +24,11 @@ def run_class_engines(
     supervisor_plan: SupervisorPlan,
     facets: dict[str, Any],
 ) -> list[EngineResult]:
-    """Plan SQL for each class; max 2 concurrent, remainder deferred."""
+    """Plan SQL for each class; all classes run (no silent deferral)."""
     codes = list(supervisor_plan.classes) + list(supervisor_plan.secondary)
     if not codes:
         return []
-    max_workers = _max_concurrent_nl2sql()
-    active = codes[:max_workers]
-    deferred = codes[max_workers:]
+    max_workers = min(_max_concurrent_nl2sql(), len(codes))
     results: list[EngineResult] = []
 
     def _run(code: str) -> EngineResult:
@@ -38,8 +36,8 @@ def run_class_engines(
         card = load_schema_card(code) or {}
         return engine.run_plan(query, facets=facets, card=card)
 
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(active))) as pool:
-        futs = {pool.submit(_run, c): c for c in active}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futs = {pool.submit(_run, c): c for c in codes}
         for fut in as_completed(futs):
             try:
                 results.append(fut.result())
@@ -54,17 +52,8 @@ def run_class_engines(
                         caveats=[str(exc)[:200]],
                     )
                 )
-
-    for code in deferred:
-        results.append(
-            EngineResult(
-                class_code=code,
-                status="deferred",
-                table_id="",
-                sql=None,
-                caveats=[f"deferred_pending_slot_cap_{max_workers}"],
-            )
-        )
+    order = {c: i for i, c in enumerate(codes)}
+    results.sort(key=lambda r: order.get(r.class_code, 999))
     return results
 
 
@@ -100,13 +89,15 @@ def engine_results_to_bq_plan(
             debug.append({**er.to_dict(), "sql": None})
             continue
         entries = _iter_sql_entries(er)
-        if not entries and er.status != "planned":
+        if not entries and er.status not in ("planned", "ready"):
             debug.append({**er.to_dict(), "sql": er.sql})
             continue
         for entry in entries:
             table_id = str(entry.get("table_id") or er.table_id or "")
             sql = entry.get("sql")
             sub_status = str(entry.get("status") or er.status)
+            if sub_status == "planned":
+                sub_status = "ready"
             sub_hits = entry.get("value_hits") if isinstance(entry.get("value_hits"), dict) else er.value_hits
             if table_id and table_id not in selected:
                 selected.append(table_id)

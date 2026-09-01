@@ -3,6 +3,13 @@ default_table: fct_food_security
 tables:
   - fct_food_security
   - agg_food_security_country_month
+default_measures:
+  series:
+    - value
+  panel:
+    - value
+  outlook:
+    - value
 coverage:
   agg_food_security_monthly:
     country_iso3:
@@ -25,6 +32,9 @@ columns:
   year:
     role: time_filter
     prompt_mode: stats_only
+  metric:
+    role: measure
+    prompt_mode: resolved_only
 exclude_prompt_columns:
   - geo_key
   - scenario_key

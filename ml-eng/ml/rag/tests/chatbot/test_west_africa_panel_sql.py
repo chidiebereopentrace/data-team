@@ -32,7 +32,7 @@ def test_prod_engine_west_africa_panel_sql() -> None:
         q,
     )
     result = ProdEngine().run_plan(q, facets=dec, card=None)
-    assert result.status == "planned", result.caveats
+    assert result.status == "ready", result.caveats
     assert result.sql
     assert result.table_id == "agg_production_country_year"
     assert "country_iso3 IN (" in result.sql
@@ -46,7 +46,7 @@ def test_fvc_engine_agri_activities_metrics_not_protein() -> None:
     q = "West Africa agricultural activities by country 2015 to date"
     dec = expand_regions_in_decomposition({"geography": [], "time_start": "2015-01-01"}, q)
     result = FvcEngine().run_plan(q, facets=dec, card=None)
-    assert result.status == "planned", result.caveats
+    assert result.status == "ready", result.caveats
     assert len(result.sql_plans) >= 2
     fb_plan = next(p for p in result.sql_plans if p["table_id"] == "fct_food_balance")
     metrics = fb_plan["value_hits"].get("metric") or []
@@ -58,7 +58,7 @@ def test_fvc_engine_agri_activities_includes_trade_table() -> None:
     q = "West Africa agricultural activities by country 2015 to date"
     dec = expand_regions_in_decomposition({"geography": [], "time_start": "2015-01-01"}, q)
     result = FvcEngine().run_plan(q, facets=dec, card=None)
-    assert result.status == "planned", result.caveats
+    assert result.status == "ready", result.caveats
     table_ids = {p["table_id"] for p in result.sql_plans}
     assert "fct_food_balance" in table_ids
     assert "fct_trade" in table_ids

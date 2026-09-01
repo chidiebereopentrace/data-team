@@ -1,6 +1,7 @@
 """Class supervisor: routes indicator classes for warehouse engines (never writes SQL)."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -13,6 +14,9 @@ from ml.rag.chatbot.intent_bundles import (
     match_intent_bundles,
 )
 from ml.rag.chatbot.mart_indicator_classes import class_for_query, facts_for_class
+from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
+
+logger = logging.getLogger(__name__)
 
 _FOOD_BALANCE_SHARE_RE = re.compile(
     r"\b("
@@ -37,6 +41,14 @@ _PRC_MARKET_RE = re.compile(
 
 def _slot_reasoner_active() -> bool:
     return os.environ.get("RAG_SLOT_REASONER", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _warn_dual_flag_conflict() -> None:
+    if _slot_reasoner_active() and sql_compiler_enabled():
+        logger.warning(
+            "RAG_SLOT_REASONER and RAG_SQL_COMPILER both enabled; "
+            "class-engine SQL compiler wins for BQ plan (slot informs vectors only)"
+        )
 
 
 @dataclass(frozen=True)
@@ -78,12 +90,17 @@ def compile_supervisor_plan(
     decomposition: dict[str, Any] | None = None,
     matched_bundles: tuple[MatchedBundle, ...] | None = None,
 ) -> SupervisorPlan:
-    """Route 1-N indicator classes. Default-on unless RAG_SLOT_REASONER=1 owns BQ."""
+    """Route 1-N indicator classes. Default-on unless RAG_SLOT_REASONER=1 owns BQ alone."""
     q = (query or "").strip()
     dec = decomposition if isinstance(decomposition, dict) else {}
     bundles = matched_bundles or match_intent_bundles(q, dec)
+    _warn_dual_flag_conflict()
 
-    if _slot_reasoner_active() and (dec.get("reasoner_job") or dec.get("matched_bundles")):
+    if (
+        _slot_reasoner_active()
+        and not sql_compiler_enabled()
+        and (dec.get("reasoner_job") or dec.get("matched_bundles"))
+    ):
         return SupervisorPlan(
             classes=(),
             secondary=(),
@@ -159,6 +176,18 @@ def compile_supervisor_plan(
     )
 
 
+def corpora_for_supervisor_plan(plan: SupervisorPlan) -> list[str]:
+    """Class-aware Qdrant corpora — not default_all for warehouse-class turns."""
+    codes = {c.upper() for c in (*plan.classes, *plan.secondary)}
+    if not codes:
+        return []
+    if "FS" in codes:
+        return ["public_reports", "ota", "news"]
+    if codes & {"PROD", "FVC", "PRC"}:
+        return ["academic_papers", "public_reports", "policies", "ota"]
+    return ["academic_papers", "public_reports", "ota"]
+
+
 def tables_for_supervisor_plan(plan: SupervisorPlan) -> list[str]:
     """Union of default tables for routed classes (for hints / validation)."""
     seen: set[str] = set()
@@ -176,4 +205,5 @@ __all__ = [
     "SupervisorPlan",
     "compile_supervisor_plan",
     "tables_for_supervisor_plan",
+    "corpora_for_supervisor_plan",
 ]

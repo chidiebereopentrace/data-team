@@ -21,7 +21,7 @@ from ml.rag.chat_memory import (
     default_summary_max_chars,
     default_verbatim_max_chars,
 )
-from ml.rag.chatbot.acf_scoring import ACFResult, no_evidence_acf, score_cited_evidence
+from ml.rag.chatbot.acf_scoring import ACFResult, apply_bq_execute_ceiling, no_evidence_acf, score_cited_evidence
 from ml.rag.chatbot.answer_language import (
     detect_answer_language,
     insufficient_context_answer,
@@ -1238,6 +1238,10 @@ def _build_prompt(
     plan_type: str = "",
     answer_lang: str | None = None,
     structured_bq_unavailable: bool = False,
+    structured_bq_timed_out: bool = False,
+    structured_bq_never_executed: bool = False,
+    structured_bq_empty: bool = False,
+    structured_bq_validation_failed: bool = False,
     structured_bq_numeric_available: bool = False,
     structured_bq_comparative_available: bool = False,
     analytical_mode: bool = False,
@@ -1405,6 +1409,26 @@ def _build_prompt(
         system = (
             "Context includes OpenTrace structured data — use it for comparisons; "
             "use narrative sources for drivers only.\n\n"
+        ) + system
+    elif structured_bq_timed_out and is_numeric_data_query(query, decomposition):
+        system = (
+            "OpenTrace warehouse queries were submitted but did not return rows in time — "
+            "say so clearly. Do not invent totals, yields, prices, or rankings.\n\n"
+        ) + system
+    elif structured_bq_validation_failed and is_numeric_data_query(query, decomposition):
+        system = (
+            "OpenTrace warehouse SQL failed validation before execution — do not claim warehouse "
+            "figures. State the scoped filter could not be executed.\n\n"
+        ) + system
+    elif structured_bq_never_executed and is_numeric_data_query(query, decomposition):
+        system = (
+            "OpenTrace warehouse SQL was planned but not submitted — do not claim warehouse "
+            "figures. Use narrative sources only or state the data gap.\n\n"
+        ) + system
+    elif structured_bq_empty and is_numeric_data_query(query, decomposition):
+        system = (
+            "OpenTrace warehouse returned zero rows for the scoped filters — say so clearly. "
+            "Do not invent totals or substitute unrelated web anecdotes.\n\n"
         ) + system
     elif structured_bq_unavailable and is_numeric_data_query(query, decomposition):
         system = (
@@ -1950,6 +1974,9 @@ def _finalize_generation_result(
     yield_only: bool = False,
     output_type: str = "",
     allowed_subtopics: tuple[str, ...] = (),
+    bq_exec_flags: dict[str, bool] | None = None,
+    usable_bq: bool = False,
+    bq_sql_debug: list[dict[str, Any]] | None = None,
 ) -> GenerationResult:
     """Attach structured citations and score ACF Path B on cited sources only."""
     t0 = time.perf_counter()
@@ -2001,6 +2028,12 @@ def _finalize_generation_result(
             acf_status = "no_citations"
 
         acf = _cap_acf_for_evidence_tier(acf, evidence_tier)
+        acf = apply_bq_execute_ceiling(
+            acf,
+            bq_exec_flags,
+            usable_bq=usable_bq,
+            bq_sql_debug=list(bq_sql_debug or []),
+        )
 
         update_current_span_metadata(
             {
@@ -2085,6 +2118,24 @@ def generate(
     plan_type = str(kwargs.get("plan_type") or "").strip()
     answer_lang = str(kwargs.get("answer_lang") or "").strip() or None
     structured_bq_unavailable = bool(kwargs.get("structured_bq_unavailable"))
+    structured_bq_timed_out = bool(kwargs.get("structured_bq_timed_out"))
+    structured_bq_never_executed = bool(kwargs.get("structured_bq_never_executed"))
+    structured_bq_empty = bool(kwargs.get("structured_bq_empty"))
+    structured_bq_validation_failed = bool(kwargs.get("structured_bq_validation_failed"))
+    pre_queries = list(kwargs.get("pre_queries") or [])
+    usable_bq = bool(kwargs.get("usable_bq"))
+    bq_sql_debug = list(kwargs.get("bq_sql_debug") or [])
+    bq_exec_flags = {
+        k: bool(kwargs.get(k))
+        for k in (
+            "structured_bq_timed_out",
+            "structured_bq_never_executed",
+            "structured_bq_empty",
+            "structured_bq_validation_failed",
+            "structured_bq_unavailable",
+        )
+        if kwargs.get(k)
+    }
     structured_bq_numeric_available = bool(kwargs.get("structured_bq_numeric_available"))
     structured_bq_comparative_available = bool(kwargs.get("structured_bq_comparative_available"))
     analytical_mode = bool(kwargs.get("analytical_mode"))
@@ -2103,7 +2154,7 @@ def generate(
         export_intent=export_intent_s,
     )
 
-    if structured_bq_unavailable and is_numeric_data_query(query, decomposition):
+    if structured_bq_unavailable and is_numeric_data_query(query, decomposition) and not pre_queries:
         usable_preview = filter_context_items(context_items or [])
         has_narrative = any(is_usable_context_item(item) for item in usable_preview)
         if not has_narrative:
@@ -2164,6 +2215,10 @@ def generate(
                 plan_type=plan_type,
                 answer_lang=answer_lang,
                 structured_bq_unavailable=structured_bq_unavailable,
+                structured_bq_timed_out=structured_bq_timed_out,
+                structured_bq_never_executed=structured_bq_never_executed,
+                structured_bq_empty=structured_bq_empty,
+                structured_bq_validation_failed=structured_bq_validation_failed,
                 structured_bq_numeric_available=structured_bq_numeric_available,
                 structured_bq_comparative_available=structured_bq_comparative_available,
                 analytical_mode=analytical_mode,
@@ -2200,6 +2255,9 @@ def generate(
                     inline_citations=inline_citations,
                     generate_input_chars=input_chars,
                     evidence_tier="empty",
+                    bq_exec_flags=bq_exec_flags,
+                    usable_bq=usable_bq,
+                    bq_sql_debug=bq_sql_debug,
                 )
         # Default (RAG_ALLOW_UNGROUNDED off or LLM returned nothing): structured
         # gap message so testers can distinguish "no data" from "low confidence".
@@ -2237,6 +2295,8 @@ def generate(
     if len(usable_context) <= min_usable or evidence_tier == "empty":
         if task_mode == "data_export_only" and export_intent_s:
             pass
+        elif pre_queries and bq_exec_flags:
+            pass
         else:
             return GenerationResult(
                 answer=_compact_gap_message(query, decomposition, answer_lang),
@@ -2266,6 +2326,10 @@ def generate(
         plan_type=plan_type,
         answer_lang=answer_lang,
         structured_bq_unavailable=structured_bq_unavailable,
+        structured_bq_timed_out=structured_bq_timed_out,
+        structured_bq_never_executed=structured_bq_never_executed,
+        structured_bq_empty=structured_bq_empty,
+        structured_bq_validation_failed=structured_bq_validation_failed,
         structured_bq_numeric_available=structured_bq_numeric_available,
         structured_bq_comparative_available=structured_bq_comparative_available,
         analytical_mode=analytical_mode,
@@ -2319,6 +2383,9 @@ def generate(
             yield_only=yield_only,
             output_type=output_type,
             allowed_subtopics=answer_subtopics,
+            bq_exec_flags=bq_exec_flags,
+            usable_bq=usable_bq,
+            bq_sql_debug=bq_sql_debug,
         )
 
     if llm_configured():

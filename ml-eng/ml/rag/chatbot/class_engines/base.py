@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 EngineStatus = Literal[
+    "ready",
     "planned",
     "ok",
     "empty_result",
