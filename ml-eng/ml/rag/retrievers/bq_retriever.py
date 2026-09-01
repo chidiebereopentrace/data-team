@@ -7,8 +7,10 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 import time
 from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -60,8 +62,24 @@ def _env_float(name: str, default: float) -> float:
 
 def _bq_job_timeout_s(sql: str) -> float:
     if _AGG_TABLE_RE.search(sql or ""):
-        return _env_float("RAG_BQ_JOB_TIMEOUT_AGG_S", 12.0)
-    return _env_float("RAG_BQ_JOB_TIMEOUT_FACT_S", 15.0)
+        return _env_float("RAG_BQ_JOB_TIMEOUT_AGG_S", 60.0)
+    return _env_float("RAG_BQ_JOB_TIMEOUT_FACT_S", 60.0)
+
+
+def _bq_execute_parallel() -> bool:
+    return os.environ.get("RAG_BQ_EXECUTE_PARALLEL", "on").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _bq_execute_workers() -> int:
+    try:
+        return max(1, int(os.environ.get("RAG_BQ_EXECUTE_PARALLEL_WORKERS", "4") or 4))
+    except ValueError:
+        return 4
 
 
 def _remaining_deadline_s(deadline: float | None) -> float | None:
@@ -1312,6 +1330,14 @@ class BQRetriever(BaseRetriever):
             except (TypeError, ValueError):
                 deadline = None
 
+        @dataclass(frozen=True)
+        class _PreparedWork:
+            idx: int
+            validated: str
+            limit: int
+            slot_id: str
+            batch_size: int
+
         def _run_sql_batch(
             batch: list[str],
             *,
@@ -1319,81 +1345,14 @@ class BQRetriever(BaseRetriever):
             slot_ids: list[str] | None = None,
         ) -> None:
             nonlocal budget, any_usable_rows, prepared_ok, queries_left
-            for idx, raw_sql in enumerate(batch):
-                if budget <= 0 or queries_left <= 0:
-                    break
-                if deadline is not None and time.perf_counter() >= deadline:
-                    items.append(
-                        {
-                            "content": "[BQ node wall deadline reached before starting query]",
-                            "source": "bigquery",
-                            "metadata": {
-                                "sql": raw_sql,
-                                "status": "timeout",
-                                "prep_error": "node_bq_retrieve wall deadline",
-                                "sql_source": source,
-                            },
-                        }
-                    )
-                    break
-                queries_left -= 1
-                point_fact_cap = (
-                    fast_fact
-                    and template_meta
-                    and template_meta.get("template") == "mart_point_fact"
-                )
-                limit = min(1 if point_fact_cap else rows_per_query, budget)
-                validated, prep_err = self._prepare_sql(
-                    raw_sql,
-                    question=query,
-                    table_hints=hint_list,
-                    selected_tables=selected_tables,
-                    allowed_datasets=allowed,
-                    limit=limit,
-                    client=client,
-                    geo_country=geo_country,
-                    geo_countries=geo_countries,
-                    time_start=time_start,
-                    time_end=time_end,
-                    entities=entities,
-                    domains=domains,
-                    query=query,
-                    primary_measures=primary_measures,
-                    geography=geography,
-                    crop_required=crop_required,
-                    geography_required=geography_required,
-                    sql_source=source,
-                    decomposition=decomp if isinstance(decomp, dict) else None,
-                )
-                if validated is None:
-                    logger.warning(
-                        "BQ NL2SQL: validation rejected SQL #%d (%s): %s",
-                        idx + 1,
-                        prep_err or "unknown",
-                        (raw_sql or "")[:300],
-                    )
-                    meta: dict[str, Any] = {
-                        "sql": raw_sql,
-                        "sql_index": idx + 1,
-                        "sql_count": len(batch),
-                        "status": "validation_failed",
-                        "validation_failed": True,
-                        "sql_source": source,
-                        "nl2sql_model": _nl2sql_model_id(),
-                    }
-                    if prep_err:
-                        meta["prep_error"] = prep_err[:500]
-                    if template_meta and source == "template":
-                        meta["template"] = template_meta.get("template")
-                    if pattern_meta and source == "pattern":
-                        meta["pattern"] = pattern_meta.get("pattern")
-                    items.append({
-                        "content": f"[BQ validation failed: {(prep_err or 'invalid SQL')[:200]}]",
-                        "source": "bigquery",
-                        "metadata": meta,
-                    })
-                    continue
-                prepared_ok = True
+
+            def _execute_prepared(work: _PreparedWork) -> tuple[list[dict[str, Any]], bool]:
+                idx = work.idx
+                validated = work.validated
+                limit = work.limit
+                batch_size = work.batch_size
+                slot_id = work.slot_id
+                exec_items: list[dict[str, Any]] = []
                 try:
                     from google.cloud.bigquery import QueryJobConfig as _QJC
 
@@ -1410,7 +1369,11 @@ class BQRetriever(BaseRetriever):
                         logger.info("BQ bytes billed sql#%d source=%s: %s", idx + 1, source, billed)
                 except Exception as exc:
                     exc_s = str(exc).lower()
-                    is_timeout = "timeout" in exc_s or "deadline" in exc_s or exc.__class__.__name__ == "TimeoutError"
+                    is_timeout = (
+                        "timeout" in exc_s
+                        or "deadline" in exc_s
+                        or exc.__class__.__name__ == "TimeoutError"
+                    )
                     if is_timeout:
                         logger.warning(
                             "BQ job timeout sql#%d source=%s after %.1fs",
@@ -1418,14 +1381,14 @@ class BQRetriever(BaseRetriever):
                             source,
                             _bq_job_timeout_s(validated),
                         )
-                        items.append(
+                        exec_items.append(
                             {
                                 "content": "[BQ query timed out]",
                                 "source": "bigquery",
                                 "metadata": {
                                     "sql": validated,
                                     "sql_index": idx + 1,
-                                    "sql_count": len(batch),
+                                    "sql_count": batch_size,
                                     "status": "timeout",
                                     "execution_error": str(exc)[:500],
                                     "sql_source": source,
@@ -1433,15 +1396,17 @@ class BQRetriever(BaseRetriever):
                                 },
                             }
                         )
-                        continue
+                        return exec_items, True
                     logger.warning(
                         "BQ execution failed for validated SQL #%d: %s (sql: %s)",
-                        idx + 1, str(exc)[:200], validated[:200]
+                        idx + 1,
+                        str(exc)[:200],
+                        validated[:200],
                     )
                     exec_meta: dict[str, Any] = {
                         "sql": validated,
                         "sql_index": idx + 1,
-                        "sql_count": len(batch),
+                        "sql_count": batch_size,
                         "status": "execution_error",
                         "execution_error": str(exc)[:500],
                         "sql_source": source,
@@ -1451,12 +1416,14 @@ class BQRetriever(BaseRetriever):
                         exec_meta["template"] = template_meta.get("template")
                     if pattern_meta and source == "pattern":
                         exec_meta["pattern"] = pattern_meta.get("pattern")
-                    items.append({
-                        "content": f"[BQ execution error: {str(exc)[:200]}]",
-                        "source": "bigquery",
-                        "metadata": exec_meta,
-                    })
-                    continue
+                    exec_items.append(
+                        {
+                            "content": f"[BQ execution error: {str(exc)[:200]}]",
+                            "source": "bigquery",
+                            "metadata": exec_meta,
+                        }
+                    )
+                    return exec_items, True
 
                 if not rows:
                     broadened = broaden_empty_sql_once(
@@ -1510,35 +1477,170 @@ class BQRetriever(BaseRetriever):
 
                 for row in rows[:limit]:
                     d = dict(row)
-                    meta = project_bq_row_acf(
+                    row_meta = project_bq_row_acf(
                         {
                             **d,
                             "sql": validated,
                             "sql_index": idx + 1,
-                            "sql_count": len(batch),
+                            "sql_count": batch_size,
                             "sql_source": source,
                             "nl2sql_model": _nl2sql_model_id(),
                         }
                     )
-                    slot_id = ""
-                    if slot_ids and idx < len(slot_ids):
-                        slot_id = str(slot_ids[idx] or "").strip()
                     if slot_id:
-                        meta["subquestion_id"] = slot_id
-                        meta["slot_id"] = slot_id
+                        row_meta["subquestion_id"] = slot_id
+                        row_meta["slot_id"] = slot_id
                     if template_meta and source == "template":
-                        meta["template"] = template_meta.get("template")
+                        row_meta["template"] = template_meta.get("template")
                     if pattern_meta and source == "pattern":
-                        meta["pattern"] = pattern_meta.get("pattern")
-                    items.append({
-                        "content": str(d),
-                        "source": "bigquery",
-                        "metadata": meta,
-                    })
+                        row_meta["pattern"] = pattern_meta.get("pattern")
+                    exec_items.append(
+                        {
+                            "content": str(d),
+                            "source": "bigquery",
+                            "metadata": row_meta,
+                        }
+                    )
+                return exec_items, True
+
+            def _merge_execute_result(exec_items: list[dict[str, Any]], *, mark_prepared: bool) -> None:
+                nonlocal budget, any_usable_rows, prepared_ok
+                if mark_prepared:
+                    prepared_ok = True
+                for entry in exec_items:
+                    meta = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+                    status = str(meta.get("status") or "") if isinstance(meta, dict) else ""
+                    if status in ("timeout", "execution_error", "validation_failed"):
+                        items.append(entry)
+                        continue
+                    if budget <= 0:
+                        break
+                    items.append(entry)
                     any_usable_rows = True
                     budget -= 1
                     if budget <= 0:
                         break
+
+            prepared: list[_PreparedWork] = []
+            batch_row_limit = min(rows_per_query, budget) if budget > 0 else rows_per_query
+            for idx, raw_sql in enumerate(batch):
+                if queries_left <= 0:
+                    break
+                if deadline is not None and time.perf_counter() >= deadline:
+                    items.append(
+                        {
+                            "content": "[BQ node wall deadline reached before starting query]",
+                            "source": "bigquery",
+                            "metadata": {
+                                "sql": raw_sql,
+                                "status": "timeout",
+                                "prep_error": "node_bq_retrieve wall deadline",
+                                "sql_source": source,
+                            },
+                        }
+                    )
+                    break
+                queries_left -= 1
+                point_fact_cap = (
+                    fast_fact
+                    and template_meta
+                    and template_meta.get("template") == "mart_point_fact"
+                )
+                limit = 1 if point_fact_cap else batch_row_limit
+                validated, prep_err = self._prepare_sql(
+                    raw_sql,
+                    question=query,
+                    table_hints=hint_list,
+                    selected_tables=selected_tables,
+                    allowed_datasets=allowed,
+                    limit=limit,
+                    client=client,
+                    geo_country=geo_country,
+                    geo_countries=geo_countries,
+                    time_start=time_start,
+                    time_end=time_end,
+                    entities=entities,
+                    domains=domains,
+                    query=query,
+                    primary_measures=primary_measures,
+                    geography=geography,
+                    crop_required=crop_required,
+                    geography_required=geography_required,
+                    sql_source=source,
+                    decomposition=decomp if isinstance(decomp, dict) else None,
+                )
+                if validated is None:
+                    logger.warning(
+                        "BQ NL2SQL: validation rejected SQL #%d (%s): %s",
+                        idx + 1,
+                        prep_err or "unknown",
+                        (raw_sql or "")[:300],
+                    )
+                    fail_meta: dict[str, Any] = {
+                        "sql": raw_sql,
+                        "sql_index": idx + 1,
+                        "sql_count": len(batch),
+                        "status": "validation_failed",
+                        "validation_failed": True,
+                        "sql_source": source,
+                        "nl2sql_model": _nl2sql_model_id(),
+                    }
+                    if prep_err:
+                        fail_meta["prep_error"] = prep_err[:500]
+                    if template_meta and source == "template":
+                        fail_meta["template"] = template_meta.get("template")
+                    if pattern_meta and source == "pattern":
+                        fail_meta["pattern"] = pattern_meta.get("pattern")
+                    items.append(
+                        {
+                            "content": f"[BQ validation failed: {(prep_err or 'invalid SQL')[:200]}]",
+                            "source": "bigquery",
+                            "metadata": fail_meta,
+                        }
+                    )
+                    continue
+                slot_id = ""
+                if slot_ids and idx < len(slot_ids):
+                    slot_id = str(slot_ids[idx] or "").strip()
+                prepared.append(
+                    _PreparedWork(
+                        idx=idx,
+                        validated=validated,
+                        limit=limit,
+                        slot_id=slot_id,
+                        batch_size=len(batch),
+                    )
+                )
+
+            if not prepared:
+                return
+
+            use_parallel = _bq_execute_parallel() and len(prepared) > 1
+            if use_parallel:
+                workers = min(_bq_execute_workers(), len(prepared))
+                logger.info(
+                    "BQ execute parallel workers=%s batch_size=%s source=%s",
+                    workers,
+                    len(prepared),
+                    source,
+                )
+                merge_lock = threading.Lock()
+
+                def _run_one(work: _PreparedWork) -> None:
+                    exec_items, mark_prepared = _execute_prepared(work)
+                    with merge_lock:
+                        _merge_execute_result(exec_items, mark_prepared=mark_prepared)
+
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futs = [pool.submit(_run_one, work) for work in prepared]
+                    for fut in futs:
+                        fut.result()
+            else:
+                for work in prepared:
+                    if budget <= 0:
+                        break
+                    exec_items, mark_prepared = _execute_prepared(work)
+                    _merge_execute_result(exec_items, mark_prepared=mark_prepared)
 
         if explicit_sql:
             _run_sql_batch(sql_queries, source="explicit")
