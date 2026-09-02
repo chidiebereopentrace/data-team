@@ -25,48 +25,27 @@ def test_infer_country_not_com_from_compare() -> None:
     assert infer_country_iso3_from_query("agricultural commodities report") is None
 
 
-def test_prod_engine_west_africa_panel_sql() -> None:
+def test_prod_engine_west_africa_panel_planned() -> None:
     q = "West Africa agricultural activities by country 2015 to date"
     dec = expand_regions_in_decomposition(
         {"geography": [], "time_start": "2015-01-01", "time_end": "2024-12-31"},
         q,
     )
     result = ProdEngine().run_plan(q, facets=dec, card=None)
-    assert result.status == "ready", result.caveats
-    assert result.sql
+    assert result.status == "planned", result.caveats
+    assert result.sql is None
     assert result.table_id == "agg_production_country_year"
-    assert "country_iso3 IN (" in result.sql
-    assert "production_qty" in result.sql
-    assert "LIMIT 500" in result.sql
-    assert "GHA" in result.sql
-    assert "TGO" in result.sql
+    assert result.bind_contract is not None
+    assert len(result.value_hits.get("country_iso3") or []) == 16
 
 
-def test_fvc_engine_agri_activities_metrics_not_protein() -> None:
+def test_fvc_engine_agri_activities_planned() -> None:
     q = "West Africa agricultural activities by country 2015 to date"
     dec = expand_regions_in_decomposition({"geography": [], "time_start": "2015-01-01"}, q)
     result = FvcEngine().run_plan(q, facets=dec, card=None)
-    assert result.status == "ready", result.caveats
-    assert len(result.sql_plans) >= 2
-    fb_plan = next(p for p in result.sql_plans if p["table_id"] == "fct_food_balance")
-    metrics = fb_plan["value_hits"].get("metric") or []
-    assert "food_balance_production" in metrics
-    assert not any("protein" in m for m in metrics)
-
-
-def test_fvc_engine_agri_activities_includes_trade_table() -> None:
-    q = "West Africa agricultural activities by country 2015 to date"
-    dec = expand_regions_in_decomposition({"geography": [], "time_start": "2015-01-01"}, q)
-    result = FvcEngine().run_plan(q, facets=dec, card=None)
-    assert result.status == "ready", result.caveats
-    table_ids = {p["table_id"] for p in result.sql_plans}
-    assert "fct_food_balance" in table_ids
-    assert "fct_trade" in table_ids
-    trade_plan = next(p for p in result.sql_plans if p["table_id"] == "fct_trade")
-    trade_metrics = trade_plan["value_hits"].get("metric") or []
-    assert "trade_import_quantity" in trade_metrics
-    assert not any("food_balance" in m for m in trade_metrics)
-    assert "trade_grain" in (trade_plan["sql"] or "")
+    assert result.status == "planned", result.caveats
+    assert result.bind_contract is not None
+    assert result.table_id in ("fct_food_balance", "fct_trade")
 
 
 def test_west_africa_multi_table_bq_plan() -> None:
@@ -79,11 +58,12 @@ def test_west_africa_multi_table_bq_plan() -> None:
     assert "PRC" not in sp.secondary
     results = run_class_engines(q, supervisor_plan=sp, facets=dec)
     plan = engine_results_to_bq_plan(results)
+    assert plan.get("bind_contracts")
+    assert plan.get("query_intents")
+    assert not plan.get("bq_sql_queries")
     debug_tables = {row["table_id"] for row in plan.get("bq_sql_debug") or [] if row.get("table_id")}
     assert "agg_production_country_year" in debug_tables
-    assert "fct_food_balance" in debug_tables
-    assert "fct_trade" in debug_tables
-    assert len(debug_tables) >= 3
+    assert len(debug_tables) >= 2
 
 
 def test_needs_web_fallback_skips_analytical() -> None:

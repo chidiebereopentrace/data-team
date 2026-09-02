@@ -21,7 +21,7 @@ entries:
   - measure: production
     geo_grain: country
     time_grain: year
-    table: agg_production_annual
+    table: agg_production_country_year
     alt_table: fct_production
     template: mart_country_series
     max_geo_level: national

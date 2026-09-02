@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -556,29 +556,85 @@ def year_column(table_id: str) -> str | None:
     return None
 
 
-def resolve_geo_filter_values(table_id: str, labels: list[str] | None) -> list[str]:
-    """Map decomposition geography labels to warehouse filter values for the table geo column."""
-    col = geo_column(table_id)
-    if not col or not labels:
-        return [str(g).strip() for g in (labels or []) if str(g).strip()]
+_ISO3_TO_NAME: dict[str, str] = {iso: name for name, iso in _AFRICA_COUNTRY_ISO3.items()}
+
+
+def _pick_sample_label(label: str, sample_by_low: dict[str, str]) -> str | None:
+    if not label:
+        return None
+    low = label.lower()
+    if low in sample_by_low:
+        return sample_by_low[low]
+    for s_low, canonical in sample_by_low.items():
+        if low in s_low or s_low.startswith(low):
+            return canonical
+    return None
+
+
+def _labels_to_iso3_spine(labels: list[str]) -> list[str]:
+    """Normalize geography labels to ISO3 where possible (continental spine input)."""
     out: list[str] = []
     seen: set[str] = set()
     for raw in labels:
         label = str(raw).strip()
         if not label:
             continue
-        if col == "country_iso3":
-            if _ISO3_RE.match(label.upper()):
-                val = label.upper()
-            else:
-                val = _AFRICA_COUNTRY_ISO3.get(label, label)
+        if _ISO3_RE.match(label.upper()):
+            val = label.upper()
+        elif label in _AFRICA_COUNTRY_ISO3:
+            val = _AFRICA_COUNTRY_ISO3[label]
         else:
             val = label
+            for name, iso in _AFRICA_COUNTRY_ISO3.items():
+                if name.lower() == label.lower():
+                    val = iso
+                    break
+        key = str(val).lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(str(val))
+    return out
+
+
+def resolve_geo_literals_for_table(table_id: str, labels: list[str] | None) -> list[str]:
+    """Map ISO3 spine (or country names) to warehouse literals for the table geo column."""
+    if not labels:
+        return []
+    col = geo_column(table_id)
+    spine = _labels_to_iso3_spine([str(g).strip() for g in labels if str(g).strip()])
+    if not col:
+        return spine
+    samples = column_samples_for_table(table_id, col)
+    sample_by_low = {s.lower(): s for s in samples}
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in spine:
+        if col == "country_iso3":
+            if _ISO3_RE.match(str(item).upper()):
+                val = str(item).upper()
+            else:
+                val = _AFRICA_COUNTRY_ISO3.get(str(item), str(item).upper())
+        elif col in ("country_name", "country"):
+            if _ISO3_RE.match(str(item).upper()):
+                iso = str(item).upper()
+                canonical = _ISO3_TO_NAME.get(iso, "")
+                val = _pick_sample_label(canonical, sample_by_low) or canonical or iso
+            else:
+                val = _pick_sample_label(str(item), sample_by_low) or str(item)
+        else:
+            val = str(item)
         key = val.lower()
         if key not in seen:
             seen.add(key)
             out.append(val)
     return out
+
+
+def resolve_geo_filter_values(table_id: str, labels: list[str] | None) -> list[str]:
+    """Map decomposition geography labels to warehouse filter values for the table geo column."""
+    if not labels:
+        return []
+    return resolve_geo_literals_for_table(table_id, labels)
 
 
 def geo_filter_string(
@@ -1436,6 +1492,237 @@ def compile_semantic_filter(
             return None
         return SemanticFilterClause(sql=sql)
     return None
+
+
+@dataclass
+class TableBindContract:
+    """Table-driven facet binding for NL2SQL / template / validation (all facets, not geo-only)."""
+
+    table_id: str
+    geo_column: str | None = None
+    geo_literals: list[str] = field(default_factory=list)
+    time_column: str | None = None
+    time_sql: str | None = None
+    product_column: str | None = None
+    product_literals: list[str] = field(default_factory=list)
+    measure_columns: list[str] = field(default_factory=list)
+    measure_filters: list[tuple[str, str]] = field(default_factory=list)
+    required_filters_sql: str = ""
+    nomenclature: str = ""
+    anti_patterns: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "table_id": self.table_id,
+            "geo_column": self.geo_column,
+            "geo_literals": list(self.geo_literals),
+            "time_column": self.time_column,
+            "time_sql": self.time_sql,
+            "product_column": self.product_column,
+            "product_literals": list(self.product_literals),
+            "measure_columns": list(self.measure_columns),
+            "measure_filters": [[c, v] for c, v in self.measure_filters],
+            "required_filters_sql": self.required_filters_sql,
+            "nomenclature": self.nomenclature,
+            "anti_patterns": list(self.anti_patterns),
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any] | None) -> TableBindContract | None:
+        if not isinstance(raw, dict) or not str(raw.get("table_id") or "").strip():
+            return None
+        mf_raw = raw.get("measure_filters") or []
+        measure_filters: list[tuple[str, str]] = []
+        for item in mf_raw:
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                measure_filters.append((str(item[0]), str(item[1])))
+        return cls(
+            table_id=str(raw.get("table_id") or ""),
+            geo_column=str(raw.get("geo_column") or "") or None,
+            geo_literals=[str(x) for x in (raw.get("geo_literals") or []) if str(x).strip()],
+            time_column=str(raw.get("time_column") or "") or None,
+            time_sql=str(raw.get("time_sql") or "") or None,
+            product_column=str(raw.get("product_column") or "") or None,
+            product_literals=[str(x) for x in (raw.get("product_literals") or []) if str(x).strip()],
+            measure_columns=[str(x) for x in (raw.get("measure_columns") or []) if str(x).strip()],
+            measure_filters=measure_filters,
+            required_filters_sql=str(raw.get("required_filters_sql") or ""),
+            nomenclature=str(raw.get("nomenclature") or ""),
+            anti_patterns=[str(x) for x in (raw.get("anti_patterns") or []) if str(x).strip()],
+        )
+
+
+def format_bind_nomenclature(contract: TableBindContract) -> str:
+    """Model-facing mandatory bind block for NL2SQL / reasoner prompts."""
+    lines = [f"TABLE: {contract.table_id}"]
+    if contract.geo_column and contract.geo_literals:
+        if len(contract.geo_literals) == 1:
+            lines.append(f"GEO: {contract.geo_column} = {_sql_literal(contract.geo_literals[0])}")
+        else:
+            lits = ", ".join(_sql_literal(v) for v in contract.geo_literals[:16])
+            lines.append(f"GEO: {contract.geo_column} IN ({lits})")
+    if contract.time_column and contract.time_sql:
+        lines.append(f"TIME: use column {contract.time_column} ({contract.time_sql.strip()})")
+    elif contract.time_column:
+        lines.append(f"TIME_COLUMN: {contract.time_column}")
+    if contract.product_column and contract.product_literals:
+        if len(contract.product_literals) == 1:
+            lines.append(
+                f"PRODUCT: {contract.product_column} = {_sql_literal(contract.product_literals[0])}"
+            )
+        else:
+            lits = ", ".join(_sql_literal(v) for v in contract.product_literals[:8])
+            lines.append(f"PRODUCT: {contract.product_column} IN ({lits})")
+    if contract.measure_columns:
+        lines.append(f"MEASURE_COLUMNS: {', '.join(contract.measure_columns[:4])}")
+    for col, val in contract.measure_filters:
+        lines.append(f"DISCRIMINATOR: {col} = {_sql_literal(val)}")
+    for anti in contract.anti_patterns:
+        lines.append(f"ANTI: {anti}")
+    if contract.required_filters_sql.strip():
+        lines.append(f"REQUIRED_SQL_FRAGMENTS: {contract.required_filters_sql.strip()}")
+    return "\n".join(lines)
+
+
+def _bind_anti_patterns(table_id: str, *, geo_column: str | None, time_column: str | None) -> list[str]:
+    bare = _strip_fqn(table_id).lower()
+    schema = load_mart_table_schema(bare) or {}
+    col_names = {
+        str(c.get("name") or "").strip().lower()
+        for c in (schema.get("columns") or [])
+        if str(c.get("name") or "").strip()
+    }
+    anti: list[str] = []
+    if geo_column == "country_name" and "country_code" in col_names:
+        anti.append("DO NOT filter country_code with 3-letter ISO3 codes")
+    if time_column == "time_key" and "year" not in col_names:
+        anti.append("DO NOT use column year — this table uses time_key")
+    if time_column and time_column != "year" and "year" in col_names and time_column != "year":
+        anti.append(f"Prefer {time_column} over year for time filters on this table")
+    return anti
+
+
+def compile_table_bind_contract(
+    table_id: str,
+    *,
+    facets: dict[str, Any] | None = None,
+    card: dict[str, Any] | None = None,
+    query: str = "",
+    country_labels: list[str] | None = None,
+    project_id: str | None = None,
+    dataset: str | None = None,
+) -> TableBindContract:
+    """Compile all facet bindings for one table from YAML dictionary + decomposition spine."""
+    from ml.rag.chatbot.bq_mart_sql import mart_dataset
+
+    bare = _strip_fqn(table_id).lower()
+    dec = facets if isinstance(facets, dict) else {}
+    proj = (project_id or os.environ.get("BQ_PROJECT", "opentrace-prod-5ga4")).strip()
+    ds = (dataset or mart_dataset()).strip()
+
+    geo_labels = list(country_labels or [])
+    if not geo_labels:
+        geo_raw = dec.get("geography")
+        if isinstance(geo_raw, list):
+            geo_labels = [str(g).strip() for g in geo_raw if str(g).strip()]
+    geo_literals = resolve_geo_literals_for_table(bare, geo_labels)
+    gcol = geo_column(bare)
+
+    entities_raw = dec.get("entities")
+    entities = entities_raw if isinstance(entities_raw, list) else []
+    pm_raw = dec.get("primary_measures")
+    primary_measures = pm_raw if isinstance(pm_raw, list) else None
+    mb = measure_blob(query, primary_measures=primary_measures, task_mode=str(dec.get("task_mode") or ""))
+    pb = product_blob(query, entities)
+
+    ts = str(dec.get("time_start") or "")[:10]
+    te = str(dec.get("time_end") or "")[:10]
+    year_hint: int | None = None
+    if te[:4].isdigit() and ts[:4].isdigit() and ts[:4] == te[:4]:
+        year_hint = int(te[:4])
+    elif te[:4].isdigit():
+        year_hint = int(te[:4])
+
+    parts: list[str] = []
+    geo_clause = compile_semantic_filter(
+        bare,
+        "geo",
+        blob=query,
+        project_id=proj,
+        dataset=ds,
+        country_labels=geo_labels or geo_literals,
+    )
+    if geo_clause and geo_clause.sql.strip():
+        parts.append(geo_clause.sql.strip())
+
+    time_clause = compile_semantic_filter(
+        bare,
+        "time",
+        blob=query,
+        project_id=proj,
+        dataset=ds,
+        year=year_hint,
+        time_start=ts or None,
+        time_end=te or None,
+    )
+    tcol = year_column(bare)
+    time_sql = time_clause.sql.strip() if time_clause else None
+    if time_clause and time_clause.sql.strip():
+        parts.append(time_clause.sql.strip())
+
+    prod_clause = compile_semantic_filter(
+        bare,
+        "product",
+        blob=pb,
+        project_id=proj,
+        dataset=ds,
+        labels=entities,
+    )
+    pcol = product_column(bare)
+    product_literals = list(prod_clause.labels) if prod_clause and prod_clause.labels else []
+    if prod_clause and prod_clause.sql.strip():
+        parts.append(prod_clause.sql.strip())
+
+    meas_clause = compile_semantic_filter(
+        bare,
+        "measure",
+        blob=mb,
+        project_id=proj,
+        dataset=ds,
+        primary_measures=primary_measures,
+        measure_blob_text=mb,
+    )
+    measure_filters = compile_measure_filters(
+        bare,
+        measure_blob_text=mb,
+        primary_measures=primary_measures,
+    )
+    if meas_clause and meas_clause.sql.strip():
+        parts.append(meas_clause.sql.strip())
+
+    required_sql = " ".join(parts)
+    measure_cols = measure_columns_mart(bare) or measure_columns(bare)
+    anti = _bind_anti_patterns(bare, geo_column=gcol, time_column=tcol)
+    if card:
+        for rule in card.get("hard_rules") or []:
+            anti.append(f"CARD_RULE: {rule}")
+
+    contract = TableBindContract(
+        table_id=bare,
+        geo_column=gcol,
+        geo_literals=geo_literals,
+        time_column=tcol,
+        time_sql=time_sql,
+        product_column=pcol,
+        product_literals=product_literals,
+        measure_columns=measure_cols,
+        measure_filters=measure_filters,
+        required_filters_sql=required_sql,
+        anti_patterns=anti,
+        nomenclature="",
+    )
+    contract.nomenclature = format_bind_nomenclature(contract)
+    return contract
 
 
 def match_product_samples(table_id: str, blob: str) -> list[str]:

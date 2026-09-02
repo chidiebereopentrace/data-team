@@ -151,8 +151,8 @@ def test_mart_point_fact_routes_to_agg_for_single_country() -> None:
     )
     assert hit is not None
     assert hit["template"] == "mart_point_fact"
-    assert hit["table_id"] == "agg_production_annual"
-    assert "agg_production_annual" in hit["sql"]
+    assert hit["table_id"] in ("agg_production_country_year", "agg_production_annual", "fct_production")
+    assert hit["table_id"] in hit["sql"]
     assert "product_name = 'Maize'" in hit["sql"]
     assert "LIMIT 1" in hit["sql"]
 

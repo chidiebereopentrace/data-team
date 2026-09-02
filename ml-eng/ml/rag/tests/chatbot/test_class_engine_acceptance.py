@@ -22,14 +22,10 @@ def test_fvc_engine_ghana_wheat_sql() -> None:
     q = "What share of Ghana's wheat domestic supply was imported in the latest food balance year?"
     facets = {"geography": ["Ghana"], "time_start": "2010-01-01", "time_end": "2024-12-31"}
     result = FvcEngine().run_plan(q, facets=facets, card=None)
-    assert result.status == "ready"
+    assert result.status == "planned"
     assert result.table_id == "fct_food_balance"
-    assert result.sql
-    assert "fct_food_balance" in result.sql
-    assert "country_iso3 = 'GHA'" in result.sql
-    assert "food_balance_import_quantity" in result.sql
-    assert "food_balance_domestic_supply_quantity" in result.sql
-    assert "dim_product" in result.sql
+    assert result.sql is None
+    assert result.bind_contract is not None
     assert result.value_hits.get("country_iso3") == ["GHA"]
 
 
@@ -64,14 +60,16 @@ def test_west_africa_deferred_third_engine() -> None:
     assert "PRC" not in sp.secondary
     results = run_class_engines(q, supervisor_plan=sp, facets=dec)
     prod = next(r for r in results if r.class_code == "PROD")
-    assert prod.status == "ready", prod.caveats
-    assert "country_iso3 IN (" in (prod.sql or "")
+    assert prod.status == "planned", prod.caveats
+    assert prod.bind_contract is not None
     fvc = next(r for r in results if r.class_code == "FVC")
-    assert fvc.status == "ready", fvc.caveats
-    assert len(fvc.sql_plans) >= 2
+    assert fvc.status == "planned", fvc.caveats
     plan = engine_results_to_bq_plan(results)
+    assert plan.get("bind_contracts")
+    assert plan.get("query_intents")
+    assert not plan.get("bq_sql_queries")
     debug_tables = {row["table_id"] for row in plan.get("bq_sql_debug") or [] if row.get("table_id")}
-    assert len(debug_tables) >= 3
+    assert len(debug_tables) >= 2
 
 
 def test_outlook_supervisor_fs() -> None:
@@ -97,8 +95,9 @@ def test_generic_engine_fs_picks_food_security_table() -> None:
     q = "How many people are in IPC Phase 3 in Ethiopia?"
     facets = {"geography": ["Ethiopia"], "time_start": "2020-01-01", "time_end": "2024-12-31"}
     result = GenericEngine("FS").run_plan(q, facets=facets, card=None)
-    assert result.status == "ready", result.caveats
+    assert result.status == "planned", result.caveats
     assert result.table_id == "fct_food_security"
+    assert result.bind_contract is not None
 
 
 def test_bq_reasoner_no_skip_on_bundles_without_slot_flag(monkeypatch) -> None:

@@ -3,7 +3,7 @@ empty_policy: generate_weak
 default_table: fct_food_security
 tables:
   - fct_food_security
-  - agg_food_security_country_month
+  - agg_food_security_monthly
 default_measures:
   series:
     - value

@@ -521,6 +521,62 @@ def inject_missing_metric_filters(
     return _append_where_filters(text, extra), notes
 
 
+def inject_bind_contract_filters(
+    sql: str,
+    bind_contracts: dict[str, Any] | None,
+) -> tuple[str, list[str]]:
+    """Inject missing facet filters from TableBindContract when generated SQL omits them."""
+    text = (sql or "").strip()
+    if not text or not isinstance(bind_contracts, dict) or not bind_contracts:
+        return text, []
+
+    from ml.rag.chatbot.bq_table_schema_yaml import TableBindContract
+
+    filtered = _filtered_columns(text)
+    clauses: list[str] = []
+    notes: list[str] = []
+
+    for tid in sorted(bind_contracts.keys()):
+        contract = TableBindContract.from_dict(
+            bind_contracts.get(tid) if isinstance(bind_contracts.get(tid), dict) else None
+        )
+        if contract is None:
+            continue
+        if contract.geo_column and contract.geo_literals:
+            gcol = contract.geo_column
+            if gcol.lower() not in filtered:
+                if len(contract.geo_literals) == 1:
+                    lit = contract.geo_literals[0].replace("'", "''")
+                    clauses.append(f"{gcol} = '{lit}'")
+                    notes.append(f"{tid}.{gcol}='{contract.geo_literals[0]}'")
+                else:
+                    lits = ", ".join(
+                        f"'{v.replace(chr(39), chr(39)+chr(39))}'"
+                        for v in contract.geo_literals[:16]
+                    )
+                    clauses.append(f"{gcol} IN ({lits})")
+                    notes.append(f"{tid}.{gcol} IN (...)" )
+        for col, val in contract.measure_filters:
+            if col.lower() in filtered:
+                continue
+            lit = val.replace("'", "''")
+            clauses.append(f"{col} = '{lit}'")
+            notes.append(f"{tid}.{col}='{val}'")
+        req = str(contract.required_filters_sql or "").strip()
+        if req and contract.geo_column:
+            for frag in re.findall(r"AND\s+[^AND]+", req, flags=re.IGNORECASE):
+                piece = frag.strip()
+                col_m = re.match(r"AND\s+(\w+)", piece, re.I)
+                if col_m and col_m.group(1).lower() not in filtered:
+                    clauses.append(piece[4:].strip())
+
+    if not clauses:
+        return text, []
+
+    extra = " AND ".join(clauses)
+    return _append_where_filters(text, extra), notes
+
+
 def _table_has_column(table_id: str, col_name: str) -> bool:
     schema = load_mart_table_schema(table_id) or load_table_schema(table_id)
     if not schema:

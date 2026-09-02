@@ -108,7 +108,7 @@ def choose_agg_vs_fact(
     if table_id == "fct_production" and national and annual:
         if multi_country or iso_count >= 2:
             return "agg_production_country_year"
-        return "agg_production_annual"
+        return "agg_production_country_year"
     if table_id == "fct_food_security" and national and "month" in q:
         return "agg_food_security_monthly"
     if table_id == "fct_prices" and national and "market" not in q:
