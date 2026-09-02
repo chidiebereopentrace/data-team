@@ -60,7 +60,8 @@ def test_ontology_uses_mart_tables():
     assert any(t.startswith("fct_") or t.startswith("agg_") for t in spec.candidate_tables)
 
 
-def test_retrieval_contract_mart_tables():
+def test_retrieval_contract_mart_tables(monkeypatch):
+    monkeypatch.setenv("RAG_SQL_COMPILER", "0")
     contract = build_retrieval_contract(
         "maize production in Nigeria 2022",
         decomposition={"entities": ["maize"], "geography": ["NGA"], "time_start": "2022-01-01"},

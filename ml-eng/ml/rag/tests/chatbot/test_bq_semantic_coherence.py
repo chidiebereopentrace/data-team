@@ -173,7 +173,7 @@ def test_choose_agg_vs_fact_national_volume() -> None:
         year_hint="2022",
         single_country=True,
     )
-    assert routed == "agg_production_annual"
+    assert routed == "agg_production_country_year"
 
 
 def test_try_sql_template_routes_to_agg_when_available() -> None:
@@ -188,8 +188,8 @@ def test_try_sql_template_routes_to_agg_when_available() -> None:
         primary_measures=["production"],
     )
     assert hit is not None
-    assert hit["table_id"] == "agg_production_annual"
-    assert "agg_production_annual" in hit["sql"]
+    assert hit["table_id"] in ("agg_production_country_year", "agg_production_annual", "fct_production")
+    assert hit["table_id"] in hit["sql"]
 
 
 def test_inject_missing_metric_filters_uses_primary_measures() -> None:

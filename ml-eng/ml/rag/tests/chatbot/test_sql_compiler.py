@@ -1,6 +1,8 @@
 """SQL compiler unit tests."""
 from __future__ import annotations
 
+import pytest
+
 from ml.rag.chatbot.schema_card import load_schema_card
 from ml.rag.chatbot.sql_compiler import SqlRequest, assemble_sql, compile_sql, sql_compiler_enabled
 
@@ -10,7 +12,7 @@ def test_sql_compiler_enabled_by_default(monkeypatch) -> None:
     assert sql_compiler_enabled() is True
 
 
-def test_assemble_generic_prod_shape() -> None:
+def test_assemble_sql_removed() -> None:
     card = load_schema_card("FS") or {}
     req = SqlRequest(
         class_code="FS",
@@ -20,13 +22,11 @@ def test_assemble_generic_prod_shape() -> None:
         year_end=2024,
         shape="series",
     )
-    sql = assemble_sql(req, card)
-    assert "country_iso3 = 'GHA'" in sql
-    assert "LIMIT" in sql.upper()
-    assert "year BETWEEN" in sql
+    with pytest.raises(NotImplementedError):
+        assemble_sql(req, card)
 
 
-def test_compile_validates_limit() -> None:
+def test_compile_delegates_to_bind_contract_path() -> None:
     card = load_schema_card("FS") or {}
     req = SqlRequest(
         class_code="FS",
@@ -38,5 +38,5 @@ def test_compile_validates_limit() -> None:
         value_hits={"country_iso3": ["GHA", "NGA"]},
     )
     sql, err = compile_sql(req, card)
-    assert sql is not None, err
-    assert "IN (" in sql
+    assert sql is None
+    assert "bind_contract" in err

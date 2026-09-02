@@ -22,6 +22,7 @@ from ml.rag.chatbot.bq_sql_validate import (
     broaden_empty_sql_once,
     dry_run_sql,
     inject_missing_metric_filters,
+    inject_bind_contract_filters,
     inject_time_bounds,
     max_bytes_billed_for_source,
     sql_retry_enabled,
@@ -247,9 +248,23 @@ def _format_query_constraints(
     entities: list[str] | None,
     domains: list[str] | None,
     query: str | None = None,
+    bind_contracts: dict[str, Any] | None = None,
 ) -> str:
     """Structured filters from query decomposition (must appear in generated SQL)."""
     lines: list[str] = []
+    if isinstance(bind_contracts, dict) and bind_contracts:
+        lines.append(
+            "MANDATORY table bind contracts (use exact columns and literals — do not substitute):"
+        )
+        for tid in sorted(bind_contracts.keys()):
+            raw = bind_contracts.get(tid)
+            if isinstance(raw, dict):
+                nomen = str(raw.get("nomenclature") or "").strip()
+                if nomen:
+                    lines.append(nomen)
+        if lines:
+            return "Query constraints from decomposition (MUST honor in WHERE / GROUP BY):\n" + "\n".join(lines)
+
     countries = [str(c).strip() for c in (geo_countries or []) if str(c).strip()]
     if not countries and geo_country:
         countries = [geo_country.strip()]
@@ -535,6 +550,7 @@ class BQRetriever(BaseRetriever):
         max_queries: int,
         selected_tables: list[str] | None = None,
         query: str | None = None,
+        bind_contracts: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         schema_text = self._schema_for_nl2sql(table_hints)
         constraints_block = _format_query_constraints(
@@ -545,6 +561,7 @@ class BQRetriever(BaseRetriever):
             entities=entities,
             domains=domains,
             query=query or question,
+            bind_contracts=bind_contracts,
         )
         hints_block = ""
         hints_truncated = False
@@ -659,6 +676,7 @@ class BQRetriever(BaseRetriever):
         domains: list[str] | None = None,
         selected_tables: list[str] | None = None,
         query: str | None = None,
+        bind_contracts: dict[str, Any] | None = None,
     ) -> str:
         """Generate one BigQuery SELECT (focused on a single table hint when provided)."""
         messages = self._build_nl2sql_messages(
@@ -674,6 +692,7 @@ class BQRetriever(BaseRetriever):
             max_queries=1,
             selected_tables=selected_tables,
             query=query,
+            bind_contracts=bind_contracts,
         )
         raw = _call_llama_for_sql(messages)
         sql = _extract_single_select(raw)
@@ -705,6 +724,7 @@ class BQRetriever(BaseRetriever):
         geography_required: bool | None = None,
         sql_source: str = "",
         decomposition: dict[str, Any] | None = None,
+        bind_contracts: dict[str, Any] | None = None,
     ) -> tuple[str | None, str | None]:
         """
         Validate SQL, enforce table allowlist, dry-run, and optionally retry once.
@@ -769,6 +789,13 @@ class BQRetriever(BaseRetriever):
 
         def _maybe_inject(sql: str) -> str:
             cue = question or query or ""
+            if bind_contracts:
+                fixed, bind_notes = inject_bind_contract_filters(sql, bind_contracts)
+                if bind_notes:
+                    revalidated = _validate_sql(fixed, allowed_datasets, limit)
+                    if revalidated is not None:
+                        logger.info("BQ bind-contract auto-inject: %s", "; ".join(bind_notes))
+                        sql = revalidated
             metric_err = validate_required_metric_filters(sql, selected_tables or None)
             if metric_err:
                 fixed, notes = inject_missing_metric_filters(
@@ -849,6 +876,7 @@ class BQRetriever(BaseRetriever):
         domains: list[str] | None = None,
         selected_tables: list[str] | None = None,
         query: str | None = None,
+        bind_contracts: dict[str, Any] | None = None,
     ) -> list[str]:
         """
         Generate up to RAG_BQ_MAX_SQL_QUERIES (default 10) SELECT statements via NL-to-SQL.
@@ -893,6 +921,7 @@ class BQRetriever(BaseRetriever):
                     max_queries=max_queries,
                     selected_tables=selected_tables,
                     query=query,
+                    bind_contracts=bind_contracts,
                 )
                 raw_batch = _call_llama_for_sql(messages)
                 parsed = _parse_sql_queries(raw_batch, max_queries)
@@ -921,6 +950,7 @@ class BQRetriever(BaseRetriever):
                         domains=domains,
                         selected_tables=selected_tables,
                         query=query,
+                        bind_contracts=bind_contracts,
                     )
 
                 seen: set[str] = set()
@@ -1102,6 +1132,10 @@ class BQRetriever(BaseRetriever):
         contract_sql_only = bool(kwargs.get("contract_sql_only"))
         template_key = str(kwargs.get("template_key") or "").strip()
         heavy_path = bool(kwargs.get("heavy_path"))
+        bind_contracts_raw = kwargs.get("bind_contracts")
+        bind_contracts: dict[str, Any] | None = (
+            bind_contracts_raw if isinstance(bind_contracts_raw, dict) and bind_contracts_raw else None
+        )
 
         if (
             not heavy_path
@@ -1181,7 +1215,9 @@ class BQRetriever(BaseRetriever):
             return [str(hit["sql"])]
 
         if not engine_execute_only and not sql_queries and not explicit_sql and (
-            not sql_compiler_enabled() or bool(kwargs.get("nl2sql_fallback"))
+            not sql_compiler_enabled()
+            or bool(kwargs.get("nl2sql_fallback"))
+            or bool(kwargs.get("bind_contracts"))
         ):
             template_sqls = _try_template_sql()
             if template_sqls:
@@ -1262,6 +1298,8 @@ class BQRetriever(BaseRetriever):
                     need_nl2sql = False
                 if contract_sql_only:
                     need_nl2sql = False
+                if bind_contracts and not sql_queries and not pattern_sqls and not template_sqls:
+                    need_nl2sql = self.nl2sql_enabled and not contract_sql_only
                 if need_nl2sql:
                     nl_tables = leftover_tables or (
                         sorted(selected_tables) if selected_tables else None
@@ -1281,6 +1319,7 @@ class BQRetriever(BaseRetriever):
                             domains=domains,
                             selected_tables=nl_tables,
                             query=query,
+                            bind_contracts=bind_contracts,
                         )
                     finally:
                         if fast_fact:
@@ -1496,6 +1535,7 @@ class BQRetriever(BaseRetriever):
                             geography_required=geography_required,
                             sql_source=source,
                             decomposition=decomp if isinstance(decomp, dict) else None,
+                            bind_contracts=bind_contracts,
                         )
                         if revalidated:
                             try:
@@ -1613,6 +1653,7 @@ class BQRetriever(BaseRetriever):
                     geography_required=geography_required,
                     sql_source=source,
                     decomposition=decomp if isinstance(decomp, dict) else None,
+                    bind_contracts=bind_contracts,
                 )
                 if validated is None:
                     logger.warning(

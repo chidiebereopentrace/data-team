@@ -27,7 +27,7 @@ def test_dual_flag_compiler_wins_for_supervisor(monkeypatch) -> None:
     assert "PROD" in sp.classes
     results = run_class_engines(q, supervisor_plan=sp, facets=dec)
     assert results
-    assert any(r.class_code == "PROD" and r.sql for r in results)
+    assert any(r.class_code == "PROD" and r.status == "planned" and r.bind_contract for r in results)
 
 
 def test_vectors_only_skips_hard_return() -> None:

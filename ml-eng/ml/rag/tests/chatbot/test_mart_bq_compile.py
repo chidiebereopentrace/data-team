@@ -20,6 +20,7 @@ _KNOWN = {r["table_id"] for r in list_mart_table_index()}
     [
         ("fct_production", "Nigeria", "NGA"),
         ("agg_production_annual", "Nigeria", "Nigeria"),
+        ("agg_production_annual", "KEN", "Kenya"),
         ("fct_production", "NGA", "NGA"),
     ],
 )
@@ -43,7 +44,8 @@ def test_compile_intent_single_country_not_custom() -> None:
     assert "country_iso3" in intent["grain"]
 
 
-def test_retrieval_contract_single_country_production_intent() -> None:
+def test_retrieval_contract_single_country_production_intent(monkeypatch) -> None:
+    monkeypatch.setenv("RAG_SQL_COMPILER", "0")
     q = "What was maize production in Nigeria in 2022?"
     dec = {
         "geography": ["Nigeria"],

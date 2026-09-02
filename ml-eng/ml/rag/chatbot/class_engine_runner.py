@@ -57,89 +57,76 @@ def run_class_engines(
     return results
 
 
-def _iter_sql_entries(er: EngineResult) -> list[dict[str, Any]]:
-    if er.sql_plans:
-        return list(er.sql_plans)
-    if er.sql and er.table_id:
-        return [
-            {
-                "table_id": er.table_id,
-                "sql": er.sql,
-                "value_hits": er.value_hits,
-                "status": er.status,
-            }
-        ]
-    return []
-
-
 def engine_results_to_bq_plan(
     results: list[EngineResult],
     *,
     rationale: str = "class_engines",
 ) -> dict[str, Any]:
-    """Convert engine plans into bq_sql_plan shape for retrieve node."""
+    """Convert engine plans into bq_sql_plan for template/pattern/NL2SQL retrieve."""
     selected: list[str] = []
     intents: list[dict[str, Any]] = []
-    sql_queries: list[str] = []
+    table_hints: list[str] = []
+    bind_contracts: dict[str, Any] = {}
     debug: list[dict[str, Any]] = []
     value_hits_all: dict[str, Any] = {}
+    hints_truncated = False
+    has_planned = False
 
     for er in results:
         if er.status == "deferred":
             debug.append({**er.to_dict(), "sql": None})
             continue
-        entries = _iter_sql_entries(er)
-        if not entries and er.status not in ("planned", "ready"):
-            debug.append({**er.to_dict(), "sql": er.sql})
-            continue
-        for entry in entries:
-            table_id = str(entry.get("table_id") or er.table_id or "")
-            sql = entry.get("sql")
-            sub_status = str(entry.get("status") or er.status)
-            if sub_status == "planned":
-                sub_status = "ready"
-            sub_hits = entry.get("value_hits") if isinstance(entry.get("value_hits"), dict) else er.value_hits
-            if table_id and table_id not in selected:
-                selected.append(table_id)
-            if sql:
-                sql_queries.append(str(sql))
-                debug.append(
-                    {
-                        "sql": sql,
-                        "status": sub_status,
-                        "class_code": er.class_code,
-                        "table_id": table_id,
-                        "value_hits": sub_hits,
-                        "sql_source": "engine",
-                        "family_id": entry.get("family_id"),
-                        "role": entry.get("role"),
-                    }
-                )
-            if sql and table_id:
-                intents.append(
-                    {
-                        "goal": f"{er.class_code} from {table_id}",
-                        "tables": [table_id],
-                        "filters": "",
-                        "notes": er.class_code,
-                        "pattern": "custom",
-                        "metric": "value",
-                        "grain": [],
-                        "order_by": "year DESC",
-                    }
-                )
+
         value_hits_all[er.class_code] = er.value_hits
+        table_id = str(er.table_id or "").strip()
+
+        if er.bind_contract and table_id:
+            bind_contracts[table_id] = er.bind_contract
+        for hint in er.table_hints or []:
+            if hint and hint not in table_hints:
+                table_hints.append(hint)
+        hints_truncated = hints_truncated or bool(er.hints_truncated)
+
+        for intent in er.query_intents or []:
+            if isinstance(intent, dict):
+                intents.append(intent)
+                for t in intent.get("tables") or []:
+                    tid = str(t).strip().split(".")[-1]
+                    if tid and tid not in selected:
+                        selected.append(tid)
+
+        if table_id and table_id not in selected:
+            selected.append(table_id)
+
+        if er.status == "planned":
+            has_planned = True
+            debug.append(
+                {
+                    **er.to_dict(),
+                    "sql": None,
+                    "status": "planned",
+                    "sql_source": "bind_contract",
+                }
+            )
+        elif er.status not in ("ready",) or er.sql:
+            debug.append({**er.to_dict(), "sql": er.sql})
+
+    skip_bq = not selected and not has_planned and not intents
 
     return {
         "selected_tables": selected,
         "query_intents": intents,
-        "skip_bq": not sql_queries,
+        "skip_bq": skip_bq,
         "rationale": rationale,
         "engine_results": [r.to_dict() for r in results],
-        "bq_sql_queries": sql_queries,
+        "bq_sql_queries": [],
         "bq_sql_debug": debug,
         "value_hits": value_hits_all,
-        "sql_source": "engine" if sql_queries else None,
+        "table_hints": table_hints,
+        "hints_truncated": hints_truncated,
+        "bind_contracts": bind_contracts,
+        "sql_source": "bind_contract" if has_planned else None,
+        "nl2sql_fallback": has_planned,
     }
 
 

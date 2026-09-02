@@ -1439,7 +1439,7 @@ def node_bq_reason(state: RAGGraphState) -> dict[str, Any]:
             engine_results = run_class_engines(q, supervisor_plan=sp, facets=dec)
             plan = engine_results_to_bq_plan(engine_results, rationale=sp.rationale)
             plan["supervisor_plan"] = sp.to_dict()
-            if not plan.get("bq_sql_queries"):
+            if not plan.get("bq_sql_queries") and not plan.get("bind_contracts"):
                 allow_nl2 = _nl2sql_escape_allowed(
                     task_mode=task_mode,
                     analytical=analytical,
@@ -1781,9 +1781,7 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
     task_mode = str(state.get("task_mode") or "chat").strip().lower()
     pre_debug = list(plan.get("bq_sql_debug") or [])
     pre_queries = list(plan.get("bq_sql_queries") or [])
-    engine_execute_only = (
-        plan.get("sql_source") == "engine" or bool(plan.get("engine_results"))
-    ) and bool(pre_queries)
+    engine_execute_only = plan.get("sql_source") == "engine" and bool(pre_queries)
     if engine_execute_only:
         intents = []
     default_bq_timeout = 25.0
@@ -1818,6 +1816,9 @@ def node_bq_retrieve(state: RAGGraphState) -> dict[str, Any]:
         retrieve_kwargs["engine_execute_only"] = True
     if plan.get("nl2sql_fallback"):
         retrieve_kwargs["nl2sql_fallback"] = True
+    bind_raw = plan.get("bind_contracts")
+    if isinstance(bind_raw, dict) and bind_raw:
+        retrieve_kwargs["bind_contracts"] = bind_raw
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             fut = ex.submit(
