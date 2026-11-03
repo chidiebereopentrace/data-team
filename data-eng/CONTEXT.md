@@ -48,3 +48,51 @@ Baseline dbt pipeline frozen at git tag `transform-v1.0.0` before the ownership 
 
 **TransformV2**:
 Current dbt pipeline version (`dbt_project` 2.x, tag `transform-v2.*`) under the ingest-writes-raw / primordial-raw contract. Model SQL may match v1 at cutover.
+
+**Ingestion engine**:
+The weekly job that reads manifests and writes prepared rows to LandingDev. It coexists with the curated IngestPackage.
+_Avoid_: OTA ingestion framework, Airbyte
+
+**Manifest**:
+A CSV of source declarations the ingestion engine reads. A directory of these files is one weekly run.
+_Avoid_: testing rules, source.yaml, a tracker spreadsheet of URLs
+
+**Manifest row**:
+One landing table from one endpoint, file, or HTML table.
+_Avoid_: source, when one publisher has several tables
+
+**Ingestion contract**:
+How a manifest row is fetched: a JSON API, a CSV file, an Excel workbook, or an HTML table.
+_Avoid_: probe
+
+**Gated endpoint**:
+A manifest row that names a secret. The secret value is not part of the manifest.
+_Avoid_: a public URL, a key pasted into the CSV
+
+**Indicator class**:
+The class code a manifest row declares for its measure. The allowed codes are EL, GYI, FVC, FS, PROD, PRC, CLIM, SOIL, AH, VEG, ENV, INP, HDI, BIO, and RES.
+_Avoid_: a review label applied after collection
+
+**Geo grain**:
+The place level a manifest row promises: country, first admin area, second admin area, market, or point.
+_Avoid_: an unlabeled text column that might be a place
+
+**Temporal grain**:
+The period a manifest row promises: day, month, quarter, season, or year.
+_Avoid_: a date string left unparsed
+
+**Prepared row**:
+A landing row with a resolved country, a parsed observation date, and its indicator class.
+_Avoid_: unclassified grid
+
+**Quarantine**:
+A row that broke its geo, time, or class promise and did not enter LandingDev.
+_Avoid_: a partial export that still lands
+
+**Coverage report**:
+The count of prepared rows that landed, by indicator class, country, and year, for one weekly run.
+_Avoid_: a PDF exported from a laptop
+
+**Failed ref**:
+A manifest row that did not fully load. It is part of the weekly report.
+_Avoid_: a log line that is not in the report database
