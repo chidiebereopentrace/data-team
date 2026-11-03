@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ingestion-engine"
+version = "0.1.0"
+description = "Manifest-driven weekly load into landing_dev"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fpdf2>=2.8.8,<3",
+  "google-cloud-bigquery>=3.25,<4",
+  "openpyxl>=3.1,<4",
+  "python-calamine>=0.9,<1",
+  "pyyaml>=6.0",
+  "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+ingestion-engine = "ingestion_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ingestion_engine = ["country_names.yaml", "africa_iso3.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

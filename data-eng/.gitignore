@@ -3,6 +3,9 @@ dbt/catalog/sources.generated.yml
 dbt/models/sources.yml
 
 # Ingestion package
+ingestion_engine/.env
+!ingestion_engine/.env.example
+ingestion_engine/out/
 ingestion/.out/
 ingestion/.pytest_cache/
 ingestion/.ruff_cache/

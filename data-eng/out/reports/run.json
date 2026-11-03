@@ -1,0 +1,14 @@
+{
+  "run_id": "20261101T222133Z-0277031b",
+  "started_at": "2026-11-01T22:21:33.770063+00:00",
+  "ended_at": "2026-11-01T22:21:33.805512+00:00",
+  "manifest_files": 1,
+  "sources_enabled": 0,
+  "sources_loaded": 0,
+  "sources_partial": 0,
+  "sources_failed": 0,
+  "sources_skipped": 1,
+  "rows_loaded": 0,
+  "rows_quarantined": 0,
+  "status": "FINISHED"
+}
