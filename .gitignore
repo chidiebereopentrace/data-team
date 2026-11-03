@@ -130,3 +130,7 @@ ml-eng/ml/rag/docs/
 .agent/context/knowledge-vault.md
 .agent/context/project-context.md
 .scratch/
+
+# Ingestion engine manifests. A filename exception is what un-ignores these CSVs.
+!sources.example.csv
+!gardian_african_datasets_augmented (1).csv
