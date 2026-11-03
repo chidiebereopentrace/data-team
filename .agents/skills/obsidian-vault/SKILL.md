@@ -1,0 +1,61 @@
+---
+name: obsidian-vault
+description: Search, create, and manage notes in the Obsidian vault with wikilinks and index notes. Use when user wants to find, create, or organize notes in Obsidian.
+---
+
+> **Note**: This is the low-level personal implementation. For research, engineering, teach bridging, and vault configuration, use the shareable skills in `productivity/`: `/setup-knowledge-vault` and `research-from-vault` (see `.agent/context/knowledge-vault.md` in consumer repos; fallback: `docs/agents/knowledge-vault.md`).
+
+# Obsidian Vault
+
+## Vault location
+
+Use the vault root from `.agent/context/knowledge-vault.md` (set by `/setup-knowledge-vault`). If it's missing, ask the user for the absolute path (e.g. `/mnt/d/Obsidian Vault/AI Research/`). Never scan the disk for a vault.
+
+Mostly flat at root level.
+
+## Naming conventions
+
+- **Index notes**: aggregate related topics (e.g., `Ralph Wiggum Index.md`, `Skills Index.md`, `RAG Index.md`)
+- **Title case** for all note names
+- No folders for organization - use links and index notes instead
+
+## Linking
+
+- Use Obsidian `[[wikilinks]]` syntax: `[[Note Title]]`
+- Notes link to dependencies/related notes at the bottom
+- Index notes are just lists of `[[wikilinks]]`
+
+## Workflows
+
+### Search for notes
+
+```bash
+# Search by filename
+find "<vault>" -name "*.md" | grep -i "keyword"
+
+# Search by content
+grep -rl "keyword" "<vault>" --include="*.md"
+```
+
+Or use Grep/Glob tools directly on the vault path.
+
+### Create a new note
+
+1. Use **Title Case** for filename
+2. Write content as a unit of learning (per vault rules)
+3. Add `[[wikilinks]]` to related notes at the bottom
+4. If part of a numbered sequence, use the hierarchical numbering scheme
+
+### Find related notes
+
+Search for `[[Note Title]]` across the vault to find backlinks:
+
+```bash
+grep -rl "\\[\\[Note Title\\]\\]" "<vault>"
+```
+
+### Find index notes
+
+```bash
+find "<vault>" -name "*Index*"
+```

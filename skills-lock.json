@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "skills": {
+    "agent-loop": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/agent-loop/SKILL.md",
+      "computedHash": "69f3539c19469cd1f812b06114bf66028d7784dd48f531c221e054f8bd71e2ca"
+    },
+    "ask-brain": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/ask-brain/SKILL.md",
+      "computedHash": "d3a059a82fffb83453407fe501a6458575c589af5963ebf50b31cfdcd01585b2"
+    },
+    "codebase-design": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/codebase-design/SKILL.md",
+      "computedHash": "2426dc4accf1a85dedfb560edb3a877ec8828b7375ea08c970df2b6c900a2a22"
+    },
+    "decision-mapping": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/decision-mapping/SKILL.md",
+      "computedHash": "d42e37323726e20794d3ef9b05de4772e8a811c0b7b3bdcf9999a0eb81169016"
+    },
+    "diagnosing-bugs": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "computedHash": "1a993ce9b2aaa653ee441c8d7efb7f27de03493c722be6dfb8137bcb8db1bc72"
+    },
+    "domain-modeling": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/domain-modeling/SKILL.md",
+      "computedHash": "f46bb203bca6ab36e094986d42b8e9f65cf490a5465fed260aa61e0ba3c699ea"
+    },
+    "edit-article": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/personal/edit-article/SKILL.md",
+      "computedHash": "8d7aec1987245a27e9c7d585b9f11d1129b8bd8ecb3a8596cdd3048974d9e302"
+    },
+    "git-guardrails-claude-code": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/misc/git-guardrails-claude-code/SKILL.md",
+      "computedHash": "e24e8e1911fd47b03621ffe5a324b63c6617b2f0eb6301a4fec01c86d2907b40"
+    },
+    "grill-me": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grill-me/SKILL.md",
+      "computedHash": "39a7544284567fda0fffd2d91a66fb8c5275704af0d5bc120cb21b1414419ce8"
+    },
+    "grill-with-docs": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
+      "computedHash": "df4e83061856cdb42ad2b515fc7c18a678389c1f7a44e1c57bdd25ecc3cf5c6b"
+    },
+    "grilling": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grilling/SKILL.md",
+      "computedHash": "ef685a6fa0bbe73b05bbd8dc1ec97258191587f07c6aa7dbc9006675ceb8f90f"
+    },
+    "handoff": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/handoff/SKILL.md",
+      "computedHash": "71cdf264ddbc3aa408bc19a675736002dcaf534933164e147c4d45010322462c"
+    },
+    "implement": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/implement/SKILL.md",
+      "computedHash": "e9cba353f00f0c5d5294e0d2db67890fdb8a8fbafc78aa991933ed44ba65c61f"
+    },
+    "improve-codebase-architecture": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "computedHash": "3411f9f6d83aeace32bcf6bc8f6c1041423168b8fb60911811973af73ae29cd1"
+    },
+    "obsidian-vault": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/personal/obsidian-vault/SKILL.md",
+      "computedHash": "385605f16c3d541e6d65bfcca73a449c31846b0248eacfd26487ed22d5330097"
+    },
+    "project-notes": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/project-notes/SKILL.md",
+      "computedHash": "73c91e9aaa623387934b21d04a17912787bde8fa478a80107cbb4783448c8635"
+    },
+    "prototype": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/prototype/SKILL.md",
+      "computedHash": "c9eae1a65d03e3ddeef2936e305520e2ca8b7f81604cac641aae994123540ece"
+    },
+    "research-from-vault": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/research-from-vault/SKILL.md",
+      "computedHash": "4407152a20ceabf60278176cda9815cf8008c8182c4e8756499d3ba579490104"
+    },
+    "resolving-merge-conflicts": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/resolving-merge-conflicts/SKILL.md",
+      "computedHash": "bff6e06cec85897477759ed052410450aa91057644f5b70d888e26bc8b348847"
+    },
+    "review": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/review/SKILL.md",
+      "computedHash": "0f41389de3b2f9b549ab354e4da56f7fde563a5f2ebc1d3fb62dee340e53198e"
+    },
+    "seed-vault-from-repo": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/seed-vault-from-repo/SKILL.md",
+      "computedHash": "d01f58e5b7c7483bbce2f4d510fb517b783b4fb7d1b0457a65040f827f0fb2fc"
+    },
+    "setup-agent-loops": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/setup-agent-loops/SKILL.md",
+      "computedHash": "b7ab92b7e01a67851190023e145004aae59df0b17b49fe812e1edf9e72ffcd64"
+    },
+    "setup-knowledge-vault": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/setup-knowledge-vault/SKILL.md",
+      "computedHash": "b99a63169f4258cf6eccc22db79e67917ba7020fd58fb6e2cc9a454564794e7d"
+    },
+    "setup-optimal-brain": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/setup-optimal-brain/SKILL.md",
+      "computedHash": "54ea3d134577127f0cca0c17b2ff9e0248d0a24af58688685e91b11f966693fc"
+    },
+    "setup-pre-commit": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/misc/setup-pre-commit/SKILL.md",
+      "computedHash": "f9aeedf0a1f560ec465c3939c54434c2d949ac8b958a0493db52216f688a0366"
+    },
+    "system-architect": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/system-architect/SKILL.md",
+      "computedHash": "d94c2827c45d265aecbd387ca5283de7aabf548273230b41cb6aa1d224e1eacd"
+    },
+    "tdd": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "computedHash": "a2f5d36a6adc28e07c271f455348d0d2d13ee4f4af358bd8e48b08fb01a1b45b"
+    },
+    "teach": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/teach/SKILL.md",
+      "computedHash": "cfa20862de1a946056a506ddb390720c00be35dcd939f0876af500b5f84786c5"
+    },
+    "to-issues": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-issues/SKILL.md",
+      "computedHash": "77e8f2caedf71b6d472f5abdf6818618a140babb65d01a02675d725e60eb08c4"
+    },
+    "to-prd": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-prd/SKILL.md",
+      "computedHash": "cee29edfbe810b429be412d7a1a391a52439afae82d7035f744c74edfe45bdcd"
+    },
+    "triage": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/triage/SKILL.md",
+      "computedHash": "6339e389197801aa9653363478eac0eb776a58d85b8c79d3b66ca22272200e41"
+    },
+    "two-axis-review": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/two-axis-review/SKILL.md",
+      "computedHash": "68871bc3cacd19e0fce5cddbe0071c0120b4a57bdd2a83ae5da4c696508c8710"
+    },
+    "until-done": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/until-done/SKILL.md",
+      "computedHash": "0a12e4711f0d9546f554f3b16af01df557c87e50f9c79c249fe5dfa62e993aa8"
+    },
+    "vault-context-canvas": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/vault-context-canvas/SKILL.md",
+      "computedHash": "2a21e9a38facfd2ec4ea7a9ac5a03269e2091a2da93caed90cdd5468db5c410e"
+    },
+    "vault-sync": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/vault-sync/SKILL.md",
+      "computedHash": "4f6613c597051dcf2edbaea6e22359b1b53866d4a77ab211b64415a5ca9142f3"
+    },
+    "write-from-vault": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/write-from-vault/SKILL.md",
+      "computedHash": "519a515ac075b9cbe562b6ca1c711e12efd7f5988b0752b7d5cb917dc2c84df0"
+    },
+    "writing-great-skills": {
+      "source": "chidiokoene/optimal-brain",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/writing-great-skills/SKILL.md",
+      "computedHash": "5b5a5466cff0b5a6764dbcc4f47d71c77ec4013bb9410c925ddaa645069e9249"
+    }
+  }
+}
