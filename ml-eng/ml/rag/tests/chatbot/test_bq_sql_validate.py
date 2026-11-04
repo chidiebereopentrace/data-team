@@ -99,8 +99,14 @@ def test_inject_missing_metric_filters_mart_production_grain() -> None:
         "SELECT country_iso3, SUM(value) AS total FROM `proj.mart_dev.fct_production` "
         "WHERE year = 2022 GROUP BY country_iso3 LIMIT 10"
     )
-    patched, notes = inject_missing_metric_filters(sql, {"fct_production"})
-    assert "production_grain" in patched.lower()
+    patched, notes = inject_missing_metric_filters(
+        sql,
+        {"fct_production"},
+        query="maize production",
+        primary_measures=["production"],
+    )
+    assert "production_grain = 'physical'" in patched
+    assert "production_grain = 'index'" not in patched
     assert notes
 
 

@@ -81,9 +81,21 @@ CORPUS_CATALOG: dict[str, CorpusSpec] = {
 
 ALL_CORPUS_KEYS: tuple[str, ...] = tuple(CORPUS_CATALOG.keys())
 
+
+def formation_doc_kinds(query: str) -> list[str]:
+    """Practice guides always. Textbooks only when the question is curricular."""
+    if _CURRICULUM_RE.search(query or ""):
+        return ["agricultural_practise", "textbook"]
+    return ["agricultural_practise"]
+
+
 _FORMATION_RE = re.compile(
     r"\b(how\s+to|practice|practise|training|extension|farmer\s+how|"
     r"agronomic\s+practice|cultivat|planting\s+guide|best\s+practice)\b",
+    re.IGNORECASE,
+)
+_CURRICULUM_RE = re.compile(
+    r"\b(textbook|syllabus|grade|learner|student)\b",
     re.IGNORECASE,
 )
 _POLICY_RE = re.compile(

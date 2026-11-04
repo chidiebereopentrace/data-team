@@ -29,7 +29,17 @@ def list_pdf_files(input_dir: Path) -> list[Path]:
     return sorted([p for p in input_dir.rglob("*.pdf") if p.is_file()], key=lambda p: str(p).lower())
 
 
-def _indexable_blocks(blocks: list[StructureBlock]) -> list[StructureBlock]:
+def _drop_section(role: str, excluded_roles: frozenset[str] | None) -> bool:
+    if excluded_roles is None:
+        return should_exclude_section_role(role)
+    return (role or "").strip().lower() in excluded_roles
+
+
+def _indexable_blocks(
+    blocks: list[StructureBlock],
+    *,
+    excluded_roles: frozenset[str] | None,
+) -> list[StructureBlock]:
     kept: list[StructureBlock] = []
     for block in blocks:
         role = classify_section(
@@ -37,7 +47,7 @@ def _indexable_blocks(blocks: list[StructureBlock]) -> list[StructureBlock]:
             block.hierarchy_path,
             content_type=block.content_type,
         )
-        if should_exclude_section_role(role):
+        if _drop_section(role, excluded_roles):
             continue
         kept.append(block)
     return kept
@@ -48,13 +58,14 @@ def preprocess_pdf(
     *,
     doc_kind: str = "academic_article",
     input_dir: Path | None = None,
+    excluded_roles: frozenset[str] | None = None,
 ) -> list[ChunkOutput]:
     profile = profile_for_corpus("research")
     source_file = str(pdf_path)
     doc_id = document_id_from_path(source_file)
 
     elements = partition_pdf(pdf_path)
-    blocks = _indexable_blocks(elements_to_blocks(elements))
+    blocks = _indexable_blocks(elements_to_blocks(elements), excluded_roles=excluded_roles)
     if not blocks:
         return []
 
@@ -77,7 +88,7 @@ def preprocess_pdf(
     kept: list[tuple[TextSlice, SectionRole]] = []
     for sl in slices:
         role = classify_section(sl.section_title, sl.hierarchy_path, content_type=sl.content_type)
-        if should_exclude_section_role(role):
+        if _drop_section(role, excluded_roles):
             continue
         kept.append((sl, role))
         if sl.hierarchy_path not in section_parents:
@@ -122,8 +133,16 @@ def preprocess_folder(
     input_dir: Path,
     *,
     doc_kind: str = "academic_article",
+    excluded_roles: frozenset[str] | None = None,
 ) -> list[ChunkOutput]:
     out: list[ChunkOutput] = []
     for pdf in list_pdf_files(input_dir):
-        out.extend(preprocess_pdf(pdf, doc_kind=doc_kind, input_dir=input_dir))
+        out.extend(
+            preprocess_pdf(
+                pdf,
+                doc_kind=doc_kind,
+                input_dir=input_dir,
+                excluded_roles=excluded_roles,
+            )
+        )
     return out

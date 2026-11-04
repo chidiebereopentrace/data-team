@@ -4,7 +4,7 @@ import argparse
 import json
 from dataclasses import asdict
 
-from ml.rag.ingestion.collections import DRIVE_REBUILD_KINDS
+from ml.rag.ingestion.collections import DRIVE_REBUILD_KINDS, LIBRARY_REBUILD_KINDS
 from ml.rag.ingestion.rebuild_qdrant import rebuild_many
 
 
@@ -17,7 +17,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--kind",
         type=str,
         default="all",
-        choices=sorted(list(DRIVE_REBUILD_KINDS) + ["all"]),
+        choices=sorted([*DRIVE_REBUILD_KINDS, *LIBRARY_REBUILD_KINDS, "all"]),
         help="Which collection pipeline to rebuild.",
     )
     rebuild.add_argument("--reset", action="store_true", help="Delete+recreate collection before upserting.")
@@ -30,6 +30,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    from ml.rag.local_env import load_rag_dotenv
+    from ml.rag.paths import ML_ENG_ROOT
+
+    load_rag_dotenv(ML_ENG_ROOT)
     args = build_arg_parser().parse_args()
     if args.cmd == "rebuild":
         results = rebuild_many(kind=args.kind, reset=bool(args.reset))
@@ -37,9 +41,16 @@ def main() -> int:
             print(json.dumps([asdict(r) for r in results], ensure_ascii=False))
         else:
             for r in results:
+                academic = ""
+                if r.academic_collection_name:
+                    academic = (
+                        f" academic_chunks={r.academic_chunk_jsonl_path}"
+                        f" -> collection={r.academic_collection_name} upserted={r.academic_upserted}"
+                    )
                 print(
                     f"[{r.kind}] synced scanned={r.sync.scanned} downloaded={r.sync.downloaded} skipped={r.sync.skipped} "
                     f"chunks={r.chunk_jsonl_path} -> collection={r.collection_name} upserted={r.upserted}"
+                    f"{academic}"
                 )
         return 0
     raise SystemExit("Unknown command")

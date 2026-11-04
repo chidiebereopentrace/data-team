@@ -17,7 +17,10 @@ INGEST_KIND_TO_JSONL: dict[str, str] = {
     "news": "news_chunks.jsonl",
     "research": "research_chunks.jsonl",
     "ota": "ota_insights_chunks.jsonl",
+    "formation": "formation_chunks.jsonl",
 }
+
+LIBRARY_ACADEMIC_JSONL = "library_academic_chunks.jsonl"
 
 CORPUS_TO_JSONL: dict[CorpusKey, str] = {
     "news": "news_chunks.jsonl",
@@ -31,8 +34,13 @@ def preprocessed_data_root() -> Path:
     return PREPROCESSED_DATA_DIR.resolve()
 
 
+def library_academic_jsonl() -> Path:
+    """Academic rows split out of the agricultural library ingest."""
+    return preprocessed_data_root() / LIBRARY_ACADEMIC_JSONL
+
+
 def preprocessed_jsonl_for_kind(kind: str) -> Path:
-    """JSONL path for an ingestion rebuild kind (news, research, ota)."""
+    """JSONL path for an ingestion rebuild kind (news, research, ota, formation)."""
     name = INGEST_KIND_TO_JSONL.get(kind)
     if not name:
         raise ValueError(f"Unknown ingestion kind: {kind!r}")

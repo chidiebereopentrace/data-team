@@ -231,6 +231,9 @@ PAYLOAD_RESEARCH: Final[frozenset[str]] = frozenset({
     "section_role", "content_type",
     "article_title", "authors", "publication_year", "journal", "doi",
     "volume", "issue", "pages", "bibliography_source",
+    "title", "publisher", "url", "language", "content_form",
+    "value_chain_stage", "commodity_group", "commodity", "training_topic",
+    "education_level", "textbook_subject", "audience", "country",
 }) | _PAYLOAD_ACF
 
 PAYLOAD_OTA: Final[frozenset[str]] = frozenset({
@@ -548,26 +551,37 @@ def upsert_jsonl_to_qdrant_for_collection(
     )
 
 
-def _ensure_collection_from_spec(*, client: Any, collection: str, corpus: str, reset: bool) -> None:
-    from ml.rag.scripts.qdrant_collection_specs import COLLECTION_BUILDERS
+def _payload_index_corpus(collection: str, corpus: str) -> str:
+    """Formation points use the research vector layout and their own payload indexes."""
+    formation = os.environ.get("QDRANT_COLLECTION_FORMATION", "formation").strip() or "formation"
+    if collection == formation:
+        return "formation"
+    return corpus
 
+
+def _ensure_collection_from_spec(*, client: Any, collection: str, corpus: str, reset: bool) -> None:
+    from ml.rag.scripts.qdrant_collection_specs import COLLECTION_BUILDERS, ensure_payload_indexes
+
+    index_corpus = _payload_index_corpus(collection, corpus)
     if reset:
         try:
             client.delete_collection(collection_name=collection)
         except Exception:
             pass
+    exists = True
     try:
         client.get_collection(collection_name=collection)
-        return
     except Exception:
-        pass
-    from ml.rag.scripts.qdrant_collection_specs import ensure_payload_indexes
-
-    builder = COLLECTION_BUILDERS.get(corpus)
-    if not builder:
-        raise ValueError(f"No Qdrant collection spec for corpus {corpus!r}")
-    client.create_collection(collection_name=collection, **builder())
-    ensure_payload_indexes(client, collection, corpus)
+        exists = False
+    if not exists:
+        builder = COLLECTION_BUILDERS.get(corpus)
+        if not builder:
+            raise ValueError(f"No Qdrant collection spec for corpus {corpus!r}")
+        client.create_collection(collection_name=collection, **builder())
+        ensure_payload_indexes(client, collection, index_corpus)
+        return
+    if index_corpus != corpus:
+        ensure_payload_indexes(client, collection, index_corpus)
 
 
 def _research_lane_texts(doc: str, meta: dict[str, Any]) -> tuple[str, str]:

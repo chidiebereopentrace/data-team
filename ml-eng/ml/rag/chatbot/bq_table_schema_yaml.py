@@ -1244,18 +1244,29 @@ def match_value_samples(blob: str, samples: set[str] | list[str]) -> list[str]:
     for head, group in grouped.items():
         scored: list[tuple[Any, ...]] = []
         for sample in group:
-            extra = [
-                t
-                for t in _alnum_tokens(sample)
-                if t not in _GENERIC_SAMPLE_TOKENS and _SPEECH_SYNONYMS.get(t, t) != head
-            ]
-            extra_hits = sum(
-                1 for t in extra if t in blob_tokens or _SPEECH_SYNONYMS.get(t, t) in blob_tokens
-            )
+            sample_tokens = [t for t in _alnum_tokens(sample) if t not in _GENERIC_SAMPLE_TOKENS]
+
+            def _said(token: str) -> bool:
+                if token in blob_tokens:
+                    return True
+                synonym = _SPEECH_SYNONYMS.get(token, token)
+                if synonym == head:
+                    return False
+                return synonym in blob_tokens
+
+            extra = []
+            for token in sample_tokens:
+                canonical = _SPEECH_SYNONYMS.get(token, token)
+                if canonical == head and (token == sample_tokens[0] or token in blob_tokens):
+                    continue
+                extra.append(token)
+            extra_hits = sum(1 for token in extra if _said(token))
+            unmatched = {token for token in extra if not _said(token)}
+            order = sample_order.get(sample, 10**9)
             if extra and extra_hits == 0:
-                scored.append((1, len(extra), sample_order.get(sample, 10**9), sample))
+                scored.append((1, len(unmatched), 0, order, sample))
             else:
-                scored.append((0, -extra_hits, len(sample), sample))
+                scored.append((0, len(unmatched), -extra_hits, order, sample))
         scored.sort()
         chosen.append(scored[0][-1])
 
@@ -2361,8 +2372,7 @@ def default_discriminator_value(
         if hit:
             return hit
 
-    ordered = sorted(sample_set, key=lambda s: (len(s), s.lower()))
-    return ordered[0]
+    return None
 
 
 def discriminator_equality_filters(
