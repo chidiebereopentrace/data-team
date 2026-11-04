@@ -180,6 +180,23 @@ PAYLOAD_INDEXES: dict[str, list[tuple[str, models.PayloadSchemaType]]] = {
     ],
 }
 
+_LIBRARY_PAYLOAD_INDEXES: list[tuple[str, models.PayloadSchemaType]] = [
+    ("value_chain_stage", models.PayloadSchemaType.KEYWORD),
+    ("commodity_group", models.PayloadSchemaType.KEYWORD),
+    ("commodity", models.PayloadSchemaType.KEYWORD),
+    ("training_topic", models.PayloadSchemaType.KEYWORD),
+    ("education_level", models.PayloadSchemaType.KEYWORD),
+    ("textbook_subject", models.PayloadSchemaType.KEYWORD),
+    ("audience", models.PayloadSchemaType.KEYWORD),
+    ("language", models.PayloadSchemaType.KEYWORD),
+    ("content_form", models.PayloadSchemaType.KEYWORD),
+]
+
+PAYLOAD_INDEXES["formation"] = [
+    *PAYLOAD_INDEXES["research"],
+    *_LIBRARY_PAYLOAD_INDEXES,
+]
+
 
 def indexed_fields_for_corpus(corpus: CorpusKey) -> frozenset[str]:
     """Names of payload fields with a server-side index for the given corpus.

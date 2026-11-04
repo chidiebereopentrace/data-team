@@ -59,7 +59,7 @@ from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
 from ml.rag.chatbot.class_supervisor import SupervisorPlan, compile_supervisor_plan, corpora_for_supervisor_plan, tables_for_supervisor_plan
 from ml.rag.chatbot.context_diversity import diversify_context_pack
 from ml.rag.chatbot.coverage_retry import should_coverage_retry, should_retry_bq
-from ml.rag.chatbot.corpus_catalog import CORPUS_CATALOG, CorpusSelection, select_corpora
+from ml.rag.chatbot.corpus_catalog import CORPUS_CATALOG, CorpusSelection, formation_doc_kinds, select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
 from ml.rag.chatbot.facet_compiler import compile_turn_contract, compile_breakdown
 from ml.rag.chatbot.intent_bundles import bundle_primary_measures, bundle_required_measures, match_intent_bundles
@@ -1337,13 +1337,27 @@ def _retrieve_public_reports(state: RAGGraphState) -> list[dict[str, Any]]:
 
 
 def _retrieve_formation(state: RAGGraphState) -> list[dict[str, Any]]:
-    return _retrieve_dense_corpus(
-        state,
-        collection_env="QDRANT_COLLECTION_FORMATION",
-        default_collection="formation",
-        doc_kind="agricultural_practise",
-        context_kind="formation",
-    )
+    def _build(st: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
+        kinds = formation_doc_kinds(str(st.get("query") or ""))
+        kwargs = _dense_corpus_kwargs(st, dec, doc_kind="agricultural_practise")
+        if len(kinds) > 1:
+            kwargs["doc_kinds"] = kinds
+            kwargs.pop("doc_kind", None)
+        return kwargs
+
+    try:
+        raw = _vector_retrieve_for_corpus(
+            state,
+            collection_env="QDRANT_COLLECTION_FORMATION",
+            default_collection="formation",
+            build_kwargs=_build,
+            geo_fallback_env="RAG_RESEARCH_GEO_FALLBACK",
+            time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
+        )
+    except Exception:
+        logger.exception("Retrieval failed for collection formation (QDRANT_COLLECTION_FORMATION)")
+        raw = []
+    return [_tag_vector(x, "formation") for x in raw]
 
 
 def _retrieve_ota(state: RAGGraphState) -> list[dict[str, Any]]:

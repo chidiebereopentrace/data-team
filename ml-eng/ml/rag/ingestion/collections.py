@@ -95,13 +95,29 @@ OTA_INSIGHTS = _spec(
     allowed_suffixes=(".json", ".jsonl", ".docx"),
 )
 
+# Agricultural library: practice guides and textbooks. Embedding profile stays research.
+FORMATION = CollectionSpec(
+    kind="formation",
+    corpus="research",
+    collection_env="QDRANT_COLLECTION_FORMATION",
+    gdrive_folder_env="GDRIVE_FOLDER_FORMATION_ID",
+    default_collection_name="formation",
+    default_doc_kind="agricultural_practise",
+    qdrant_vector_mode="dense_named",
+    allowed_suffixes=(".pdf", ".csv"),
+    preprocessed_jsonl="formation_chunks.jsonl",
+)
+
 # Kinds with a full Drive → preprocess → upsert path in rebuild_qdrant.py
 DRIVE_REBUILD_KINDS: tuple[str, ...] = ("research", "news", "ota")
+# Library rebuild is opt-in. ``rebuild --kind all`` does not include it.
+LIBRARY_REBUILD_KINDS: tuple[str, ...] = (FORMATION.kind,)
 
 ALL_SPECS: dict[str, CollectionSpec] = {
     RESEARCH_PAPERS.kind: RESEARCH_PAPERS,
     NEWS.kind: NEWS,
     OTA_INSIGHTS.kind: OTA_INSIGHTS,
+    FORMATION.kind: FORMATION,
 }
 
 # Legacy Qdrant names still accepted via chunking_config.COLLECTION_ALIASES:

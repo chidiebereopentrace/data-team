@@ -4,11 +4,13 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ml.rag.ingestion.collections import ALL_SPECS, CollectionSpec, DRIVE_REBUILD_KINDS
+from ml.rag.ingestion.collections import ALL_SPECS, CollectionSpec, DRIVE_REBUILD_KINDS, LIBRARY_REBUILD_KINDS
+from ml.rag.ingestion.formation_library import chunk_library_staging
 from ml.rag.ingestion.gdrive.auth import build_drive_service, load_auth_config_from_env
 from ml.rag.ingestion.gdrive.sync import SyncStats, sync_drive_folder_to_cache
 from ml.rag.ingestion.settings import IngestionSettings, load_ingestion_settings_from_env
-from ml.rag.paths import preprocessed_data_root, preprocessed_jsonl_for_kind
+from ml.rag.paths import library_academic_jsonl, preprocessed_data_root, preprocessed_jsonl_for_kind
+from ml.rag.text_processors.preprocess.write_jsonl import write_chunks_jsonl
 
 
 @dataclass(frozen=True)
@@ -19,6 +21,9 @@ class RebuildResult:
     chunk_jsonl_path: Path
     sync: SyncStats
     upserted: int
+    academic_collection_name: str = ""
+    academic_chunk_jsonl_path: Path | None = None
+    academic_upserted: int = 0
 
 
 def _merge_sync_stats(*stats: SyncStats) -> SyncStats:
@@ -106,16 +111,88 @@ def _sync_folder(
     )
 
 
+def _upsert_library_jsonl(*, input_path: Path, collection: str, reset: bool, batch_size: int) -> int:
+    from ml.rag.text_processors.load_pdf_chunks_to_vector_db import (
+        PAYLOAD_RESEARCH,
+        upsert_jsonl_to_qdrant_for_collection,
+    )
+
+    return upsert_jsonl_to_qdrant_for_collection(
+        input_path=input_path,
+        collection=collection,
+        reset=reset,
+        batch_size=batch_size,
+        allowed_payload_keys=PAYLOAD_RESEARCH,
+    )
+
+
+def _rebuild_formation(*, reset: bool, settings: IngestionSettings) -> RebuildResult:
+    if not settings.gdrive_folder_formation_id:
+        raise RuntimeError("Set GDRIVE_FOLDER_FORMATION_ID for formation rebuild.")
+
+    spec = ALL_SPECS["formation"]
+    auth_cfg = load_auth_config_from_env()
+    service = build_drive_service(auth_cfg)
+    staging_root = settings.staging_root
+    staging_root.mkdir(parents=True, exist_ok=True)
+    staging_dir, sync_stats = _sync_folder(
+        service=service,
+        folder_id=settings.gdrive_folder_formation_id,
+        cache_root=staging_root,
+        allowed_suffixes=spec.allowed_suffixes,
+    )
+
+    formation_chunks, academic_chunks = chunk_library_staging(staging_dir)
+    chunks_dir = _chunks_dir()
+    chunks_dir.mkdir(parents=True, exist_ok=True)
+    chunk_jsonl = preprocessed_jsonl_for_kind("formation").resolve()
+    academic_jsonl = library_academic_jsonl().resolve()
+    write_chunks_jsonl(formation_chunks, chunk_jsonl)
+    write_chunks_jsonl(academic_chunks, academic_jsonl)
+
+    batch_size = int(os.environ.get("RAG_INGESTION_UPSERT_BATCH_SIZE", "200") or 200)
+    upserted = 0
+    if formation_chunks:
+        upserted = _upsert_library_jsonl(
+            input_path=chunk_jsonl,
+            collection=settings.qdrant_collection_formation,
+            reset=reset,
+            batch_size=batch_size,
+        )
+    academic_upserted = 0
+    if academic_chunks:
+        academic_upserted = _upsert_library_jsonl(
+            input_path=academic_jsonl,
+            collection=settings.qdrant_collection_academic_papers,
+            reset=False,
+            batch_size=batch_size,
+        )
+    return RebuildResult(
+        kind="formation",
+        collection_name=settings.qdrant_collection_formation,
+        staging_dir=staging_dir,
+        chunk_jsonl_path=chunk_jsonl,
+        sync=sync_stats,
+        upserted=upserted,
+        academic_collection_name=settings.qdrant_collection_academic_papers,
+        academic_chunk_jsonl_path=academic_jsonl,
+        academic_upserted=academic_upserted,
+    )
+
+
 def rebuild_one(
     *,
     kind: str,
     reset: bool,
     settings: IngestionSettings | None = None,
 ) -> RebuildResult:
-    if kind not in DRIVE_REBUILD_KINDS:
+    if kind not in DRIVE_REBUILD_KINDS and kind not in LIBRARY_REBUILD_KINDS:
         raise ValueError(f"Unknown rebuild kind: {kind!r}")
 
-    settings = settings or load_ingestion_settings_from_env()
+    settings = settings or load_ingestion_settings_from_env(require_core_folders=kind != "formation")
+    if kind == "formation":
+        return _rebuild_formation(reset=reset, settings=settings)
+
     spec: CollectionSpec = ALL_SPECS[kind]
 
     if kind == "ota" and not settings.gdrive_folder_ota_insights_id:
@@ -225,7 +302,7 @@ def rebuild_one(
 
 
 def rebuild_many(*, kind: str, reset: bool) -> list[RebuildResult]:
-    settings = load_ingestion_settings_from_env()
+    settings = load_ingestion_settings_from_env(require_core_folders=kind != "formation")
     if kind == "all":
         kinds = list(DRIVE_REBUILD_KINDS)
     else:

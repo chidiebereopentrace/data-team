@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.bq_table_schema_yaml import (
+    TableBindContract,
     columns_for_mart_tables,
     columns_for_tables,
     default_discriminator_value,
@@ -57,6 +58,20 @@ _EQ_FILTER_RE = re.compile(
 )
 _IN_FILTER_RE = re.compile(
     r"\b([A-Za-z_][A-Za-z0-9_]*)\s+IN\s*\(([^)]*)\)",
+    re.IGNORECASE,
+)
+_PREDICATE_RE = re.compile(
+    r"^(?P<col>[A-Za-z_][A-Za-z0-9_]*)\s*(?:"
+    r"(?:NOT\s+)?IN\s*\(|"
+    r"(?:NOT\s+)?BETWEEN\b|"
+    r"(?:NOT\s+)?LIKE\b|"
+    r"IS\s+(?:NOT\s+)?|"
+    r"=|<>|!=|>=|<=|>|<"
+    r")",
+    re.IGNORECASE,
+)
+_BETWEEN_OPEN_RE = re.compile(
+    r"\bBETWEEN\s+(?:DATE\s+)?(?:'(?:''|[^'])*'|\d{4}(?:-\d{2}-\d{2})?)\s*$",
     re.IGNORECASE,
 )
 # Equality or IN on a column (string or non-string RHS) — used for required filters.
@@ -409,6 +424,105 @@ def _filtered_columns(sql: str) -> set[str]:
     return {m.group(1).lower() for m in _COL_FILTERED_RE.finditer(scrubbed)}
 
 
+def _point_fact_exposes_column(sql: str, column: str) -> bool:
+    """True for a non-aggregated LIMIT 1 statement whose SELECT list names ``column``."""
+    scrubbed = _strip_string_literals(sql or "")
+    if re.search(r"\bGROUP\s+BY\b", scrubbed, re.IGNORECASE):
+        return False
+    if re.search(r"\b(?:SUM|AVG|COUNT|MIN|MAX)\s*\(", scrubbed, re.IGNORECASE):
+        return False
+    if not re.search(r"\bLIMIT\s+1\b", scrubbed, re.IGNORECASE):
+        return False
+    select_m = re.search(r"\bSELECT\b(?P<body>.*?)\bFROM\b", scrubbed, re.IGNORECASE | re.DOTALL)
+    if not select_m:
+        return False
+    return re.search(rf"\b{re.escape(column)}\b", select_m.group("body"), re.IGNORECASE) is not None
+
+
+def _split_top_level_and(expr: str) -> list[str]:
+    """Split a filter expression on AND outside quotes, parentheses, and BETWEEN pairs."""
+    text = (expr or "").strip()
+    if text.upper().startswith("AND "):
+        text = text[4:].strip()
+    parts: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    in_quote = False
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_quote:
+            buf.append(ch)
+            if ch == "'":
+                if i + 1 < n and text[i + 1] == "'":
+                    buf.append(text[i + 1])
+                    i += 2
+                    continue
+                in_quote = False
+            i += 1
+            continue
+        if ch == "'":
+            in_quote = True
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == "(":
+            depth += 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == ")":
+            depth = max(0, depth - 1)
+            buf.append(ch)
+            i += 1
+            continue
+        and_at = (
+            depth == 0
+            and text[i : i + 3].upper() == "AND"
+            and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_"))
+            and (i + 3 >= n or not (text[i + 3].isalnum() or text[i + 3] == "_"))
+        )
+        if and_at and _BETWEEN_OPEN_RE.search("".join(buf)):
+            buf.append(text[i : i + 3])
+            i += 3
+            continue
+        if and_at:
+            piece = "".join(buf).strip()
+            if piece:
+                parts.append(piece)
+            buf = []
+            i += 3
+            continue
+        buf.append(ch)
+        i += 1
+    tail = "".join(buf).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _complete_predicate(piece: str) -> str | None:
+    """Return a finished predicate, or None when the fragment is truncated or unbalanced."""
+    text = piece.strip().rstrip(";")
+    if not text or not _PREDICATE_RE.match(text):
+        return None
+    if text.count("(") != text.count(")"):
+        return None
+    quotes = 0
+    i = 0
+    while i < len(text):
+        if text[i] == "'":
+            if i + 1 < len(text) and text[i + 1] == "'":
+                i += 2
+                continue
+            quotes += 1
+        i += 1
+    if quotes % 2:
+        return None
+    return text
+
+
 def _required_metric_cols_for_table(bare: str, samples_by_col: dict[str, set[str]]) -> list[str]:
     """Return metric-discriminator columns that must be filtered for this table."""
     schema = _load_schema_for_ref(bare) or {}
@@ -525,22 +639,23 @@ def inject_bind_contract_filters(
     sql: str,
     bind_contracts: dict[str, Any] | None,
 ) -> tuple[str, list[str]]:
-    """Inject missing facet filters from TableBindContract when generated SQL omits them."""
+    """Inject missing facet filters from the bind contract of each table the statement reads."""
     text = (sql or "").strip()
     if not text or not isinstance(bind_contracts, dict) or not bind_contracts:
         return text, []
 
-    from ml.rag.chatbot.bq_table_schema_yaml import TableBindContract
-
+    refs = referenced_tables(text)
     filtered = _filtered_columns(text)
     clauses: list[str] = []
     notes: list[str] = []
 
     for tid in sorted(bind_contracts.keys()):
-        contract = TableBindContract.from_dict(
-            bind_contracts.get(tid) if isinstance(bind_contracts.get(tid), dict) else None
-        )
+        raw = bind_contracts.get(tid)
+        contract = TableBindContract.from_dict(raw if isinstance(raw, dict) else None)
         if contract is None:
+            continue
+        bare = str(contract.table_id or tid).strip().split(".")[-1].lower()
+        if bare not in refs:
             continue
         if contract.geo_column and contract.geo_literals:
             gcol = contract.geo_column
@@ -548,27 +663,32 @@ def inject_bind_contract_filters(
                 if len(contract.geo_literals) == 1:
                     lit = contract.geo_literals[0].replace("'", "''")
                     clauses.append(f"{gcol} = '{lit}'")
-                    notes.append(f"{tid}.{gcol}='{contract.geo_literals[0]}'")
+                    notes.append(f"{bare}.{gcol}='{contract.geo_literals[0]}'")
                 else:
                     lits = ", ".join(
                         f"'{v.replace(chr(39), chr(39)+chr(39))}'"
                         for v in contract.geo_literals[:16]
                     )
                     clauses.append(f"{gcol} IN ({lits})")
-                    notes.append(f"{tid}.{gcol} IN (...)" )
+                    notes.append(f"{bare}.{gcol} IN (...)")
+                filtered.add(gcol.lower())
         for col, val in contract.measure_filters:
             if col.lower() in filtered:
                 continue
             lit = val.replace("'", "''")
             clauses.append(f"{col} = '{lit}'")
-            notes.append(f"{tid}.{col}='{val}'")
-        req = str(contract.required_filters_sql or "").strip()
-        if req and contract.geo_column:
-            for frag in re.findall(r"AND\s+[^AND]+", req, flags=re.IGNORECASE):
-                piece = frag.strip()
-                col_m = re.match(r"AND\s+(\w+)", piece, re.I)
-                if col_m and col_m.group(1).lower() not in filtered:
-                    clauses.append(piece[4:].strip())
+            notes.append(f"{bare}.{col}='{val}'")
+            filtered.add(col.lower())
+        for piece in _split_top_level_and(str(contract.required_filters_sql or "")):
+            predicate = _complete_predicate(piece)
+            if predicate is None:
+                continue
+            col_m = _PREDICATE_RE.match(predicate)
+            if col_m is None or col_m.group("col").lower() in filtered:
+                continue
+            clauses.append(predicate)
+            notes.append(f"{bare}.{col_m.group('col')}")
+            filtered.add(col_m.group("col").lower())
 
     if not clauses:
         return text, []
@@ -723,17 +843,6 @@ def _refs_for_sql_checks(sql: str, table_ids: set[str] | None = None) -> set[str
     return {str(t).strip().split(".")[-1].lower() for t in table_ids if str(t).strip()}
 
 
-def validation_table_refs(sql: str, table_ids: set[str] | None = None) -> set[str]:
-    """Plan-selected tables plus every mart/staging table referenced in SQL."""
-    selected = {
-        str(t).strip().split(".")[-1].lower()
-        for t in (table_ids or [])
-        if str(t).strip()
-    }
-    refs = _refs_for_sql_checks(sql, table_ids)
-    return selected | refs
-
-
 def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None) -> str | None:
     """
     Require equality/IN filters on YAML metric-discriminator columns that have samples.
@@ -756,6 +865,8 @@ def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None
         for col in _required_metric_cols_for_table(bare, by_col_set):
             if col in filtered:
                 continue
+            if col == "price_source" and _point_fact_exposes_column(sql, col):
+                continue
             missing.append(f"{bare}.{col}")
             vals: list[str] = []
             for k, v in by_col.items():
@@ -775,11 +886,11 @@ def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None
 
 def validate_sql_column_allowlist(sql: str, table_ids: set[str] | None = None) -> str | None:
     """
-    Reject identifiers that are not YAML columns for referenced (or provided) tables.
+    Reject identifiers that are not YAML columns of tables referenced in the statement.
 
     When YAML columns cannot be loaded for any referenced table, skip the check.
     """
-    refs = validation_table_refs(sql, table_ids)
+    refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None
     col_map = _columns_for_refs(refs)
@@ -821,7 +932,7 @@ def validate_sql_complete_index_literals(
     table_ids: set[str] | None = None,
 ) -> str | None:
     """Reject string literals not present in complete value index (closed-world)."""
-    refs = validation_table_refs(sql, table_ids)
+    refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None
 
@@ -865,7 +976,7 @@ def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> s
 
     Skips columns with no samples and leaves LIKE filters alone.
     """
-    refs = validation_table_refs(sql, table_ids)
+    refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None
     samples_map = _samples_for_refs(refs)

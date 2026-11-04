@@ -39,6 +39,7 @@ class IngestionSettings:
     gdrive_folder_other_papers_id: str
     gdrive_folder_news_id: str
     gdrive_folder_ota_insights_id: str
+    gdrive_folder_formation_id: str
     staging_root: Path
 
     # Qdrant
@@ -47,13 +48,15 @@ class IngestionSettings:
     qdrant_collection_research_papers: str
     qdrant_collection_news: str
     qdrant_collection_ota_insights: str
+    qdrant_collection_formation: str
+    qdrant_collection_academic_papers: str
 
 
 def _default_staging_root() -> Path:
     return (_ml_eng_root() / "data" / "local" / "gdrive_cache").resolve()
 
 
-def load_ingestion_settings_from_env() -> IngestionSettings:
+def load_ingestion_settings_from_env(*, require_core_folders: bool = True) -> IngestionSettings:
     """
     Required env:
       - GDRIVE_FOLDER_RESEARCH_PAPERS_ID
@@ -62,14 +65,16 @@ def load_ingestion_settings_from_env() -> IngestionSettings:
     Optional env:
       - GDRIVE_FOLDER_OTHER_PAPERS_ID (policy / public reports; merged into research collection)
       - GDRIVE_FOLDER_OTA_INSIGHTS_ID (required for ``ota`` rebuild)
+      - GDRIVE_FOLDER_FORMATION_ID (required for ``formation`` rebuild; folder id or share URL)
       - RAG_INGESTION_STAGING_ROOT
       - QDRANT_URL, QDRANT_API_KEY (required for upsert / create_qdrant_collections)
       - QDRANT_COLLECTION_* overrides
     """
-    rp = _folder_id("GDRIVE_FOLDER_RESEARCH_PAPERS_ID")
+    rp = _folder_id("GDRIVE_FOLDER_RESEARCH_PAPERS_ID", required=require_core_folders)
     other = _folder_id("GDRIVE_FOLDER_OTHER_PAPERS_ID", required=False)
-    nw = _folder_id("GDRIVE_FOLDER_NEWS_ID")
+    nw = _folder_id("GDRIVE_FOLDER_NEWS_ID", required=require_core_folders)
     ota = _folder_id("GDRIVE_FOLDER_OTA_INSIGHTS_ID", required=False)
+    formation = _folder_id("GDRIVE_FOLDER_FORMATION_ID", required=False)
 
     staging = _env("RAG_INGESTION_STAGING_ROOT")
     staging_root = _resolve_ml_eng_path(staging) if staging else _default_staging_root()
@@ -79,6 +84,7 @@ def load_ingestion_settings_from_env() -> IngestionSettings:
         gdrive_folder_other_papers_id=other,
         gdrive_folder_news_id=nw,
         gdrive_folder_ota_insights_id=ota,
+        gdrive_folder_formation_id=formation,
         staging_root=staging_root,
         qdrant_url=_env("QDRANT_URL"),
         qdrant_api_key=_env("QDRANT_API_KEY"),
@@ -97,4 +103,14 @@ def load_ingestion_settings_from_env() -> IngestionSettings:
             ALL_SPECS["ota"].default_collection_name,
         )
         or ALL_SPECS["ota"].default_collection_name,
+        qdrant_collection_formation=_env(
+            "QDRANT_COLLECTION_FORMATION",
+            ALL_SPECS["formation"].default_collection_name,
+        )
+        or ALL_SPECS["formation"].default_collection_name,
+        qdrant_collection_academic_papers=_env(
+            "QDRANT_COLLECTION_ACADEMIC_PAPERS",
+            "academic_papers",
+        )
+        or "academic_papers",
     )
