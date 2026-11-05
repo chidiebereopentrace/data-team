@@ -35,6 +35,58 @@ def collect_pre_queries(
     return out
 
 
+_EXPLAINED_MISS_STATUSES = frozenset(
+    {
+        "empty_result",
+        "compile_error",
+        "validation_failed",
+        "timeout",
+        "execution_error",
+        "bq_timeout",
+        "bq_error",
+    }
+)
+
+
+def ensure_planned_attempt_debug(
+    plan: dict[str, Any] | None,
+    bq_sql_debug: list[dict[str, Any]],
+    *,
+    usable_bq: bool,
+) -> list[dict[str, Any]]:
+    """Leave a debug row when a warehouse plan never started a BigQuery job.
+
+    The row carries compiled SQL when the plan has it, otherwise status
+    ``compile_error``. An empty result or a job id already explains the attempt.
+    """
+    if usable_bq or not plan_indicates_warehouse_attempt(plan):
+        return bq_sql_debug
+    debug = [row for row in bq_sql_debug if isinstance(row, dict)]
+    if any(row.get("job_id") for row in debug):
+        return bq_sql_debug
+    if any(
+        str(row.get("status") or "") in _EXPLAINED_MISS_STATUSES
+        or str(row.get("sql") or "").strip()
+        for row in debug
+    ):
+        return bq_sql_debug
+    sql = ""
+    planned = (plan or {}).get("bq_sql_queries")
+    if isinstance(planned, list):
+        for raw in planned:
+            text = str(raw or "").strip()
+            if text:
+                sql = text
+                break
+    row: dict[str, Any] = {
+        "sql": sql,
+        "status": "compile_error",
+        "prep_error": "Warehouse intent was planned but no BigQuery job was started",
+        "sql_source": str((plan or {}).get("plan_source") or "planned"),
+    }
+    return [*bq_sql_debug, row]
+
+
 def plan_indicates_warehouse_attempt(plan: dict[str, Any] | None) -> bool:
     """True when the BQ plan committed to warehouse work (bind or SQL)."""
     if not isinstance(plan, dict) or plan.get("skip_bq"):
@@ -103,6 +155,7 @@ def bq_execute_flags(
 __all__ = [
     "bq_execute_flags",
     "collect_pre_queries",
+    "ensure_planned_attempt_debug",
     "plan_indicates_warehouse_attempt",
 ]
 

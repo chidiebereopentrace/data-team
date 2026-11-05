@@ -291,7 +291,8 @@ def compile_sql_from_bind(
     grouped: list[str] = []
     inner_select = list(select_list)
     if kind in ("rank", "breakdown"):
-        measure_set = {c.lower() for c in cols[:4]}
+        discriminators = metric_discriminator_names()
+        measure_set = {c.lower() for c in cols[:4] if c.lower() not in discriminators}
         grouped = [c for c in select_list if c.lower() not in measure_set]
         agg = [f"{_aggregate_fn(c)}({c}) AS {c}" for c in select_list if c.lower() in measure_set]
         if grouped and agg:

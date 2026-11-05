@@ -20,6 +20,7 @@ def _fold_country_name(value: str) -> str:
 _NAME_TO_ISO3: dict[str, str] = {
     _fold_country_name(name): code for name, code in _AFRICA_COUNTRY_ISO3.items()
 }
+_COUNTRY_NAMES_LONGEST_FIRST = tuple(sorted(_AFRICA_COUNTRY_ISO3, key=len, reverse=True))
 _ISO3_IN_SQL_RE = re.compile(
     r"country_iso3\s*(?:=\s*'([A-Z]{3})'|IN\s*\(([^)]+)\))",
     re.I,
@@ -104,6 +105,26 @@ def name_to_iso3(label: str) -> str | None:
     if _ISO2_RE.match(upper):
         return _AFRICA_ISO2_TO_ISO3.get(upper)
     return _NAME_TO_ISO3.get(_fold_country_name(raw))
+
+
+def countries_named_in_text(text: str) -> set[str]:
+    """Canonical country names that appear as words in ``text``.
+
+    Longer names are taken first so Guinea-Bissau is not also Guinea, and
+    South Sudan is not also Sudan.
+    """
+    masked = _fold_country_name(text or "")
+    if not masked.strip():
+        return set()
+    found: set[str] = set()
+    for name in _COUNTRY_NAMES_LONGEST_FIRST:
+        needle = _fold_country_name(name)
+        pattern = re.compile(rf"\b{re.escape(needle)}\b")
+        if not pattern.search(masked):
+            continue
+        found.add(name.casefold())
+        masked = pattern.sub(lambda match: " " * len(match.group(0)), masked)
+    return found
 
 
 def iso3_to_canonical_name(iso3: str) -> str | None:

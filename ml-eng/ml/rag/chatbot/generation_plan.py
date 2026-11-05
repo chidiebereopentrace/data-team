@@ -644,6 +644,13 @@ def build_generation_plan(
                 f"output_{output_type}|shape_{shape}|tier_{evidence_tier}"
             )
 
+    if output_type == "insufficient" and evidence_tier != "empty":
+        evidence_tier = "empty"
+        rationale = (
+            f"task_{task_mode or 'chat'}|measure_{mid or 'none'}|"
+            f"output_{output_type}|shape_{shape}|tier_{evidence_tier}"
+        )
+
     lead = _lead_with_for_shape(shape, has_bq)
     ground = _must_ground_in_for_output_type(output_type, has_bq)
     if tc.vector_policy == "companion" and has_bq:

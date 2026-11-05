@@ -17,7 +17,9 @@ from ml.rag.chatbot.generator import (
     _context_max_chars,
     _finalize_generation_result,
     _format_source_citation,
+    classify_evidence_tier,
     drop_geo_conflicting,
+    drop_price_off_topic,
     _generate_max_tokens,
     _normalize_inline_citations,
     _registry_from_context_items,
@@ -499,6 +501,119 @@ def testdrop_geo_conflicting_removes_other_country() -> None:
     kept_countries = [it["metadata"]["country"] for it in kept]
     assert "Senegal" in kept_countries
     assert "Kenya" not in kept_countries
+
+
+def testdrop_geo_conflicting_drops_other_country_named_only_in_text() -> None:
+    senegal = {
+        "content": "Rice production forecasts in Senegal point to a larger harvest.",
+        "_context_kind": "policy",
+        "metadata": {},
+    }
+    ghana = {
+        "content": "Retail rice prices in Ghana rose from 2020 to 2023.",
+        "_context_kind": "policy",
+        "metadata": {},
+    }
+    silent = {"content": "global maize overview", "_context_kind": "academic", "metadata": {}}
+    kept = drop_geo_conflicting([senegal, ghana, silent], {"geography": ["Ghana"]})
+    assert senegal not in kept
+    assert ghana in kept
+    assert silent in kept
+
+
+def test_drop_price_off_topic_keeps_price_text_and_warehouse_rows() -> None:
+    query = "How did maize prices in Ghana and Kenya move from 2018 to 2022?"
+    dec = {
+        "geography": ["Ghana", "Kenya"],
+        "entities": ["maize"],
+        "primary_measures": ["market_price"],
+    }
+    report = {
+        "content": "CGIAR maize programmes in Ghana expanded digital agriculture tools.",
+        "_context_kind": "policy",
+        "metadata": {},
+    }
+    prices = {
+        "content": "Maize prices in Ghana and Kenya rose sharply after 2019.",
+        "_context_kind": "public_report",
+        "metadata": {},
+    }
+    row = {
+        "content": "[Structured data] Ghana maize",
+        "source": "bigquery",
+        "_context_kind": "bigquery",
+        "metadata": {"country_name": "Ghana"},
+    }
+    kept = drop_price_off_topic([report, prices, row], query, dec)
+    assert report not in kept
+    assert prices in kept
+    assert row in kept
+    production = drop_price_off_topic(
+        [report],
+        "maize production in Ghana",
+        {"geography": ["Ghana"], "entities": ["maize"], "primary_measures": ["production"]},
+    )
+    assert production == [report]
+
+
+def test_market_price_crop_mention_is_not_strong_evidence() -> None:
+    chunks = [
+        {
+            "content": "CGIAR maize programmes in Ghana expanded digital tools.",
+            "_context_kind": "policy",
+            "metadata": {},
+        },
+        {
+            "content": "Kenya rainfall monitoring covers maize growing areas.",
+            "_context_kind": "public_report",
+            "metadata": {},
+        },
+    ]
+    tier = classify_evidence_tier(
+        "How did maize prices in Ghana and Kenya move from 2018 to 2022?",
+        chunks,
+        {
+            "geography": ["Ghana", "Kenya"],
+            "entities": ["maize"],
+            "primary_measures": ["market_price"],
+        },
+    )
+    assert tier != "strong"
+
+
+def test_price_question_without_price_evidence_is_a_gap() -> None:
+    chunks = [
+        {
+            "content": "The CGIAR Platform for Big Data in Agriculture annual report mentions maize in Ghana.",
+            "_context_kind": "policy",
+            "metadata": {"title": "CGIAR annual report"},
+        },
+        {
+            "content": "Manufacturing in Ghana grew while Kenya monitored rainfall with CMLs.",
+            "_context_kind": "web",
+            "metadata": {"title": "Ghana"},
+        },
+    ]
+    dec = {
+        "geography": ["Ghana", "Kenya"],
+        "entities": ["maize"],
+        "primary_measures": ["market_price"],
+        "time_start": "2018-01-01",
+        "time_end": "2022-12-31",
+    }
+    with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
+        result = generate(
+            "How did maize prices in Ghana and Kenya move from 2018 to 2022?",
+            chunks,
+            task_mode="fact_lookup",
+            decomposition=dec,
+        )
+    mock_llm.assert_not_called()
+    low = result.answer.lower()
+    assert "price" in low
+    assert "ghana" in low
+    assert "kenya" in low
+    assert "2018" in low
 
 
 def testdrop_geo_conflicting_keeps_chunks_without_geo_metadata() -> None:
