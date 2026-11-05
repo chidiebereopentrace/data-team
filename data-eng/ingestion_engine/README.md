@@ -1,6 +1,6 @@
 # Ingestion engine
 
-Weekly job that reads a directory of manifest CSVs. One row is one landing table. A new manifest CSV is ingested on the next weekly run when its source id is not already in the ingest report. Sources already recorded as loaded, partial, or failed are not downloaded again.
+Weekly job that reads a directory of manifest CSVs. One row is one landing table. Field-by-field instructions for writing a row are in [MANIFEST.md](MANIFEST.md). A new manifest CSV is ingested on the next weekly run when its source id is not already in the ingest report. Sources already recorded as loaded, partial, or failed are not downloaded again.
 
 A row declares the contract (`json_api`, `csv`, `xlsx`, `xls`, or `html_table`), the landing table, the indicator class, the geo grain, the temporal grain, and whether the endpoint is gated. Gated rows name a secret with `auth_ref`. The secret value comes from the environment.
 

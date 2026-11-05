@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from ml.rag.chatbot.acf_scoring import ACFResult, cap_acf_band
-from ml.rag.chatbot.empty_policy import has_usable_evidence
+from ml.rag.chatbot.answer_outcome import decide_outcome
 from ml.rag.chatbot.ontology_routing import acf_band_ceiling
 
 
@@ -52,7 +52,7 @@ def test_empty_policy_keeps_vector_hits_as_evidence() -> None:
             "metadata": {"context_kind": "news"},
         }
     ]
-    assert has_usable_evidence(context_items=items, bq_results=[]) is True
+    assert decide_outcome(items).kind == "documents_only"
 
 
 @pytest.mark.parametrize("flag", ["0", "1"])

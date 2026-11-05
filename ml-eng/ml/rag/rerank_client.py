@@ -12,7 +12,7 @@ from ml.rag.observability import get_openrouter_run_id, openrouter_sessions_enab
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RERANK_MODEL_ID = "cohere/rerank-4-pro"
+DEFAULT_RERANK_MODEL_ID = "cohere/rerank-multilingual-v3.0"
 _SOFT_FAIL_HTTP = frozenset({401, 402, 403, 410, 429, 502, 503})
 
 

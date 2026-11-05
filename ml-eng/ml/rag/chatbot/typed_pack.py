@@ -1,40 +1,45 @@
-"""Job-typed context packing — warehouse fail-closed keeps narrative, not warehouse rows."""
+"""Job-typed evidence packing: warehouse rows plus a document budget.
+
+Rows answer the figure. Documents explain it, and carry the answer alone when
+the warehouse misses. A warehouse failure never empties the pack: whatever
+documents survive the place filter stay in it.
+"""
 from __future__ import annotations
 
 import re
+from collections import Counter
+from dataclasses import dataclass, field
 from typing import Any
 
-from ml.rag.chatbot.generator import is_usable_context_item, is_usable_structured_bq_row
+from ml.rag.chatbot.evidence_kinds import is_document_item, is_warehouse_item
+from ml.rag.chatbot.generator import is_usable_context_item
 from ml.rag.chatbot.turn_contract import NUMERIC_JOBS, TurnContract
+
+DOCUMENT_BUDGET = 6
+RELEVANCE_FLOOR = 0.15
 
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _PLACE_RE = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b")
+_PLACE_KEYS = (
+    "admin2", "admin_2", "district", "region", "admin1", "admin_1",
+    "place_name", "fnid", "country_name",
+)
 
 
-def _is_bq_item(item: dict[str, Any]) -> bool:
-    meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-    kind = str(meta.get("context_kind") or meta.get("source_kind") or "").lower()
-    if kind == "bigquery":
-        return True
-    content = str(item.get("content") or "")
-    return content.startswith("[Structured data]")
+@dataclass
+class PackResult:
+    items: list[dict[str, Any]]
+    dropped: dict[str, int] = field(default_factory=dict)
 
 
-def _is_narrative_item(item: dict[str, Any]) -> bool:
-    if _is_bq_item(item):
-        return False
-    meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-    kind = str(meta.get("context_kind") or meta.get("source_kind") or "").lower()
-    return kind not in ("bigquery", "web")
-
-
-def _is_prose_item(item: dict[str, Any]) -> bool:
-    return not _is_bq_item(item)
+def item_meta(item: dict[str, Any]) -> dict[str, Any]:
+    meta = item.get("metadata")
+    return meta if isinstance(meta, dict) else {}
 
 
 def _years_in_item(item: dict[str, Any]) -> set[int]:
     text = str(item.get("content") or "")
-    meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    meta = item_meta(item)
     for key in ("year", "harvest_year", "as_of_date", "publication_year", "period_start", "period_end"):
         val = meta.get(key)
         if val is not None:
@@ -55,10 +60,7 @@ def _requested_year_window(contract: TurnContract) -> tuple[int | None, int | No
     return y0, y1
 
 
-def _chunk_overlaps_window(item: dict[str, Any], y0: int | None, y1: int | None) -> bool:
-    years = _years_in_item(item)
-    if not years:
-        return False
+def _in_window(years: set[int], y0: int | None, y1: int | None) -> bool:
     if y0 is not None and y1 is not None:
         return any(y0 <= y <= y1 for y in years)
     if y0 is not None:
@@ -68,126 +70,69 @@ def _chunk_overlaps_window(item: dict[str, Any], y0: int | None, y1: int | None)
     return True
 
 
-def _filter_vector_by_time(items: list[dict[str, Any]], contract: TurnContract) -> list[dict[str, Any]]:
-    if not contract.time_spec.hard_filter:
-        return items
+def _rank_documents_by_period(
+    documents: list[dict[str, Any]], contract: TurnContract
+) -> list[dict[str, Any]]:
+    """In-window documents first, then undated, then out-of-window. Rerank order holds inside each band."""
     y0, y1 = _requested_year_window(contract)
     if y0 is None and y1 is None:
-        return items
-    narrative = [it for it in items if _is_narrative_item(it)]
-    bq = [it for it in items if not _is_narrative_item(it)]
-    filtered = [it for it in narrative if _chunk_overlaps_window(it, y0, y1)]
-    return bq + filtered
+        return documents
 
-
-def _filter_trend_rows(items: list[dict[str, Any]], contract: TurnContract) -> list[dict[str, Any]]:
-    bq = [it for it in items if is_usable_structured_bq_row(it)]
-    y0, y1 = _requested_year_window(contract)
-    if y0 is None and y1 is None:
-        return sorted(bq, key=lambda it: max(_years_in_item(it) or {0}), reverse=True)
-    filtered: list[dict[str, Any]] = []
-    for it in bq:
-        years = _years_in_item(it)
+    def band(item: dict[str, Any]) -> int:
+        years = _years_in_item(item)
         if not years:
-            filtered.append(it)
-            continue
-        if y0 is not None and y1 is not None:
-            if any(y0 <= y <= y1 for y in years):
-                filtered.append(it)
-        elif y0 is not None and any(y >= y0 for y in years):
-            filtered.append(it)
-        elif y1 is not None and any(y <= y1 for y in years):
-            filtered.append(it)
-    return filtered or bq
+            return 1
+        return 0 if _in_window(years, y0, y1) else 2
+
+    return sorted(documents, key=band)
 
 
-def _filter_list_rows(items: list[dict[str, Any]], contract: TurnContract) -> list[dict[str, Any]]:
-    bq = [it for it in items if is_usable_structured_bq_row(it)]
-    grain = contract.geo_grain
+def _filter_trend_rows(rows: list[dict[str, Any]], contract: TurnContract) -> list[dict[str, Any]]:
+    y0, y1 = _requested_year_window(contract)
+    if y0 is None and y1 is None:
+        return sorted(rows, key=lambda it: max(_years_in_item(it) or {0}), reverse=True)
+    kept = [it for it in rows if not _years_in_item(it) or _in_window(_years_in_item(it), y0, y1)]
+    return kept or rows
+
+
+def _filter_list_rows(rows: list[dict[str, Any]], contract: TurnContract) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for it in bq:
-        meta = it.get("metadata") if isinstance(it.get("metadata"), dict) else {}
-        text = str(it.get("content") or "")
-        place_keys = (
-            "admin2", "admin_2", "district", "region", "admin1", "admin_1",
-            "place_name", "fnid", "country_name",
-        )
-        if any(meta.get(k) for k in place_keys):
+    for it in rows:
+        if any(item_meta(it).get(k) for k in _PLACE_KEYS) or contract.geo_grain in ("admin2", "admin1") and _PLACE_RE.search(str(it.get("content") or "")):
             out.append(it)
-            continue
-        if grain in ("admin2", "admin1") and _PLACE_RE.search(text):
-            out.append(it)
-    return out or bq
+    return out or rows
 
 
-def _filter_breakdown_rows(items: list[dict[str, Any]], contract: TurnContract) -> list[dict[str, Any]]:
-    bq = [it for it in items if is_usable_structured_bq_row(it)]
+def _filter_breakdown_rows(rows: list[dict[str, Any]], contract: TurnContract) -> list[dict[str, Any]]:
     if "sex" not in contract.breakdown:
-        return bq
-    sex_rows: list[dict[str, Any]] = []
-    for it in bq:
-        meta = item_meta(it)
+        return rows
+    sex_rows = []
+    for it in rows:
         text = str(it.get("content") or "").lower()
-        sex_val = str(meta.get("sex") or "").lower()
+        sex_val = str(item_meta(it).get("sex") or "").lower()
         if sex_val in ("male", "female", "m", "f") or "male" in text or "female" in text:
             sex_rows.append(it)
-    return sex_rows or bq
+    return sex_rows or rows
 
 
-def item_meta(item: dict[str, Any]) -> dict[str, Any]:
-    meta = item.get("metadata")
-    return meta if isinstance(meta, dict) else {}
-
-
-def _cap_narrative(items: list[dict[str, Any]], max_news: int = 2) -> list[dict[str, Any]]:
-    narrative = [it for it in items if _is_narrative_item(it)]
-    news = [
-        it for it in narrative
-        if str(item_meta(it).get("context_kind") or "").lower() in ("news", "public_report", "policy")
+def _filter_outlook_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    phase_rows = [
+        it for it in rows
+        if any(item_meta(it).get(k) for k in ("phase", "ipc_phase", "period", "season"))
     ]
-    other = [it for it in narrative if it not in news]
-    return news[:max_news] + other[: max(0, max_news - len(news[:max_news]))]
+    return phase_rows or rows
 
 
-def _cap_prose(items: list[dict[str, Any]], max_n: int = 3) -> list[dict[str, Any]]:
-    return [it for it in items if _is_prose_item(it)][:max_n]
-
-
-def _has_bq_timeout(items: list[dict[str, Any]]) -> bool:
-    for it in items:
-        meta = item_meta(it)
-        if str(meta.get("status") or "").strip().lower() == "bq_timeout":
-            return True
-    return False
-
-
-def should_zero_pack(
-    contract: TurnContract | None,
-    *,
-    bq_failed: bool = False,
-    context_items: list[dict[str, Any]] | None = None,
-) -> bool:
-    if contract is None:
-        return False
-    if _has_bq_timeout(context_items or []):
-        return True
-    if contract.vector_policy == "fallback_only" and contract.is_fail_closed():
-        return False
-    if contract.is_fail_closed():
-        if contract.job not in NUMERIC_JOBS:
-            return False
-        if any(_is_prose_item(it) for it in (context_items or [])):
-            return False
-        return True
-    if bq_failed and contract.job in NUMERIC_JOBS:
-        if contract.vector_policy == "companion" and any(
-            _is_narrative_item(it) for it in (context_items or [])
-        ):
-            return False
-        return True
-    if contract.serve_status != "served" and contract.job in NUMERIC_JOBS:
-        return True
-    return False
+def _shape_rows(rows: list[dict[str, Any]], contract: TurnContract) -> list[dict[str, Any]]:
+    if contract.job == "trend":
+        return _filter_trend_rows(rows, contract)
+    if contract.job == "list":
+        return _filter_list_rows(rows, contract)
+    if contract.job == "fact" and contract.breakdown:
+        return _filter_breakdown_rows(rows, contract)
+    if contract.job == "outlook":
+        return _filter_outlook_rows(rows)
+    return rows
 
 
 def typed_context_pack(
@@ -195,67 +140,52 @@ def typed_context_pack(
     contract: TurnContract | None,
     *,
     top_k: int | None = None,
-    bq_failed: bool = False,
-) -> list[dict[str, Any]]:
-    usable = [it for it in items if is_usable_context_item(it)]
-    usable = _filter_vector_by_time(usable, contract) if contract else usable
-    if should_zero_pack(contract, bq_failed=bq_failed, context_items=usable):
-        return []
+) -> PackResult:
+    dropped: Counter[str] = Counter()
+    usable: list[dict[str, Any]] = []
+    for it in items:
+        if is_usable_context_item(it):
+            usable.append(it)
+        else:
+            dropped["unusable"] += 1
 
     if contract is None:
-        return usable[:top_k] if top_k else usable
+        packed = usable[:top_k] if top_k else usable
+        dropped["over_top_k"] += len(usable) - len(packed)
+        return PackResult(packed, {k: v for k, v in dropped.items() if v})
 
-    job = contract.job
-    bq_items = [it for it in usable if _is_bq_item(it)]
-    narrative = [it for it in usable if _is_narrative_item(it)]
+    rows = [it for it in usable if is_warehouse_item(it)]
+    documents = [it for it in usable if is_document_item(it)]
+    other = [it for it in usable if it not in rows and it not in documents]
 
-    if contract.is_fail_closed() and contract.serve_status != "clarify":
-        packed = _cap_prose(usable, max_n=3)
-        if top_k and len(packed) > top_k:
-            packed = packed[:top_k]
-        return packed
+    shaped_rows = _shape_rows(rows, contract)
+    dropped["row_shape"] += len(rows) - len(shaped_rows)
 
-    if contract.vector_policy == "fallback_only":
-        packed = _cap_narrative(narrative, max_news=3)
-        if top_k and len(packed) > top_k:
-            packed = packed[:top_k]
-        return packed
+    ranked_docs = _rank_documents_by_period(documents, contract)
+    scored_docs: list[dict[str, Any]] = []
+    for it in ranked_docs:
+        score = it.get("_rerank_score", it.get("score"))
+        try:
+            value = float(score) if score is not None else None
+        except (TypeError, ValueError):
+            value = None
+        if value is not None and value < RELEVANCE_FLOOR:
+            dropped["relevance_floor"] += 1
+            continue
+        scored_docs.append(it)
+    budget_docs = scored_docs[:DOCUMENT_BUDGET]
+    dropped["document_budget"] += len(scored_docs) - len(budget_docs)
 
-    if job in NUMERIC_JOBS:
-        if job == "trend":
-            packed = _filter_trend_rows(bq_items, contract)
-        elif job == "list":
-            packed = _filter_list_rows(bq_items, contract)
-        elif job == "fact" and contract.breakdown:
-            packed = _filter_breakdown_rows(bq_items, contract)
-        else:
-            packed = bq_items
-        if contract.vector_policy == "companion" and narrative:
-            packed = list(packed)
-            packed.extend(_cap_narrative(narrative, max_news=2))
-        if top_k and len(packed) > top_k:
-            packed = packed[:top_k]
-        return packed
+    if contract.job in NUMERIC_JOBS:
+        packed = [*shaped_rows, *budget_docs]
+        dropped["non_evidence_kind"] += len(other)
+    else:
+        packed = [*shaped_rows, *budget_docs, *other]
 
-    if job == "outlook":
-        phase_rows = []
-        for it in bq_items:
-            meta = item_meta(it)
-            if any(meta.get(k) for k in ("phase", "ipc_phase", "period", "season")):
-                phase_rows.append(it)
-        packed = phase_rows or bq_items
-        packed.extend(_cap_narrative(narrative, max_news=2))
-        if top_k and len(packed) > top_k:
-            packed = packed[:top_k]
-        return packed
+    if top_k and len(packed) > top_k:
+        dropped["over_top_k"] += len(packed) - top_k
+        packed = packed[:top_k]
+    return PackResult(packed, {k: v for k, v in dropped.items() if v})
 
-    if job in ("diagnose", "brief"):
-        packed = list(bq_items)
-        packed.extend(_cap_narrative(narrative, max_news=2))
-        if top_k and len(packed) > top_k:
-            packed = packed[:top_k]
-        return packed
 
-    if top_k and len(usable) > top_k:
-        return usable[:top_k]
-    return usable
+__all__ = ["DOCUMENT_BUDGET", "PackResult", "RELEVANCE_FLOOR", "item_meta", "typed_context_pack"]

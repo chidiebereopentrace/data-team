@@ -17,7 +17,7 @@ pytest.importorskip("opentrace_ontology")
 import opentrace_ontology as oo
 from ml.rag.chatbot import ontology_routing as orouting
 from ml.rag.chatbot.acf_scoring import ACFResult, cap_acf_band
-from ml.rag.chatbot.empty_policy import has_usable_evidence
+from ml.rag.chatbot.answer_outcome import decide_outcome
 from ml.rag.chatbot.geo_policy import (
     apply_profile_geography_default,
     sanitize_profile_country,
@@ -176,7 +176,7 @@ def test_b_mushroom_ghana_documents_only(ontology_flags_on) -> None:
             "metadata": {"context_kind": "news"},
         }
     ]
-    assert has_usable_evidence(context_items=items, bq_results=[]) is True
+    assert decide_outcome(items).kind == "documents_only"
 
 
 # ---------------------------------------------------------------------------

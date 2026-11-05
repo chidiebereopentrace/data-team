@@ -13,7 +13,7 @@ from typing import Any, Literal
 import requests
 import streamlit as st
 
-from ml.rag.chatbot.generator import usable_context_after_geo_purity
+from ml.rag.chatbot.generator import filter_context_items
 from ml.rag.chatbot.schema_card import card_maturity, load_schema_card
 
 BackendMode = Literal["in_process", "http_api"]
@@ -820,10 +820,7 @@ def render_sql_panel(result: dict[str, Any]) -> None:
 
 def render_retrieval_tabs(result: dict[str, Any]) -> None:
     reranked = list(result.get("reranked_context") or [])
-    usable_for_gen = usable_context_after_geo_purity(
-        reranked,
-        result.get("decomposition") if isinstance(result.get("decomposition"), dict) else None,
-    )
+    usable_for_gen = filter_context_items(reranked)
     citations = list(result.get("citations") or [])
     tabs = st.tabs([
         f"News ({len(result.get('vector_news_results') or [])})",

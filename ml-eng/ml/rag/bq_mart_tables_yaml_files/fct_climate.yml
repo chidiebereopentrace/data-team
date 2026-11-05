@@ -4,6 +4,7 @@ source:
   layer: mart_dev
 profiled_at: '2026-09-05T17:57:00.703130+00:00'
 grain: point_obs | country_model
+grain_columns: [country_iso3, metric, indicator_key, climate_grain, as_of_date, source_key]
 entity_type: climate
 columns:
 - name: climate_key

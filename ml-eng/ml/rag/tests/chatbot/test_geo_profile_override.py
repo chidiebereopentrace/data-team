@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ml.rag.chatbot.agri_entities import CROP_ENTITY_RE
-from ml.rag.chatbot.generator import _no_data_fallback_message
+from ml.rag.chatbot.answer_outcome import gap_answer
 from ml.rag.chatbot.geo_iso3 import name_to_iso3
 from ml.rag.chatbot.geo_policy import (
     apply_profile_geography_default,
@@ -46,7 +46,7 @@ def test_albania_profile_does_not_override_nigeria_query(plan: str) -> None:
     assert geos == ["Nigeria"]
     assert name_to_iso3(geos[0]) == "NGA"
 
-    message = _no_data_fallback_message(normalized, dec)
+    message = gap_answer(normalized, dec, None)
     assert "Albania" not in message
     assert "Nigeria" in message
     assert effective_geo_override(plan, {"country": "Albania"}) == ""
@@ -56,9 +56,8 @@ def test_empty_query_geography_uses_sanitized_kenya_profile() -> None:
     dec = apply_profile_geography_default({"geography": []}, "Kenya")
     assert dec["geography"] == ["KEN"]
     assert dec["geography_source"] == "profile"
-    message = _no_data_fallback_message("cassava prices", dec)
-    assert "Filtered by profile country: KEN" in message
-    assert "Geography: KEN" not in message
+    message = gap_answer("cassava prices", dec, None)
+    assert "Kenya (set by your profile)" in message
 
 
 @pytest.mark.parametrize("raw", ["Albania", "France", "US", "", "  ", None])
@@ -127,7 +126,6 @@ def test_cleared_profile_scope_keeps_query_country_and_labels_profile() -> None:
     assert cleared["filtered_geography"] == ["Kenya"]
     assert cleared["time_start"] == ""
     assert cleared["filtered_time_start"] == "2024-04-05"
-    message = _no_data_fallback_message("cassava", cleared)
-    assert "Filtered by profile country: Kenya" in message
-    assert "Filtered by UI time: 2024-04-05" in message
-    assert "Geography: Kenya" not in message
+    message = gap_answer("cassava", cleared, None)
+    assert "Kenya (set by your profile)" in message
+    assert "2024 (set by the screen filter)" in message

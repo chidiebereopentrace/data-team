@@ -68,6 +68,7 @@ source_record_id_value_stats:
   null_count: 0
   is_truncated: false
 grain: fct land degradation
+grain_columns: [geo_key, time_key, source_key]
 bind_spine:
   source_key: dim_source.organisation_name
   unit_key: dim_unit.unit_code

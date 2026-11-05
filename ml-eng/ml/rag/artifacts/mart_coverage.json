@@ -1,0 +1,8763 @@
+{
+ "built_at": "2026-11-04T21:31:28.623549+00:00",
+ "entries": [
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1993,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2012,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "REU",
+   "country": "REU",
+   "iso3": "REU",
+   "min_year": 1961,
+   "max_year": 2006
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_production",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Angola",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1997,
+   "max_year": 2017
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Ethiopia",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1998,
+   "max_year": 2016
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Rwanda",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 2008,
+   "max_year": 2017
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Benin",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1995,
+   "max_year": 2021
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Burkina Faso",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1984,
+   "max_year": 2022
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Cameroon",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1998,
+   "max_year": 2008
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Chad",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1983,
+   "max_year": 2017
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Kenya",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1965,
+   "max_year": 2024
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Madagascar",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1987,
+   "max_year": 2019
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Malawi",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1983,
+   "max_year": 2023
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Mali",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1974,
+   "max_year": 2022
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Mozambique",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1999,
+   "max_year": 2022
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Niger",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1980,
+   "max_year": 2022
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Tanzania, United Republic of",
+   "country": "Tanzania, United Republic of",
+   "iso3": "",
+   "min_year": 1989,
+   "max_year": 2015
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Zambia",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1980,
+   "max_year": 2017
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Zimbabwe",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1981,
+   "max_year": 2023
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Burundi",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1996,
+   "max_year": 2016
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "DRC",
+   "country": "DRC",
+   "iso3": "DRC",
+   "min_year": 2005,
+   "max_year": 2016
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Ghana",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1984,
+   "max_year": 2022
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Nigeria",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1999,
+   "max_year": 2023
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Sierra Leone",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1986,
+   "max_year": 2016
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Uganda",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 2008,
+   "max_year": 2009
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "South Africa",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1979,
+   "max_year": 2022
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Lesotho",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1981,
+   "max_year": 2022
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Togo",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1995,
+   "max_year": 2015
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Central African Republic",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 2014,
+   "max_year": 2016
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Guinea",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 2010,
+   "max_year": 2015
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Liberia",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1995,
+   "max_year": 2015
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Senegal",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1960,
+   "max_year": 2015
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "South Sudan",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 1975,
+   "max_year": 2013
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Sudan",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1975,
+   "max_year": 2024
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Mauritania",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1989,
+   "max_year": 2019
+  },
+  {
+   "table_id": "agg_production_annual",
+   "geo_column": "country_name",
+   "geo_value": "Somalia",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1995,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1989,
+   "max_year": 2019
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 2008,
+   "max_year": 2017
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1995,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 2014,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1984,
+   "max_year": 2022
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 2010,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1999,
+   "max_year": 2022
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1995,
+   "max_year": 2021
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1983,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1965,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1981,
+   "max_year": 2022
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 2005,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1960,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1998,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1995,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1997,
+   "max_year": 2017
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1998,
+   "max_year": 2008
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1995,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1987,
+   "max_year": 2019
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1974,
+   "max_year": 2022
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1983,
+   "max_year": 2017
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1996,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1986,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1989,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1981,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 1975,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1980,
+   "max_year": 2022
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1980,
+   "max_year": 2017
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1975,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1979,
+   "max_year": 2022
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1984,
+   "max_year": 2022
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 2008,
+   "max_year": 2009
+  },
+  {
+   "table_id": "fct_yield",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1999,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1993,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2012,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "REU",
+   "country": "REU",
+   "iso3": "REU",
+   "min_year": 2000,
+   "max_year": 2006
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_trade",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1961,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1961,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1961,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 2010,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 2010,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1961,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 2010,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1961,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 2010,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1961,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1961,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_food_balance",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1961,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_protected_areas",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "MYT",
+   "country": "MYT",
+   "iso3": "MYT",
+   "min_year": 1999,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "REU",
+   "country": "REU",
+   "iso3": "REU",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1960,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1960,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "ATF",
+   "country": "ATF",
+   "iso3": "ATF",
+   "min_year": 1999,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2006,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_prices",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Sudan",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "South Sudan",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2006,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Burundi",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Zimbabwe",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Eswatini",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "French Southern Territories",
+   "country": "French Southern Territories",
+   "iso3": "",
+   "min_year": 1999,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Somalia",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Rwanda",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Chad",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Kenya",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1960,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Madagascar",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Uganda",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Nigeria",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Cameroon",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Namibia",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Mauritania",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Ethiopia",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "South Africa",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Guinea-Bissau",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Côte d’Ivoire",
+   "country": "Côte d’Ivoire",
+   "iso3": "CIV",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Sierra Leone",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Guinea",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Eritrea",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Tunisia",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Malawi",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Central African Republic",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Djibouti",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Benin",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Gambia, The",
+   "country": "Gambia, The",
+   "iso3": "",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Libya",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Gabon",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Tanzania",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Egypt",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Burkina Faso",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Lesotho",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Sao Tome and Principe",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Comoros",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Algeria",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Equatorial Guinea",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Togo",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Congo (Brazzaville)",
+   "country": "Congo (Brazzaville)",
+   "iso3": "",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Congo (Kinshasa)",
+   "country": "Congo (Kinshasa)",
+   "iso3": "",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Angola",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Mayotte",
+   "country": "Mayotte",
+   "iso3": "",
+   "min_year": 1999,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Senegal",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Mali",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Mauritius",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Morocco",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1960,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Botswana",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Liberia",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Niger",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Seychelles",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Reunion",
+   "country": "Reunion",
+   "iso3": "",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Mozambique",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Ghana",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Zambia",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "agg_prices_country_month",
+   "geo_column": "country_name",
+   "geo_value": "Cabo Verde",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1970,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 2015,
+   "max_year": 2017
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 2016,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 2016,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 2016,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 2016,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 2011,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 2016,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 2011,
+   "max_year": 2018
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 2024,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 2015,
+   "max_year": 2017
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 2011,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 2016,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 2016,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 2016,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 2011,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 2011,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_food_security",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 2011,
+   "max_year": 2025
+  },
+  {
+   "table_id": "agg_food_security_monthly",
+   "geo_column": "country_name",
+   "geo_value": "Central African Republic",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 2016,
+   "max_year": 2024
+  },
+  {
+   "table_id": "agg_food_security_monthly",
+   "geo_column": "country_name",
+   "geo_value": "Mali",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 2016,
+   "max_year": 2024
+  },
+  {
+   "table_id": "agg_food_security_monthly",
+   "geo_column": "country_name",
+   "geo_value": "Zimbabwe",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 2016,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1992,
+   "max_year": 2011
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1988,
+   "max_year": 2000
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1988,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1988,
+   "max_year": 2011
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1988,
+   "max_year": 2008
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1988,
+   "max_year": 2012
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1988,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1988,
+   "max_year": 2001
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1988,
+   "max_year": 2014
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1992,
+   "max_year": 2005
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1988,
+   "max_year": 2014
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1988,
+   "max_year": 2014
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 2011,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2009,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1988,
+   "max_year": 2014
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1988,
+   "max_year": 2004
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1988,
+   "max_year": 2014
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1988,
+   "max_year": 2014
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1988,
+   "max_year": 1996
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1988,
+   "max_year": 2016
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1999,
+   "max_year": 2000
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1988,
+   "max_year": 2015
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1989,
+   "max_year": 2012
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1988,
+   "max_year": 2013
+  },
+  {
+   "table_id": "fct_humanitarian",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1990,
+   "max_year": 2011
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "MYT",
+   "country": "MYT",
+   "iso3": "MYT",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "REU",
+   "country": "REU",
+   "iso3": "REU",
+   "min_year": 2023,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 2025,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 2025,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 2025,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 2025,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 2023,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 2025,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 2025,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "SHN",
+   "country": "SHN",
+   "iso3": "SHN",
+   "min_year": 2025,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 2025,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 2025,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 2005,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 2023,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_climate",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 2023,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "ESH",
+   "country": "ESH",
+   "iso3": "ESH",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "ATF",
+   "country": "ATF",
+   "iso3": "ATF",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "SHN",
+   "country": "SHN",
+   "iso3": "SHN",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "MYT",
+   "country": "MYT",
+   "iso3": "MYT",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1993,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1990,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2012,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_land_inputs",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1990,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1999,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 2000,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1999,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 2005,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 2008,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1999,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1995,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2010,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 2005,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 2005,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 2000,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 2005,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 2022,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1995,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 2000,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 2000,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 2000,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 2010,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_hdi",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1990,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1990,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2008,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1990,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_economics",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1990,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "ESH",
+   "country": "ESH",
+   "iso3": "ESH",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1991,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "SHN",
+   "country": "SHN",
+   "iso3": "SHN",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "REU",
+   "country": "REU",
+   "iso3": "REU",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "MYT",
+   "country": "MYT",
+   "iso3": "MYT",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 1991,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_employment",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1950,
+   "max_year": 2100
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1990,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "SHN",
+   "country": "SHN",
+   "iso3": "SHN",
+   "min_year": 1973,
+   "max_year": 2023
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "MYT",
+   "country": "MYT",
+   "iso3": "MYT",
+   "min_year": 1976,
+   "max_year": 2010
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2008,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_investment",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1970,
+   "max_year": 2024
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1961,
+   "max_year": 2009
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "ESH",
+   "country": "ESH",
+   "iso3": "ESH",
+   "min_year": 1962,
+   "max_year": 1975
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1961,
+   "max_year": 2008
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1961,
+   "max_year": 2008
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1994,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1961,
+   "max_year": 2008
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1961,
+   "max_year": 2009
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1993,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1995,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1993,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "MYT",
+   "country": "MYT",
+   "iso3": "MYT",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1961,
+   "max_year": 2008
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1961,
+   "max_year": 2007
+  },
+  {
+   "table_id": "fct_machinery",
+   "geo_column": "country_iso3",
+   "geo_value": "SHN",
+   "country": "SHN",
+   "iso3": "SHN",
+   "min_year": 1961,
+   "max_year": 1996
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "AGO",
+   "country": "Angola",
+   "iso3": "AGO",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "LSO",
+   "country": "Lesotho",
+   "iso3": "LSO",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "MYT",
+   "country": "MYT",
+   "iso3": "MYT",
+   "min_year": 1990,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "DJI",
+   "country": "Djibouti",
+   "iso3": "DJI",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "GNQ",
+   "country": "Equatorial Guinea",
+   "iso3": "GNQ",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "SOM",
+   "country": "Somalia",
+   "iso3": "SOM",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "STP",
+   "country": "Sao Tome and Principe",
+   "iso3": "STP",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "SYC",
+   "country": "Seychelles",
+   "iso3": "SYC",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "SSD",
+   "country": "South Sudan",
+   "iso3": "SSD",
+   "min_year": 2012,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "ESH",
+   "country": "ESH",
+   "iso3": "ESH",
+   "min_year": 1990,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "SHN",
+   "country": "SHN",
+   "iso3": "SHN",
+   "min_year": 1961,
+   "max_year": 2025
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "COM",
+   "country": "Comoros",
+   "iso3": "COM",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "CPV",
+   "country": "Cabo Verde",
+   "iso3": "CPV",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "DZA",
+   "country": "Algeria",
+   "iso3": "DZA",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "LBY",
+   "country": "Libya",
+   "iso3": "LBY",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "REU",
+   "country": "REU",
+   "iso3": "REU",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1961,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_emissions",
+   "geo_column": "country_iso3",
+   "geo_value": "ERI",
+   "country": "Eritrea",
+   "iso3": "ERI",
+   "min_year": 1993,
+   "max_year": 2050
+  },
+  {
+   "table_id": "fct_animal_health",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_animal_health",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_animal_health",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_food_hazards",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 2002,
+   "max_year": 2019
+  },
+  {
+   "table_id": "fct_insurance",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 1997,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_household",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_vegetation",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_vegetation",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "BFA",
+   "country": "Burkina Faso",
+   "iso3": "BFA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "GHA",
+   "country": "Ghana",
+   "iso3": "GHA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "MLI",
+   "country": "Mali",
+   "iso3": "MLI",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "GIN",
+   "country": "Guinea",
+   "iso3": "GIN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "LBR",
+   "country": "Liberia",
+   "iso3": "LBR",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "SLE",
+   "country": "Sierra Leone",
+   "iso3": "SLE",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "MRT",
+   "country": "Mauritania",
+   "iso3": "MRT",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "SEN",
+   "country": "Senegal",
+   "iso3": "SEN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "GNB",
+   "country": "Guinea-Bissau",
+   "iso3": "GNB",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "GMB",
+   "country": "Gambia",
+   "iso3": "GMB",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "CIV",
+   "country": "Côte d'Ivoire",
+   "iso3": "CIV",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "MAR",
+   "country": "Morocco",
+   "iso3": "MAR",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "TGO",
+   "country": "Togo",
+   "iso3": "TGO",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "BEN",
+   "country": "Benin",
+   "iso3": "BEN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "NER",
+   "country": "Niger",
+   "iso3": "NER",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "GAB",
+   "country": "Gabon",
+   "iso3": "GAB",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "CMR",
+   "country": "Cameroon",
+   "iso3": "CMR",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "NGA",
+   "country": "Nigeria",
+   "iso3": "NGA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "COD",
+   "country": "Democratic Republic of the Congo",
+   "iso3": "COD",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "COG",
+   "country": "Republic of the Congo",
+   "iso3": "COG",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "TCD",
+   "country": "Chad",
+   "iso3": "TCD",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "NAM",
+   "country": "Namibia",
+   "iso3": "NAM",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "BWA",
+   "country": "Botswana",
+   "iso3": "BWA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "CAF",
+   "country": "Central African Republic",
+   "iso3": "CAF",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "SDN",
+   "country": "Sudan",
+   "iso3": "SDN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "ZMB",
+   "country": "Zambia",
+   "iso3": "ZMB",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "ZAF",
+   "country": "South Africa",
+   "iso3": "ZAF",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "ZWE",
+   "country": "Zimbabwe",
+   "iso3": "ZWE",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "RWA",
+   "country": "Rwanda",
+   "iso3": "RWA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "BDI",
+   "country": "Burundi",
+   "iso3": "BDI",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "EGY",
+   "country": "Egypt",
+   "iso3": "EGY",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "UGA",
+   "country": "Uganda",
+   "iso3": "UGA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "TZA",
+   "country": "Tanzania",
+   "iso3": "TZA",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "SWZ",
+   "country": "Eswatini",
+   "iso3": "SWZ",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "MOZ",
+   "country": "Mozambique",
+   "iso3": "MOZ",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "MWI",
+   "country": "Malawi",
+   "iso3": "MWI",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "ETH",
+   "country": "Ethiopia",
+   "iso3": "ETH",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "KEN",
+   "country": "Kenya",
+   "iso3": "KEN",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "MDG",
+   "country": "Madagascar",
+   "iso3": "MDG",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "MUS",
+   "country": "Mauritius",
+   "iso3": "MUS",
+   "min_year": 2026,
+   "max_year": 2026
+  },
+  {
+   "table_id": "fct_germplasm",
+   "geo_column": "country_iso3",
+   "geo_value": "TUN",
+   "country": "Tunisia",
+   "iso3": "TUN",
+   "min_year": 2026,
+   "max_year": 2026
+  }
+ ],
+ "admitted_shapes": {}
+}

@@ -76,6 +76,7 @@ time_key_value_stats:
   is_truncated: false
   patched: true
 grain: fct fertilizer
+grain_columns: [geo_key, time_key, product_key, source_key]
 bind_spine:
   product_key: dim_product.product_name
   source_key: dim_source.organisation_name

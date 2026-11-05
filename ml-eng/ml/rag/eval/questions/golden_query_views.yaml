@@ -30,11 +30,6 @@ cases:
     expect:
       early_route: greeting
 
-  - id: generate_weak_cites
-    kind: static
-    expect:
-      weak_citations_empty: true
-
   - id: bind_path_no_engine_select
     kind: static
     expect:

@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from ml.rag.chatbot.schema_card import load_schema_card
+from ml.rag.chatbot.web_policy import primary_class_from_state
+
 
 def _decomposition(state: dict[str, Any]) -> dict[str, Any]:
     dec: dict[str, Any] = {}
@@ -108,9 +111,6 @@ def should_retry_bq(state: dict[str, Any]) -> bool:
     ):
         return False
     # Prefer card warehouse_role when present
-    from ml.rag.chatbot.empty_policy import primary_class_from_state
-    from ml.rag.chatbot.schema_card import load_schema_card
-
     code = primary_class_from_state(state)
     card = load_schema_card(code) if code else None
     role = str((card or {}).get("warehouse_role") or "measurable").strip().lower()

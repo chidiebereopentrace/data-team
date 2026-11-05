@@ -69,11 +69,6 @@ def _check_route(case: dict[str, Any]) -> list[str]:
 def _check_static(case: dict[str, Any]) -> list[str]:
     errs: list[str] = []
     expect = _expect_dict(case)
-    if expect.get("weak_citations_empty"):
-        from ml.rag.chatbot.empty_policy import PRODUCT_DEFAULT_EMPTY_POLICY
-
-        if PRODUCT_DEFAULT_EMPTY_POLICY != "generate_weak":
-            errs.append("default empty_policy is not generate_weak")
     if expect.get("engines_sql_less"):
         from ml.rag.chatbot.sql_compiler import assemble_sql
         from ml.rag.chatbot.sql_request import SqlRequest

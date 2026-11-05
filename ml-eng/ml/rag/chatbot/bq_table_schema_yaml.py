@@ -211,6 +211,95 @@ def bind_spine_map(table_id: str) -> dict[str, str]:
     return out
 
 
+_GRAIN_TOKEN_COLUMNS: dict[str, tuple[str, ...]] = {
+    "country": ("country_iso3", "country_name", "geography_key", "geo_key", "area"),
+    "area": ("country_iso3", "country_name", "geography_key", "geo_key", "area"),
+    "geography": ("geography_key", "geo_key", "country_iso3"),
+    "product": ("product_key", "product_name", "item"),
+    "commodity": ("product_key", "product_name", "commodity", "item"),
+    "crop": ("product_key", "product_name", "crop", "item"),
+    "item": ("item", "item_key", "item_name", "product_key"),
+    "year": ("year", "time_key", "harvest_year", "observation_year", "mp_year"),
+    "month": ("month", "as_of_date"),
+    "date": ("as_of_date", "date"),
+    "source": ("source_key", "price_source", "source"),
+    "market": ("market_key", "market_name", "market"),
+    "element": ("element", "element_key"),
+    "indicator": ("indicator", "indicator_key", "indicator_name"),
+    "sex": ("sex",),
+    "measure": ("measure_type",),
+    "season": ("season", "season_key"),
+    "admin": ("admin_1", "admin_1_name"),
+    "region": ("admin_1", "admin_1_name", "region"),
+}
+_GRAIN_TOKEN_RE = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def grain_columns(table_id: str) -> list[str]:
+    """Columns that together identify one row: YAML ``grain_columns`` or the parsed ``grain`` line."""
+    schema = load_mart_table_schema(table_id) or load_table_schema(table_id) or {}
+    by_low = {
+        str(c.get("name") or "").strip().lower(): str(c.get("name") or "").strip()
+        for c in _schema_columns(schema)
+        if str(c.get("name") or "").strip()
+    }
+    explicit = schema.get("grain_columns")
+    if isinstance(explicit, list):
+        return [by_low[str(c).strip().lower()] for c in explicit if str(c).strip().lower() in by_low]
+    out: list[str] = []
+    for token in _GRAIN_TOKEN_RE.findall(str(schema.get("grain") or "").lower()):
+        for cand in (token, *_GRAIN_TOKEN_COLUMNS.get(token, ())):
+            if cand in by_low:
+                if by_low[cand] not in out:
+                    out.append(by_low[cand])
+                break
+    return out
+
+
+def column_units(table_id: str) -> dict[str, str]:
+    """Measure column → unit for tables without a unit column (YAML ``column_units``)."""
+    schema = load_mart_table_schema(table_id) or load_table_schema(table_id) or {}
+    raw = schema.get("column_units")
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k).strip(): str(v).strip() for k, v in raw.items() if str(k).strip() and str(v).strip()}
+
+
+def with_column_units(row: dict[str, Any], table_ids: set[str]) -> dict[str, Any]:
+    """Row plus ``<measure>_unit`` for each declared unit the row does not already carry."""
+    out = dict(row)
+    for table_id in sorted(table_ids):
+        for col, unit in column_units(table_id).items():
+            key = f"{col}_unit"
+            if col in out and key not in out:
+                out[key] = unit
+    return out
+
+
+_DIM_LABEL_COL = {
+    "dim_product": "product_name",
+    "dim_source": "organisation_name",
+    "dim_market": "market_name",
+    "dim_geography": "country_name",
+    "dim_element": "element_name",
+    "dim_unit": "unit_code",
+    "dim_season": "season_name",
+    "dim_indicator": "indicator_name",
+    "dim_item": "item_name",
+}
+
+
+def dim_label_joins(table_id: str) -> dict[str, tuple[str, str, str]]:
+    """FK column → (dim table, dim key column, display label) from ``bind_spine``."""
+    out: dict[str, tuple[str, str, str]] = {}
+    for fk, ref in bind_spine_map(table_id).items():
+        dim, filter_col = ref.split(".", 1)
+        key = _FK_DIM_SELECT_COL.get((fk.lower(), dim.lower()), fk)
+        label = _DIM_LABEL_COL.get(dim.lower(), filter_col)
+        out[fk] = (dim, key, label)
+    return out
+
+
 # Legacy facts use geo_key as FK to dim_geography.geography_key (same hash).
 _FK_DIM_SELECT_COL: dict[tuple[str, str], str] = {
     ("geo_key", "dim_geography"): "geography_key",
@@ -420,6 +509,7 @@ def compile_spine_entity_filters(
     for lab in consumed_low:
         consumed_tokens.update(_alnum_tokens(lab))
 
+    fact_cols = {name.lower() for name in _column_names(bare)}
     out: list[tuple[str, str, str]] = []
     for fk_col, dim_ref in sorted(spine.items()):
         fk = str(fk_col or "").strip()
@@ -427,12 +517,14 @@ def compile_spine_entity_filters(
         fk_l = fk.lower()
         if not fk or fk_l in skip or "." not in ref:
             continue
-        if fk_l not in _SPINE_ENTITY_ALLOW_FKS:
+        if fk_l not in _SPINE_ENTITY_ALLOW_FKS or fk_l not in fact_cols:
             continue
         dim_table, dim_col = ref.split(".", 1)
         dim_table = dim_table.strip()
         dim_col = dim_col.strip()
         if not dim_table or not dim_col:
+            continue
+        if fk_l.removesuffix("_key") in fact_cols or dim_col.lower() in fact_cols:
             continue
         samples = column_samples_for_table(dim_table, dim_col)
         if not samples:
@@ -488,22 +580,30 @@ def compile_spine_entity_filters(
     return out
 
 
-# Aligned with bq_sql_validate metric-discriminator sets.
-_CORE_METRIC_DISCRIMINATORS = frozenset(
+CORE_METRIC_DISCRIMINATORS = frozenset(
     {
         "element",
         "indicator",
         "price_type",
         "measure_type",
         "treatment",
+        "metric",
+        "production_grain",
+        "price_source",
+        "trade_grain",
+        "climate_grain",
+        "input_grain",
+        "vegetation_grain",
     }
 )
-_GRAIN_METRIC_DISCRIMINATORS = frozenset(
+GRAIN_METRIC_DISCRIMINATORS = frozenset(
     {
         "classification_scale",
         "scenario_name",
     }
 )
+_CORE_METRIC_DISCRIMINATORS = CORE_METRIC_DISCRIMINATORS
+_GRAIN_METRIC_DISCRIMINATORS = GRAIN_METRIC_DISCRIMINATORS
 
 _NUMERIC_COLUMN_TYPES = frozenset({"INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "INTEGER", "FLOAT"})
 _MEASURE_SKIP_COLUMNS = frozenset(
@@ -753,6 +853,16 @@ _GENERIC_SAMPLE_TOKENS = frozenset(
         "the",
         "with",
         "from",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "by",
+        "per",
+        "a",
+        "an",
+        "is",
         "n",
         "e",
         "c",
@@ -1539,6 +1649,8 @@ def compile_product_filter_sql(
     Returns ``(sql_fragment, resolved_labels)``. Fragment is empty when no dictionary match.
     """
     bare = _strip_fqn(table_id).lower()
+    if not product_column(bare):
+        return "", []
     resolved = _resolve_product_labels_for_table(bare, blob=blob, labels=labels)
     if not resolved:
         return "", []
@@ -1657,6 +1769,13 @@ def _wants_yield(primary_measures: list[str] | None, measure_blob_text: str) -> 
     )
 
 
+def _every_token_said(sample: str, blob: str) -> bool:
+    """Slug samples fuse measure and product; one said token does not name the slug."""
+    blob_tokens = set(_alnum_tokens(expand_speech_text(blob)))
+    tokens = [t for t in _alnum_tokens(sample) if t not in _GENERIC_SAMPLE_TOKENS]
+    return bool(tokens) and all(_SPEECH_SYNONYMS.get(t, t) in blob_tokens or t in blob_tokens for t in tokens)
+
+
 def compile_measure_filters(
     table_id: str,
     *,
@@ -1736,7 +1855,11 @@ def compile_measure_filters(
             metric_samples = samples_map.get("metric") or []
             metric_val = _match_metric_slug(measure_blob_text, metric_samples)
             if not metric_val:
-                matched = match_value_samples(measure_blob_text, metric_samples)
+                matched = [
+                    m
+                    for m in match_value_samples(measure_blob_text, metric_samples)
+                    if _every_token_said(m, measure_blob_text)
+                ]
                 metric_val = matched[0] if matched else default_discriminator_value(
                     "metric",
                     metric_samples,
@@ -1753,6 +1876,8 @@ def compile_measure_filters(
         if col_l in skip or col_l not in _MEASURE_DISCRIMINATOR_COLS:
             continue
         matched = match_value_samples(measure_blob_text, samples)
+        if col_l == "metric":
+            matched = [m for m in matched if _every_token_said(m, measure_blob_text)]
         if matched:
             _add(col, matched[0])
             continue
@@ -1794,7 +1919,7 @@ def compile_time_filter_sql(
     time_start: str | None = None,
     time_end: str | None = None,
 ) -> str:
-    """Partition-aware time bounds when table has as_of_date."""
+    """Time predicate for one table. A passed year is an equality. A start and end in different years is BETWEEN on as_of_date when that column exists, otherwise on the table year column."""
     bare = _strip_fqn(table_id).lower()
     schema = (_schema_loader_for(bare))(bare) or {}
     col_names = {
@@ -1878,8 +2003,12 @@ def compile_semantic_filter(
         )
     if facet_l == "geo":
         resolved = resolve_geo_filter_values(table_id, country_labels) if country_labels else []
-        subnational = match_subnational_geo_labels(blob)
-        geo_level = match_geo_level_label(blob)
+        place_blob = blob or ""
+        for name in [*(country_labels or []), *resolved]:
+            if str(name).strip():
+                place_blob = re.sub(re.escape(str(name).strip()), " ", place_blob, flags=re.IGNORECASE)
+        subnational = match_subnational_geo_labels(place_blob)
+        geo_level = match_geo_level_label(place_blob)
         extra: list[tuple[str, str]] = list(subnational)
         if geo_level:
             extra.append(("geo_level", geo_level))
@@ -1930,7 +2059,7 @@ def compile_semantic_filter(
                 table_id,
                 fk_col=fk_for_dim,
                 dim_ref=spine_ref,
-                literals=resolved,
+                literals=resolved if col in ("geo_key", "geography_key") else [],
                 project_id=project_id,
                 dataset=dataset,
                 extra_predicates=extra or None,
@@ -2139,11 +2268,17 @@ def compile_table_bind_contract(
 
     ts = str(dec.get("time_start") or "")[:10]
     te = str(dec.get("time_end") or "")[:10]
+    start_year = int(ts[:4]) if ts[:4].isdigit() else None
+    end_year = int(te[:4]) if te[:4].isdigit() else None
+    # A year equality is only a point. A span stays a span so the time filter
+    # can emit BETWEEN on whatever time column the table has.
     year_hint: int | None = None
-    if te[:4].isdigit() and ts[:4].isdigit() and ts[:4] == te[:4]:
-        year_hint = int(te[:4])
-    elif te[:4].isdigit():
-        year_hint = int(te[:4])
+    if start_year is not None and end_year is not None and start_year == end_year:
+        year_hint = start_year
+    elif start_year is not None and end_year is None:
+        year_hint = start_year
+    elif end_year is not None and start_year is None:
+        year_hint = end_year
 
     parts: list[str] = []
     geo_blob = " ".join(

@@ -6,6 +6,8 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.bq_table_schema_yaml import (
+    CORE_METRIC_DISCRIMINATORS as _CORE_METRIC_DISCRIMINATORS,
+    GRAIN_METRIC_DISCRIMINATORS as _GRAIN_METRIC_DISCRIMINATORS,
     TableBindContract,
     columns_for_mart_tables,
     columns_for_tables,
@@ -97,30 +99,7 @@ _PRODUCT_IN_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Metric discriminators: change the meaning of ``value`` / measures.
-# Optional ones are required only when mentioned in the table grain.
-_CORE_METRIC_DISCRIMINATORS = frozenset(
-    {
-        "element",
-        "indicator",
-        "price_type",
-        "measure_type",
-        "treatment",
-        "metric",
-        "production_grain",
-        "price_source",
-        "trade_grain",
-        "climate_grain",
-        "input_grain",
-        "vegetation_grain",
-    }
-)
-_GRAIN_METRIC_DISCRIMINATORS = frozenset(
-    {
-        "classification_scale",
-        "scenario_name",
-    }
-)
+# Metric discriminators live in bq_table_schema_yaml (one list).
 
 _SQL_KEYWORDS = frozenset(
     {
@@ -424,14 +403,17 @@ def _filtered_columns(sql: str) -> set[str]:
     return {m.group(1).lower() for m in _COL_FILTERED_RE.finditer(scrubbed)}
 
 
-def _point_fact_exposes_column(sql: str, column: str) -> bool:
-    """True for a non-aggregated LIMIT 1 statement whose SELECT list names ``column``."""
+def metric_discriminator_names() -> frozenset[str]:
+    """Columns whose values must not be blended across a numeric measure."""
+    return _CORE_METRIC_DISCRIMINATORS | _GRAIN_METRIC_DISCRIMINATORS
+
+
+def _non_aggregate_exposes_column(sql: str, column: str) -> bool:
+    """True when a non-aggregated statement selects ``column``, so each row stays labeled."""
     scrubbed = _strip_string_literals(sql or "")
     if re.search(r"\bGROUP\s+BY\b", scrubbed, re.IGNORECASE):
         return False
     if re.search(r"\b(?:SUM|AVG|COUNT|MIN|MAX)\s*\(", scrubbed, re.IGNORECASE):
-        return False
-    if not re.search(r"\bLIMIT\s+1\b", scrubbed, re.IGNORECASE):
         return False
     select_m = re.search(r"\bSELECT\b(?P<body>.*?)\bFROM\b", scrubbed, re.IGNORECASE | re.DOTALL)
     if not select_m:
@@ -608,6 +590,8 @@ def inject_missing_metric_filters(
         by_col_set = {k: set(v) for k, v in by_col.items()}
         for col in _required_metric_cols_for_table(bare, by_col_set):
             if col in filtered:
+                continue
+            if _non_aggregate_exposes_column(text, col):
                 continue
             sample_vals: set[str] = set()
             orig_col = col
@@ -865,7 +849,7 @@ def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None
         for col in _required_metric_cols_for_table(bare, by_col_set):
             if col in filtered:
                 continue
-            if col == "price_source" and _point_fact_exposes_column(sql, col):
+            if _non_aggregate_exposes_column(sql, col):
                 continue
             missing.append(f"{bare}.{col}")
             vals: list[str] = []

@@ -71,8 +71,8 @@ MEASURES: dict[str, MeasureSpec] = {
         corpus_domains=("Agricultural Production & Yield", "agriculture"),
         bq_index_domains=("production", "faostat"),
         candidate_tables=(
+            "agg_production_country_year",
             "fct_production",
-            "agg_production_annual",
         ),
         filter_hints="production_grain='physical'; filter metric/element; country_iso3; year; never mix with fct_yield",
         crop_required=True,
@@ -616,7 +616,7 @@ MEASURES: dict[str, MeasureSpec] = {
         ),
         corpus_domains=("Agricultural Production & Yield",),
         bq_index_domains=("production",),
-        candidate_tables=("fct_production", "agg_production_annual"),
+        candidate_tables=("agg_production_country_year", "fct_production"),
         filter_hints="full African country panel export; inherits child measure tables when resolved",
         crop_required=False,
         geography_required=False,

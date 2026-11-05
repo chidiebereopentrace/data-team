@@ -459,7 +459,7 @@ Four modes selected via `RAG_RERANKER_MODE`:
 
 | Mode | Behaviour |
 |------|-----------|
-| `cross_encoder` (production on Railway) | Single batched pass through a cross-encoder. Loads via fastembed ONNX first (Railway slim image), falls back to sentence-transformers on dev machines. Model id via `RAG_RERANKER_MODEL` (default `BAAI/bge-reranker-base`; multilingual, ~280 MB, baked in `Dockerfile.railway`). Raw scores are min-max normalised to `[0, 1]` then combined additively with the static source boost. **Set explicitly** when using OpenRouter LLM — otherwise auto-promotion picks OpenRouter rerank. |
+| `cross_encoder` (production on Railway) | Single batched pass through a cross-encoder. Loads via fastembed ONNX first (Railway slim image), falls back to sentence-transformers on dev machines. Model id via `RAG_RERANKER_MODEL` (default `BAAI/bge-reranker-v2-m3`; multilingual, baked in `Dockerfile.railway`). Raw scores are min-max normalised to `[0, 1]` then combined additively with the static source boost. **Set explicitly** when using OpenRouter LLM — otherwise auto-promotion picks OpenRouter rerank. |
 | `openrouter` | One `POST /rerank` via OpenRouter (default model `cohere/rerank-4-pro`). Reuses `RAG_LLM_API_KEY`. |
 | `cohere` | One HTTP call to Cohere's managed rerank API (`rerank-v3.5`). Requires `COHERE_API_KEY`. Scores are already `[0, 1]`; source boost applied additively. |
 | `llm` | Legacy per-chunk LLM scoring (one `llm_chat_complete` call per chunk). Kept for back-compat / A-B testing — too slow and too expensive for production. |
@@ -711,7 +711,7 @@ Set `RAG_DOTENV_OVERRIDE=1` to force file values over shell exports.
 | `RAG_RERANKER_COHERE_API_KEY` | Alternative Cohere key var (takes precedence over `COHERE_API_KEY`) |
 | `RAG_RERANKER_COHERE_MODEL` | Cohere model id (default `rerank-v3.5`) |
 | `RAG_RERANK_MODEL_ID` | OpenRouter rerank model slug (default `cohere/rerank-4-pro`) when mode is `openrouter` |
-| `RAG_RERANKER_MODEL` | Cross-encoder model id (default `BAAI/bge-reranker-base`; multilingual; baked in Railway image) |
+| `RAG_RERANKER_MODEL` | Cross-encoder model id (default `BAAI/bge-reranker-v2-m3`; multilingual; baked in Railway image) |
 | `RAG_RERANKER_TOP_K` | Optional global cap on rerank output (`0` = use caller `top_k`) |
 | `RAG_RERANKER_MAX_TEXT_CHARS` | Per-chunk char cap fed to the encoder (default 2000) |
 | `RAG_LLM_RERANK` | **Legacy.** Honoured only when `RAG_RERANKER_MODE` is unset (`on` → `llm`, `off` → `off`) |

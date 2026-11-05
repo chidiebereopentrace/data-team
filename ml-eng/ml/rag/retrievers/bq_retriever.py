@@ -25,6 +25,7 @@ from ml.rag.chatbot.bq_sql_validate import (
     inject_bind_contract_filters,
     inject_time_bounds,
     max_bytes_billed_for_source,
+    referenced_mart_tables,
     sql_retry_enabled,
     validate_dry_run_bytes,
     validate_literals_against_value_map,
@@ -36,8 +37,18 @@ from ml.rag.chatbot.bq_sql_validate import (
     validate_sql_value_samples,
 )
 from ml.rag.chatbot.query_decomposer import _NON_COUNTRY_GEO
-from ml.rag.chatbot.bq_table_schema_yaml import crop_entities_for_bind, join_fragments_for_tables
-from ml.rag.chatbot.compile_sql_from_bind import bind_contract_for_table, compile_sql_from_bind
+from ml.rag.chatbot.bq_table_schema_yaml import (
+    crop_entities_for_bind,
+    join_fragments_for_tables,
+    with_column_units,
+)
+from ml.rag.chatbot.compile_sql_from_bind import (
+    ROW_BUDGET,
+    bind_contract_for_table,
+    compile_sql_from_bind,
+)
+from ml.rag.chatbot.geo_iso3 import name_to_iso3
+from ml.rag.chatbot.mart_coverage import clamp_year, route_tables
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 from ml.rag.observability import (
@@ -1294,6 +1305,16 @@ class BQRetriever(BaseRetriever):
                 tid = str(item).strip().split(".")[-1].lower()
                 if _is_mart_table_id(tid):
                     selected_tables.add(tid)
+        iso3 = name_to_iso3(geo_country) if geo_country else None
+        if not iso3 and geo_countries and len(geo_countries) == 1:
+            iso3 = name_to_iso3(geo_countries[0])
+        if selected_tables:
+            selected_tables = set(route_tables(selected_tables, iso3))
+        if iso3 and time_end and len(time_end) >= 4 and time_end[:4].isdigit():
+            first = next(iter(selected_tables), "")
+            capped = clamp_year(first, iso3, int(time_end[:4]))
+            if capped is not None and capped < int(time_end[:4]):
+                time_end = f"{capped}-12-31"
 
         raw_ovf = kwargs.get("ontology_value_filters")
         ontology_value_filters: dict[str, list[str]] | None = None
@@ -1433,7 +1454,26 @@ class BQRetriever(BaseRetriever):
         if not engine_execute_only and not sql_queries and not explicit_sql:
             if planned_path:
                 bind_sqls: list[str] = []
-                if fast_fact and bind_contracts:
+                if bind_contracts:
+                    shape_job = str(kwargs.get("contract_job") or "")
+                    shape_pattern = ""
+                    raw_breakdown = kwargs.get("breakdown")
+                    breakdown = (
+                        [str(x) for x in raw_breakdown if str(x).strip()]
+                        if isinstance(raw_breakdown, (list, tuple))
+                        else []
+                    )
+                    if isinstance(decomp, dict):
+                        shape_job = shape_job or str(decomp.get("job") or decomp.get("shape") or "")
+                        shape_pattern = str(decomp.get("pattern") or "")
+                    if isinstance(query_intents, list):
+                        for intent in query_intents:
+                            if not isinstance(intent, dict):
+                                continue
+                            if not shape_pattern and intent.get("pattern"):
+                                shape_pattern = str(intent.get("pattern") or "")
+                            if not shape_job and intent.get("shape"):
+                                shape_job = str(intent.get("shape") or "")
                     for tid in sorted(selected_tables):
                         raw_bind = bind_contract_for_table(bind_contracts, tid)
                         if raw_bind is None:
@@ -1443,6 +1483,9 @@ class BQRetriever(BaseRetriever):
                             project_id=self.project_id,
                             dataset=ds_name,
                             limit=1,
+                            job=shape_job,
+                            pattern=shape_pattern,
+                            breakdown=breakdown,
                         )
                         if compiled:
                             bind_sqls.append(compiled)
@@ -1839,8 +1882,9 @@ class BQRetriever(BaseRetriever):
                                 )
 
                 telem = _job_telemetry(row_count=min(len(rows), limit), status="ok")
+                read_tables = referenced_mart_tables(validated)
                 for row in rows[:limit]:
-                    d = dict(row)
+                    d = with_column_units(dict(row), read_tables)
                     row_meta = project_bq_row_acf(
                         {
                             **d,
@@ -1887,7 +1931,11 @@ class BQRetriever(BaseRetriever):
                         break
 
             prepared: list[_PreparedWork] = []
-            batch_row_limit = min(rows_per_query, budget) if budget > 0 else rows_per_query
+            if source == "bind_compiler":
+                budget = max(budget, ROW_BUDGET)
+                batch_row_limit = budget
+            else:
+                batch_row_limit = min(rows_per_query, budget) if budget > 0 else rows_per_query
             for idx, raw_sql in enumerate(batch):
                 if queries_left <= 0:
                     break

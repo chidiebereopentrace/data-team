@@ -4,6 +4,7 @@ source:
   layer: mart_dev
 profiled_at: '2026-09-05T17:57:00.703130+00:00'
 grain: FNID–season yield_raw (area/qty/yield)
+grain_columns: [country_iso3, season_key, product_key, year, source_key]
 entity_type: production
 columns:
 - name: yield_key
