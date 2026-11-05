@@ -58,8 +58,14 @@ from ml.rag.chatbot.citation_pack import (
 )
 from ml.rag.chatbot.generation_prompt import _build_prompt, _current_date_block
 from ml.rag.chatbot.context_diversity import dedupe_context_items
-from ml.rag.chatbot.evidence_kinds import NARRATIVE_KINDS, is_warehouse_item, source_kind
+from ml.rag.chatbot.evidence_kinds import (
+    NARRATIVE_KINDS,
+    is_document_item,
+    is_warehouse_item,
+    source_kind,
+)
 from ml.rag.chatbot.export_intent import want_inline_citations
+from ml.rag.chatbot.geo_iso3 import countries_named_in_text
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.numeric_grounding import append_unsourced_caveat, unsourced_figures
@@ -366,6 +372,7 @@ _CROP_TOKEN_RE = re.compile(
     r"livestock|cattle|dairy|groundnut|yam|cowpea|barley|tea|sugar)\b",
     re.IGNORECASE,
 )
+_PRICE_WORD_RE = re.compile(r"\bprices?\b", re.IGNORECASE)
 
 _INTERNAL_ID_RE = re.compile(
     r"\b(?:mart_dev|staging_dev|BQ_DATASET(?:_\w+)?|bigquery)\b|`[^`]+`|\b(?:fct|agg|stg|dim|bridge)_[\w]+\b",
@@ -609,6 +616,33 @@ def _context_has_structured_numeric(context_items: list[dict[str, Any]] | None) 
     return False
 
 
+def _asks_market_price(decomposition: dict[str, Any] | None) -> bool:
+    if not isinstance(decomposition, dict):
+        return False
+    measures: list[str] = []
+    raw = decomposition.get("primary_measures")
+    if isinstance(raw, list):
+        measures.extend(str(item).strip().lower() for item in raw)
+    measure_id = str(decomposition.get("measure_id") or "").strip().lower()
+    if measure_id:
+        measures.append(measure_id)
+    return "market_price" in measures
+
+
+def _names_product_and_price(
+    blob: str,
+    query: str,
+    decomposition: dict[str, Any] | None,
+) -> bool:
+    if not _PRICE_WORD_RE.search(blob or ""):
+        return False
+    topics = _query_topic_tokens(query, decomposition)
+    if not topics:
+        return False
+    folded = (blob or "").lower()
+    return any(token in folded for token in topics)
+
+
 def _query_topic_tokens(query: str, decomposition: dict[str, Any] | None) -> set[str]:
     tokens: set[str] = set()
     for match in _CROP_TOKEN_RE.finditer(query or ""):
@@ -648,6 +682,8 @@ def _narrative_overlaps_query(
     countries = _query_target_countries(decomposition)
     if countries and not any(c.lower() in blob for c in countries):
         return False
+    if _asks_market_price(decomposition):
+        return _names_product_and_price(blob, query, decomposition)
     topics = _query_topic_tokens(query, decomposition)
     if topics:
         return any(t in blob for t in topics)
@@ -1578,10 +1614,10 @@ def _query_target_countries(decomposition: dict[str, Any] | None) -> list[str]:
 
 
 def _geo_conflicts(item: dict[str, Any], allowed_lower: set[str]) -> bool:
-    """
-    True only when a chunk's geo metadata names specific countries and NONE of
-    them match the query's target countries. Chunks with no geo metadata are kept
-    (benefit of the doubt — e.g. structured BQ rows, global/continental references).
+    """True when the chunk names countries and none of them is the question's country.
+
+    Payload geo and the chunk body both count. A chunk that names no country is kept.
+    A chunk that names the asked country is kept even if it also names another.
     """
     meta = _item_metadata(item)
 
@@ -1589,14 +1625,39 @@ def _geo_conflicts(item: dict[str, Any], allowed_lower: set[str]) -> bool:
         if not s:
             return set()
         parts = re.split(r"[;,/]", s)
-        return {p.strip().lower() for p in parts if p.strip()}
+        return {p.strip().casefold() for p in parts if p.strip()}
 
     primary = str(meta.get("geo_country_primary") or meta.get("country") or "")
     blob = str(meta.get("geo_countries") or "")
-    meta_countries = _norm_list(primary) | _norm_list(blob)
-    if not meta_countries:
-        return False  # no geo signal → keep
-    return not (meta_countries & allowed_lower)
+    body = str(item.get("content") or item.get("text") or "")
+    mentioned = _norm_list(primary) | _norm_list(blob) | countries_named_in_text(body)
+    mentioned |= countries_named_in_text(primary) | countries_named_in_text(blob)
+    if not mentioned:
+        return False
+    return not (mentioned & allowed_lower)
+
+
+def drop_price_off_topic(
+    items: list[dict[str, Any]],
+    query: str,
+    decomposition: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Drop narrative chunks that are not about the asked product's price.
+
+    Warehouse rows stay. A production question is unchanged. A market-price
+    question keeps a chunk only when the text names the product and a price.
+    """
+    if not _asks_market_price(decomposition):
+        return items
+    kept: list[dict[str, Any]] = []
+    for item in items:
+        if not is_document_item(item):
+            kept.append(item)
+            continue
+        blob = _item_text_blob(item)
+        if _names_product_and_price(blob, query, decomposition):
+            kept.append(item)
+    return kept
 
 
 def drop_geo_conflicting(
@@ -1604,10 +1665,9 @@ def drop_geo_conflicting(
     decomposition: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     """
-    Sprint 1 (Jul 2026): source purity. Drop chunks whose geo metadata clearly
-    names other countries than the query asked for (e.g. a Kenya-tagged chunk on a
-    Senegal query). Conservative: chunks lacking geo metadata are always kept, so
-    structured/global references are not accidentally removed. Toggle off with
+    Drop chunks that name a country other than the question's country and do not
+    name the asked country. Payload geo and the chunk body both count. Chunks
+    that name no country are kept. Toggle off with
     RAG_DROP_GEO_CONFLICTING_CONTEXT=off.
     """
     if os.environ.get("RAG_DROP_GEO_CONFLICTING_CONTEXT", "on").strip().lower() in (
@@ -1620,7 +1680,7 @@ def drop_geo_conflicting(
     countries = _query_target_countries(decomposition)
     if not countries:
         return items
-    allowed_lower = {c.lower() for c in countries}
+    allowed_lower = {c.casefold() for c in countries}
     return [it for it in items if not _geo_conflicts(it, allowed_lower)]
 
 
@@ -1866,6 +1926,7 @@ def generate(
 
     usable_context = dedupe_bq_context_items(filter_context_items(list(context_items or [])))
     usable_context = dedupe_context_items(usable_context)
+    usable_context = drop_price_off_topic(usable_context, query, decomposition)
     outcome = decide_outcome(usable_context)
 
     output_type = output_type_from_plan(generation_plan)

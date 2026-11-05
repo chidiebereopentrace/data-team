@@ -42,6 +42,35 @@ def test_web_blocked_on_never_executed() -> None:
     assert warehouse_blocks_web(state)
 
 
+def test_web_blocked_when_planned_intent_never_started_a_job() -> None:
+    state = {
+        "bq_sql_plan": {
+            "plan_source": "class_engine",
+            "query_intents": [
+                {"goal": "maize price", "tables": ["agg_prices_country_month"]},
+            ],
+        },
+        "bq_results": [],
+        "supervisor_plan": {"classes": ["PRC"]},
+    }
+    assert warehouse_blocks_web(state)
+
+
+def test_web_allowed_when_unavailable_and_policy_is_not_never(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ml.rag.retrievers.web_retriever.resolve_web_policy",
+        lambda _state: "if_empty_job",
+    )
+    state = {
+        "bq_sql_plan": {
+            "plan_source": "class_engine",
+            "query_intents": [{"goal": "maize price"}],
+        },
+        "bq_results": [],
+    }
+    assert warehouse_blocks_web(state) is False
+
+
 def test_web_blocked_on_timeout_without_job_id() -> None:
     state = {
         "bq_sql_plan": {"bq_sql_queries": ["SELECT 1"]},

@@ -85,6 +85,45 @@ def test_generation_plan_sets_output_type_for_served_production() -> None:
     assert plan.report_sections == ()
 
 
+def test_insufficient_output_forces_empty_evidence_tier() -> None:
+    from ml.rag.chatbot.turn_contract import TurnContract
+
+    ctx = [
+        {
+            "content": "Maize prices in Ghana rose after 2019.",
+            "_context_kind": "policy",
+            "metadata": {"country": "Ghana"},
+        },
+        {
+            "content": "Kenya maize prices fell in 2020.",
+            "_context_kind": "public_report",
+            "metadata": {"country": "Kenya"},
+        },
+    ]
+    contract = TurnContract(
+        measure_id="market_price",
+        job="trend",
+        serve_status="unsupported_measure",
+    )
+    plan = build_generation_plan(
+        "How did maize prices in Ghana and Kenya move from 2018 to 2022?",
+        task_mode="fact_lookup",
+        decomposition={
+            "geography": ["Ghana", "Kenya"],
+            "entities": ["maize"],
+            "primary_measures": ["market_price"],
+            "time_start": "2018-01-01",
+            "time_end": "2022-12-31",
+            "job": "trend",
+        },
+        reranked_context=ctx,
+        turn_contract=contract.to_dict(),
+    )
+    assert plan.output_type == "insufficient"
+    assert plan.evidence_tier == "empty"
+    assert "tier_strong" not in plan.rationale
+
+
 def test_generation_plan_insufficient_on_empty_context() -> None:
     contract = TurnContract(measure_id="production", job="fact")
     plan = build_generation_plan(

@@ -343,7 +343,7 @@ def warehouse_blocks_web(state: dict[str, Any]) -> bool:
         return True
     if flags.get("structured_bq_timed_out") and not any(d.get("job_id") for d in bq_debug):
         return True
-    if flags.get("structured_bq_empty"):
+    if flags.get("structured_bq_empty") or flags.get("structured_bq_unavailable"):
         return resolve_web_policy(state) == "never"
     return False
 

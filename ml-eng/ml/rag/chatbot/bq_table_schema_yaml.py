@@ -872,13 +872,6 @@ _GENERIC_SAMPLE_TOKENS = frozenset(
         "nec",
     }
 )
-_PREFERRED_DISCRIMINATOR_DEFAULTS = (
-    "Production",
-    "Export quantity",
-    "Producer Price (USD/tonne)",
-    "Retail",
-    "population",
-)
 _AUTO_DEFAULT_DISCRIMINATOR_COLS = frozenset({"element", "price_type", "measure_type"})
 _WORD_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -889,6 +882,7 @@ _PRODUCTION_QUERY_RE = re.compile(
 )
 _PRODUCER_PRICE_QUERY_RE = re.compile(r"\b(producer|farm\s*gate)\b", re.IGNORECASE)
 _WHOLESALE_QUERY_RE = re.compile(r"\bwholesale\b", re.IGNORECASE)
+_RETAIL_QUERY_RE = re.compile(r"\bretail\b", re.IGNORECASE)
 _POPULATION_QUERY_RE = re.compile(r"\b(population|people|ipc)\b", re.IGNORECASE)
 _CLASSIFICATION_QUERY_RE = re.compile(r"\b(classification|phase)\b", re.IGNORECASE)
 _MEASURE_DISCRIMINATOR_COLS = frozenset(
@@ -2484,9 +2478,10 @@ def default_discriminator_value(
             hit = _from_cands("Wholesale")
             if hit:
                 return hit
-        hit = _from_cands("Retail")
-        if hit:
-            return hit
+        if _RETAIL_QUERY_RE.search(q):
+            hit = _from_cands("Retail")
+            if hit:
+                return hit
 
     if col_l == "measure_type":
         if _POPULATION_QUERY_RE.search(q):
@@ -2501,11 +2496,6 @@ def default_discriminator_value(
     matched = match_value_samples(q, sample_set)
     if matched:
         return matched[0]
-
-    for preferred in _PREFERRED_DISCRIMINATOR_DEFAULTS:
-        hit = by_low.get(preferred.lower())
-        if hit:
-            return hit
 
     return None
 

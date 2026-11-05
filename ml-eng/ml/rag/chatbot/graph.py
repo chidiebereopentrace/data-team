@@ -65,6 +65,7 @@ from ml.rag.chatbot.capability_registry import apply_reasoner_to_turn, resolve_c
 from ml.rag.chatbot.bq_execute_state import (
     bq_execute_flags,
     collect_pre_queries,
+    ensure_planned_attempt_debug,
     plan_indicates_warehouse_attempt,
     warehouse_was_attempted,
 )
@@ -89,6 +90,7 @@ from ml.rag.chatbot.qdrant_planner import plan_vector_corpora_for_reasoner
 from ml.rag.chatbot.generator import (
     _generate_max_tokens,
     drop_geo_conflicting,
+    drop_price_off_topic,
     filter_context_items,
     generate,
     is_comparative_bq_query,
@@ -2278,6 +2280,12 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
         bq_sql_debug = [bq_failure_row]
     elif bq_failure_row and not engine_execute_only:
         bq_sql_debug = list(bq_sql_debug) + [bq_failure_row]
+    usable_bq_count = sum(1 for row in results if is_usable_structured_bq_row(row))
+    bq_sql_debug = ensure_planned_attempt_debug(
+        plan,
+        bq_sql_debug,
+        usable_bq=usable_bq_count > 0,
+    )
     query_planned = plan_indicates_warehouse_attempt(plan)
     planned_sql = plan.get("bq_sql_queries")
     planned_sql_count = len(planned_sql) if isinstance(planned_sql, list) else 0
@@ -2286,7 +2294,6 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
         status = str(row.get("status") or "unknown")
         execution_status_counts[status] = execution_status_counts.get(status, 0) + 1
     job_ids = {str(row.get("job_id")) for row in bq_sql_debug if row.get("job_id")}
-    usable_bq_count = sum(1 for row in results if is_usable_structured_bq_row(row))
     execution_flags = bq_execute_flags(
         bq_sql_debug,
         pre_queries=collect_pre_queries(
@@ -2506,6 +2513,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
     dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
     before_place = len(merged)
     merged = drop_geo_conflicting(list(merged), dec)
+    merged = drop_price_off_topic(merged, str(query), dec)
     place_dropped = before_place - len(merged)
     tc_raw = state.get("turn_contract")
     contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
@@ -2726,7 +2734,11 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
     query = state.get("query") or ""
     dec = state.get("decomposition")
     dec_dict = dec if isinstance(dec, dict) else None
-    context = filter_context_items(state.get("reranked_context") or [])
+    context = drop_price_off_topic(
+        filter_context_items(state.get("reranked_context") or []),
+        str(query),
+        dec_dict,
+    )
     bq_results = state.get("bq_results") or []
     usable_bq = [r for r in bq_results if is_usable_structured_bq_row(r)]
     analytical = bool(state.get("analytical_mode"))
@@ -2824,7 +2836,7 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         gkw["structured_bq_numeric_available"] = True
     elif (usable_bq or has_mergeable_bq) and is_comparative_bq_query(str(query), dec_dict):
         gkw["structured_bq_comparative_available"] = True
-    reranked = state.get("reranked_context") or []
+    reranked = context
     measure_hit = None
     mid = state.get("measure_id")
     if mid:

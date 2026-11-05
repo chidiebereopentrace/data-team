@@ -456,6 +456,9 @@ def test_retrieve_zero_rows_labeled_empty_result() -> None:
     meta = items[0]["metadata"]
     assert meta["status"] == "empty_result"
     assert "no rows" in (meta.get("prep_error") or "").lower()
+    assert "fct_production" in str(meta.get("sql") or "")
+    assert meta.get("job_id")
+    assert not meta.get("validation_failed")
 
 
 def test_retrieve_broadens_empty_year_once() -> None:

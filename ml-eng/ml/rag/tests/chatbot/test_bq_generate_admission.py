@@ -4,6 +4,7 @@ from __future__ import annotations
 from ml.rag.chatbot.bq_execute_state import (
     bq_execute_flags,
     collect_pre_queries,
+    ensure_planned_attempt_debug,
     plan_indicates_warehouse_attempt,
 )
 from ml.rag.chatbot.generator import generate, is_mergeable_bq_evidence
@@ -43,6 +44,32 @@ def test_bind_path_empty_job_sets_structured_bq_empty() -> None:
     )
     assert flags["structured_bq_empty"] is True
     assert flags["structured_bq_unavailable"] is False
+
+
+def test_planned_intent_without_a_job_records_compile_error() -> None:
+    plan = {
+        "plan_source": "class_engine",
+        "query_intents": [{"goal": "maize price", "tables": ["agg_prices_country_month"]}],
+        "bq_sql_queries": ["SELECT price_avg FROM agg_prices_country_month"],
+    }
+    debug = ensure_planned_attempt_debug(plan, [], usable_bq=False)
+    assert debug[0]["status"] == "compile_error"
+    assert "agg_prices_country_month" in debug[0]["sql"]
+    assert "no BigQuery job" in debug[0]["prep_error"]
+    flags = bq_execute_flags(
+        debug,
+        pre_queries=collect_pre_queries(plan, bq_sql_debug=debug),
+        usable_bq=False,
+        warehouse_attempted=True,
+    )
+    assert flags["structured_bq_never_executed"] is True
+    assert flags["structured_bq_unavailable"] is False
+
+
+def test_empty_job_is_not_replaced_by_compile_error() -> None:
+    plan = {"plan_source": "class_engine", "bind_contracts": {"agg_prices_country_month": {}}}
+    existing = [{"sql": "SELECT 1", "status": "empty_result", "job_id": "job-9"}]
+    assert ensure_planned_attempt_debug(plan, existing, usable_bq=False) == existing
 
 
 def test_no_plan_no_debug_is_unavailable_not_empty() -> None:

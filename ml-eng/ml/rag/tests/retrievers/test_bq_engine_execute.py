@@ -166,6 +166,16 @@ def test_bq_execute_flags_validation_failed() -> None:
     assert flags["structured_bq_never_executed"] is False
 
 
+def test_bq_execute_flags_empty_result_is_not_never_executed() -> None:
+    flags = bq_execute_flags(
+        [{"sql": "SELECT price_avg FROM t", "status": "empty_result", "job_id": "job-1"}],
+        pre_queries=["SELECT price_avg FROM t"],
+        usable_bq=False,
+    )
+    assert flags["structured_bq_empty"] is True
+    assert flags["structured_bq_never_executed"] is False
+
+
 def test_bq_execute_flags_timed_out() -> None:
     flags = bq_execute_flags(
         [{"sql": "SELECT 1", "status": "timeout", "job_id": "j1", "sql_source": "engine"}],

@@ -8,6 +8,7 @@ from ml.rag.chatbot.bq_sql_validate import (
     validate_sql_column_allowlist,
 )
 from ml.rag.chatbot.bq_table_schema_yaml import (
+    compile_measure_filters,
     default_discriminator_value,
     match_value_samples,
     value_samples_for_mart_tables,
@@ -163,3 +164,37 @@ def test_price_sample_follows_tokens_in_the_question() -> None:
         )
         is None
     )
+
+
+def test_unnamed_price_type_is_selected_not_pinned() -> None:
+    filters = compile_measure_filters(
+        "agg_prices_country_month",
+        measure_blob_text="whats the price trend of rice in ghana from 2020 till 2023",
+        primary_measures=["market_price"],
+    )
+    assert all(col.lower() != "price_type" for col, _val in filters)
+    sql = compile_sql_from_bind(
+        {
+            "table_id": "agg_prices_country_month",
+            "measure_columns": ["price_avg"],
+            "required_filters_sql": "country_name = 'Ghana' AND year BETWEEN 2020 AND 2023",
+            "time_sql": "year BETWEEN 2020 AND 2023",
+        },
+        project_id="proj",
+        dataset="mart_dev",
+        job="trend",
+    )
+    assert sql is not None
+    assert "price_type = 'Retail'" not in sql
+    assert "price_type" in sql.split("FROM", 1)[0]
+    assert "BETWEEN 2020 AND 2023" in sql
+    assert "SUM(" not in sql.upper()
+
+
+def test_named_retail_still_pins_price_type() -> None:
+    filters = compile_measure_filters(
+        "agg_prices_country_month",
+        measure_blob_text="retail rice price in ghana",
+        primary_measures=["market_price"],
+    )
+    assert ("price_type", "Retail") in filters

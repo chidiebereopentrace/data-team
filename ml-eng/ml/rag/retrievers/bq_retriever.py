@@ -1881,6 +1881,27 @@ class BQRetriever(BaseRetriever):
                                     str(exc)[:200],
                                 )
 
+                if not rows:
+                    telem = _job_telemetry(row_count=0, status="empty_result")
+                    reason = "SQL executed successfully but returned no rows"
+                    exec_items.append(
+                        {
+                            "content": f"[BQ empty_result: {reason}]",
+                            "source": "bigquery",
+                            "metadata": {
+                                "sql": validated,
+                                "sql_index": idx + 1,
+                                "sql_count": batch_size,
+                                "status": "empty_result",
+                                "prep_error": f"{reason}; model={_nl2sql_model_id()}",
+                                "sql_source": source,
+                                "nl2sql_model": _nl2sql_model_id(),
+                                **telem,
+                            },
+                        }
+                    )
+                    return exec_items, True
+
                 telem = _job_telemetry(row_count=min(len(rows), limit), status="ok")
                 read_tables = referenced_mart_tables(validated)
                 for row in rows[:limit]:
@@ -1919,7 +1940,7 @@ class BQRetriever(BaseRetriever):
                 for entry in exec_items:
                     meta = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
                     status = str(meta.get("status") or "") if isinstance(meta, dict) else ""
-                    if status in ("timeout", "execution_error", "validation_failed"):
+                    if status in ("timeout", "execution_error", "validation_failed", "empty_result"):
                         items.append(entry)
                         continue
                     if budget <= 0:
