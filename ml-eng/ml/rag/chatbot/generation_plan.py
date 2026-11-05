@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_measure
-from ml.rag.chatbot.context_diversity import normalize_context_kind
+from ml.rag.chatbot.evidence_kinds import source_kind
 from ml.rag.chatbot.generator import (
     classify_evidence_tier,
     filter_context_items,
@@ -173,14 +173,14 @@ def _context_kind_counts(items: list[dict[str, Any]]) -> dict[str, int]:
     for item in items or []:
         if not is_usable_context_item(item):
             continue
-        kind = normalize_context_kind(item)
+        kind = source_kind(item)
         counts[kind] = counts.get(kind, 0) + 1
     return counts
 
 
 def _has_usable_bq(items: list[dict[str, Any]]) -> bool:
     return any(
-        is_usable_context_item(item) and normalize_context_kind(item) == "bigquery"
+        is_usable_context_item(item) and source_kind(item) == "bigquery"
         for item in items or []
     )
 

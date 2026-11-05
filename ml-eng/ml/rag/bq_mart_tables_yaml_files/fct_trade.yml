@@ -4,6 +4,7 @@ source:
   layer: mart_dev
 profiled_at: '2026-09-05T17:57:00.703130+00:00'
 grain: faostat_country_year | fews_border_month
+grain_columns: [country_iso3, product_key, element, trade_flow, trade_grain, border_point, year, month, source_key]
 entity_type: trade
 columns:
 - name: trade_key

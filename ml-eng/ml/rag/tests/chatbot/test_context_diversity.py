@@ -1,10 +1,10 @@
 """Tests for diversity-aware context packing across corpora."""
 from __future__ import annotations
 
+from ml.rag.chatbot.evidence_kinds import source_kind
 from ml.rag.chatbot.context_diversity import (
     dedupe_context_items,
     diversify_context_pack,
-    normalize_context_kind,
 )
 
 
@@ -21,10 +21,10 @@ def _item(kind: str, title: str, *, score: float = 0.5, url: str | None = None) 
     }
 
 
-def test_normalize_context_kind_aliases() -> None:
-    assert normalize_context_kind({"_context_kind": "news_article"}) == "news"
-    assert normalize_context_kind({"source": "bigquery"}) == "bigquery"
-    assert normalize_context_kind({"_context_kind": "public_reports"}) == "public_report"
+def test_source_kind_aliases() -> None:
+    assert source_kind({"_context_kind": "news_article"}) == "news"
+    assert source_kind({"source": "bigquery"}) == "bigquery"
+    assert source_kind({"_context_kind": "public_reports"}) == "public_report"
 
 
 def test_dedupe_same_url() -> None:
@@ -47,7 +47,7 @@ def test_diversify_pack_mixes_corpora_not_news_flood() -> None:
         _item("bigquery", "BQ rows", score=0.99),
     ]
     packed = diversify_context_pack(items, top_k=14, task_mode="chat", per_kind_min=2, bq_max=4)
-    kinds = [normalize_context_kind(i) for i in packed]
+    kinds = [source_kind(i) for i in packed]
     assert kinds.count("bigquery") >= 1
     assert "news" in kinds
     assert "policy" in kinds

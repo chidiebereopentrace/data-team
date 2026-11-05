@@ -8,8 +8,7 @@ from ml.rag.chatbot.bq_sql_templates import (
     try_sql_template,
 )
 from ml.rag.chatbot.generator import (
-    _drop_geo_conflicting,
-    usable_context_after_geo_purity,
+    drop_geo_conflicting,
 )
 from ml.rag.chatbot.geo_regions import (
     REGION_COUNTRIES,
@@ -90,7 +89,7 @@ def test_geo_purity_keeps_sahel_members_drops_kenya() -> None:
             "metadata": {},
         },
     ]
-    kept = _drop_geo_conflicting(items, decomp)
+    kept = drop_geo_conflicting(items, decomp)
     countries = {
         str((it.get("metadata") or {}).get("country") or "")
         for it in kept
@@ -114,7 +113,7 @@ def test_kenya_purity_still_drops_senegal() -> None:
             "metadata": {"country": "Senegal", "geo_country_primary": "Senegal"},
         },
     ]
-    kept = _drop_geo_conflicting(items, decomp)
+    kept = drop_geo_conflicting(items, decomp)
     assert len(kept) == 1
     assert (kept[0].get("metadata") or {}).get("country") == "Kenya"
 
@@ -138,7 +137,7 @@ def test_usable_after_purity_not_empty_for_sahel_narrative() -> None:
             "score": 0.4,
         },
     ]
-    usable = usable_context_after_geo_purity(items, decomp)
+    usable = drop_geo_conflicting(items, decomp)
     assert len(usable) >= 2
 
 

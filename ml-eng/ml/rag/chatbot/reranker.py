@@ -5,12 +5,12 @@ to the generator.
 Modes, selected via ``RAG_RERANKER_MODE``:
 
 - ``openrouter`` (recommended when ``RAG_LLM_BASE_URL`` is OpenRouter):
-    One ``POST /rerank`` via OpenRouter (default model ``cohere/rerank-4-pro``).
+    One ``POST /rerank`` via OpenRouter (default model ``cohere/rerank-multilingual-v3.0``).
     Reuses ``RAG_LLM_API_KEY``. Model via ``RAG_RERANK_MODEL_ID`` (or legacy
     ``RAG_RERANKER_COHERE_MODEL`` if it looks like an OpenRouter slug).
 
 - ``cohere``:
-    Cohere's managed SDK API (``rerank-v3.5``). Requires ``COHERE_API_KEY``.
+    Cohere's managed SDK API (``rerank-multilingual-v3.0``). Requires ``COHERE_API_KEY``.
 
 - ``cross_encoder`` (default when no OpenRouter/Cohere key):
     Local fastembed / sentence-transformers batch pass.
@@ -198,7 +198,7 @@ def _reranker_mode() -> str:
 def _reranker_model_id() -> str:
     return (
         os.environ.get("RAG_RERANKER_MODEL", "").strip()
-        or "BAAI/bge-reranker-base"
+        or "BAAI/bge-reranker-v2-m3"
     )
 
 
@@ -214,12 +214,12 @@ def _cohere_api_key() -> str | None:
 def _cohere_model() -> str:
     return (
         os.environ.get("RAG_RERANKER_COHERE_MODEL", "").strip()
-        or "rerank-v3.5"
+        or "rerank-multilingual-v3.0"
     )
 
 
 def _openrouter_rerank_model() -> str:
-    """Model slug for OpenRouter POST /rerank (e.g. cohere/rerank-4-pro)."""
+    """Model slug for OpenRouter POST /rerank (e.g. cohere/rerank-multilingual-v3.0)."""
     explicit = os.environ.get("RAG_RERANK_MODEL_ID", "").strip()
     if explicit:
         return explicit
@@ -468,7 +468,7 @@ def _rerank_openrouter(
     top_k: int,
     content_key: str,
 ) -> list[dict[str, Any]] | None:
-    """Rerank via OpenRouter ``POST /rerank`` (e.g. ``cohere/rerank-4-pro``).
+    """Rerank via OpenRouter ``POST /rerank`` (e.g. ``cohere/rerank-multilingual-v3.0``).
 
     Returns ``None`` when unconfigured or the API returns nothing so the caller
     can degrade to Cohere SDK / cross_encoder.
@@ -738,7 +738,7 @@ def _rerank_with_active_numeric(
                 input_count=input_count,
                 top_k=top_k,
                 start=start,
-                model=_env("RAG_RERANKER_MODEL", "BAAI/bge-reranker-base"),
+                model=_env("RAG_RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"),
             )
         logger.warning(
             "Cross-encoder unavailable; degrading. Install fastembed or "

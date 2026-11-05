@@ -89,6 +89,7 @@ source_record_id_value_stats:
   null_count: 0
   is_truncated: false
 grain: fct technology
+grain_columns: [geo_key, time_key, organisation_key, technology_key, source_key]
 bind_spine:
   source_key: dim_source.organisation_name
   unit_key: dim_unit.unit_code

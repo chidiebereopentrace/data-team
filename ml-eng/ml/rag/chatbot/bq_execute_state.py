@@ -105,3 +105,10 @@ __all__ = [
     "collect_pre_queries",
     "plan_indicates_warehouse_attempt",
 ]
+
+
+def warehouse_was_attempted(state: dict[str, Any]) -> bool:
+    plan = state.get("bq_sql_plan")
+    if plan_indicates_warehouse_attempt(plan if isinstance(plan, dict) else None):
+        return True
+    return bool(state.get("bq_sql_queries") or state.get("bq_sql_debug"))

@@ -144,6 +144,7 @@ time_key_value_stats:
   is_truncated: false
   patched: true
 grain: agg food security monthly
+grain_columns: [country_name, time_key, phase_name, scenario_name]
 bind_spine:
   classification_key: dim_classification.phase_name
   scenario_key: dim_scenario.scenario_name

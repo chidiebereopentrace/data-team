@@ -7,51 +7,12 @@ import re
 from collections import defaultdict
 from typing import Any
 
-_KIND_ALIASES = {
-    "bigquery": "bigquery",
-    "bq": "bigquery",
-    "news": "news",
-    "news_article": "news",
-    "policy": "policy",
-    "policies": "policy",
-    "public": "public_report",
-    "public_report": "public_report",
-    "public_reports": "public_report",
-    "academic": "academic",
-    "academic_paper": "academic",
-    "academic_papers": "academic",
-    "ota": "ota_insight",
-    "ota_insight": "ota_insight",
-    "formation": "formation",
-    "wikipedia": "web",
-    "web": "web",
-    "web_search": "web",
-}
-
-_NARRATIVE_KINDS = (
-    "news",
-    "policy",
-    "public_report",
-    "academic",
-    "ota_insight",
-    "formation",
-    "web",
-)
+from ml.rag.chatbot.evidence_kinds import NARRATIVE_KINDS, source_kind
 
 
 def _item_metadata(item: dict[str, Any]) -> dict[str, Any]:
     raw = item.get("metadata")
     return raw if isinstance(raw, dict) else {}
-
-
-def normalize_context_kind(item: dict[str, Any]) -> str:
-    raw = str(
-        item.get("_context_kind")
-        or item.get("source")
-        or _item_metadata(item).get("doc_kind")
-        or ""
-    ).strip().lower()
-    return _KIND_ALIASES.get(raw, raw or "other")
 
 
 def _normalize_doi(val: str) -> str:
@@ -157,7 +118,7 @@ def diversify_context_pack(
     if not ranked:
         return []
 
-    has_bq = any(normalize_context_kind(i) == "bigquery" for i in ranked)
+    has_bq = any(source_kind(i) == "bigquery" for i in ranked)
     limit = int(top_k) if top_k and top_k > 0 else _pack_size_default(has_bq=has_bq, task_mode=task_mode)
     try:
         bq_cap = int(bq_max) if bq_max is not None else int(os.environ.get("RAG_DIVERSIFY_BQ_MAX", "4") or 4)
@@ -176,7 +137,7 @@ def diversify_context_pack(
 
     buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in ranked:
-        buckets[normalize_context_kind(item)].append(item)
+        buckets[source_kind(item)].append(item)
 
     packed: list[dict[str, Any]] = []
     used: set[int] = set()
@@ -189,11 +150,11 @@ def diversify_context_pack(
         packed.append(item)
 
     for item in buckets.get("bigquery") or []:
-        if sum(1 for p in packed if normalize_context_kind(p) == "bigquery") >= bq_cap:
+        if sum(1 for p in packed if source_kind(p) == "bigquery") >= bq_cap:
             break
         _take(item)
 
-    narrative_present = [k for k in _NARRATIVE_KINDS if buckets.get(k)]
+    narrative_present = [k for k in NARRATIVE_KINDS if buckets.get(k)]
     # Round-robin minima across narrative kinds that have hits.
     for _ in range(kind_min):
         progress = False
@@ -220,5 +181,4 @@ def diversify_context_pack(
 __all__ = [
     "dedupe_context_items",
     "diversify_context_pack",
-    "normalize_context_kind",
 ]

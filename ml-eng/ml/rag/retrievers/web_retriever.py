@@ -34,8 +34,16 @@ from urllib.parse import quote
 
 import requests
 
-from ml.rag.chatbot.bq_gap_messages import warehouse_blocks_web
-from ml.rag.chatbot.generator import filter_context_items, is_usable_context_item
+from ml.rag.chatbot.bq_execute_state import (
+    bq_execute_flags,
+    collect_pre_queries,
+    plan_indicates_warehouse_attempt,
+)
+from ml.rag.chatbot.generator import (
+    filter_context_items,
+    is_usable_structured_bq_row,
+)
+from ml.rag.chatbot.web_policy import resolve_web_policy
 from ml.rag.chatbot.query_decomposer import resolve_retrieval_geographies, wants_africa_default_scope
 from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
 
@@ -299,9 +307,45 @@ def needs_web_fallback(
     return False
 
 
-def _warehouse_attempt_blocks_web(state: dict[str, Any]) -> bool:
-    """Block web only when warehouse did not produce a trustworthy job_id outcome."""
-    return warehouse_blocks_web(state)
+def warehouse_blocks_web(state: dict[str, Any]) -> bool:
+    """Block web only when the warehouse did not produce a trustworthy job outcome."""
+    plan: dict[str, Any] = {}
+    raw_plan = state.get("bq_sql_plan")
+    if isinstance(raw_plan, dict):
+        plan = raw_plan
+    debug_rows: list[Any] = []
+    for src in (state, plan):
+        raw = src.get("bq_sql_debug")
+        if isinstance(raw, list):
+            debug_rows.extend(raw)
+    bq_debug = [d for d in debug_rows if isinstance(d, dict)]
+    state_queries = state.get("bq_sql_queries")
+    pre_queries = collect_pre_queries(
+        plan,
+        state_queries=list(state_queries) if isinstance(state_queries, list) else [],
+        bq_sql_debug=bq_debug,
+    )
+    if not pre_queries and not plan_indicates_warehouse_attempt(plan):
+        return False
+    bq_results = state.get("bq_results")
+    usable_bq = any(
+        is_usable_structured_bq_row(r)
+        for r in (bq_results if isinstance(bq_results, list) else [])
+        if isinstance(r, dict)
+    )
+    flags = bq_execute_flags(
+        bq_debug,
+        pre_queries=pre_queries,
+        usable_bq=usable_bq,
+        warehouse_attempted=plan_indicates_warehouse_attempt(plan) or bool(pre_queries or bq_debug),
+    )
+    if flags.get("structured_bq_never_executed") or flags.get("structured_bq_validation_failed"):
+        return True
+    if flags.get("structured_bq_timed_out") and not any(d.get("job_id") for d in bq_debug):
+        return True
+    if flags.get("structured_bq_empty"):
+        return resolve_web_policy(state) == "never"
+    return False
 
 
 def route_after_rerank(state: dict[str, Any]) -> str:
@@ -316,7 +360,7 @@ def route_after_rerank(state: dict[str, Any]) -> str:
         reranked,
         task_mode=str(state.get("task_mode") or ""),
         has_usable_bq=has_bq,
-        bq_warehouse_attempted=_warehouse_attempt_blocks_web(state),
+        bq_warehouse_attempted=warehouse_blocks_web(state),
         heavy_path=bool(state.get("heavy_path")),
     ):
         return "web_fallback"

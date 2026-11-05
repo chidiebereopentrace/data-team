@@ -1,13 +1,9 @@
-"""Guardrails: typed warehouse gaps and forbid generic insufficient."""
+"""Guardrails: warehouse execution flags and the single gap exit."""
 from __future__ import annotations
 
-from ml.rag.chatbot.bq_gap_messages import (
-    forbid_generic_insufficient,
-    typed_bq_gap_answer,
-    warehouse_was_attempted,
-)
-from ml.rag.chatbot.bq_execute_state import bq_execute_flags
-from ml.rag.chatbot.graph import _typed_bq_hard_return
+from ml.rag.chatbot.answer_outcome import decide_outcome, gap_answer
+from ml.rag.chatbot.bq_execute_state import bq_execute_flags, warehouse_was_attempted
+from ml.rag.chatbot.turn_contract import TurnContract
 
 
 def test_bq_execute_flags_validation_failed() -> None:
@@ -20,44 +16,27 @@ def test_bq_execute_flags_validation_failed() -> None:
     assert flags["structured_bq_never_executed"] is False
 
 
-def test_typed_hard_return_timeout() -> None:
-    state = {
-        "query": "West Africa production 2020",
-        "decomposition": {"geography": ["West Africa"], "time_start": "2020-01-01"},
-        "bq_sql_plan": {"bq_sql_queries": ["SELECT 1"]},
-        "bq_sql_debug": [
-            {"sql": "SELECT 1", "status": "timeout", "job_id": "j1", "sql_source": "engine"},
-        ],
-    }
-    flags = bq_execute_flags(
-        state["bq_sql_debug"],
-        pre_queries=["SELECT 1"],
-        usable_bq=False,
-    )
-    hard = _typed_bq_hard_return(state, flags, bq_debug=state["bq_sql_debug"])
-    assert hard is not None
-    assert "time limit" in hard["answer"].lower() or "timed out" in hard["answer"].lower()
-    assert "don't have enough" not in hard["answer"].lower()
-
-
-def test_forbid_generic_when_warehouse_attempted() -> None:
-    assert forbid_generic_insufficient(
-        {"bq_sql_plan": {"bq_sql_queries": ["SELECT 1"], "supervisor_plan": {"forbid_insufficient_without_attempt": True}}}
-    )
+def test_warehouse_was_attempted_from_plan() -> None:
     assert warehouse_was_attempted({"bq_sql_plan": {"selected_tables": ["fct_production"]}})
 
 
-def test_warehouse_failures_hide_internal_sql_compilation_details() -> None:
-    for flag in (
-        "structured_bq_validation_failed",
-        "structured_bq_compile_error",
-        "structured_bq_never_executed",
-    ):
-        answer = typed_bq_gap_answer(
-            flag=flag,
-            prep_error="internal SQL compiler exception",
-        )
-        assert "warehouse request could not be completed" in answer.lower()
-        assert "compiler" not in answer.lower()
-        assert "validation" not in answer.lower()
-        assert "internal" not in answer.lower()
+def test_outcome_kinds() -> None:
+    row = {"content": "[Structured data] 10 t", "_context_kind": "bigquery"}
+    doc = {"content": "FEWS outlook lean season", "source": "public_report"}
+    assert decide_outcome([row]).kind == "rows"
+    assert decide_outcome([row, doc]).kind == "rows_and_documents"
+    assert decide_outcome([doc]).kind == "documents_only"
+    assert decide_outcome([]).is_gap
+
+
+def test_gap_answer_names_place_indicator_and_period_without_internals() -> None:
+    answer = gap_answer(
+        "maize production in Kenya in 2031",
+        {"geography": ["Kenya"], "time_start": "2031-01-01", "time_end": "2031-12-31"},
+        TurnContract(measure_id="production"),
+    )
+    assert "Kenya" in answer
+    assert "2031" in answer
+    assert "production" in answer
+    for internal in ("compiler", "validation", "SELECT", "mart_"):
+        assert internal not in answer

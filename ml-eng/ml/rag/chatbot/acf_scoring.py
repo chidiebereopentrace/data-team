@@ -106,26 +106,6 @@ def no_evidence_acf(*, explanation: str | None = None) -> ACFResult:
     )
 
 
-def weak_orientation_acf(*, explanation: str | None = None) -> ACFResult:
-    """Forced low confidence for ungrounded orientation after federated miss."""
-    expl = explanation or (
-        "No federated rows or scored documents for this filter. "
-        "Answer is general orientation, not OpenTrace structured data."
-    )
-    return ACFResult(
-        band="low",
-        band_label="Low confidence",
-        score=20,
-        explanation=expl,
-        note=expl,
-        components=None,
-        applied_ceiling="weak_orientation",
-        config_version="weak_orientation_v1",
-        claim_level=None,
-        question_type=None,
-    )
-
-
 def _components_to_dict(components: dict[str, Any] | None) -> dict[str, Any] | None:
     if not components:
         return None
@@ -233,6 +213,7 @@ def apply_bq_execute_ceiling(
     *,
     usable_bq: bool = False,
     bq_sql_debug: list[dict[str, Any]] | None = None,
+    cited: bool = False,
 ) -> ACFResult:
     """Cap ACF when warehouse execute state does not support strong confidence."""
     flags = exec_flags or {}
@@ -279,7 +260,27 @@ def apply_bq_execute_ceiling(
             claim_level=result.claim_level,
             question_type=result.question_type,
         )
-    if flags.get("structured_bq_never_executed") or flags.get("structured_bq_validation_failed"):
+    if (
+        flags.get("structured_bq_never_executed")
+        or flags.get("structured_bq_validation_failed")
+        or flags.get("structured_bq_compile_error")
+    ):
+        if cited and result.score > 0:
+            expl = (
+                "Warehouse figures were not retrieved — confidence reflects cited reports only."
+            )
+            return ACFResult(
+                band="limited",
+                band_label="Limited confidence",
+                score=min(result.score, 45),
+                explanation=expl,
+                note=expl,
+                components=result.components,
+                applied_ceiling="bq_narrative",
+                config_version=result.config_version,
+                claim_level=result.claim_level,
+                question_type=result.question_type,
+            )
         expl = (
             "Structured warehouse evidence was not executed — confidence cannot reflect "
             "FAOSTAT or mart figures for this filter."

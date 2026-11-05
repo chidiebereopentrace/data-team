@@ -175,6 +175,8 @@ CURATED_YAML_KEYS = frozenset(
         "semantic_relationships",
         "relationships",
         "bind_spine",
+        "grain_columns",
+        "column_units",
     }
 )
 

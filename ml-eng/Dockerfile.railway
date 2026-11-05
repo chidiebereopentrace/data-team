@@ -20,7 +20,7 @@
 #   QDRANT_COLLECTION_OTA_INSIGHTS=OTA_insights
 #   BQ_PROJECT, BQ_DATASET_SILVER=staging_dev
 #   GOOGLE_APPLICATION_CREDENTIALS_BASE64 (base64 of GCP service account JSON)
-#   RAG_RERANKER_MODE=cross_encoder, RAG_RERANKER_MODEL=BAAI/bge-reranker-base
+#   RAG_RERANKER_MODE=cross_encoder, RAG_RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 # Do NOT set RAG_LLM_BASE_URL to a local/LAN IP. Remove QDRANT_COLLECTION_DATA_DESCRIPTIONS.
 
 FROM python:3.11-slim
@@ -74,7 +74,7 @@ from ml.rag.sparse_embeddings import warmup_sparse_model; \
 from ml.rag.chatbot.reranker import _load_cross_encoder; \
 warmup_dense_model('intfloat/multilingual-e5-small'); \
 warmup_sparse_model(); \
-_load_cross_encoder('BAAI/bge-reranker-base'); \
+_load_cross_encoder('BAAI/bge-reranker-v2-m3'); \
 print('Embedding and rerank models cached in image')"
 
 # Health check for Railway

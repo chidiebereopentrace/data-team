@@ -1,5 +1,4 @@
 class: PROD
-empty_policy: generate_weak
 warehouse_role: measurable
 web_policy: never
 default_table: agg_production_country_year
