@@ -1,4 +1,4 @@
-"""CI guard: mart_dev_tables.txt must match dbt mart_dev rag-relevant models."""
+"""CI guard: mart_dev_rag_tables.txt must match dbt mart_dev rag-relevant models."""
 from __future__ import annotations
 
 import subprocess

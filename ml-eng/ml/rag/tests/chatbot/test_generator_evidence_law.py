@@ -71,7 +71,7 @@ def test_market_price_prompt_is_not_added_to_unrelated_queries() -> None:
 def test_empty_tier_prompt_has_no_key_findings() -> None:
     system = _system_prompt(task_mode="analytical", evidence_tier="empty", analytical_mode=True)
     assert "Key Findings" not in system
-    assert "INSUFFICIENT EVIDENCE" in system
+    assert "Context is empty" in system
 
 
 def test_export_intent_adds_caption_rules() -> None:

@@ -25,10 +25,10 @@ Local files are written under `ingestion_engine/out`:
 
 The process exits non-zero when any enabled row failed or was partial. Disabled rows are skipped and do not fail the job.
 
-Install once from `data-eng` (this is already listed in `requirements.txt`):
+Install once from `data-eng`:
 
 ```bash
-pip install -r requirements.txt
+pip install -e ./ingestion_engine
 ingestion-engine --execute
 ```
 

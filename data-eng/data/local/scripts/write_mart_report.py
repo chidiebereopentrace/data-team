@@ -33,7 +33,7 @@ from write_landing_report import (  # noqa: E402
 
 DATA_TEAM = REPO_ROOT.parent
 MART_CLASSES = DATA_TEAM / "ml-eng" / "ml" / "rag" / "helpers" / "mart_indicator_classes.yaml"
-TABLES_PATH = SCRIPT_DIR / "mart_dev_tables.txt"
+TABLES_PATH = SCRIPT_DIR / "mart_dev_rag_tables.txt"
 CATALOG_PATH = SCRIPT_DIR.parent / "out" / "dashboard" / "indicator_class_catalog.csv"
 NAMES_PATH = SCRIPT_DIR / "country_names.yaml"
 OUT_DIR = SCRIPT_DIR.parent / "out" / "dashboard"

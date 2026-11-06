@@ -7,10 +7,6 @@ Writes data/local/scripts/{layer}_tables.txt for:
 Keeps TABLE and EXTERNAL. Skips views, materialized views, and snapshots.
 Names longer than 63 bytes are recorded in data/local/out/layer_table_names.csv.
 
-sync_mart_dev_tables_list.py still rewrites mart_dev_tables.txt from dbt models.
-This script is the source for the local partition. Run it after that allowlist
-script when both are used.
-
 A dataset that cannot be listed is reported and its file is left unchanged.
 Write mode exits 0 when at least one layer was refreshed, so the rest of
 populate_local_db.sh still loads. --check exits 1 when any list differs or
