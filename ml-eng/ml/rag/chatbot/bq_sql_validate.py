@@ -873,7 +873,15 @@ def validate_sql_column_allowlist(sql: str, table_ids: set[str] | None = None) -
     Reject identifiers that are not YAML columns of tables referenced in the statement.
 
     When YAML columns cannot be loaded for any referenced table, skip the check.
+    Escape hatch: set RAG_BQ_SKIP_COLUMN_ALLOWLIST=1|true|on|yes to disable (demo / incident).
     """
+    if os.environ.get("RAG_BQ_SKIP_COLUMN_ALLOWLIST", "").strip().lower() in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    ):
+        return None
     refs = _refs_for_sql_checks(sql, table_ids)
     if not refs:
         return None

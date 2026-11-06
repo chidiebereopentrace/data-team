@@ -116,6 +116,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 _MART_TABLE_PREFIXES = ("fct_", "agg_", "dim_", "bridge_")
+# Contracted SQL already maps to YAML columns. NL2SQL / reasoner stay gated.
+_SKIP_COLUMN_ALLOWLIST_SOURCES = frozenset(
+    {"bind_compiler", "engine", "template", "pattern"}
+)
 
 
 def _is_mart_table_id(table_id: str) -> bool:
@@ -892,15 +896,17 @@ class BQRetriever(BaseRetriever):
             return None, "validation_failed"
 
         trusted = (sql_source or "").strip().lower() == "engine"
+        _source = (sql_source or "").strip().lower()
         filters = ontology_value_filters if ontology_value_filters is not None else self.last_ontology_value_filters
 
         def _post_checks(sql: str) -> str | None:
             allow_err = validate_sql_table_allowlist(sql, selected_tables)
             if allow_err:
                 return allow_err
-            col_err = validate_sql_column_allowlist(sql, selected_tables or None)
-            if col_err:
-                return col_err
+            if _source not in _SKIP_COLUMN_ALLOWLIST_SOURCES:
+                col_err = validate_sql_column_allowlist(sql, selected_tables or None)
+                if col_err:
+                    return col_err
             if trusted:
                 index_err = validate_sql_complete_index_literals(sql, selected_tables or None)
                 if index_err:
