@@ -17,9 +17,11 @@ def test_sample_q2_bamako_maize_price_template() -> None:
         task_mode="fact_lookup",
     )
     assert hit is not None
-    assert hit["template"] == "mart_latest_price"
-    assert "ORDER BY as_of_date DESC" in hit["sql"]
-    assert "fct_prices" in hit["sql"]
+    assert hit["template"] == "mart_price"
+    assert "country_iso3 IN ('MLI')" in hit["sql"]
+    assert "product_key IN (" in hit["sql"]
+    assert "QUALIFY" in hit["sql"]
+    assert "b.unit, b.currency" in hit["sql"]
 
 
 def test_sample_q3_ethiopia_ipc_phase3_template() -> None:
@@ -89,5 +91,7 @@ def test_sample_q6_kano_tomato_price_trend_not_latest_point() -> None:
         primary_measures=["market_price"],
         task_mode="fact_lookup",
     )
-    if hit is not None:
-        assert hit["template"] != "mart_latest_price" or "ORDER BY as_of_date DESC" in hit["sql"]
+    assert hit is not None
+    assert hit["template"] == "mart_price"
+    assert "country_iso3 IN ('NGA')" in hit["sql"]
+    assert "product_key IN (" in hit["sql"]

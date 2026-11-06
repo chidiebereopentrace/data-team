@@ -17,6 +17,7 @@ from ml.rag.chatbot.continental_scope import decomposition_has_africa_scope
 from ml.rag.chatbot.export_intent import detect_export_intent
 from ml.rag.chatbot.generator import is_numeric_data_query, is_ranking_numeric_query
 from ml.rag.chatbot.geo_regions import detect_regions_in_text
+from ml.rag.chatbot.price_vocab import names_price_product
 
 TaskMode = Literal[
     "clarify",
@@ -106,7 +107,7 @@ def _geo_list(decomposition: dict[str, Any] | None) -> list[str]:
 
 
 def _has_crop_or_commodity(query: str, decomposition: dict[str, Any] | None) -> bool:
-    return query_has_crop_or_commodity(query, decomposition)
+    return query_has_crop_or_commodity(query, decomposition) or names_price_product(query)
 
 
 def _has_year(decomposition: dict[str, Any] | None, query: str) -> bool:

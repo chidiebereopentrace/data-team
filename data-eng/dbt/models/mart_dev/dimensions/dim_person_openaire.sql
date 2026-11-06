@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', enabled=false) }}
 
 -- Gold: person dimension sourced from OpenAire research persons.
 -- Covers researchers and authors; household-level persons added as ILRI data matures.

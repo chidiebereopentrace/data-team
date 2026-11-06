@@ -236,6 +236,8 @@ def select_corpora(
             _boost(boosts, "news", 0.05)
             _boost(boosts, "ota", 0.05)
             reasons.append("domain_markets")
+            if not _FORMATION_RE.search(q):
+                skip.add("formation")
         if any(tok in tag_blob for tok in ("climate", "rainfall", "drought", "environment")):
             preferred.update({"academic_papers", "public_reports"})
             _boost(boosts, "academic_papers", 0.06)

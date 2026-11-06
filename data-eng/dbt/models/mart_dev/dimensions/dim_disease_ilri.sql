@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', enabled=false) }}
 
 -- Gold: disease dimension sourced from ILRI animal health survey data.
 -- Diseases are extracted from FEWS and ILRI clinical datasets.

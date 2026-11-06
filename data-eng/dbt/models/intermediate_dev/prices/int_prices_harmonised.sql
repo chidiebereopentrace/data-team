@@ -66,6 +66,41 @@ where w.value is not null
 union all
 
 select
+    h.country,
+    h.country_code,
+    h.admin_1,
+    h.admin_2,
+    h.market_name,
+    h.product_name,
+    cast(null as string) as cpcv2,
+    h.price_type,
+    h.unit,
+    h.currency,
+    h.value as price_value,
+    cast(null as float64) as common_unit_price,
+    cast(null as float64) as common_currency_price,
+    h.year,
+    h.month,
+    cast(null as string) as faostat_months_label,
+    cast(null as string) as faostat_months_code,
+    cast(null as int64) as area_code,
+    cast(null as int64) as area_code_m49,
+    cast(null as string) as country_id,
+    cast(null as string) as admin1_id,
+    'wfp' as price_source,
+    h.source_natural_key,
+    current_timestamp() as loaded_at
+from {{ ref('stg_wfp_hdx_prices') }} h
+left join {{ ref('int_ref_country') }} rc_name
+    on lower(trim(rc_name.country_name)) = lower(trim(h.country))
+left join {{ ref('int_ref_country') }} rc_alias
+    on rc_alias.country_iso3 = {{ geo_faostat_country_name_iso3('h.country') }}
+where h.value is not null
+  and coalesce(rc_name.in_africa_scope, rc_alias.in_africa_scope, false)
+
+union all
+
+select
     country_name as country,
     cast(null as string) as country_code,
     cast(null as string) as admin_1,

@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', enabled=false) }}
 
 -- Gold: market dimension sourced from FEWS market prices data series.
 -- Captures market names, locations, and infrastructure attributes.

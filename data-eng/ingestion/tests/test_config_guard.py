@@ -27,6 +27,17 @@ def test_landing_dev_ok() -> None:
     assert settings.target_dataset == "landing_dev"
 
 
+def test_raw_dev_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("INGEST_ALLOW_PROD", raising=False)
+    monkeypatch.setenv("CI", "")
+    assert_target_allowed("raw_dev")
+    assert_target_allowed("raw_dev_bob")
+    settings = get_settings("raw_dev", load_dotenv_file=False)
+    assert settings.target_dataset == "raw_dev"
+    with pytest.raises(TargetGuardError, match="not allowed"):
+        assert_target_allowed("raw")
+
+
 def test_landing_raises_locally(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("INGEST_ALLOW_PROD", raising=False)
     monkeypatch.setenv("CI", "")

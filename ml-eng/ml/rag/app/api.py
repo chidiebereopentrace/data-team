@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import time
+import traceback
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -372,6 +373,24 @@ def _persist_session_turn(
     )
 
 
+def _augment_http_500_detail(detail: str, *, debug: bool) -> str:
+    """Shape a 500 body. NameError must not be described as a missing torch install."""
+    if debug:
+        return detail + "\n\n" + traceback.format_exc()
+    if "unsourced_figures" in detail:
+        return "Answer grounding failed unexpectedly; retry the question."
+    low = detail.lower()
+    torch_ish = (
+        "torch" in low
+        or "nn.module" in low
+        or low.startswith("name 'nn'")
+        or "no module named 'torch'" in low
+    )
+    if torch_ish:
+        return detail + ". If using the vector retriever, install PyTorch: pip install torch"
+    return detail
+
+
 async def _run_query(
     request: QueryRequest,
     *,
@@ -537,12 +556,8 @@ async def _run_query(
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        detail = str(e)
-        if os.environ.get("RAG_DEBUG", "").strip().lower() in ("1", "true", "on"):
-            detail += "\n\n" + traceback.format_exc()
-        elif "nn" in detail.lower() or "not defined" in detail.lower():
-            detail += ". If using the vector retriever, install PyTorch: pip install torch"
+        debug = os.environ.get("RAG_DEBUG", "").strip().lower() in ("1", "true", "on")
+        detail = _augment_http_500_detail(str(e), debug=debug)
         raise HTTPException(status_code=500, detail=detail) from e
 
 

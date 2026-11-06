@@ -1,7 +1,6 @@
 version: 2
 
-sources:
-  - name: raw_dev
-    tables:
-      - name: geoboundaries_admin0_africa
-        description: geoBoundaries ADM0 country polygons for Africa-scoped ISO2/ISO3 (loaded by load_geoboundaries_admin0.py)
+# geoboundaries_admin0_africa is declared in catalog/sources.generated.yml.
+# The table is loaded by load_geoboundaries_admin0.py.
+# Do not redeclare source('raw_dev', 'geoboundaries_admin0_africa') here.
+# A second declaration collides with the generated catalog.

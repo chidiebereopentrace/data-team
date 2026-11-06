@@ -3,13 +3,11 @@ from __future__ import annotations
 
 from ml.rag.chatbot.bq_sql_templates import (
     build_mart_food_security_sql,
-    build_mart_latest_price_sql,
     build_mart_point_fact_sql,
     build_mart_season_climate_sql,
     match_mart_country_rank,
     match_mart_country_series,
     match_mart_food_security_snapshot,
-    match_mart_latest_price,
     match_mart_point_fact,
     match_mart_regional_panel,
     match_mart_season_climate,
@@ -245,30 +243,6 @@ def test_mart_food_security_snapshot() -> None:
     assert "stg_" not in sql
     assert "fct_food_security" in sql
     assert "ETH" in sql or "Ethiopia" in sql
-
-
-def test_match_mart_latest_price_current_retail() -> None:
-    assert match_mart_latest_price(
-        query="What is the current retail price of maize in Bamako, Mali?",
-        selected_tables={"fct_prices"},
-        entities=["maize", "Bamako", "Mali"],
-        geo_country="Mali",
-    )
-
-
-def test_build_mart_latest_price_sql_orders_by_as_of_date() -> None:
-    sql = build_mart_latest_price_sql(
-        project_id="proj",
-        dataset="mart_dev",
-        table_id="fct_prices",
-        country_labels=["Mali"],
-        blob="current retail price maize Bamako",
-        primary_measures=["market_price"],
-        query="current retail price maize Bamako Mali",
-    )
-    assert "fct_prices" in sql
-    assert "ORDER BY as_of_date DESC" in sql
-    assert "MLI" in sql
 
 
 def test_build_mart_food_security_ipc_phase3_sql() -> None:
