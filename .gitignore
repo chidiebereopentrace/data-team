@@ -45,7 +45,7 @@ env/
 .DS_Store
 
 # Cursor
-.cursor/    
+.cursor/
 .cursor/plans/
 # Terraform (paths live under data-eng/infra as well as legacy infra symlinks)
 **/.terraform/
@@ -134,3 +134,11 @@ ml-eng/ml/rag/docs/
 # Ingestion engine manifests. A filename exception is what un-ignores these CSVs.
 !sources.example.csv
 !gardian_african_datasets_augmented (1).csv
+!opentrace_africa_price_manifest.csv
+
+# Generated run outputs and catalogs (regenerate locally; do not commit)
+ml-eng/ml/rag/eval/reports/
+data-eng/docs/bq_schema_catalog.json
+data-eng/ingestion_engine/out/
+data-eng/data/local/out/
+scratch/
