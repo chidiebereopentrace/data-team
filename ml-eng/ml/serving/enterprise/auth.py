@@ -1,11 +1,11 @@
-"""Enterprise API key authentication middleware."""
+"""API key authentication middleware for the RAG API."""
 
 from __future__ import annotations
 
 import re
 from typing import Callable
 
-from fastapi import Request, Response
+from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -16,8 +16,8 @@ from ml.serving.enterprise.tenant_registry import (
     resolve_tenant,
 )
 
-_PUBLIC_PATHS = frozenset({"/", "/docs", "/openapi.json", "/redoc", "/v1/health", "/v1/meta"})
-_PLAN_CHAT_RE = re.compile(r"^/v1/chat/(?P<slug>[a-z]+)$")
+_PUBLIC_PATHS = frozenset({"/", "/health", "/ready"})
+_PLAN_QUERY_RE = re.compile(r"^/query/(?P<slug>[a-z]+)$")
 
 
 def extract_api_key(request: Request) -> str | None:
@@ -31,7 +31,7 @@ def extract_api_key(request: Request) -> str | None:
 
 
 def _route_plan_slug(path: str) -> str | None:
-    match = _PLAN_CHAT_RE.match(path)
+    match = _PLAN_QUERY_RE.match(path)
     if not match:
         return None
     return match.group("slug")
@@ -39,35 +39,26 @@ def _route_plan_slug(path: str) -> str | None:
 
 class EnterpriseAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        mode = enterprise_auth_mode()
-        if mode == "off":
+        if enterprise_auth_mode() == "off":
             return await call_next(request)
 
         path = request.url.path
-        if path in _PUBLIC_PATHS:
+        if request.method == "OPTIONS" or path in _PUBLIC_PATHS:
             return await call_next(request)
 
-        api_key = extract_api_key(request)
-        tenant = resolve_tenant(api_key)
-
+        tenant = resolve_tenant(extract_api_key(request))
         if tenant is None:
-            if mode == "required":
-                return JSONResponse(status_code=401, content={"detail": "Missing or invalid API key"})
-            return await call_next(request)
+            return JSONResponse(status_code=401, content={"detail": "Missing or invalid API key"})
 
-        request.state.enterprise_tenant = tenant
         try:
             check_tenant_quotas(tenant)
             check_tenant_rate_limit(tenant)
-        except Exception as exc:
-            if hasattr(exc, "status_code") and hasattr(exc, "detail"):
-                headers = getattr(exc, "headers", None) or {}
-                return JSONResponse(
-                    status_code=exc.status_code,
-                    content={"detail": exc.detail},
-                    headers=headers,
-                )
-            raise
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=exc.headers or {},
+            )
 
         route_slug = _route_plan_slug(path)
         if route_slug and not tenant.allows_plan_slug(route_slug):
@@ -76,11 +67,12 @@ class EnterpriseAuthMiddleware(BaseHTTPMiddleware):
                 content={
                     "detail": (
                         f"Tenant {tenant.tenant_id!r} is not authorized for plan route "
-                        f"/v1/chat/{route_slug}"
+                        f"/query/{route_slug}"
                     )
                 },
             )
 
+        request.state.enterprise_tenant = tenant
         return await call_next(request)
 
 

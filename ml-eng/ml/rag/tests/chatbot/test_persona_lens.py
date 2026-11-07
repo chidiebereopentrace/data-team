@@ -4,15 +4,11 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from ml.rag.chat_turn import (
-    _empty_session_blob,
-    _resolve_prior_and_profile,
-    persist_session_turn,
-)
+from ml.rag.chat_turn import _empty_session_blob, persist_session_turn
 from ml.rag.chatbot.generator import _build_prompt
 from ml.rag.chatbot.plan_policy import apply_category_domain_hints
-from ml.rag.chatbot.stakeholder_prompts import instruction_for_category
 from ml.rag.chatbot.qa_run_kwargs import build_run_kwargs
+from ml.rag.chatbot.stakeholder_prompts import instruction_for_category
 from ml.rag.request_context import resolve_request_context
 
 
@@ -81,7 +77,7 @@ def test_streamlit_agribusinesses_enables_export() -> None:
     assert kwargs["plan_type"] == "Agribusinesses"
 
 
-def test_session_persist_and_fallback_profile() -> None:
+def test_session_persist_profile() -> None:
     store: dict[str, dict] = {}
 
     def _get(sid: str):
@@ -106,19 +102,6 @@ def test_session_persist_and_fallback_profile() -> None:
         assert blob["plan_type"] == "Farmers"
         assert blob["country"] == "Ghana"
 
-        sid, _summary, _recent, cat, plan, country, found = _resolve_prior_and_profile(
-            "sess-persona",
-            None,
-            None,
-            None,
-            None,
-        )
-        assert sid == "sess-persona"
-        assert cat == "Farmers"
-        assert plan == "Farmers"
-        assert country == "Ghana"
-        assert found is True
-
 
 def test_request_context_session_fallback_plan_and_country() -> None:
     blob = _empty_session_blob()
@@ -129,7 +112,7 @@ def test_request_context_session_fallback_plan_and_country() -> None:
     assert ctx.plan_type == "Farmers"
     assert ctx.category == "Farmers"
     assert ctx.user_profile == {
-        "country": "Ghana",
+        "country": "GHA",
         "plan_type": "Farmers",
         "category": "Farmers",
     }

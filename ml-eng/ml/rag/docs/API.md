@@ -1,29 +1,20 @@
-# OpenTrace RAG & Chatbot API Reference
+# OpenTrace RAG API Reference
 
-**Software team handoff (one document):** [OpenTrace-Ask-ADZA-API-Software-Team.docx](OpenTrace-Ask-ADZA-API-Software-Team.docx) — production base URL, six plan-scoped `POST /query/{plan}` routes, session/feedback/health. Regenerate with `python scripts/generate_software_team_api_docx.py` (from `ml-eng/`). Live Swagger: https://data-team-production-db77.up.railway.app/docs
+**Software team handoff (one document):** [OpenTrace-Ask-ADZA-API-Software-Team.docx](OpenTrace-Ask-ADZA-API-Software-Team.docx) — production base URL, six plan-scoped `POST /query/{plan}` routes, session/feedback/health. Regenerate with `python scripts/generate_software_team_api_docx.py` (from `ml-eng/`). Live Swagger: https://data-team-production-db77.up.railway.app/docs (needs an API key)
 
-**Internal / detailed:** [OpenTrace-RAG-API-Documentation.docx](OpenTrace-RAG-API-Documentation.docx) · [OpenTrace-Chatbot-API-v1-Documentation.docx](OpenTrace-Chatbot-API-v1-Documentation.docx) · [OpenTrace-RAG-Pipeline-Architecture.docx](OpenTrace-RAG-Pipeline-Architecture.docx) · [OpenTrace-RAG-Pipeline-Architecture.pdf](OpenTrace-RAG-Pipeline-Architecture.pdf) — regenerate API detail with `python scripts/generate_api_documentation.py`; pipeline DOCX with `python scripts/generate_rag_architecture_docx.py`; pipeline PDF with `python scripts/generate_rag_architecture_pdf.py`.
+**Internal / detailed:** [OpenTrace-RAG-API-Documentation.docx](OpenTrace-RAG-API-Documentation.docx) · [OpenTrace-RAG-Pipeline-Architecture.docx](OpenTrace-RAG-Pipeline-Architecture.docx) · [OpenTrace-RAG-Pipeline-Architecture.pdf](OpenTrace-RAG-Pipeline-Architecture.pdf) — regenerate API detail with `python scripts/generate_api_documentation.py`; pipeline DOCX with `python scripts/generate_rag_architecture_docx.py`; pipeline PDF with `python scripts/generate_rag_architecture_pdf.py`.
 
-Two FastAPI services share request/response models but serve different clients. **Production Railway** runs the RAG API (`ml.rag.api:app`) with plan-scoped routes `POST /query/free` … `/query/integrated` (path locks `plan_type`).
-
-| Service | Entrypoint | Default port | Audience |
-|---------|------------|--------------|----------|
-| **RAG API** (internal / Ask ADZA backend) | `ml.rag.api:app` | **7860** | Full pipeline + tuning + debug trace |
-| **Chatbot API** (public v1) | `ml.serving.chat.app:app` | **7861** (7860 on HF Spaces) | Versioned chat + sessions; no retrieval knobs |
+**Production Railway** runs the RAG API (`ml.rag.api:app`) with plan-scoped routes `POST /query/free` … `/query/integrated` (path locks `plan_type`).
 
 **Run locally:**
 
 ```bash
-# RAG API
-PYTHONPATH=ml-eng uvicorn ml.rag.api:app --host 0.0.0.0 --port 7860
-
-# Chatbot API
-PYTHONPATH=ml-eng uvicorn ml.serving.chat.app:app --host 0.0.0.0 --port 7861
+RAG_API_AUTH=off PYTHONPATH=ml-eng uvicorn ml.rag.api:app --host 0.0.0.0 --port 7860
 ```
 
-**OpenAPI:** `GET /docs` and `GET /openapi.json` on each host.
+**OpenAPI:** `GET /docs` and `GET /openapi.json` (API key required).
 
-**Authentication:** None today. Endpoints are open if the URL is known. CORS is configurable via `RAG_CORS_ORIGINS` / `CHATBOT_CORS_ORIGINS` (default `*`).
+**Authentication:** every route except `/`, `/health` and `/ready` requires `X-API-Key: <key>` or `Authorization: Bearer <key>` (401 otherwise). Keys belong to tenants in `ENTERPRISE_TENANTS_JSON`, stored as SHA-256 digests with a `plan_slug`. A tenant may call only its own `/query/{plan}` route (403 otherwise; `integrated` tenants may call any); bare `POST /query` uses the tenant's plan. `include_trace` is honoured only for tenants with `allow_trace: true`. Per-IP rate limits per plan apply (429). CORS allows no origins unless `RAG_CORS_ORIGINS` lists them. `RAG_API_AUTH=off` disables auth for local development only. See [`ml/serving/README.md`](../../serving/README.md).
 
 ---
 
@@ -71,7 +62,7 @@ Aggregated LLM token usage for **one request** (decomposer, BQ NL→SQL, reranke
 
 ## Plan types
 
-`plan_type` controls access tier, retrieval gates, and generation depth. Returned by `GET /v1/meta` as `plan_types`.
+`plan_type` controls access tier, retrieval gates, and generation depth.
 
 | ID | Retrieval / generation gates |
 |----|------------------------------|
@@ -88,7 +79,7 @@ Invalid values → **422** with `invalid plan_type: '…'`.
 
 ## Categories
 
-`category` controls generation persona (tone and framing). Returned by `GET /v1/meta` as `categories`.
+`category` controls generation persona (tone and framing).
 
 | ID | Label |
 |----|-------|
@@ -121,7 +112,7 @@ Two patterns:
 
 1. Send `chat_history` with prior turns.
 2. Server compacts history for that request only.
-3. Server session is **not** updated when `chat_history` is present (`POST /query` and `POST /v1/chat`).
+3. Server session is **not** updated when `chat_history` is present (`POST /query`).
 
 `conversation_history` is a **deprecated alias** for `chat_history`.
 
@@ -375,167 +366,18 @@ Plan-scoped routes inherit the same response. Export gate: `/query/agribusinesse
 
 ---
 
-# Chatbot API v1 (`ml.serving.chat.app:app`)
-
-Implementation: [`ml/serving/chat/app.py`](../../serving/chat/app.py). See also [`ml/serving/README.md`](../../serving/README.md).
-
-## `GET /`
-
-```json
-{
-  "message": "OpenTrace Chatbot API",
-  "docs": "/docs",
-  "health": "/v1/health",
-  "meta": "/v1/meta",
-  "sessions": "POST /v1/sessions",
-  "chat": "POST /v1/chat"
-}
-```
-
----
-
-## `GET /v1/health`
-
-**Response 200:**
-
-```json
-{
-  "status": "ok",
-  "service": "chatbot"
-}
-```
-
----
-
-## `GET /v1/meta`
-
-API catalog and stakeholder list.
-
-**Response 200:**
-
-```json
-{
-  "api_version": "1.0",
-  "schema_version": "1",
-  "build": null,
-  "stakeholder_types": [
-    {
-      "id": "government_public",
-      "label": "Government & Public Institutions",
-      "description": "Planning, policy design, and resource allocation..."
-    }
-  ]
-}
-```
-
-`build` is set when env `CHATBOT_BUILD_ID` is configured.
-
----
-
-## `POST /v1/sessions`
-
-Create a server-side session with a fixed category persona.
-
-### Request (`SessionCreateRequest`)
-
-| Field | Type | Required |
-|-------|------|----------|
-| `category` | `Category` | **Yes** |
-
-```json
-{
-  "category": "Government"
-}
-```
-
-### Response 200 (`SessionCreateResponse`)
-
-```json
-{
-  "session_id": "a1b2c3d4e5f6...",
-  "created_at": "2026-06-08T12:00:00+00:00",
-  "category": "Government"
-}
-```
-
-### Errors
-
-| Status | When |
-|--------|------|
-| **422** | Invalid `category` |
-
----
-
-## `POST /v1/chat`
-
-Single chat turn through the same RAG pipeline as `/query`, with v1 response shape.
-
-### Request (`ChatRequest`)
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `query` | `string \| null` | One of `query` / `message` | User message. |
-| `message` | `string \| null` | One of `query` / `message` | Alias for `query`. **Do not send both.** |
-| `session_id` | `string \| null` | Conditional | From `POST /v1/sessions` or prior chat response. |
-| `user_profile` | `UserProfile \| null` | No | Same as `/query`. |
-| `chat_history` | `ChatMessage[] \| null` | No | Client-owned prior turns. |
-| `conversation_history` | `ChatMessage[] \| null` | No | Deprecated alias. |
-| `stakeholder_type` | `StakeholderType \| null` | No | **Deprecated bootstrap only.** Allowed only when `session_id` is omitted. Cannot combine with `session_id`. |
-
-### Session bootstrap rules
-
-| Scenario | Required |
-|----------|----------|
-| No `chat_history`, no `session_id` | `user_profile.stakeholder_type` (or deprecated top-level `stakeholder_type`) to auto-create session |
-| No `chat_history`, with `session_id` | `session_id` from prior session/chat |
-| With `chat_history` | `session_id` **or** `user_profile.stakeholder_type` |
-
-### Canonical request
-
-```json
-{
-  "query": "What are rice yield trends?",
-  "session_id": "abc123...",
-  "user_profile": {
-    "country": "Ghana",
-    "plan_type": "Farmers",
-    "category": "Farmers"
-  },
-  "chat_history": [
-    { "role": "user", "content": "Previous question" },
-    { "role": "assistant", "content": "Previous answer" }
-  ]
-}
-```
-
-### Response 200 (`ChatSuccessResponse`)
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `assistant_message` | `string` | Same content as `answer` on `/query`. |
-| `citations` | `CitationItem[]` | Same as `/query`. |
-| `session_id` | `string` | Session for next turn. |
-| `session_found` | `boolean` | `true` only when a prior server session blob was loaded. `false` for new/expired/missing ids or when `chat_history` is sent. |
-| `session_ttl_seconds` | `integer` | Configured session TTL (`RAG_SESSION_TTL_SECONDS`, default **604800**). |
-| `usage` | `UsageStats` | Same as `/query`. |
-| `request_id` | `string` | Unique ID for this HTTP request (support/debug). |
-| `created_at` | `string` | ISO-8601 UTC timestamp. |
-| `plan_type` | `string \| null` | Plan tier applied to this request (when using plan-scoped routes). |
-| `acf` | `ACFSignal` | Confidence band, score, and explanation. |
-| `artifacts` | `ArtifactItem[]` | Downloadable exports. Populated on **Agribusinesses** and **Integrated** for both `POST /query/{plan}` and `POST /v1/chat/{plan}` when export intent succeeds. Always `[]` on other plans. |
-
-### Plan-scoped chat routes
+### Plan-scoped query routes
 
 Prefer these routes for new integrations. The plan tier is **locked by the URL**; the payload cannot override it.
 
 | Route | Plan | Exports (`artifacts`) |
 |-------|------|------------------------|
-| `POST /query/free` / `POST /v1/chat/free` | Free | No |
-| `POST /query/farmers` / `POST /v1/chat/farmers` | Farmers | No |
-| `POST /query/government` / `POST /v1/chat/government` | Government | No |
-| `POST /query/ngos` / `POST /v1/chat/ngos` | NGOs | No |
-| `POST /query/agribusinesses` / `POST /v1/chat/agribusinesses` | Agribusinesses | **Yes** (CSV, chart, DOCX, PDF) |
-| `POST /query/integrated` / `POST /v1/chat/integrated` | Integrated | **Yes** (CSV, chart, DOCX, PDF) |
+| `POST /query/free` | Free | No |
+| `POST /query/farmers` | Farmers | No |
+| `POST /query/government` | Government | No |
+| `POST /query/ngos` | NGOs | No |
+| `POST /query/agribusinesses` | Agribusinesses | **Yes** (CSV, chart, DOCX, PDF) |
+| `POST /query/integrated` | Integrated | **Yes** (CSV, chart, DOCX, PDF) |
 
 When a user on a non-export route asks for a CSV, chart, or report, the assistant explains that exports require the Agribusinesses or Integrated endpoint.
 
@@ -586,60 +428,10 @@ Env: `RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS` (default **86400** / 24 hours, minimu
 
 ---
 
-```json
-{
-  "assistant_message": "Maize production rose…\n\nDownloadable files are attached to this response: nigeria_maize.csv, nigeria_maize.png.",
-  "citations": [{ "id": 3, "kind": "bigquery", "text": "...", "url": null }],
-  "acf": { "band": "strong", "band_label": "Strong confidence", "score": 78, "explanation": "..." },
-  "session_id": "abc123...",
-  "usage": { "input_tokens": 1200, "output_tokens": 400, "total_tokens": 1600 },
-  "request_id": "f4e2...",
-  "created_at": "2026-06-08T12:00:00+00:00",
-  "plan_type": "Agribusinesses",
-  "artifacts": [
-    {
-      "id": "art_a1b2c3d4e5f6",
-      "kind": "csv",
-      "filename": "nigeria_maize.csv",
-      "mime_type": "text/csv",
-      "url": "https://storage.googleapis.com/...",
-      "summary": "CSV export (24 rows)",
-      "citation_ids": [3],
-      "byte_size": 12480
-    }
-  ]
-}
-```
-
-### Error responses
-
-| Status | When | Body shape |
-|--------|------|------------|
-| **422** | Validation (missing message, invalid bootstrap, empty `chat_history`, etc.) | `{"detail": "..."}` |
-| **502** | RAG pipeline returned `error` | `{"error": {"code": "rag_pipeline_error", "message": "..."}, "session_id": "..."}` |
-| **500** | Unhandled exception | `{"detail": "..."}`; traceback if `CHATBOT_DEBUG=1` |
-
----
-
-## `/query` vs `/v1/chat`
-
-| | `POST /query` | `POST /v1/chat` |
-|--|---------------|-----------------|
-| Answer field | `answer` | `assistant_message` |
-| Retrieval tuning | `news_top_k`, `bq_top_k`, etc. | Not exposed |
-| Debug trace | `include_trace` | Not exposed |
-| Session create | Implicit UUID | `POST /v1/sessions` or bootstrap |
-| Pipeline error | `error` string in 200 body | **502** JSON |
-| Extra fields | `session_found`, `session_ttl_seconds` | `request_id`, `created_at`, `session_found`, `session_ttl_seconds` |
-
-Both use the same RAG graph, `UserProfile`, `chat_history`, `citations`, and `usage`.
-
----
-
 ## Recommended integration (Ask ADZA backend)
 
 ```
-1. POST /query (or /v1/chat) with service-to-service call
+1. POST /query/{plan} with service-to-service call and X-API-Key
 2. Store usage + your auth user_id in your DB for billing
 3. Render answer prose + citations[] separately in the UI
 4. Link inline [N] to citation cards
@@ -677,9 +469,7 @@ Both use the same RAG graph, `UserProfile`, `chat_history`, `citations`, and `us
 | Variable | Service | Purpose |
 |----------|---------|---------|
 | `RAG_CORS_ORIGINS` | RAG | Comma-separated allowed origins |
-| `CHATBOT_CORS_ORIGINS` | Chat | Comma-separated allowed origins |
 | `RAG_DEBUG` | RAG | Richer 500 errors |
-| `CHATBOT_DEBUG` | Chat | Richer 500/502 debug |
 | `RAG_APPEND_SOURCES_TO_ANSWER` | RAG | Append Sources block into `answer` |
 | `RAG_CITATIONS_MODE` | RAG | `referenced` (default) or `all` |
 
@@ -692,5 +482,5 @@ Both use the same RAG graph, `UserProfile`, `chat_history`, `citations`, and `us
 | [`ml/rag/app/api.py`](../app/api.py) | RAG routes (`/query`, `/health`, `/ready`, `/artifacts/{id}/url`) |
 | [`ml/rag/api_schemas.py`](../api_schemas.py) | Shared `UserProfile`, `CitationItem`, `UsageStats` |
 | [`ml/rag/request_context.py`](../request_context.py) | Request field resolution |
-| [`ml/serving/chat/app.py`](../../serving/chat/app.py) | v1 chat routes |
-| [`ml/serving/chat/schemas.py`](../../serving/chat/schemas.py) | v1 request/response models |
+| [`ml/serving/enterprise/auth.py`](../../serving/enterprise/auth.py) | API key middleware |
+| [`ml/serving/enterprise/tenant_registry.py`](../../serving/enterprise/tenant_registry.py) | Tenant registry |

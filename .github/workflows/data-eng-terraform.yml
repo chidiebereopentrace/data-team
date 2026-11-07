@@ -2,12 +2,12 @@ name: Data Eng — Terraform fmt
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'data-eng/infra/**'
       - '.github/workflows/data-eng-terraform.yml'
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'data-eng/infra/**'
       - '.github/workflows/data-eng-terraform.yml'

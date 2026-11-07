@@ -9,7 +9,6 @@ from pathlib import Path
 from api_docx_builder import (
     add_architecture_diagram,
     add_bullets,
-    add_comparison_table,
     add_endpoint_section,
     add_field_table,
     add_heading,
@@ -23,7 +22,6 @@ from api_docx_builder import (
 
 DOCS_DIR = Path(__file__).resolve().parents[1] / "ml" / "rag" / "docs"
 RAG_DOCX = DOCS_DIR / "OpenTrace-RAG-API-Documentation.docx"
-CHAT_DOCX = DOCS_DIR / "OpenTrace-Chatbot-API-v1-Documentation.docx"
 
 PLAN_TYPES = [
     ("Free", "Single country; no cross-country compare; brief answers"),
@@ -160,10 +158,15 @@ def build_rag_document() -> None:
     add_bullets(
         doc,
         [
-            "No built-in API authentication. Endpoints are open if the URL is known.",
-            "Configure CORS via RAG_CORS_ORIGINS (default: *).",
-            "Recommend API gateway auth for production deployments.",
-            "user_id is client-supplied for Langfuse analytics until auth is implemented.",
+            "Every route except /, /health and /ready requires X-API-Key or Authorization: Bearer.",
+            "Tenants (ENTERPRISE_TENANTS_JSON) store only the SHA-256 of each key, a plan_slug, "
+            "quotas, rate_limit_rpm and allow_trace.",
+            "A tenant may call /query/{its plan} only (integrated tenants: any plan); bare /query "
+            "uses the tenant's plan. Wrong plan route: HTTP 403. Missing/invalid key: HTTP 401.",
+            "include_trace is honoured only for tenants with allow_trace=true.",
+            "Per-IP rate limits per plan (FREE_RATE_LIMIT_RPM etc.) default to 10-60 rpm; HTTP 429.",
+            "CORS allows no origins unless RAG_CORS_ORIGINS lists them; credentials are disabled.",
+            "RAG_API_AUTH=off disables auth for local development only.",
         ],
     )
 
@@ -343,7 +346,9 @@ def build_rag_document() -> None:
             ("BQ_PROJECT", "BigQuery project id"),
             ("BQ_DATASET_SILVER", "Staging dataset (default staging_dev)"),
             ("RAG_REDIS_URL", "Redis URL for session storage"),
-            ("RAG_CORS_ORIGINS", "Comma-separated CORS origins (default *)"),
+            ("RAG_CORS_ORIGINS", "Comma-separated CORS origins (default: none allowed)"),
+            ("RAG_API_AUTH", "required (default) or off (local development only)"),
+            ("ENTERPRISE_TENANTS_JSON", "Tenant registry JSON (api_key_sha256, plan_slug, quotas)"),
             ("RAG_CITATIONS_MODE", "referenced (default) or all"),
             ("RAG_DEBUG", "1 for verbose 500 error tracebacks"),
             ("LANGFUSE_*", "Langfuse tracing and feedback"),
@@ -354,293 +359,10 @@ def build_rag_document() -> None:
     print(f"Wrote {RAG_DOCX}")
 
 
-def build_chatbot_document() -> None:
-    doc = new_document()
-    add_title_page(
-        doc,
-        title="OpenTrace Chatbot API v1",
-        subtitle="Public Integration Reference — Product Frontend & External Clients",
-        version="1.0 (schema_version 2)",
-        generated=date.today(),
-    )
-    add_toc_placeholder(doc)
-
-    add_heading(doc, "Overview", level=1)
-    add_bullets(
-        doc,
-        [
-            "Entrypoint: uvicorn ml.serving.chat.app:app --host 0.0.0.0 --port 7861",
-            "Default local base URL: http://localhost:7861",
-            "OpenAPI: GET /docs and GET /openapi.json",
-            "Implementation: ml/serving/chat/app.py",
-            "All chat routes call execute_chat_turn() → run_rag().",
-        ],
-    )
-
-    add_heading(doc, "Authentication & rate limiting", level=1)
-    add_bullets(
-        doc,
-        [
-            "No built-in API authentication.",
-            "Optional per-plan rate limits on POST /v1/chat/{plan} routes.",
-            "Configure via FREE_RATE_LIMIT_RPM, FARMERS_RATE_LIMIT_RPM, etc. (0 = disabled).",
-            "When exceeded: HTTP 429.",
-            "GET /v1/meta exposes current rate_limits_rpm configuration.",
-            "Auth/subscription enforcement is expected upstream at the API gateway.",
-        ],
-    )
-
-    add_architecture_diagram(doc)
-    _add_shared_types(doc)
-
-    add_heading(doc, "ArtifactItem (export routes only)", level=2)
-    add_field_table(
-        doc,
-        ("Field", "Type", "Description"),
-        [
-            ("id", "string", "Stable artifact id for this response"),
-            ("kind", "csv | chart | docx | pdf | html", "Export format"),
-            ("filename", "string", "Suggested download filename"),
-            ("mime_type", "string", "MIME type"),
-            ("url", "string", "Signed HTTPS URL (GCS) or local file URI in dev"),
-            ("summary", "string", "Short description of contents"),
-            ("citation_ids", "integer[]", "Citation ids from parent answer"),
-            ("byte_size", "integer", "File size in bytes"),
-        ],
-    )
-
-    _add_plan_types_and_categories(doc)
-
-    add_heading(doc, "Plan-scoped chat routes", level=1)
-    add_field_table(
-        doc,
-        ("Route", "Plan", "Exports (artifacts)"),
-        [
-            ("POST /v1/chat/free", "Free", "No"),
-            ("POST /v1/chat/farmers", "Farmers", "No"),
-            ("POST /v1/chat/government", "Government", "No"),
-            ("POST /v1/chat/ngos", "NGOs", "No"),
-            ("POST /v1/chat/agribusinesses", "Agribusinesses", "Yes (CSV, chart, DOCX, PDF)"),
-            ("POST /v1/chat/integrated", "Integrated", "Yes (CSV, chart, DOCX, PDF)"),
-        ],
-    )
-    add_paragraph(doc, "Plan tier is locked by the URL; the request payload cannot override it.")
-
-    add_heading(doc, "Session lifecycle", level=1)
-    add_bullets(
-        doc,
-        [
-            "POST /v1/sessions — create session with fixed category",
-            "POST /v1/sessions/{plan_slug} — create session scoped to plan (free, farmers, government, ngos, agribusinesses, integrated)",
-            "GET /v1/sessions/{session_id} — check alive status (404 if expired)",
-            "DELETE /v1/sessions/{session_id} — clear session (idempotent)",
-        ],
-    )
-    _add_conversation_memory(doc)
-
-    add_heading(doc, "Endpoints", level=1)
-
-    add_endpoint_section(
-        doc,
-        method="GET",
-        path="/v1/health",
-        description="Liveness probe.",
-        response_json='{\n  "status": "ok",\n  "service": "chatbot"\n}',
-    )
-
-    add_endpoint_section(
-        doc,
-        method="GET",
-        path="/v1/meta",
-        description="API metadata: plan types, categories, route map, rate limits.",
-        response_json=(
-            '{\n  "api_version": "1.0",\n  "schema_version": "2",\n  "build": null,\n'
-            '  "plan_types": ["Free", "Farmers", ...],\n  "categories": ["Government", ...],\n'
-            '  "plan_routes": {"free": "/v1/chat/free", ...},\n'
-            '  "rate_limits_rpm": {"free": 0, "farmers": 0, ...}\n}'
-        ),
-    )
-
-    add_endpoint_section(
-        doc,
-        method="POST",
-        path="/v1/sessions",
-        description="Create a server-side session with a fixed category persona.",
-        request_fields=[("category", "Category", "Yes", "Government | NGOs | Agribusinesses | Farmers")],
-        response_fields=[
-            ("session_id", "string", "New session id"),
-            ("created_at", "string", "ISO-8601 UTC timestamp"),
-            ("category", "string", "Session category"),
-        ],
-        request_json='{\n  "category": "Government"\n}',
-        response_json='{\n  "session_id": "a1b2c3...",\n  "created_at": "2026-06-08T12:00:00+00:00",\n  "category": "Government"\n}',
-        errors=[("422", "Invalid category")],
-    )
-
-    add_endpoint_section(
-        doc,
-        method="POST",
-        path="/v1/sessions/{plan_type_slug}",
-        description="Create a session scoped to a plan type from URL slug.",
-        response_json='{\n  "session_id": "a1b2c3...",\n  "created_at": "2026-06-08T12:00:00+00:00",\n  "category": "Government"\n}',
-        errors=[("404", "Unknown plan slug")],
-    )
-
-    add_endpoint_section(
-        doc,
-        method="GET",
-        path="/v1/sessions/{session_id}",
-        description="Check if a session is alive.",
-        response_fields=[
-            ("session_id", "string", "Session id"),
-            ("alive", "boolean", "Always true when found"),
-            ("category", "string | null", "Session category"),
-            ("turn_count", "integer", "Number of recent turns stored"),
-            ("has_summary", "boolean", "Whether conversation summary exists"),
-        ],
-        errors=[("404", "Session not found or expired")],
-    )
-
-    add_endpoint_section(
-        doc,
-        method="DELETE",
-        path="/v1/sessions/{session_id}",
-        description="Explicitly clear a session (logout / clear chat). Idempotent.",
-        response_json='{\n  "session_id": "abc123...",\n  "deleted": true\n}',
-    )
-
-    add_endpoint_section(
-        doc,
-        method="POST",
-        path="/v1/chat",
-        description="Single chat turn through the RAG pipeline. Prefer plan-scoped routes for new integrations.",
-        request_fields=[
-            ("query", "string | null", "One of query/message", "User message"),
-            ("message", "string | null", "One of query/message", "Alias for query — do not send both"),
-            ("session_id", "string | null", "No", "From POST /v1/sessions or prior chat response"),
-            ("user_id", "string | null", "No", "Product user id for Langfuse analytics"),
-            ("user_profile", "UserProfile | null", "No", "country, plan_type, category"),
-            ("chat_history", "ChatMessage[] | null", "No", "Client-owned prior turns"),
-            ("conversation_history", "ChatMessage[] | null", "No", "Deprecated alias for chat_history"),
-        ],
-        response_fields=[
-            ("assistant_message", "string", "Same content as answer on POST /query"),
-            ("citations", "CitationItem[]", "Structured sources"),
-            ("acf", "ACFSignal", "Confidence signal"),
-            ("session_id", "string", "Session for next turn"),
-            ("usage", "UsageStats", "LLM token totals"),
-            ("request_id", "string", "Unique HTTP request id"),
-            ("created_at", "string", "ISO-8601 UTC timestamp"),
-            ("plan_type", "string | null", "Plan tier applied (plan-scoped routes)"),
-            ("langfuse_trace_id", "string | null", "Langfuse trace id"),
-            ("artifacts", "ArtifactItem[]", "Only on agribusinesses/integrated routes"),
-        ],
-        curl_example=(
-            'curl -X POST http://localhost:7861/v1/chat/government \\\n'
-            '  -H "Content-Type: application/json" \\\n'
-            '  -d \'{"query": "What are rice yield trends?", "session_id": "abc123..."}\''
-        ),
-        request_json=(
-            '{\n  "query": "What are rice yield trends?",\n'
-            '  "session_id": "abc123...",\n'
-            '  "user_profile": {\n    "country": "Ghana",\n'
-            '    "plan_type": "Farmers",\n    "category": "Farmers"\n  }\n}'
-        ),
-        response_json=(
-            '{\n  "assistant_message": "Maize production rose...[3]",\n'
-            '  "citations": [{"id": 3, "kind": "structured_data", "text": "...", "url": null}],\n'
-            '  "acf": {"band": "strong", "band_label": "Strong confidence", "score": 78, "explanation": "..."},\n'
-            '  "session_id": "abc123...",\n'
-            '  "usage": {"input_tokens": 1200, "output_tokens": 400, "total_tokens": 1600},\n'
-            '  "request_id": "f4e2...",\n  "created_at": "2026-06-08T12:00:00+00:00",\n'
-            '  "plan_type": "Agribusinesses",\n  "artifacts": []\n}'
-        ),
-        errors=[
-            ("422", "Missing query/message, both sent, empty chat_history, validation errors"),
-            ("429", "Rate limit exceeded (plan-scoped routes when RPM > 0)"),
-            ("502", "RAG pipeline error — see error.code rag_pipeline_error"),
-            ("500", "Unhandled; traceback if CHATBOT_DEBUG=1"),
-        ],
-    )
-
-    add_heading(doc, "Export response example", level=2)
-    add_json_example(
-        doc,
-        "Agribusinesses route with artifacts",
-        '{\n  "assistant_message": "Maize production rose...\\n\\nDownloadable files: nigeria_maize.csv",\n'
-        '  "artifacts": [{\n    "id": "art_a1b2c3",\n    "kind": "csv",\n'
-        '    "filename": "nigeria_maize.csv",\n    "mime_type": "text/csv",\n'
-        '    "url": "https://storage.googleapis.com/...",\n'
-        '    "summary": "CSV export (24 rows)",\n    "citation_ids": [3],\n    "byte_size": 12480\n  }]\n}',
-    )
-
-    add_comparison_table(
-        doc,
-        "POST /query vs POST /v1/chat",
-        ("Feature", "POST /query (RAG API)", "POST /v1/chat (Chatbot v1)"),
-        [
-            ("Answer field", "answer", "assistant_message"),
-            ("Retrieval tuning", "news_top_k, bq_top_k, etc.", "Not exposed"),
-            ("Debug trace", "include_trace", "Not exposed"),
-            ("Session create", "Implicit UUID", "POST /v1/sessions or auto on first chat"),
-            ("Pipeline error", "error string in 200 body", "HTTP 502 JSON"),
-            ("Exports", "Not available", "artifacts[] on agribusinesses/integrated"),
-            ("Feedback", "POST /feedback", "Not exposed"),
-            ("Extra fields", "trace, langfuse_trace_id", "request_id, created_at, plan_type"),
-        ],
-    )
-
-    add_heading(doc, "Recommended integration flow", level=1)
-    add_bullets(
-        doc,
-        [
-            "1. POST /v1/sessions/{plan_slug} or POST /v1/sessions to obtain session_id.",
-            "2. POST /v1/chat/{plan_slug} with query and session_id.",
-            "3. Render assistant_message + citations[]; link [N] footnotes to citation cards.",
-            "4. Display acf.band_label and acf.score in the UI confidence indicator.",
-            "5. On agribusinesses/integrated: render artifacts[] download links.",
-            "6. DELETE /v1/sessions/{session_id} on logout or new conversation.",
-        ],
-    )
-
-    add_heading(doc, "Environment variables", level=1)
-    add_field_table(
-        doc,
-        ("Variable", "Description"),
-        [
-            ("CHATBOT_CORS_ORIGINS", "Comma-separated CORS origins (default *)"),
-            ("CHATBOT_DEBUG", "1 for verbose 500 error tracebacks"),
-            ("CHATBOT_BUILD_ID", "Build id surfaced in GET /v1/meta"),
-            ("FREE_RATE_LIMIT_RPM", "Requests per minute for /v1/chat/free (0 = off)"),
-            ("FARMERS_RATE_LIMIT_RPM", "Rate limit for farmers route"),
-            ("GOVERNMENT_RATE_LIMIT_RPM", "Rate limit for government route"),
-            ("NGOS_RATE_LIMIT_RPM", "Rate limit for ngos route"),
-            ("AGRI_RATE_LIMIT_RPM", "Rate limit for agribusinesses route"),
-            ("INTEGRATED_RATE_LIMIT_RPM", "Rate limit for integrated route"),
-            ("RAG_REDIS_URL", "Shared session storage (same as RAG API)"),
-            ("QDRANT_*, RAG_LLM_*, BQ_*", "Shared RAG pipeline dependencies — see RAG API doc"),
-        ],
-    )
-
-    save_document(doc, str(CHAT_DOCX))
-    print(f"Wrote {CHAT_DOCX}")
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate OpenTrace API DOCX documentation")
-    parser.add_argument("--rag-only", action="store_true", help="Generate RAG API doc only")
-    parser.add_argument("--chat-only", action="store_true", help="Generate Chatbot v1 doc only")
-    args = parser.parse_args()
-
+    argparse.ArgumentParser(description="Generate OpenTrace RAG API DOCX documentation").parse_args()
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
-
-    if args.chat_only:
-        build_chatbot_document()
-    elif args.rag_only:
-        build_rag_document()
-    else:
-        build_rag_document()
-        build_chatbot_document()
+    build_rag_document()
 
 
 if __name__ == "__main__":

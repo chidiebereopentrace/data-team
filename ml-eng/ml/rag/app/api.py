@@ -31,14 +31,21 @@ from ml.rag.local_env import load_rag_dotenv
 _ml_eng = Path(__file__).resolve().parents[3]
 load_rag_dotenv(_ml_eng)
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
 from ml.rag.acf_signal import acf_signal_from_result
-from ml.rag.api_schemas import ACFSignal, ArtifactItem, CitationItem, UsageStats, UserProfile
+from ml.rag.api_schemas import (
+    ACFSignal,
+    ArtifactItem,
+    CitationItem,
+    UsageStats,
+    UserProfile,
+)
 from ml.rag.chat_history import normalize_messages
 from ml.rag.chat_memory import flat_messages_to_memory
+from ml.rag.chat_turn import persist_session_turn
 from ml.rag.chatbot.artifact_storage import refresh_artifact_url
 from ml.rag.chatbot.bq_sql_diagnostics import (
     MAX_DIAGNOSTIC_SQL_STATEMENTS,
@@ -47,10 +54,22 @@ from ml.rag.chatbot.bq_sql_diagnostics import (
 )
 from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS, allows_export
 from ml.rag.chatbot.time_resolver import utc_today
-from ml.rag.chat_turn import persist_session_turn
-from ml.rag.observability import flush_langfuse, get_current_trace_id, rag_trace_context, record_trace_score
+from ml.rag.observability import (
+    flush_langfuse,
+    get_current_trace_id,
+    rag_trace_context,
+    record_trace_score,
+)
+from ml.rag.rate_limiter import check_plan_rate_limit
 from ml.rag.request_context import resolve_request_context
-from ml.rag.session_store import delete_session, get_session_blob, redis_status, session_ttl_seconds
+from ml.rag.session_store import (
+    delete_session,
+    get_session_blob,
+    redis_status,
+    session_ttl_seconds,
+)
+from ml.serving.enterprise.auth import EnterpriseAuthMiddleware, get_request_tenant
+from ml.serving.enterprise.metering import record_usage
 
 logger = logging.getLogger("ml.rag.api")
 
@@ -100,14 +119,17 @@ app = FastAPI(
     lifespan=_app_lifespan,
 )
 
-# Allow frontend to call from another origin (set RAG_CORS_ORIGINS for production)
-_cors_origins = os.environ.get("RAG_CORS_ORIGINS", "*").strip().split(",")
+app.add_middleware(EnterpriseAuthMiddleware)
+
+# Added last so it wraps auth: preflights and 401/403 responses still carry CORS headers.
+# No origins are allowed unless RAG_CORS_ORIGINS lists them (comma-separated).
+_cors_origins = os.environ.get("RAG_CORS_ORIGINS", "").strip().split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _cors_origins if o.strip()],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
 
@@ -373,30 +395,39 @@ def _persist_session_turn(
     )
 
 
+_GENERIC_500_DETAIL = "The question could not be answered due to an internal error; retry later."
+
+
 def _augment_http_500_detail(detail: str, *, debug: bool) -> str:
-    """Shape a 500 body. NameError must not be described as a missing torch install."""
+    """Shape a 500 body. Exception text reaches clients only when RAG_DEBUG is on."""
     if debug:
         return detail + "\n\n" + traceback.format_exc()
     if "unsourced_figures" in detail:
         return "Answer grounding failed unexpectedly; retry the question."
-    low = detail.lower()
-    torch_ish = (
-        "torch" in low
-        or "nn.module" in low
-        or low.startswith("name 'nn'")
-        or "no module named 'torch'" in low
-    )
-    if torch_ish:
-        return detail + ". If using the vector retriever, install PyTorch: pip install torch"
-    return detail
+    return _GENERIC_500_DETAIL
+
+
+def _plan_slug_for(plan_type: str | None) -> str:
+    for slug, name in PLAN_ROUTE_SLUGS.items():
+        if name == plan_type:
+            return slug
+    return "free"
 
 
 async def _run_query(
     request: QueryRequest,
+    http_request: Request,
     *,
     injected_plan_type: str | None = None,
 ) -> QueryResponse:
-    """Shared query logic. When injected_plan_type is set, path owns the plan tier."""
+    """Shared query logic. When injected_plan_type is set, path owns the plan tier.
+
+    Without a plan route, an authenticated tenant's own plan applies.
+    """
+    tenant = get_request_tenant(http_request)
+    if injected_plan_type is None and tenant is not None:
+        injected_plan_type = PLAN_ROUTE_SLUGS[tenant.plan_slug]
+    langfuse_trace_id: str | None = None
     try:
         try:
             ctx = resolve_request_context(
@@ -408,6 +439,8 @@ async def _run_query(
             )
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
+
+        check_plan_rate_limit(_plan_slug_for(ctx.plan_type), http_request)
 
         logger.info(
             "query request received (len=%d, has_history=%s, plan_type=%s, category=%s)",
@@ -463,14 +496,16 @@ async def _run_query(
             trace_input={"query": request.query[:500]},
             tags=["api"],
         ) as trace_handle:
+            langfuse_trace_id = get_current_trace_id()
             rag_started_at = time.perf_counter()
             result = run_rag(request.query, **kwargs)
             rag_pipeline_ms = (time.perf_counter() - rag_started_at) * 1000
             trace_handle.update_output(result, latency_ms=rag_pipeline_ms)
-            langfuse_trace_id = get_current_trace_id()
+            langfuse_trace_id = get_current_trace_id() or langfuse_trace_id
         flush_langfuse()
         trace: dict | None = None
-        if request.include_trace:
+        trace_allowed = tenant.allow_trace if tenant is not None else True
+        if request.include_trace and trace_allowed:
             trace = {
                 "decomposition": result.get("decomposition"),
                 "bq_table_candidates_count": len(result.get("bq_table_candidates") or []),
@@ -532,6 +567,14 @@ async def _run_query(
         raw_artifacts = result.get("artifacts") or []
         artifacts = [ArtifactItem.model_validate(a) for a in raw_artifacts if isinstance(a, dict)]
         usage = UsageStats.from_usage_dict(result.get("usage") if isinstance(result.get("usage"), dict) else None)
+        if tenant is not None:
+            record_usage(
+                tenant,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                total_tokens=usage.total_tokens,
+                export_count=len(artifacts),
+            )
 
         acf = acf_signal_from_result(result)
 
@@ -556,51 +599,54 @@ async def _run_query(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("query failed (langfuse_trace_id=%s)", langfuse_trace_id)
         debug = os.environ.get("RAG_DEBUG", "").strip().lower() in ("1", "true", "on")
         detail = _augment_http_500_detail(str(e), debug=debug)
+        if langfuse_trace_id:
+            detail = f"{detail} (trace id: {langfuse_trace_id})"
         raise HTTPException(status_code=500, detail=detail) from e
 
 
 @app.post("/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
-    """Run the RAG pipeline. Prefer plan-scoped routes (/query/{plan}) for new integrations."""
-    return await _run_query(request)
+async def query(request: QueryRequest, http_request: Request):
+    """Run the RAG pipeline with the caller's tenant plan. Prefer /query/{plan} routes."""
+    return await _run_query(request, http_request)
 
 
 @app.post("/query/free", response_model=QueryResponse, summary="Query (Free plan)")
-async def query_free(request: QueryRequest):
+async def query_free(request: QueryRequest, http_request: Request):
     """Free tier — single country, top-line answers. Path locks plan_type; body cannot escalate."""
-    return await _run_query(request, injected_plan_type="Free")
+    return await _run_query(request, http_request, injected_plan_type="Free")
 
 
 @app.post("/query/farmers", response_model=QueryResponse, summary="Query (Farmers plan)")
-async def query_farmers(request: QueryRequest):
+async def query_farmers(request: QueryRequest, http_request: Request):
     """Farmers tier — localized crop/rainfall/market. Path locks plan_type."""
-    return await _run_query(request, injected_plan_type="Farmers")
+    return await _run_query(request, http_request, injected_plan_type="Farmers")
 
 
 @app.post("/query/government", response_model=QueryResponse, summary="Query (Government plan)")
-async def query_government(request: QueryRequest):
+async def query_government(request: QueryRequest, http_request: Request):
     """Government tier — national/sub-national food security. Path locks plan_type."""
-    return await _run_query(request, injected_plan_type="Government")
+    return await _run_query(request, http_request, injected_plan_type="Government")
 
 
 @app.post("/query/ngos", response_model=QueryResponse, summary="Query (NGOs plan)")
-async def query_ngos(request: QueryRequest):
+async def query_ngos(request: QueryRequest, http_request: Request):
     """NGOs tier — multi-region risk and program angles. Path locks plan_type."""
-    return await _run_query(request, injected_plan_type="NGOs")
+    return await _run_query(request, http_request, injected_plan_type="NGOs")
 
 
 @app.post("/query/agribusinesses", response_model=QueryResponse, summary="Query (Agribusinesses plan)")
-async def query_agribusinesses(request: QueryRequest):
+async def query_agribusinesses(request: QueryRequest, http_request: Request):
     """Agribusinesses tier — cross-country, market volatility. Path locks plan_type."""
-    return await _run_query(request, injected_plan_type="Agribusinesses")
+    return await _run_query(request, http_request, injected_plan_type="Agribusinesses")
 
 
 @app.post("/query/integrated", response_model=QueryResponse, summary="Query (Integrated plan)")
-async def query_integrated(request: QueryRequest):
+async def query_integrated(request: QueryRequest, http_request: Request):
     """Integrated tier — full access; category lens per message. Path locks plan_type."""
-    return await _run_query(request, injected_plan_type="Integrated")
+    return await _run_query(request, http_request, injected_plan_type="Integrated")
 
 
 @app.delete("/session/{session_id}")
@@ -639,7 +685,7 @@ async def get_artifact_url(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("artifact re-sign failed id=%s filename=%s", artifact_id, filename)
-        raise HTTPException(status_code=500, detail=f"Failed to refresh artifact URL: {exc}") from exc
+        raise HTTPException(status_code=500, detail="Failed to refresh artifact URL") from exc
     return ArtifactUrlResponse.model_validate(meta)
 
 

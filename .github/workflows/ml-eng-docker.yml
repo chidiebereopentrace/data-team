@@ -1,0 +1,48 @@
+name: ML Eng — Railway image build
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'ml-eng/**'
+      - '.github/workflows/ml-eng-docker.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'ml-eng/**'
+      - '.github/workflows/ml-eng-docker.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Railway image
+        run: docker build -f ml-eng/Dockerfile.railway -t opentrace-rag:ci ml-eng
+
+      - name: Start container
+        # BQ_PROJECT stays unset so the entrypoint does not require GCP credentials.
+        run: |
+          docker run -d --name rag -p 7860:7860 \
+            -e QDRANT_URL=https://qdrant.invalid \
+            -e QDRANT_API_KEY=ci-dummy \
+            opentrace-rag:ci
+
+      - name: Smoke test /health and auth
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:7860/health; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:7860/health
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:7860/query \
+            -H 'Content-Type: application/json' -d '{"query":"ping"}')
+          test "$status" = "401"
+
+      - name: Container logs
+        if: always()
+        run: docker logs rag || true

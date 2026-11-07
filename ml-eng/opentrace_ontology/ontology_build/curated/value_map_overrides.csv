@@ -1,0 +1,23 @@
+column_key,stored_value,entity_id,note
+*,Pea,OT:PRODUCT:peas,"alias 'pea' otherwise hits pears"
+*,Green Pea,OT:PRODUCT:peas,
+*,Field Peas,OT:PRODUCT:peas,
+*,Molokhia,OT:CROP:corchorus_olitorius,jute mallow
+*,Jute,OT:CROP:corchorus_olitorius,Corchorus spp.
+*,Bean (Hyacinth),OT:CROP:lablab,
+*,Beet,OT:PRODUCT:sugar_beet,check: mart may mean beetroot
+*,Neug,OT:PRODUCT:niger_seed,Guizotia abyssinica (noug)
+*,Whitefly,OT:ANIMAL:aleyrodidae,
+*,Gu,OT:SEASON:gu,
+*,Meher,OT:SEASON:meher,
+*,Deyr-off,OT:SEASON:deyr,
+*,Gu-off,OT:SEASON:gu,
+*,Wet,OT:SEASON:rainy_season,
+*,Main,OT:SEASON:rainy_season,
+*,Dry,OT:SEASON:dry_season,
+*,Long/Dry,OT:SEASON:dry_season,
+*,Pole Bean,OT:PRODUCT:green_beans,
+*,Bush Bean,OT:PRODUCT:green_beans,
+*,Green Bean,OT:PRODUCT:green_beans,
+*,Long,OT:SEASON:long_rains,East Africa long rains (masika)
+*,Short,OT:SEASON:short_rains,East Africa short rains (vuli)

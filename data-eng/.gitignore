@@ -1,5 +1,4 @@
-# Generated dbt source catalog (regenerate: python data/local/scripts/generate_dbt_sources.py)
-dbt/catalog/sources.generated.yml
+# Legacy hand-maintained sources file (replaced by the committed dbt/catalog/sources.generated.yml)
 dbt/models/sources.yml
 
 # Ingestion package

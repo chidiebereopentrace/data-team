@@ -1,6 +1,6 @@
 # Ask ADZA Enterprise API — Integration Guide
 
-This guide describes how B2B partners integrate with the Ask ADZA Enterprise Chatbot API v1.
+This guide describes how B2B partners integrate with the Ask ADZA API.
 
 ## Base URL
 
@@ -8,7 +8,7 @@ Production and sandbox URLs are issued per tenant during onboarding.
 
 ## Authentication
 
-When `CHATBOT_ENTERPRISE_AUTH=required`, every request (except `/v1/health` and `/v1/meta`) must include a tenant API key:
+Every request except `GET /health` and `GET /ready` must include a tenant API key:
 
 ```http
 X-API-Key: <your-api-key>
@@ -25,50 +25,37 @@ Store API keys server-side only. Never embed keys in mobile apps or browser code
 ## Primary endpoint (Agribusinesses tier)
 
 ```http
-POST /v1/chat/agribusinesses
+POST /query/agribusinesses
 Content-Type: application/json
 X-API-Key: <your-api-key>
 
 {
-  "message": "Compare maize production in Nigeria and Ghana over the last five years",
+  "query": "Compare maize production in Nigeria and Ghana over the last five years",
   "session_id": "optional-for-multi-turn"
 }
 ```
+
+`POST /query` (no plan suffix) uses your tenant's plan.
 
 ### Response fields
 
 | Field | Description |
 |-------|-------------|
-| `assistant_message` | Natural-language answer with inline citation markers `[N]` |
+| `answer` | Natural-language answer with inline citation markers `[N]` |
 | `citations[]` | Structured source list mapped to footnote numbers |
 | `acf` | Confidence band, score, and explanation |
 | `usage` | Token usage for this request |
 | `artifacts[]` | Export files (CSV, chart, DOCX, PDF) when requested |
 | `session_id` | Reuse for multi-turn conversations |
-| `request_id` | Support reference for this request |
+| `langfuse_trace_id` | Support reference for this request |
 
 ## Sessions
 
-**Stateful (recommended for copilots):**
+**Stateful (recommended for copilots):** omit `session_id` on the first request, then send the returned `session_id` on each follow-up. The server retains conversation memory.
 
-1. `POST /v1/sessions` with `{ "category": "Agribusinesses" }`
-2. Send `session_id` on each subsequent chat request
-3. Omit `chat_history` — the server retains conversation memory
+**Stateless:** send `chat_history` with prior turns on every request. The server does not persist memory.
 
-**Stateless:**
-
-Send `chat_history` with prior turns on every request. The server does not persist memory.
-
-## Usage and quotas
-
-Check current-month consumption:
-
-```http
-GET /v1/usage
-X-API-Key: <your-api-key>
-```
-
-Returns query count, token totals, export count, and configured quotas.
+`DELETE /session/{session_id}` clears a session.
 
 ## Plan routes
 
@@ -76,8 +63,8 @@ Enterprise tenants are provisioned with a plan slug. Use the matching route:
 
 | Plan slug | Route | Exports |
 |-----------|-------|---------|
-| `agribusinesses` | `POST /v1/chat/agribusinesses` | Yes |
-| `integrated` | `POST /v1/chat/integrated` | Yes |
+| `agribusinesses` | `POST /query/agribusinesses` | Yes |
+| `integrated` | `POST /query/integrated` | Yes |
 
 Integrated tenants may call any plan route.
 
@@ -89,7 +76,7 @@ Integrated tenants may call any plan route.
 | 403 | Tenant not authorized for this plan route |
 | 422 | Invalid request body or profile |
 | 429 | Rate limit or monthly quota exceeded |
-| 502 | RAG pipeline error (retry may succeed) |
+| 500 | Internal error; quote the trace id from `detail` to support |
 
 ## OpenAPI specification
 
@@ -104,11 +91,15 @@ PYTHONPATH=. python scripts/export_chatbot_openapi.py
 
 ## Tenant provisioning
 
-Copy [`ml-eng/config/enterprise_tenants.example.json`](../../ml-eng/config/enterprise_tenants.example.json) to `enterprise_tenants.json` (not committed) and set:
+Copy [`ml-eng/config/enterprise_tenants.example.json`](../../ml-eng/config/enterprise_tenants.example.json) and fill `api_key_sha256` with the SHA-256 hex digest of each issued key (the plaintext key is never stored):
 
 ```bash
-ENTERPRISE_TENANTS_PATH=ml-eng/config/enterprise_tenants.json
-CHATBOT_ENTERPRISE_AUTH=required
+python -c "import hashlib,sys;print(hashlib.sha256(sys.argv[1].encode()).hexdigest())" <key>
+```
+
+Deploy the registry as `ENTERPRISE_TENANTS_JSON` (or `ENTERPRISE_TENANTS_PATH`) with:
+
+```bash
 ENTERPRISE_METERING_ENABLED=1
 RAG_REDIS_URL=redis://...   # required for multi-replica metering consistency
 ```

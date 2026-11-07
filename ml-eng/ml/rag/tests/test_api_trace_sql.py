@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from ml.rag import session_store
 from ml.rag.app import api as api_mod
 
 
@@ -17,8 +18,9 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("QDRANT_API_KEY", "test-key")
     monkeypatch.setenv("RAG_LLM_BASE_URL", "https://openrouter.ai/api/v1")
     monkeypatch.setenv("RAG_LLM_API_KEY", "sk-test")
-    monkeypatch.delenv("RAG_REDIS_URL", raising=False)
-    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.setenv("RAG_API_AUTH", "off")
+    monkeypatch.setattr(session_store, "_REDIS_URL", "")
+    monkeypatch.setattr(session_store, "_redis_client", None)
     return TestClient(api_mod.app)
 
 

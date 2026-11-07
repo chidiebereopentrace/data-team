@@ -2,7 +2,7 @@
 Sliding-window rate limiter for plan-scoped API routes (ML-038).
 
 Limits are per-plan per-client-IP, read from env vars at startup.
-All limits default to 0 (disabled). Set e.g. FREE_RATE_LIMIT_RPM=10 to enable.
+Every plan has a non-zero default; set e.g. FREE_RATE_LIMIT_RPM=0 to disable one.
 
 Thread-safe in-process implementation.
 Redis-backed upgrade is straightforward when needed (swap _windows for a Redis ZSET).
@@ -18,15 +18,14 @@ from fastapi import HTTPException, Request
 
 # ---------------------------------------------------------------------------
 # Per-plan RPM limits (0 = disabled) — read once at import time.
-# Set via environment variables; all off by default for testing phase.
 # ---------------------------------------------------------------------------
 _PLAN_LIMITS: dict[str, int] = {
-    "free": int(os.environ.get("FREE_RATE_LIMIT_RPM", "0") or 0),
-    "farmers": int(os.environ.get("FARMERS_RATE_LIMIT_RPM", "0") or 0),
-    "government": int(os.environ.get("GOVERNMENT_RATE_LIMIT_RPM", "0") or 0),
-    "ngos": int(os.environ.get("NGOS_RATE_LIMIT_RPM", "0") or 0),
-    "agribusinesses": int(os.environ.get("AGRIBUSINESSES_RATE_LIMIT_RPM", "0") or 0),
-    "integrated": int(os.environ.get("INTEGRATED_RATE_LIMIT_RPM", "0") or 0),
+    "free": int(os.environ.get("FREE_RATE_LIMIT_RPM", "10") or 0),
+    "farmers": int(os.environ.get("FARMERS_RATE_LIMIT_RPM", "20") or 0),
+    "government": int(os.environ.get("GOVERNMENT_RATE_LIMIT_RPM", "30") or 0),
+    "ngos": int(os.environ.get("NGOS_RATE_LIMIT_RPM", "30") or 0),
+    "agribusinesses": int(os.environ.get("AGRIBUSINESSES_RATE_LIMIT_RPM", "30") or 0),
+    "integrated": int(os.environ.get("INTEGRATED_RATE_LIMIT_RPM", "60") or 0),
 }
 
 # Sliding window storage: {window_key: deque[timestamp]}
@@ -37,10 +36,14 @@ _WINDOW_SECONDS = 60.0  # 1-minute sliding window
 
 
 def _client_ip(request: Request) -> str:
-    """Extract the real client IP, respecting X-Forwarded-For (Railway proxy)."""
+    """Client IP as seen by the Railway proxy.
+
+    Callers can prepend arbitrary X-Forwarded-For entries; only the last one is
+    appended by the single trusted proxy hop.
+    """
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        return forwarded.split(",")[-1].strip()
     if request.client:
         return request.client.host
     return "unknown"

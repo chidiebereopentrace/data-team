@@ -1,0 +1,60 @@
+m49_code,country_iso2,country_iso3,country_name,in_africa_scope
+012,DZ,DZA,Algeria,true
+024,AO,AGO,Angola,true
+204,BJ,BEN,Benin,true
+072,BW,BWA,Botswana,true
+854,BF,BFA,Burkina Faso,true
+108,BI,BDI,Burundi,true
+120,CM,CMR,Cameroon,true
+132,CV,CPV,Cabo Verde,true
+140,CF,CAF,Central African Republic,true
+148,TD,TCD,Chad,true
+174,KM,COM,Comoros,true
+178,CG,COG,Congo,true
+180,CD,COD,Democratic Republic of the Congo,true
+384,CI,CIV,Côte d'Ivoire,true
+262,DJ,DJI,Djibouti,true
+818,EG,EGY,Egypt,true
+226,GQ,GNQ,Equatorial Guinea,true
+232,ER,ERI,Eritrea,true
+748,SZ,SWZ,Eswatini,true
+231,ET,ETH,Ethiopia,true
+266,GA,GAB,Gabon,true
+270,GM,GMB,Gambia,true
+288,GH,GHA,Ghana,true
+324,GN,GIN,Guinea,true
+624,GW,GNB,Guinea-Bissau,true
+404,KE,KEN,Kenya,true
+426,LS,LSO,Lesotho,true
+430,LR,LBR,Liberia,true
+434,LY,LBY,Libya,true
+450,MG,MDG,Madagascar,true
+454,MW,MWI,Malawi,true
+466,ML,MLI,Mali,true
+478,MR,MRT,Mauritania,true
+480,MU,MUS,Mauritius,true
+504,MA,MAR,Morocco,true
+508,MZ,MOZ,Mozambique,true
+516,NA,NAM,Namibia,true
+562,NE,NER,Niger,true
+566,NG,NGA,Nigeria,true
+646,RW,RWA,Rwanda,true
+678,ST,STP,Sao Tome and Principe,true
+686,SN,SEN,Senegal,true
+690,SC,SYC,Seychelles,true
+694,SL,SLE,Sierra Leone,true
+706,SO,SOM,Somalia,true
+710,ZA,ZAF,South Africa,true
+728,SS,SSD,South Sudan,true
+729,SD,SDN,Sudan,true
+834,TZ,TZA,United Republic of Tanzania,true
+768,TG,TGO,Togo,true
+788,TN,TUN,Tunisia,true
+800,UG,UGA,Uganda,true
+894,ZM,ZMB,Zambia,true
+716,ZW,ZWE,Zimbabwe,true
+175,YT,MYT,Mayotte,true
+638,RE,REU,Réunion,true
+732,EH,ESH,Western Sahara,true
+654,SH,SHN,Saint Helena,true
+260,TF,ATF,French Southern Territories,true

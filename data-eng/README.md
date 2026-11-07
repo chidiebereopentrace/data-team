@@ -64,7 +64,7 @@ Regenerate the BigQuery source catalog (not hand-edited):
 
 ```bash
 python data/local/scripts/generate_dbt_sources.py --refresh
-# writes dbt/catalog/sources.generated.yml (gitignored)
+# writes dbt/catalog/sources.generated.yml (committed; commit the refresh)
 ```
 
 See [`ingestion/README.md`](./ingestion/README.md) and [`dbt/README.md`](./dbt/README.md).

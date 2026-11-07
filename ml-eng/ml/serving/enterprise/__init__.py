@@ -1,6 +1,10 @@
-"""Enterprise B2B API support for Ask ADZA Chatbot API."""
+"""API tenant auth, quotas and metering for the Ask ADZA RAG API."""
 
-from ml.serving.enterprise.auth import EnterpriseAuthMiddleware, extract_api_key, get_request_tenant
+from ml.serving.enterprise.auth import (
+    EnterpriseAuthMiddleware,
+    extract_api_key,
+    get_request_tenant,
+)
 from ml.serving.enterprise.metering import (
     check_tenant_quotas,
     check_tenant_rate_limit,
@@ -11,6 +15,7 @@ from ml.serving.enterprise.metering import (
 from ml.serving.enterprise.tenant_registry import (
     EnterpriseTenant,
     enterprise_auth_mode,
+    hash_api_key,
     reload_tenants,
     resolve_tenant,
 )
@@ -24,6 +29,7 @@ __all__ = [
     "extract_api_key",
     "get_request_tenant",
     "get_usage",
+    "hash_api_key",
     "record_usage",
     "reload_tenants",
     "resolve_tenant",

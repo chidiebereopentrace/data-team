@@ -81,6 +81,11 @@ service-account*.json
 !ml-eng/opentrace_ontology/seeds/**
 !data-eng/dbt/seeds/ontology/
 !data-eng/dbt/seeds/ontology/**
+# dbt seeds are refs in models; dbt parse fails without them
+!data-eng/dbt/seeds/*.csv
+# Ontology build inputs are required by Dockerfile.railway and opentrace_ontology tests
+!ml-eng/opentrace_ontology/ontology_build/inputs/*.csv
+!ml-eng/opentrace_ontology/ontology_build/curated/*.csv
 ml-eng/config/keys/
 ml-eng/data/
 data/raw/
@@ -135,6 +140,7 @@ ml-eng/ml/rag/docs/
 !sources.example.csv
 !gardian_african_datasets_augmented (1).csv
 !opentrace_africa_price_manifest.csv
+data-eng/ingestion/data_csv/*.csv
 
 # Generated run outputs and catalogs (regenerate locally; do not commit)
 ml-eng/ml/rag/eval/reports/
