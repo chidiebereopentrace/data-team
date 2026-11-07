@@ -183,6 +183,54 @@ models:
   - path: market_prices/stg_wfp_vampire_prices.sql
     tables:
       - WFP_VAMPIRE_Tool_global_food_prices_bronze
+  - path: market_prices/stg_wfp_hdx_prices.sql
+    tables:
+      - hdx_wfp_food_prices_ago
+      - hdx_wfp_food_prices_bdi
+      - hdx_wfp_food_prices_ben
+      - hdx_wfp_food_prices_bfa
+      - hdx_wfp_food_prices_caf
+      - hdx_wfp_food_prices_civ
+      - hdx_wfp_food_prices_cmr
+      - hdx_wfp_food_prices_cod
+      - hdx_wfp_food_prices_cog
+      - hdx_wfp_food_prices_cpv
+      - hdx_wfp_food_prices_dji
+      - hdx_wfp_food_prices_dza
+      - hdx_wfp_food_prices_egy
+      - hdx_wfp_food_prices_eri
+      - hdx_wfp_food_prices_eth
+      - hdx_wfp_food_prices_gab
+      - hdx_wfp_food_prices_gha
+      - hdx_wfp_food_prices_gin
+      - hdx_wfp_food_prices_gmb
+      - hdx_wfp_food_prices_gnb
+      - hdx_wfp_food_prices_ken
+      - hdx_wfp_food_prices_lbr
+      - hdx_wfp_food_prices_lby
+      - hdx_wfp_food_prices_lso
+      - hdx_wfp_food_prices_mdg
+      - hdx_wfp_food_prices_mli
+      - hdx_wfp_food_prices_moz
+      - hdx_wfp_food_prices_mrt
+      - hdx_wfp_food_prices_mwi
+      - hdx_wfp_food_prices_nam
+      - hdx_wfp_food_prices_ner
+      - hdx_wfp_food_prices_nga
+      - hdx_wfp_food_prices_rwa
+      - hdx_wfp_food_prices_sdn
+      - hdx_wfp_food_prices_sen
+      - hdx_wfp_food_prices_sle
+      - hdx_wfp_food_prices_som
+      - hdx_wfp_food_prices_ssd
+      - hdx_wfp_food_prices_swz
+      - hdx_wfp_food_prices_tcd
+      - hdx_wfp_food_prices_tgo
+      - hdx_wfp_food_prices_tza
+      - hdx_wfp_food_prices_uga
+      - hdx_wfp_food_prices_zaf
+      - hdx_wfp_food_prices_zmb
+      - hdx_wfp_food_prices_zwe
   - path: market_prices/stg_prices_harmonised.sql
     tables: null
 

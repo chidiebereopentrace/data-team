@@ -28,7 +28,7 @@ import yaml
 
 DATA_ENG_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = DATA_ENG_ROOT.parent
-TABLES_FILE = DATA_ENG_ROOT / "data" / "local" / "scripts" / "mart_dev_tables.txt"
+TABLES_FILE = DATA_ENG_ROOT / "data" / "local" / "scripts" / "mart_dev_rag_tables.txt"
 ENTITY_SEED = DATA_ENG_ROOT / "docs" / "mart_entity_dictionary_seed.yaml"
 MD_OUT = DATA_ENG_ROOT / "docs" / "_mart_column_labels_raw.md"
 YAML_DIR = REPO_ROOT / "ml-eng" / "ml" / "rag" / "bq_mart_tables_yaml_files"
@@ -750,7 +750,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--tables",
         default="",
-        help="Comma-separated table allowlist (default: all entries in mart_dev_tables.txt)",
+        help="Comma-separated table allowlist (default: all entries in mart_dev_rag_tables.txt)",
     )
     return parser.parse_args(argv)
 

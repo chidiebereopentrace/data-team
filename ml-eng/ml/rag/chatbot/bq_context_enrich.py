@@ -14,6 +14,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     table_source_meta,
 )
 from ml.rag.chatbot.bq_trend_companion import maybe_attach_ranking_trend
+from ml.rag.chatbot.geo_iso3 import name_to_iso3
 from ml.rag.chatbot.generator import (
     _BQ_PUBLIC_LABEL,
     _public_source_label,
@@ -52,7 +53,6 @@ _BQ_PROVENANCE_KEYS = frozenset(
         "geo_countries",
         "as_of_date",
         "metric",
-        "unit",
         "direction",
         "prior_value",
         "value_semantics",
@@ -83,6 +83,7 @@ _GEO_KEYS = (
     "fnid",
     "region",
 )
+_SUB_PLACE_KEYS = ("market_name", "admin_2", "admin_1", "geographic_unit_name")
 _TIME_KEYS = (
     "year",
     "month",
@@ -190,7 +191,9 @@ def _row_coherent_with_decomposition(
             if raw.get(k) is not None and str(raw.get(k)).strip()
         ]
         row_geo = " ".join(row_geo_parts)
-        if row_geo and not any(
+        row_iso3 = str(raw.get("country_iso3") or "").strip().upper()
+        geo_iso3 = {name_to_iso3(g) or g.upper() for g in geo}
+        if row_iso3 not in geo_iso3 and row_geo and not any(
             g.lower() in row_geo or row_geo in g.lower() for g in geo
         ):
             return False
@@ -477,9 +480,13 @@ def resolve_row_semantics(
     measure_col, measure_val = _pick_measure_column(row, table_id=bare, sql=sql)
     measure_label = _resolve_measure_label(bare, row, measure_col)
     unit = _resolve_unit(bare, row, measure_col)
-    geo = _first_present(row, _GEO_KEYS)
+    sub_place = _first_present(row, _SUB_PLACE_KEYS)
+    country = _first_present(row, ("country_name", "country", "country_iso3"))
+    geo = ", ".join(p for p in (sub_place, country) if p) or _first_present(row, _GEO_KEYS)
     time_bits = [_first_present(row, (k,)) for k in _TIME_KEYS]
     time_s = " ".join(t for t in time_bits if t)
+    period_start, period_end = _s(row.get("period_start")), _s(row.get("latest_date"))
+    period = f"{period_start} to {period_end}" if period_start and period_end else period_end
 
     discriminators: dict[str, str] = {}
     for col in discriminator_columns(bare):
@@ -496,6 +503,7 @@ def resolve_row_semantics(
         "unit": unit,
         "geo": geo,
         "time": time_s,
+        "period": period,
         "table_id": bare,
         "table_description": src.get("description") or "",
         "source_domain": src.get("source_domain") or "",
@@ -547,6 +555,7 @@ def format_row_prose(
     template: str = "",
     direction: Any = None,
     magnitude: Any = None,
+    coverage_note: str = "",
 ) -> str:
     """Build human-readable context prose from resolved semantics."""
     table_id = _s(semantics.get("table_id"))
@@ -594,6 +603,9 @@ def format_row_prose(
         meta_bits.append(f"Place: {geo}")
     if meta_bits:
         lines.append(" | ".join(meta_bits))
+    period = _s(semantics.get("period"))
+    if period:
+        lines.append(f"Period covered: {period}")
     if as_of_date:
         date_line = f"Date recorded: {as_of_date}"
         if as_of_date_basis:
@@ -616,6 +628,8 @@ def format_row_prose(
     )
     if trend:
         lines.append(trend)
+    if coverage_note:
+        lines.append(f"Coverage note: {coverage_note}")
 
     # template / sql_source stay in metadata only — do not surface internal
     # pipeline vocabulary into the LLM context.
@@ -921,6 +935,7 @@ def _consolidate_point_fact_batch(
         template=template,
         direction=out_meta.get("direction"),
         magnitude=out_meta.get("magnitude"),
+        coverage_note=_s(out_meta.get("coverage_note")),
     )
     if value_conflict:
         content += "\nNote: multiple warehouse rows matched this point fact; canonical row selected."
@@ -1004,7 +1019,12 @@ def _consolidate_ranking_batch(
         )
 
     not_this = head_sem.get("not_this") or []
-    header = format_row_prose(head_sem, sql_source=sql_source, template=template)
+    header = format_row_prose(
+        head_sem,
+        sql_source=sql_source,
+        template=template,
+        coverage_note=_s(meta0.get("coverage_note")),
+    )
     body = "\n".join(
         [
             "",
@@ -1076,6 +1096,7 @@ def _enrich_single_item(
         template=_s(meta.get("template")),
         direction=meta.get("direction"),
         magnitude=meta.get("magnitude"),
+        coverage_note=_s(meta.get("coverage_note")),
     )
     return {**item, "content": content, "metadata": meta}
 

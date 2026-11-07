@@ -47,7 +47,7 @@ from ml.rag.chatbot.compile_sql_from_bind import (
     bind_contract_for_table,
     compile_sql_from_bind,
 )
-from ml.rag.chatbot.geo_iso3 import name_to_iso3
+from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
 from ml.rag.chatbot.mart_coverage import clamp_year, route_tables
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
@@ -897,10 +897,11 @@ class BQRetriever(BaseRetriever):
 
         trusted = (sql_source or "").strip().lower() == "engine"
         _source = (sql_source or "").strip().lower()
+        code_owned = trusted or _source == "template"
         filters = ontology_value_filters if ontology_value_filters is not None else self.last_ontology_value_filters
 
         def _post_checks(sql: str) -> str | None:
-            allow_err = validate_sql_table_allowlist(sql, selected_tables)
+            allow_err = None if _source == "template" else validate_sql_table_allowlist(sql, selected_tables)
             if allow_err:
                 return allow_err
             if _source not in _SKIP_COLUMN_ALLOWLIST_SOURCES:
@@ -986,9 +987,9 @@ class BQRetriever(BaseRetriever):
                         sql = revalidated
             return sql
 
-        if not trusted:
+        if not code_owned:
             validated = _maybe_inject(validated)
-        if filters:
+        if filters and _source != "template":
             rewritten, lit_notes = validate_literals_against_value_map(validated, filters)
             if lit_notes:
                 self.last_ontology_literal_notes.extend(lit_notes)
@@ -1000,7 +1001,7 @@ class BQRetriever(BaseRetriever):
                 if revalidated is not None:
                     validated = revalidated
         check_err = _post_checks(validated)
-        if check_err and sql_retry_enabled() and not trusted:
+        if check_err and sql_retry_enabled() and not code_owned:
             allowed_list = ", ".join(sorted(selected_tables)) or "(none)"
             bind_block = ""
             if bind_contracts:
@@ -1448,7 +1449,8 @@ class BQRetriever(BaseRetriever):
                 return []
             template_meta = hit
             sql_source = "template"
-            return [str(hit["sql"])]
+            sql = str(hit.get("sql") or "").strip()
+            return [sql] if sql else []
 
         planned_path = (
             str(kwargs.get("retrieve_mode") or "").strip().lower() == "planned"
@@ -1457,8 +1459,14 @@ class BQRetriever(BaseRetriever):
             or str(kwargs.get("plan_source") or "").strip() == "class_engine"
         )
 
+        price_turn = bool(selected_tables and set(selected_tables) & {"fct_prices", "agg_prices_country_month"})
         if not engine_execute_only and not sql_queries and not explicit_sql:
-            if planned_path:
+            price_sqls = _try_template_sql() if planned_path and price_turn else []
+            if price_sqls or (template_meta or {}).get("template") == "price_gap":
+                sql_queries = price_sqls
+            elif planned_path:
+                template_meta = None
+                sql_source = "none"
                 bind_sqls: list[str] = []
                 if bind_contracts:
                     shape_job = str(kwargs.get("contract_job") or "")
@@ -1534,6 +1542,8 @@ class BQRetriever(BaseRetriever):
                 template_sqls = _try_template_sql()
                 if template_sqls:
                     sql_queries = template_sqls
+                elif (template_meta or {}).get("template") == "price_gap":
+                    pass
                 else:
                     pattern_cap = 1 if fast_fact else None
                     pattern_hits = try_sql_patterns(
@@ -1663,6 +1673,23 @@ class BQRetriever(BaseRetriever):
             sql_source = sql_source if sql_source != "none" else "nl2sql"
         else:
             sql_source = "none"
+
+        if not sql_queries and (template_meta or {}).get("template") == "price_gap":
+            self.last_sql_source = "template"
+            self.last_bq_execute_ms = 0.0
+            return [
+                {
+                    "content": str(template_meta.get("gap_message") or ""),
+                    "source": "bigquery",
+                    "metadata": {
+                        "status": "price_gap",
+                        "sql_source": "template",
+                        "template": "price_gap",
+                        "table_id": "fct_prices",
+                        "countries": template_meta.get("countries") or [],
+                    },
+                }
+            ]
 
         if not sql_queries:
             reason = (
@@ -1912,6 +1939,9 @@ class BQRetriever(BaseRetriever):
                 read_tables = referenced_mart_tables(validated)
                 for row in rows[:limit]:
                     d = with_column_units(dict(row), read_tables)
+                    if d.get("country_iso3") and not d.get("country_name"):
+                        if name := iso3_to_canonical_name(str(d["country_iso3"])):
+                            d["country_name"] = name
                     row_meta = project_bq_row_acf(
                         {
                             **d,
@@ -1926,13 +1956,17 @@ class BQRetriever(BaseRetriever):
                     if slot_id:
                         row_meta["subquestion_id"] = slot_id
                         row_meta["slot_id"] = slot_id
+                    content = str(d)
                     if template_meta and source == "template":
                         row_meta["template"] = template_meta.get("template")
+                        if template_meta.get("widened"):
+                            row_meta["coverage_note"] = template_meta["widened"]
+                            content = f"{content} (note: {template_meta['widened']})"
                     if pattern_meta and source == "pattern":
                         row_meta["pattern"] = pattern_meta.get("pattern")
                     exec_items.append(
                         {
-                            "content": str(d),
+                            "content": content,
                             "source": "bigquery",
                             "metadata": row_meta,
                         }

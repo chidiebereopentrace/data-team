@@ -35,6 +35,3 @@ requests>=2.31.0
 
 # Optional: larger local partition analytics (data/local/)
 # duckdb>=0.9.0
-
-# Manifest-driven weekly ingestion engine
--e ./ingestion_engine

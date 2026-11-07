@@ -2,7 +2,7 @@
 """Compare allowlisted mart YAML column sets vs live BigQuery INFORMATION_SCHEMA.
 
 Fails when a YAML file's columns diverge from BQ (add/drop/rename) for tables listed
-in data-eng/data/local/scripts/mart_dev_tables.txt that also have a YAML file.
+in data-eng/data/local/scripts/mart_dev_rag_tables.txt that also have a YAML file.
 
 PR CI stays offline (mart YAML contract tests). This job is scheduled / secrets-required.
 
@@ -23,7 +23,7 @@ from typing import Any
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-TABLES_FILE = REPO_ROOT / "data-eng" / "data" / "local" / "scripts" / "mart_dev_tables.txt"
+TABLES_FILE = REPO_ROOT / "data-eng" / "data" / "local" / "scripts" / "mart_dev_rag_tables.txt"
 YAML_DIR = REPO_ROOT / "ml-eng" / "ml" / "rag" / "bq_mart_tables_yaml_files"
 SKIP_TABLES = frozenset({"gold_example", "audit_mart_column_labels", "audit_mart_ontology_vocab"})
 

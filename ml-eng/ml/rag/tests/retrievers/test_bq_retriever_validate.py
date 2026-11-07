@@ -637,7 +637,7 @@ def test_retrieve_market_price_uses_template_not_nl2sql() -> None:
                     "ml.rag.retrievers.bq_retriever.try_sql_template",
                     return_value={
                         "sql": template_sql,
-                        "template": "mart_latest_price",
+                        "template": "mart_price",
                         "table_id": "fct_prices",
                     },
                 ):
@@ -655,6 +655,35 @@ def test_retrieve_market_price_uses_template_not_nl2sql() -> None:
     nl.assert_not_called()
     assert len(items) == 1
     assert items[0]["metadata"]["sql_source"] == "template"
+
+
+def test_retrieve_price_gap_returns_gap_item_without_sql() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    with patch.object(retriever, "_nl_to_sql_queries") as nl:
+        with patch.object(retriever, "_get_client", return_value=MagicMock()):
+            with patch(
+                "ml.rag.retrievers.bq_retriever.try_sql_template",
+                return_value={
+                    "sql": "",
+                    "template": "price_gap",
+                    "gap_message": "No warehouse price series for the requested product in Ethiopia.",
+                    "countries": ["ETH"],
+                    "table_id": "fct_prices",
+                },
+            ):
+                with patch("ml.rag.retrievers.bq_retriever.try_sql_patterns") as patterns:
+                    items = retriever.retrieve(
+                        "price of quinoa in Ethiopia",
+                        selected_tables=["fct_prices"],
+                        task_mode="fact_lookup",
+                        primary_measures=["market_price"],
+                        geo_country="Ethiopia",
+                    )
+    nl.assert_not_called()
+    patterns.assert_not_called()
+    assert len(items) == 1
+    assert items[0]["metadata"]["status"] == "price_gap"
+    assert "No warehouse price series" in items[0]["content"]
 
 
 def test_retrieve_food_security_skips_nl2sql_when_template_misses() -> None:

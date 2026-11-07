@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', enabled=false) }}
 
 -- Gold: research project dimension sourced from OpenAire projects.
 

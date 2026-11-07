@@ -20,7 +20,7 @@ REPO_ROOT = DATA_ENG_ROOT.parent
 ENTITY_SEED = DATA_ENG_ROOT / "docs" / "mart_entity_dictionary_seed.yaml"
 SCHEMA_YML = DATA_ENG_ROOT / "dbt" / "models" / "mart_dev" / "schema.yml"
 YAML_DIR = REPO_ROOT / "ml-eng" / "ml" / "rag" / "bq_mart_tables_yaml_files"
-TABLES_FILE = Path(__file__).resolve().parent / "mart_dev_tables.txt"
+TABLES_FILE = Path(__file__).resolve().parent / "mart_dev_rag_tables.txt"
 
 sys.path.insert(0, str(REPO_ROOT / "ml-eng"))
 from ml.rag.mart_yaml_contract import default_bind_spine, ensure_bind_contract_fields  # noqa: E402

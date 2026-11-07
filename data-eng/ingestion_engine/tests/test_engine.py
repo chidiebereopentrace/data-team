@@ -19,6 +19,7 @@ from ingestion_engine.bq import attempted_source_ids, landing_destination, repor
 from ingestion_engine.cli import clear_staged, materialize_service_account, paired_raw_dataset
 from ingestion_engine.countries import Countries, load_africa, load_countries
 from ingestion_engine.fetch import parse_csv
+from ingestion_engine.http import HttpError, request_bytes
 from ingestion_engine.mail import send_report
 from ingestion_engine.manifest import load_manifests
 from ingestion_engine.run import run_manifests
@@ -886,6 +887,58 @@ def test_one_column_csv_with_a_comma_stays_one_column() -> None:
 def test_windows_csv_reads_the_micro_sign() -> None:
     records = parse_csv(b"unit\n\xb5g\n", ("unit",))
     assert records == [{"unit": "\u00b5g"}]
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, headers: dict[str, str], body: bytes = b"") -> None:
+        self.status_code = status_code
+        self.headers = headers
+        self._body = body
+        self.closed = False
+
+    def iter_content(self, _size: int):
+        if self._body:
+            yield self._body
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _FakeSession:
+    def __init__(self, responses: list[_FakeResponse]) -> None:
+        self._responses = responses
+        self.calls = 0
+
+    def get(self, *_args, **_kwargs) -> _FakeResponse:
+        response = self._responses[min(self.calls, len(self._responses) - 1)]
+        self.calls += 1
+        return response
+
+
+def test_waf_challenge_is_not_a_file() -> None:
+    session = _FakeSession([
+        _FakeResponse(202, {"x-amzn-waf-action": "challenge"}),
+    ])
+    with pytest.raises(HttpError, match="WAF challenge"):
+        request_bytes("https://data.humdata.org/file.csv", session=session, sleep_fn=lambda _seconds: None)
+    assert session.calls == 1
+
+
+def test_http_202_without_a_file_fails_after_retries() -> None:
+    session = _FakeSession([
+        _FakeResponse(202, {}),
+        _FakeResponse(202, {}),
+        _FakeResponse(202, {}),
+        _FakeResponse(202, {}),
+    ])
+    with pytest.raises(HttpError, match="HTTP 202"):
+        request_bytes(
+            "https://data.humdata.org/file.csv",
+            session=session,
+            max_retries=3,
+            sleep_fn=lambda _seconds: None,
+        )
+    assert session.calls == 4
 
 
 def test_row_filter_must_name_a_declared_column(tmp_path: Path) -> None:

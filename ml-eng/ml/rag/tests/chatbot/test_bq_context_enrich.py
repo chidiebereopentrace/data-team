@@ -149,6 +149,27 @@ def test_market_price_context_preserves_recorded_date_basis() -> None:
     assert "NGN/kg" in prose
 
 
+def test_price_template_row_shows_place_period_and_coverage_note() -> None:
+    row = {
+        "country_iso3": "MLI",
+        "country_name": "Mali",
+        "admin_1": "Bamako",
+        "product_name": "Maize",
+        "price_type": "Retail",
+        "currency": "XOF",
+        "unit": "KG",
+        "avg_price": 310.5,
+        "period_start": "2023-01-01",
+        "latest_date": "2023-12-01",
+    }
+    semantics = resolve_row_semantics(row, table_id="fct_prices", sql="SELECT AVG(b.value) AS avg_price")
+    prose = format_row_prose(semantics, coverage_note="No price rows for 2024; latest available month shown.")
+
+    assert "Place: Bamako, Mali" in prose
+    assert "Period covered: 2023-01-01 to 2023-12-01" in prose
+    assert "Coverage note: No price rows for 2024" in prose
+
+
 def test_market_price_metadata_preserves_exact_as_of_date() -> None:
     sql = "SELECT * FROM `proj.mart_dev.fct_prices`"
     item = _bq_item(

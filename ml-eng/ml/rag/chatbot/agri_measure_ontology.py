@@ -174,6 +174,11 @@ MEASURES: dict[str, MeasureSpec] = {
             "farm gate",
             "commodity price",
             "producer price",
+            "expensive",
+            "cheaper",
+            "cheapest",
+            "volatile",
+            "volatility",
         ),
         corpus_domains=(
             "Agricultural Economics",

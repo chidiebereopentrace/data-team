@@ -30,7 +30,7 @@ jobs:
 
       - name: Install sqlfluff (BigQuery dialect)
         run: |
-          pip install sqlfluff sqlfluff-dbt
+          pip install sqlfluff
           sqlfluff dialects
 
       - name: Lint SQL files

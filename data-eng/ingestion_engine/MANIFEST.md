@@ -542,7 +542,7 @@ Test the new rows on their own, without uploading to BigQuery.
 **Set up once** from `data-eng`:
 
 ```powershell
-pip install -r requirements.txt
+pip install -e ./ingestion_engine
 Copy-Item ingestion_engine/.env.example ingestion_engine/.env
 ```
 

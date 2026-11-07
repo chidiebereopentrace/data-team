@@ -43,12 +43,53 @@ entries:
     max_geo_level: sub_national
     contract_sql_only: true
 
+  # mart_price covers market, admin-1, country, multi-country and Africa scopes;
+  # time_grain latest also matches year and year_range.
+  - measure: market_price
+    geo_grain: point
+    time_grain: latest
+    table: fct_prices
+    template: mart_price
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: market_price
+    geo_grain: admin2
+    time_grain: latest
+    table: fct_prices
+    template: mart_price
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: market_price
+    geo_grain: admin1
+    time_grain: latest
+    table: fct_prices
+    template: mart_price
+    max_geo_level: national
+    contract_sql_only: true
+
   - measure: market_price
     geo_grain: country
-    time_grain: year
+    time_grain: latest
     table: fct_prices
-    alt_table: agg_prices_country_month
-    template: mart_latest_price
+    template: mart_price
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: market_price
+    geo_grain: region
+    time_grain: latest
+    table: fct_prices
+    template: mart_price
+    max_geo_level: national
+    contract_sql_only: true
+
+  - measure: market_price
+    geo_grain: africa
+    time_grain: latest
+    table: fct_prices
+    template: mart_price
     max_geo_level: national
     contract_sql_only: true
 

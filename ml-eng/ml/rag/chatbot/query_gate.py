@@ -19,6 +19,8 @@ from ml.rag.chatbot.answer_language import (
 from ml.rag.chatbot.assistant_identity import META_ANSWER_FOOTER
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.product_knowledge import is_help_query, is_product_query
+from ml.rag.chatbot.agri_entities import CROP_ENTITY_RE
+from ml.rag.chatbot.query_decomposer import _extract_countries
 
 SocialKind = Literal["greeting", "out_of_scope"]
 SocialSubKind = Literal["greeting", "thanks", "bye"]
@@ -194,6 +196,77 @@ _AG_SUBSTANCE_RE = re.compile(
 )
 
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+
+# Places outside Africa. A question scoped only to these is outside OpenTrace's
+# mandate, so it must not fall back to the profile country.
+_NON_AFRICAN_PLACE_RE = re.compile(
+    r"\b(?:"
+    r"france|germany|spain|italy|portugal|greece|albania|netherlands|belgium|poland|ukraine|russia|"
+    r"united\s+kingdom|britain|england|ireland|sweden|norway|denmark|finland|austria|switzerland|"
+    r"romania|hungary|europe|european\s+union|"
+    r"united\s+states|usa|canada|mexico|brazil|argentina|peru|colombia|"
+    r"iowa|illinois|nebraska|kansas|california|texas|minnesota|indiana|ohio|"
+    r"china|japan|korea|india|pakistan|bangladesh|indonesia|vietnam|thailand|philippines|malaysia|"
+    r"myanmar|cambodia|sri\s+lanka|nepal|iran|iraq|saudi\s+arabia|israel|syria|yemen|afghanistan|"
+    r"australia|new\s+zealand|asia|latin\s+america|south\s+america|north\s+america"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+# Crop-husbandry how-to. OpenTrace answers market questions (prices, demand,
+# what to grow or sell); field practice belongs to extension partners.
+_AGRONOMY_HOWTO_RE = re.compile(
+    r"(?:"
+    r"\bhow\s+(?:do\s+i|do\s+we|do\s+farmers|to|should\s+i|can\s+i)\s+"
+    r"(?:grow|plant|sow|cultivate|raise|irrigate|fertili[sz]e|spray|prune|weed|propagate|transplant)\b|"
+    r"\b(?:planting|seed|row|plant)\s+(?:spacing|depth|density)\b|"
+    r"\bspacing\s+(?:for|of|between)\b|"
+    r"\bfertili[sz]er\s+(?:rate|dose|dosage|application\s+rate|schedule|programme|program|plan|regime)s?\b|"
+    r"\b(?:planting|sowing|spraying|irrigation|watering)\s+(?:schedule|calendar|guide)s?\b|"
+    r"\bhow\s+much\s+(?:fertili[sz]er|urea|npk|manure)\b|"
+    r"\b(?:control|treat|get\s+rid\s+of|kill)\s+(?:pests?|weeds?|fall\s+armyworm|armyworms?|aphids?|locusts?|blight)\b|"
+    r"\bpest\s+control\s+(?:for|in|on)\b"
+    r")",
+    re.IGNORECASE,
+)
+_MARKET_CUE_RE = re.compile(
+    r"\b(?:price|prices|market|markets|demand|sell|selling|profit|profitable|export|import|cost|costs|trade)\b",
+    re.IGNORECASE,
+)
+
+_AGRONOMY_REDIRECT_ANSWER = (
+    "OpenTrace focuses on market conditions: prices, demand, and what to grow or sell. "
+    "Field practice such as planting, spacing, fertiliser rates, and pest control is covered "
+    "by extension services and research partners. I can help with the market side instead, "
+    "for example the latest {crop} price and its trend in your country, or where demand is strongest."
+)
+
+
+def is_agronomy_howto_query(query: str) -> bool:
+    """True for crop-husbandry how-to questions with no market angle."""
+    q = query or ""
+    return bool(_AGRONOMY_HOWTO_RE.search(q)) and not _MARKET_CUE_RE.search(q)
+
+
+def agronomy_redirect_answer(query: str) -> str:
+    crop = CROP_ENTITY_RE.search(query or "")
+    return _with_footer(_AGRONOMY_REDIRECT_ANSWER.format(crop=crop.group(0).lower() if crop else "crop"))
+
+
+def non_african_places(query: str) -> list[str]:
+    """Non-African places named in the query, in order of appearance."""
+    seen: list[str] = []
+    for m in _NON_AFRICAN_PLACE_RE.finditer(query or ""):
+        place = m.group(0).strip()
+        if place.lower() not in (p.lower() for p in seen):
+            seen.append(place)
+    return seen
+
+
+def is_non_african_scope_query(query: str) -> bool:
+    """True when the query names only places outside Africa."""
+    return bool(non_african_places(query)) and not _extract_countries(query or "")
 
 _GREETING_ANSWER = (
     "Hello — I am Ask ADZA, OpenTrace Africa's natural-language interface. "
@@ -421,7 +494,7 @@ def early_non_rag_route(raw_query: str) -> EarlyRoute | None:
         return "product"
     if is_greeting_query(q):
         return "greeting"
-    if is_out_of_scope_query(q, None):
+    if is_out_of_scope_query(q, None) or is_non_african_scope_query(q) or is_agronomy_howto_query(q):
         return "out_of_scope"
     return None
 
@@ -519,6 +592,8 @@ def generate_social_answer(
     Prefer static per-language templates; tiny LLM only when no template exists.
     """
     lang = (answer_lang or detect_answer_language(query)).strip().lower()
+    if kind == "out_of_scope" and is_english_answer_lang(lang) and is_agronomy_howto_query(query):
+        return agronomy_redirect_answer(query)
     key = _template_key(kind, query)
     by_lang = SOCIAL_TEMPLATES.get(lang) or {}
     template = by_lang.get(key) or (by_lang.get("greeting") if kind == "greeting" else by_lang.get("out_of_scope"))

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-DEV_TARGET_RE = re.compile(r"^landing_dev(_[a-z0-9]+)?$")
+DEV_TARGET_RE = re.compile(r"^(?:landing_dev|raw_dev)(_[a-z0-9]+)?$")
 
 # Project root (pyproject, tests/, .env): data-eng/ingestion/
 # (code lives under package/ingestion/; parents[3] skips common → ingestion → package)
@@ -61,7 +61,7 @@ def resolve_target(cli_target: str | None = None) -> str:
 
 
 def assert_target_allowed(target: str) -> None:
-    """Enforce landing_dev* unless INGEST_ALLOW_PROD=1 and CI=true."""
+    """Enforce landing_dev* or raw_dev* unless INGEST_ALLOW_PROD=1 and CI=true."""
     if DEV_TARGET_RE.match(target):
         return
     allow_prod = _truthy(os.environ.get("INGEST_ALLOW_PROD"))
@@ -70,7 +70,7 @@ def assert_target_allowed(target: str) -> None:
         return
     raise TargetGuardError(
         f"Target dataset {target!r} is not allowed. "
-        f"Local/dev runs must use landing_dev (or landing_dev_<user>). "
+        f"Local/dev runs must use landing_dev or raw_dev (or landing_dev_<user> / raw_dev_<user>). "
         f"Writing to {target!r} requires both INGEST_ALLOW_PROD=1 and CI=true. "
         f"(Current: INGEST_ALLOW_PROD={os.environ.get('INGEST_ALLOW_PROD')!r}, "
         f"CI={os.environ.get('CI')!r})"

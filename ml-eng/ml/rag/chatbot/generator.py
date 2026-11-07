@@ -45,6 +45,7 @@ from ml.rag.chatbot.answer_language import (
     looks_like_degenerate_repetition,
 )
 from ml.rag.chatbot.answer_outcome import decide_outcome, gap_answer
+from ml.rag.chatbot.bq_user_messages import scrub_spoken_answer
 from ml.rag.chatbot.citation_pack import (
     _KNOWN_ANALYTICAL_HEADINGS,
     _looks_like_body_prose,
@@ -65,7 +66,7 @@ from ml.rag.chatbot.evidence_kinds import (
     source_kind,
 )
 from ml.rag.chatbot.export_intent import want_inline_citations
-from ml.rag.chatbot.geo_iso3 import countries_named_in_text
+from ml.rag.chatbot.geo_iso3 import countries_named_in_text, name_to_iso3
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.numeric_grounding import append_unsourced_caveat, unsourced_figures
@@ -1331,6 +1332,22 @@ def _cap_acf_for_evidence_tier(acf: ACFResult, evidence_tier: EvidenceTier) -> A
     return acf
 
 
+def _safe_unsourced_figures(prose: str, cited_refs: list[Any]) -> list[str]:
+    """Flag uncited figures. A missing name must not fail the answer."""
+    try:
+        fn = unsourced_figures
+    except NameError:
+        try:
+            # Deploy skew / unbound name. Not a general import style.
+            from ml.rag.chatbot.numeric_grounding import unsourced_figures as fn
+        except Exception:
+            return []
+    try:
+        return list(fn(prose, cited_refs) or [])
+    except Exception:
+        return []
+
+
 def _cap_acf_for_unsourced_figures(acf: ACFResult, unsourced: list[str]) -> ACFResult:
     """Cap ACF when answer figures cannot be traced to cited evidence (ML-058)."""
     if not unsourced:
@@ -1681,6 +1698,7 @@ def drop_geo_conflicting(
     if not countries:
         return items
     allowed_lower = {c.casefold() for c in countries}
+    allowed_lower |= {code.casefold() for c in countries if (code := name_to_iso3(c))}
     return [it for it in items if not _geo_conflicts(it, allowed_lower)]
 
 
@@ -1767,11 +1785,14 @@ def _finalize_generation_result(
             acf = no_evidence_acf()
             acf_status = "no_citations"
 
-        # ML-058 (Sprint 2 Week 2): figures that cannot be traced to a cited
-        # source must not be presented as fact. Flag + cap rather than delete.
-        unsourced = unsourced_figures(prose, cited_refs)
+        # ML-058: figures that cannot be traced to a cited source must not be
+        # presented as fact. Flag + cap rather than delete.
+        unsourced = _safe_unsourced_figures(prose, cited_refs)
         if unsourced:
-            prose = append_unsourced_caveat(prose, unsourced)
+            try:
+                prose = append_unsourced_caveat(prose, unsourced)
+            except Exception:
+                pass
             acf = _cap_acf_for_unsourced_figures(acf, unsourced)
 
         acf = _cap_acf_for_evidence_tier(acf, evidence_tier)
@@ -1829,6 +1850,7 @@ def _finalize_generation_result(
                 "acf_config_version": acf.config_version,
             }
         )
+        prose = scrub_spoken_answer(prose)
         return GenerationResult(
             answer=prose,
             citations=citations,

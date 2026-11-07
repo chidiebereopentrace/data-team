@@ -108,7 +108,10 @@ SLOT_TEMPLATES: dict[OutputType, OutputSlots] = {
         allow_headings=frozenset(),
     ),
     "compare": OutputSlots(
-        lead="Sentence 1: who/what is higher (or ranked #1) on the metric.",
+        lead=(
+            "Sentence 1: who/what is higher (or ranked #1) on the metric; when values are in "
+            "different currencies or units, say instead that they cannot be ranked."
+        ),
         spine="Table: entity × metric(s) × year — same series per column.",
         interpretation="Gap commentary only when Context supports it.",
         implications=None,

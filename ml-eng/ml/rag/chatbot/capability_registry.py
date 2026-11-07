@@ -20,8 +20,8 @@ _MEASURE_POLICY_PATH = Path(__file__).resolve().parents[1] / "helpers" / "measur
 
 _GEO_GRAIN_TO_LEVEL: dict[str, str] = {
     "point": "point",
-    "admin2": "admin2",
-    "admin1": "admin1",
+    "admin2": "sub_national",
+    "admin1": "sub_national",
     "country": "national",
     "region": "national",
     "africa": "national",

@@ -38,3 +38,31 @@ models:
           datepart: day
           field: loaded_at
           interval: 7
+
+  - name: stg_wfp_hdx_prices
+    description: "WFP HDX country food prices, monthly, for fct_prices"
+    columns:
+      - name: country
+        tests:
+          - not_null
+      - name: market_name
+        tests:
+          - not_null
+      - name: product_name
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: source_natural_key
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'WFP_HDX_country_food_prices'
+      - name: loaded_at
+        tests:
+          - not_null

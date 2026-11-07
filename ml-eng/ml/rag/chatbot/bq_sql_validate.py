@@ -20,6 +20,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     value_samples_for_tables,
     year_column,
 )
+from ml.rag.chatbot.price_vocab import price_vocab_values
 from ml.rag.chatbot.value_index import complete_enum
 from ml.rag.helpers.mart_semantic_relationships import SEMANTIC_RELATIONSHIPS
 
@@ -980,6 +981,10 @@ def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> s
             by_col.setdefault(col.lower(), set()).update(vals)
     for col in _SHARED_DICTIONARY_COLUMNS:
         by_col.setdefault(col, set()).update(dictionary_samples_for_column(col))
+    if refs & {"fct_prices", "agg_prices_country_month"}:
+        for col in ("price_type", "price_source", "metric"):
+            if col in by_col:
+                by_col[col].update(price_vocab_values(col))
 
     def _ok(col: str, literal: str) -> bool:
         col_l = col.lower()
@@ -1069,7 +1074,7 @@ def _sql_has_product_filter(sql: str) -> bool:
     scrubbed = _strip_string_literals(sql or "").lower()
     if re.search(r"\bproduct_name\s*(=|in\s*\()", scrubbed):
         return True
-    if re.search(r"\bproduct_key\s+in\s*\(\s*select\b", scrubbed):
+    if re.search(r"\bproduct_key\s+in\s*\(", scrubbed):
         return True
     return False
 

@@ -91,7 +91,16 @@ _MARKET_PRICE_EVIDENCE_RULES = (
     "source explicitly establishes that it is current. If the date basis is loaded_at, do not "
     "present it as the market observation date. If Context has no price figure, say that no "
     "price figure is available; do not invent one. Do not give a numeric price forecast or "
-    "quantified price movement unless Context contains that forecast or movement."
+    "quantified price movement unless Context contains that forecast or movement. "
+    "Keep each product name, unit, and currency exactly as the rows label them; never average "
+    "across different units or currencies. Never call one price higher, lower, cheaper, or more "
+    "expensive than another when their currencies or units differ; report each in its own "
+    "currency and say they are not directly comparable without an exchange rate. Label the "
+    "period from the row's period_start and latest_date, not from the year asked. If a row "
+    "carries a coverage note, repeat it. "
+    "Close with one line on what the evidence means for the market: price direction or level, "
+    "any demand signal in Context, and the implication for what to grow, stock, or sell, "
+    "citing the evidence it rests on."
 )
 
 _PARTIAL_EVIDENCE_RULES = (
@@ -140,7 +149,7 @@ def _build_prompt(
     # downstream addendum is read in the context of the correct year.
     system += _current_date_block(reference_date)
     system += _EVIDENCE_INTERPRETATION_RULES
-    if re.search(r"\b(?:prices?|costs?)\b", query or "", re.IGNORECASE):
+    if re.search(r"\b(?:prices?|costs?|expensive|cheap(?:er|est)?|volatile|volatility)\b", query or "", re.IGNORECASE):
         system += _MARKET_PRICE_EVIDENCE_RULES
 
     if evidence_tier == "partial":
@@ -210,7 +219,8 @@ def _build_prompt(
 
     if mode == "fact_lookup":
         system += (
-            "\n\nFACT LOOKUP: First sentence = number/fact + unit + year + [N] when citing. "
+            "\n\nFACT LOOKUP: First sentence = what was measured (product or indicator and place) "
+            "+ number/fact + unit + period + [N] when citing. "
             "No report headings."
         )
     elif mode == "briefing":

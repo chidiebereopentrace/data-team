@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync mart_dev_tables.txt from dbt mart_dev SQL models.
+"""Sync mart_dev_rag_tables.txt (the RAG table allowlist) from dbt mart_dev SQL models.
 
 Usage (from repo root):
   python data-eng/data/local/scripts/sync_mart_dev_tables_list.py
@@ -14,7 +14,7 @@ from pathlib import Path
 DATA_ENG_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = DATA_ENG_ROOT.parent
 MART_DEV_DIR = DATA_ENG_ROOT / "dbt" / "models" / "mart_dev"
-OUT_FILE = Path(__file__).resolve().parent / "mart_dev_tables.txt"
+OUT_FILE = Path(__file__).resolve().parent / "mart_dev_rag_tables.txt"
 
 PREFIXES = ("fct_", "agg_", "dim_", "bridge_")
 SKIP_PREFIXES = ("gold_",)
@@ -73,7 +73,7 @@ def read_listed_tables(path: Path) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Sync mart_dev_tables.txt from dbt models")
+    parser = argparse.ArgumentParser(description=f"Sync {OUT_FILE.name} from dbt models")
     parser.add_argument(
         "--check",
         action="store_true",
@@ -87,13 +87,13 @@ def main() -> int:
         if listed != expected:
             missing = sorted(set(expected) - set(listed))
             extra = sorted(set(listed) - set(expected))
-            print(f"mart_dev_tables.txt out of sync with dbt ({len(listed)} listed, {len(expected)} expected)")
+            print(f"{OUT_FILE.name} out of sync with dbt ({len(listed)} listed, {len(expected)} expected)")
             if missing:
                 print(f"  missing from list: {missing}")
             if extra:
                 print(f"  extra in list: {extra}")
             return 1
-        print(f"mart_dev_tables.txt in sync ({len(expected)} tables)")
+        print(f"{OUT_FILE.name} in sync ({len(expected)} tables)")
         return 0
 
     OUT_FILE.write_text(format_table_list(expected), encoding="utf-8")

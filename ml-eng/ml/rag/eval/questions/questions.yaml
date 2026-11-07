@@ -1,0 +1,4692 @@
+- id: e001
+  question: "What was the average retail maize price in Nigeria in 2024, and in which unit is it reported?"
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - demo_safe_after_pr1
+    - wfp
+    - pinned_year
+  notes: Classic WFP price path; stresses bind_compiler + currency/unit.
+- id: e002
+  question: Report the mean wholesale rice price for Kenya across all markets monitored in 2023.
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Government
+  tags:
+    - demo_safe_after_pr1
+    - wfp
+    - pinned_year
+  notes: Pinned-year rice; allowlist skip must let SQL through.
+- id: e003
+  question: What was the national average sorghum price in Ethiopia during 2022?
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - sorghum
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - wfp
+    - pinned_year
+  notes: Sorghum coverage in Horn of Africa markets.
+- id: e004
+  question: Give me the average cassava price observed in Ghanaian markets in 2021.
+  lang: en
+  country: Ghana
+  countries:
+    - Ghana
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+      - cassava
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - wfp
+    - pinned_year
+  notes: Root crop price; often sparse market coverage.
+- id: e005
+  question: What was the average millet price in Niger in 2023?
+  lang: en
+  country: Niger
+  countries:
+    - Niger
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+      - millet
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - wfp
+    - sahel
+    - pinned_year
+  notes: Sahel staple; tests country+crop binding.
+- id: e006
+  question: Average tomato price in Nigerian markets for calendar year 2024?
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - tomato
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - wfp
+    - horticulture
+    - pinned_year
+  notes: Horticulture commodity; may have thinner series.
+- id: e007
+  question: What was the mean onion price in Senegal in 2022?
+  lang: en
+  country: Senegal
+  countries:
+    - Senegal
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Senegal
+      - onion
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Senegal
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - wfp
+    - pinned_year
+  notes: Onion is a high-volatility hort crop.
+- id: e008
+  question: Report average groundnut (peanut) prices in Mali for 2023.
+  lang: en
+  country: Mali
+  countries:
+    - Mali
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Mali
+      - groundnut
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Mali
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - wfp
+    - pinned_year
+  notes: Oilseed staple in West Africa.
+- id: e009
+  question: What was the average wheat price in Ethiopia in 2020?
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - wheat
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - wfp
+    - pinned_year
+    - historical
+  notes: Pre-conflict baseline year for wheat.
+- id: e010
+  question: Average beans price in Uganda markets during 2024?
+  lang: en
+  country: Uganda
+  countries:
+    - Uganda
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Uganda
+      - beans
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Uganda
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - wfp
+    - pinned_year
+  notes: Legume price series.
+- id: e011
+  question: What was the national average maize price in Tanzania in 2023?
+  lang: en
+  country: Tanzania
+  countries:
+    - Tanzania
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Tanzania
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Tanzania
+    plan_type: Integrated
+    category: Government
+  tags:
+    - demo_safe_after_pr1
+    - wfp
+    - pinned_year
+  notes: East Africa maize staple.
+- id: e012
+  question: "Give the average rice price in Côte d'Ivoire for 2022."
+  lang: en
+  country: "Côte d'Ivoire"
+  countries:
+    - "Côte d'Ivoire"
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - "Côte d'Ivoire"
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: "Côte d'Ivoire"
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - wfp
+    - pinned_year
+  notes: Francophone West Africa rice.
+- id: e013
+  question: What was the average maize price in Zambia in 2021?
+  lang: en
+  country: Zambia
+  countries:
+    - Zambia
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Zambia
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Zambia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - wfp
+    - pinned_year
+  notes: Southern Africa maize.
+- id: e014
+  question: Average sorghum price in Burkina Faso during 2024?
+  lang: en
+  country: Burkina Faso
+  countries:
+    - Burkina Faso
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Burkina Faso
+      - sorghum
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Burkina Faso
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - wfp
+    - sahel
+    - pinned_year
+  notes: Sahel sorghum under insecurity.
+- id: e015
+  question: What was the mean cassava price in Cameroon in 2023?
+  lang: en
+  country: Cameroon
+  countries:
+    - Cameroon
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Cameroon
+      - cassava
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Cameroon
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - wfp
+    - pinned_year
+  notes: Central Africa root crop.
+- id: e016
+  question: Report average maize prices in Malawi for 2022.
+  lang: en
+  country: Malawi
+  countries:
+    - Malawi
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Malawi
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Malawi
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - wfp
+    - pinned_year
+  notes: Malawi maize is a food-security sentinel.
+- id: e017
+  question: What was the average rice price in Madagascar in 2021?
+  lang: en
+  country: Madagascar
+  countries:
+    - Madagascar
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Madagascar
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Madagascar
+    plan_type: Integrated
+    category: Government
+  tags:
+    - wfp
+    - pinned_year
+  notes: Island rice markets; may be sparse.
+- id: e018
+  question: Average palm oil price in Nigerian markets in 2023?
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - palm
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - wfp
+    - pinned_year
+    - oil
+  notes: Processed/oil commodity naming.
+- id: e019
+  question: What was the average maize price in Rwanda in 2024?
+  lang: en
+  country: Rwanda
+  countries:
+    - Rwanda
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Rwanda
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Rwanda
+    plan_type: Integrated
+    category: Government
+  tags:
+    - wfp
+    - pinned_year
+  notes: Small-country maize series.
+- id: e020
+  question: Give me the average sorghum price in Sudan for 2020.
+  lang: en
+  country: Sudan
+  countries:
+    - Sudan
+  category: price
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Sudan
+      - sorghum
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Sudan
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - wfp
+    - pinned_year
+    - historical
+  notes: Pre-escalation baseline; conflict-sensitive.
+- id: e021
+  question: Compare average maize prices in Nigeria versus Ghana in 2023. Which was higher and by roughly what percent?
+  lang: en
+  country: null
+  countries:
+    - Nigeria
+    - Ghana
+  category: compare
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - Ghana
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - compare
+    - wfp
+    - pinned_year
+  notes: Cross-country price comparison; multi-constraint.
+- id: e022
+  question: "How did Kenya's average rice price in 2024 compare with 2023 — year-over-year percent change?"
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: compare
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: trend
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - yoY
+    - wfp
+    - pinned_year
+  notes: YoY requires two annual aggregates.
+- id: e023
+  question: Rank the top 5 Nigerian markets by average maize price in 2023.
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: compare
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - ranking
+    - wfp
+    - markets
+  notes: Market-level ranking stresses GROUP BY + ORDER BY.
+- id: e024
+  question: "Which West African country among Nigeria, Ghana, and Senegal had the highest average maize price in 2022?"
+  lang: en
+  country: null
+  countries:
+    - Nigeria
+    - Ghana
+    - Senegal
+  category: compare
+  complexity: expert
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - Ghana
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - compare
+    - multi_country
+    - wfp
+  notes: Three-country ranking.
+- id: e025
+  question: What was the month-to-month volatility (coefficient of variation) of maize prices in Ethiopia in 2023?
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: compare
+  complexity: expert
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - volatility
+    - wfp
+  notes: Statistical aggregation beyond simple AVG.
+- id: e026
+  question: Compare cassava prices in Ghana vs Nigeria for 2024. Report both averages and the gap.
+  lang: en
+  country: null
+  countries:
+    - Ghana
+    - Nigeria
+  category: compare
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+      - Nigeria
+      - cassava
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - compare
+    - wfp
+    - demo_safe_after_pr1
+  notes: Root-crop cross-country.
+- id: e027
+  question: "Did sorghum prices in Niger rise or fall between 2021 and 2023, and by how much on average?"
+  lang: en
+  country: Niger
+  countries:
+    - Niger
+  category: compare
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+      - sorghum
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: trend
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - yoY
+    - multi_year
+    - sahel
+  notes: "Multi-year trend, not single year."
+- id: e028
+  question: "Which crop — maize, rice, or sorghum — was most expensive on average in Nigerian markets in 2023?"
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: compare
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - ranking
+    - multi_crop
+    - wfp
+  notes: Cross-commodity ranking within one country.
+- id: e029
+  question: Compare average wheat prices in Ethiopia between 2020 and 2022.
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: compare
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - wheat
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: trend
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - yoY
+    - conflict_context
+  notes: Conflict-period price shift.
+- id: e030
+  question: What was the price spread between the cheapest and most expensive maize markets in Tanzania in 2023?
+  lang: en
+  country: Tanzania
+  countries:
+    - Tanzania
+  category: compare
+  complexity: expert
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Tanzania
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Tanzania
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - spread
+    - markets
+    - wfp
+  notes: MIN/MAX market spread.
+- id: e031
+  question: How do average maize prices in Zambia and Malawi compare for 2022?
+  lang: en
+  country: null
+  countries:
+    - Zambia
+    - Malawi
+  category: compare
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Zambia
+      - Malawi
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Zambia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - compare
+    - southern_africa
+  notes: Neighboring Southern Africa maize.
+- id: e032
+  question: "Year-over-year change in average rice prices in Côte d'Ivoire from 2021 to 2022?"
+  lang: en
+  country: "Côte d'Ivoire"
+  countries:
+    - "Côte d'Ivoire"
+  category: compare
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - "Côte d'Ivoire"
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: trend
+  user_profile:
+    country: "Côte d'Ivoire"
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - yoY
+    - wfp
+  notes: Francophone YoY.
+- id: e033
+  question: "Rank Uganda, Rwanda, and Kenya by average beans price in 2024 (lowest to highest)."
+  lang: en
+  country: null
+  countries:
+    - Uganda
+    - Rwanda
+    - Kenya
+  category: compare
+  complexity: expert
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Uganda
+      - Rwanda
+      - beans
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Uganda
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - ranking
+    - multi_country
+    - eac
+  notes: EAC three-country beans.
+- id: e034
+  question: Was maize more volatile than rice in Nigerian markets during 2023 (use monthly CV if available)?
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: compare
+  complexity: expert
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - volatility
+    - multi_crop
+  notes: Cross-commodity volatility.
+- id: e035
+  question: "What was Nigeria's total maize production in 2023 (tonnes)?"
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - faostat
+    - pinned_year
+  notes: Production / area harvested warehouse path.
+- id: e036
+  question: "Report Kenya's rice production volume for 2022."
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - faostat
+    - pinned_year
+  notes: Production / area harvested warehouse path.
+- id: e037
+  question: How many hectares of cassava were harvested in Ghana in 2021?
+  lang: en
+  country: Ghana
+  countries:
+    - Ghana
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+      - cassava
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - area_harvested
+    - faostat
+  notes: Production / area harvested warehouse path.
+- id: e038
+  question: "What was Ethiopia's wheat production in 2020?"
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - wheat
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - faostat
+    - historical
+  notes: Production / area harvested warehouse path.
+- id: e039
+  question: Tanzania maize production in 2024 — total output if available.
+  lang: en
+  country: Tanzania
+  countries:
+    - Tanzania
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Tanzania
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Tanzania
+    plan_type: Integrated
+    category: Government
+  tags:
+    - faostat
+    - pinned_year
+  notes: Production / area harvested warehouse path.
+- id: e040
+  question: Compare area harvested for sorghum in Niger versus Mali in 2022.
+  lang: en
+  country: null
+  countries:
+    - Niger
+    - Mali
+  category: production
+  complexity: hard
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+      - sorghum
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - compare
+    - area_harvested
+    - sahel
+  notes: Production / area harvested warehouse path.
+- id: e041
+  question: "What was Uganda's beans production in 2023?"
+  lang: en
+  country: Uganda
+  countries:
+    - Uganda
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Uganda
+      - beans
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Uganda
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - faostat
+  notes: Production / area harvested warehouse path.
+- id: e042
+  question: "Côte d'Ivoire cocoa production for 2021 — official estimate."
+  lang: en
+  country: "Côte d'Ivoire"
+  countries:
+    - "Côte d'Ivoire"
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - "Côte d'Ivoire"
+      - cocoa
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: "Côte d'Ivoire"
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - faostat
+    - cash_crop
+  notes: Production / area harvested warehouse path.
+- id: e043
+  question: Ethiopia coffee production volume in 2022?
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - coffee
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - faostat
+    - cash_crop
+  notes: Production / area harvested warehouse path.
+- id: e044
+  question: How much millet did Burkina Faso produce in 2023?
+  lang: en
+  country: Burkina Faso
+  countries:
+    - Burkina Faso
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Burkina Faso
+      - millet
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Burkina Faso
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - faostat
+    - sahel
+  notes: Production / area harvested warehouse path.
+- id: e045
+  question: Zambia maize production in 2022 versus 2021 — absolute tonnes for both years.
+  lang: en
+  country: Zambia
+  countries:
+    - Zambia
+  category: production
+  complexity: hard
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Zambia
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Zambia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - yoY
+    - faostat
+  notes: Production / area harvested warehouse path.
+- id: e046
+  question: "What was Senegal's groundnut production in 2020?"
+  lang: en
+  country: Senegal
+  countries:
+    - Senegal
+  category: production
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Senegal
+      - groundnut
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Senegal
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - faostat
+  notes: Production / area harvested warehouse path.
+- id: e047
+  question: What was maize yield (tonnes per hectare) in Nigeria in 2023?
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: yield
+  complexity: medium
+  expect:
+    measure: yield
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - yield
+    - faostat
+  notes: Yield = production/area; stresses derived metric.
+- id: e048
+  question: Kenya rice yield in 2022 — t/ha if available.
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: yield
+  complexity: medium
+  expect:
+    measure: yield
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - yield
+    - faostat
+  notes: Yield = production/area; stresses derived metric.
+- id: e049
+  question: "Compare maize yields in Ghana and Côte d'Ivoire for 2021."
+  lang: en
+  country: null
+  countries:
+    - Ghana
+    - "Côte d'Ivoire"
+  category: yield
+  complexity: hard
+  expect:
+    measure: yield
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+      - "Côte d'Ivoire"
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Government
+  tags:
+    - yield
+    - compare
+  notes: Yield = production/area; stresses derived metric.
+- id: e050
+  question: Ethiopia wheat yield in 2020 (t/ha).
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: yield
+  complexity: medium
+  expect:
+    measure: yield
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - wheat
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - yield
+    - historical
+  notes: Yield = production/area; stresses derived metric.
+- id: e051
+  question: How did Tanzania maize yield change between 2020 and 2023?
+  lang: en
+  country: Tanzania
+  countries:
+    - Tanzania
+  category: yield
+  complexity: hard
+  expect:
+    measure: yield
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Tanzania
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Tanzania
+    plan_type: Integrated
+    category: Government
+  tags:
+    - yield
+    - yoY
+    - multi_year
+  notes: Yield = production/area; stresses derived metric.
+- id: e052
+  question: Sorghum yield in Niger for 2022?
+  lang: en
+  country: Niger
+  countries:
+    - Niger
+  category: yield
+  complexity: medium
+  expect:
+    measure: yield
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+      - sorghum
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - yield
+    - sahel
+  notes: Yield = production/area; stresses derived metric.
+- id: e053
+  question: What was cassava yield in Ghana in 2023?
+  lang: en
+  country: Ghana
+  countries:
+    - Ghana
+  category: yield
+  complexity: medium
+  expect:
+    measure: yield
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+      - cassava
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - yield
+  notes: Yield = production/area; stresses derived metric.
+- id: e054
+  question: Beans yield in Uganda vs Rwanda in 2024 — which was higher?
+  lang: en
+  country: null
+  countries:
+    - Uganda
+    - Rwanda
+  category: yield
+  complexity: hard
+  expect:
+    measure: yield
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Uganda
+      - Rwanda
+      - beans
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Uganda
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - yield
+    - compare
+    - eac
+  notes: Yield = production/area; stresses derived metric.
+- id: e055
+  question: "Summarize Kenya's food security situation in 2023 using available IPC or equivalent assessments."
+  lang: en
+  country: Kenya
+  countries: Doc+warehouse synthesis; may mix narrative.
+  category: food_security
+  complexity: hard
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - ipc
+    - doc_synthesis
+  notes: Food security / IPC — often document synthesis.
+- id: e056
+  question: How many people in Ethiopia were estimated in Crisis (IPC Phase 3) or worse in 2022?
+  lang: en
+  country: Ethiopia
+  countries: IPC caseload — warehouse if mart exists.
+  category: food_security
+  complexity: hard
+  expect:
+    measure: food_security
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - ipc
+    - warehouse_or_doc
+  notes: Food security / IPC — often document synthesis.
+- id: e057
+  question: What were the main drivers of food insecurity in Somalia in 2023?
+  lang: en
+  country: Somalia
+  countries: Narrative synthesis from FS docs.
+  category: food_security
+  complexity: hard
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Somalia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Somalia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - drivers
+    - doc_synthesis
+  notes: Food security / IPC — often document synthesis.
+- id: e058
+  question: Compare food insecurity severity between Niger and Burkina Faso in 2024.
+  lang: en
+  country: null
+  countries:
+    - Niger
+    - Burkina Faso
+  category: food_security
+  complexity: expert
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: Government
+  tags:
+    - compare
+    - sahel
+    - ipc
+  notes: Food security / IPC — often document synthesis.
+- id: e059
+  question: "Is northern Nigeria's food security outlook for 2023 described as deteriorating or improving in available reports?"
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: food_security
+  complexity: hard
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - outlook
+    - doc_synthesis
+  notes: Food security / IPC — often document synthesis.
+- id: e060
+  question: "What share of Sudan's population faced acute food insecurity in 2020 (latest pre-escalation figure if needed)?"
+  lang: en
+  country: Sudan
+  countries:
+    - Sudan
+  category: food_security
+  complexity: hard
+  expect:
+    measure: food_security
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Sudan
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Sudan
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - ipc
+    - historical
+  notes: Food security / IPC — often document synthesis.
+- id: e061
+  question: "Summarize Malawi's lean-season food security risks cited for 2023."
+  lang: en
+  country: Malawi
+  countries:
+    - Malawi
+  category: food_security
+  complexity: medium
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Malawi
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Malawi
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - lean_season
+    - doc_synthesis
+  notes: Food security / IPC — often document synthesis.
+- id: e062
+  question: Which regions of DRC were highlighted as most food-insecure in 2022 assessments?
+  lang: en
+  country: DRC
+  countries:
+    - DRC
+  category: food_security
+  complexity: hard
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - DRC
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: DRC
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - subnational
+    - doc_synthesis
+  notes: Food security / IPC — often document synthesis.
+- id: e063
+  question: "How did Madagascar's food security situation evolve between 2021 and 2022 according to available sources?"
+  lang: en
+  country: Madagascar
+  countries:
+    - Madagascar
+  category: food_security
+  complexity: hard
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Madagascar
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: trend
+  user_profile:
+    country: Madagascar
+    plan_type: Integrated
+    category: Government
+  tags:
+    - multi_year
+    - doc_synthesis
+  notes: Food security / IPC — often document synthesis.
+- id: e064
+  question: What IPC phase classification applied to most of South Sudan in late 2023?
+  lang: en
+  country: South Sudan
+  countries:
+    - South Sudan
+  category: food_security
+  complexity: hard
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - South Sudan
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: South Sudan
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - ipc
+    - doc_synthesis
+  notes: Food security / IPC — often document synthesis.
+- id: e065
+  question: "Provide a brief synthesis of Ghana's food security status in 2024 from OpenTrace sources."
+  lang: en
+  country: Ghana
+  countries:
+    - Ghana
+  category: food_security
+  complexity: medium
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Government
+  tags:
+    - doc_synthesis
+  notes: Food security / IPC — often document synthesis.
+- id: e066
+  question: "What hunger hotspots in the Sahel (Mali, Niger, Burkina Faso) were flagged for 2023?"
+  lang: en
+  country: null
+  countries:
+    - Mali
+    - Niger
+    - Burkina Faso
+  category: food_security
+  complexity: expert
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Mali
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Mali
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - sahel
+    - multi_country
+    - doc_synthesis
+  notes: Food security / IPC — often document synthesis.
+- id: e067
+  question: "What was average rainfall in Kenya during the 2023 long rains season, if available?"
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: climate
+  complexity: hard
+  expect:
+    measure: rainfall
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - rainfall
+    - seasonal
+  notes: Climate / rainfall / drought stress path.
+- id: e068
+  question: "Summarize drought conditions affecting Ethiopia's agricultural season in 2022."
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: climate
+  complexity: hard
+  expect:
+    measure: rainfall
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - drought
+    - doc_synthesis
+  notes: Climate / rainfall / drought stress path.
+- id: e069
+  question: How did rainfall anomalies in Somalia in 2021 relate to reported crop stress?
+  lang: en
+  country: Somalia
+  countries:
+    - Somalia
+  category: climate
+  complexity: expert
+  expect:
+    measure: rainfall
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Somalia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Somalia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - rainfall
+    - multi_hop_hint
+    - doc_synthesis
+  notes: Climate / rainfall / drought stress path.
+- id: e070
+  question: Was 2023 a below-average rainfall year for Niger according to available climate summaries?
+  lang: en
+  country: Niger
+  countries:
+    - Niger
+  category: climate
+  complexity: medium
+  expect:
+    measure: rainfall
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: Government
+  tags:
+    - rainfall
+    - sahel
+  notes: Climate / rainfall / drought stress path.
+- id: e071
+  question: "Compare rainfall outlook notes for Ghana vs Côte d'Ivoire for the 2022 season."
+  lang: en
+  country: null
+  countries:
+    - Ghana
+    - "Côte d'Ivoire"
+  category: climate
+  complexity: hard
+  expect:
+    measure: rainfall
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - compare
+    - rainfall
+  notes: Climate / rainfall / drought stress path.
+- id: e072
+  question: What climate shocks affected Malawi maize production in 2023?
+  lang: en
+  country: Malawi
+  countries:
+    - Malawi
+  category: climate
+  complexity: hard
+  expect:
+    measure: rainfall
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Malawi
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Malawi
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - climate_shock
+    - maize
+  notes: Climate / rainfall / drought stress path.
+- id: e073
+  question: Describe reported drought impacts on pastoral areas of Kenya in 2021–2022.
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: climate
+  complexity: hard
+  expect:
+    measure: rainfall
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - drought
+    - pastoral
+    - doc_synthesis
+  notes: Climate / rainfall / drought stress path.
+- id: e074
+  question: "Any available indicator of rainfall deficit in Sudan's main cropping zones in 2020?"
+  lang: en
+  country: Sudan
+  countries:
+    - Sudan
+  category: climate
+  complexity: hard
+  expect:
+    measure: rainfall
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Sudan
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Sudan
+    plan_type: Integrated
+    category: Government
+  tags:
+    - rainfall
+    - historical
+  notes: Climate / rainfall / drought stress path.
+- id: e075
+  question: How is the 2024 rainfall season characterized for Tanzania in OpenTrace climate notes?
+  lang: en
+  country: Tanzania
+  countries:
+    - Tanzania
+  category: climate
+  complexity: medium
+  expect:
+    measure: rainfall
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Tanzania
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Tanzania
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - rainfall
+    - latest_season
+  notes: Climate / rainfall / drought stress path.
+- id: e076
+  question: Summarize flood or excess-rain impacts on Nigerian agriculture mentioned for 2022.
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: climate
+  complexity: hard
+  expect:
+    measure: rainfall
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - flood
+    - doc_synthesis
+  notes: Climate / rainfall / drought stress path.
+- id: e077
+  question: "What was Nigeria's maize import volume in 2022, if recorded in the warehouse?"
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: trade
+  complexity: hard
+  expect:
+    measure: trade
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - trade
+    - imports
+  notes: Trade / food balance path.
+- id: e078
+  question: "Report Kenya's rice import dependence indicators for 2023."
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: trade
+  complexity: hard
+  expect:
+    measure: trade
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - trade
+    - import_dependence
+    - doc_or_wh
+  notes: Trade / food balance path.
+- id: e079
+  question: How much wheat did Ethiopia import in 2021?
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: trade
+  complexity: medium
+  expect:
+    measure: trade
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - wheat
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - trade
+    - imports
+  notes: Trade / food balance path.
+- id: e080
+  question: "Compare cocoa export volumes for Côte d'Ivoire and Ghana in 2022."
+  lang: en
+  country: null
+  countries:
+    - "Côte d'Ivoire"
+    - Ghana
+  category: trade
+  complexity: expert
+  expect:
+    measure: trade
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - "Côte d'Ivoire"
+      - Ghana
+      - cocoa
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: "Côte d'Ivoire"
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - trade
+    - exports
+    - compare
+  notes: Trade / food balance path.
+- id: e081
+  question: "What does Senegal's cereal food balance look like for 2020 (imports vs domestic production)?"
+  lang: en
+  country: Senegal
+  countries:
+    - Senegal
+  category: trade
+  complexity: expert
+  expect:
+    measure: trade
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Senegal
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Senegal
+    plan_type: Integrated
+    category: Government
+  tags:
+    - food_balance
+    - multi_hop_hint
+  notes: Trade / food balance path.
+- id: e082
+  question: Tanzania maize export or surplus notes for 2023?
+  lang: en
+  country: Tanzania
+  countries:
+    - Tanzania
+  category: trade
+  complexity: hard
+  expect:
+    measure: trade
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Tanzania
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Tanzania
+    plan_type: Integrated
+    category: Government
+  tags:
+    - trade
+    - exports
+  notes: Trade / food balance path.
+- id: e083
+  question: Uganda coffee export volume in 2022?
+  lang: en
+  country: Uganda
+  countries:
+    - Uganda
+  category: trade
+  complexity: medium
+  expect:
+    measure: trade
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Uganda
+      - coffee
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Uganda
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - trade
+    - exports
+    - cash_crop
+  notes: Trade / food balance path.
+- id: e084
+  question: Did Malawi run a maize deficit requiring imports in 2022 according to available balance sheets?
+  lang: en
+  country: Malawi
+  countries:
+    - Malawi
+  category: trade
+  complexity: hard
+  expect:
+    measure: trade
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Malawi
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Malawi
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - food_balance
+    - imports
+  notes: Trade / food balance path.
+- id: e085
+  question: South Africa maize export performance in 2023 — any warehouse or documented figures?
+  lang: en
+  country: South Africa
+  countries:
+    - South Africa
+  category: trade
+  complexity: hard
+  expect:
+    measure: trade
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - South Africa
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: South Africa
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - trade
+    - exports
+  notes: Trade / food balance path.
+- id: e086
+  question: "What were Cameroon's cassava or staple trade flows highlighted for 2021?"
+  lang: en
+  country: Cameroon
+  countries:
+    - Cameroon
+  category: trade
+  complexity: hard
+  expect:
+    measure: trade
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Cameroon
+      - cassava
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Cameroon
+    plan_type: Integrated
+    category: Government
+  tags:
+    - trade
+    - doc_synthesis
+  notes: Trade / food balance path.
+- id: e087
+  question: "Summarize Nigeria's fertilizer subsidy or input support policies described in available OpenTrace documents for 2022–2024."
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: policy
+  complexity: expert
+  expect:
+    measure: fertilizer
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - policy
+    - fertilizer
+    - doc_synthesis
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e088
+  question: What agricultural roadmap or NAP priorities does Kenya emphasize in recent strategy documents?
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: policy
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Government
+  tags:
+    - policy
+    - roadmap
+    - doc_synthesis
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e089
+  question: "Describe Ghana's Planting for Food and Jobs or successor input programmes as documented."
+  lang: en
+  country: Ghana
+  countries:
+    - Ghana
+  category: policy
+  complexity: hard
+  expect:
+    measure: fertilizer
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - policy
+    - subsidy
+    - doc_synthesis
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e090
+  question: Any documented fertilizer price or subsidy levels for Ethiopia around 2021–2022?
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: policy
+  complexity: hard
+  expect:
+    measure: fertilizer
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - fertilizer
+    - doc_or_wh
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e091
+  question: What food security policy responses did Somalia pursue during the 2022 drought according to available briefs?
+  lang: en
+  country: Somalia
+  countries:
+    - Somalia
+  category: policy
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Somalia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Somalia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - policy
+    - drought_response
+    - doc_synthesis
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e092
+  question: "Summarize Senegal's cereal self-sufficiency or import-substitution policy notes."
+  lang: en
+  country: Senegal
+  countries:
+    - Senegal
+  category: policy
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Senegal
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Senegal
+    plan_type: Integrated
+    category: Government
+  tags:
+    - policy
+    - doc_synthesis
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e093
+  question: "How do Uganda's agricultural extension or input policies address smallholder maize?"
+  lang: en
+  country: Uganda
+  countries:
+    - Uganda
+  category: policy
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Uganda
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Uganda
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - policy
+    - maize
+    - doc_synthesis
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e094
+  question: What subsidy or market interventions for maize are mentioned for Zambia in 2022–2023 docs?
+  lang: en
+  country: Zambia
+  countries:
+    - Zambia
+  category: policy
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Zambia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Zambia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - policy
+    - subsidy
+    - maize
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e095
+  question: "Outline Côte d'Ivoire's cocoa sector regulation themes in available OpenTrace materials."
+  lang: en
+  country: "Côte d'Ivoire"
+  countries:
+    - "Côte d'Ivoire"
+  category: policy
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - "Côte d'Ivoire"
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: "Côte d'Ivoire"
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - policy
+    - cocoa
+    - doc_synthesis
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e096
+  question: Any documented fertilizer access constraints for Nigerien farmers in 2023 reports?
+  lang: en
+  country: Niger
+  countries:
+    - Niger
+  category: policy
+  complexity: hard
+  expect:
+    measure: fertilizer
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - fertilizer
+    - sahel
+    - doc_synthesis
+  notes: Policy / fertilizer / subsidy — primarily document synthesis.
+- id: e097
+  question: What livestock production or herd indicators are available for Ethiopia in 2022?
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: livestock
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - livestock
+    - doc_or_wh
+  notes: Livestock / pastoral path — often sparse warehouse.
+- id: e098
+  question: Summarize pastoral livelihood stress in Kenya during the 2021–2022 drought.
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: livestock
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - livestock
+    - pastoral
+    - drought
+  notes: Livestock / pastoral path — often sparse warehouse.
+- id: e099
+  question: Any warehouse figures for cattle or small ruminant numbers in Nigeria around 2020–2021?
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: livestock
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - livestock
+    - faostat
+  notes: Livestock / pastoral path — often sparse warehouse.
+- id: e100
+  question: How did conflict affect livestock markets in Niger in 2023 according to available sources?
+  lang: en
+  country: Niger
+  countries:
+    - Niger
+  category: livestock
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - livestock
+    - conflict
+    - sahel
+  notes: Livestock / pastoral path — often sparse warehouse.
+- id: e101
+  question: "Describe Somalia's livestock export or pastoral economy notes for 2022."
+  lang: en
+  country: Somalia
+  countries:
+    - Somalia
+  category: livestock
+  complexity: hard
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Somalia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Somalia
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - livestock
+    - trade
+    - doc_synthesis
+  notes: Livestock / pastoral path — often sparse warehouse.
+- id: e102
+  question: Compare pastoral food-security risks for Kenya and Ethiopia in 2022.
+  lang: en
+  country: null
+  countries:
+    - Kenya
+    - Ethiopia
+  category: livestock
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: comparison
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - livestock
+    - compare
+    - multi_country
+  notes: Livestock / pastoral path — often sparse warehouse.
+- id: e103
+  question: "Relate Nigeria's 2023 maize production to average maize market prices in the same year — is higher output associated with lower prices in the data?"
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - multi_hop
+    - production
+    - price
+  notes: Joins production + price measures.
+- id: e104
+  question: "For Kenya in 2022, combine rainfall/drought notes with maize price levels — did drought coincide with price spikes?"
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - multi_hop
+    - climate
+    - price
+  notes: Climate narrative + price warehouse.
+- id: e105
+  question: "Compare Ghana's cassava production (2021) with average cassava prices (2021) and comment on supply-price consistency."
+  lang: en
+  country: Ghana
+  countries:
+    - Ghana
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - multi_hop
+    - production
+    - price
+  notes: Two warehouse measures.
+- id: e106
+  question: "Using Ethiopia 2020–2022, did wheat import volumes rise when domestic wheat production fell?"
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - multi_hop
+    - trade
+    - production
+  notes: Trade + production conditional.
+- id: e107
+  question: "For Niger 2023: summarize millet prices, production if available, and food-security stress in one brief."
+  lang: en
+  country: Niger
+  countries:
+    - Niger
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - multi_hop
+    - sahel
+    - synthesis
+  notes: Three-concept Sahel brief.
+- id: e108
+  question: "Is Tanzania's 2023 maize yield above or below its 2019–2022 average, and how do 2023 prices compare to that period?"
+  lang: en
+  country: Tanzania
+  countries:
+    - Tanzania
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Tanzania
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Tanzania
+    plan_type: Integrated
+    category: Government
+  tags:
+    - multi_hop
+    - yield
+    - price
+    - 5yr
+  notes: Vs multi-year average + prices.
+- id: e109
+  question: "Controlling for the fact that Côte d'Ivoire and Ghana are both cocoa exporters, how did 2022 export volumes differ?"
+  lang: en
+  country: null
+  countries:
+    - "Côte d'Ivoire"
+    - Ghana
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - "Côte d'Ivoire"
+      - Ghana
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: "Côte d'Ivoire"
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - multi_hop
+    - trade
+    - compare
+  notes: Conditional multi-country trade.
+- id: e110
+  question: "Link Malawi's 2022 maize production shortfall (if any) to reported import needs and lean-season food security."
+  lang: en
+  country: Malawi
+  countries:
+    - Malawi
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Malawi
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Malawi
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - multi_hop
+    - food_balance
+    - fs
+  notes: Production + trade + FS.
+- id: e111
+  question: "For Senegal 2020: groundnut production vs cereal import dependence — what does the food-balance picture suggest?"
+  lang: en
+  country: Senegal
+  countries:
+    - Senegal
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Senegal
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Senegal
+    plan_type: Integrated
+    category: Government
+  tags:
+    - multi_hop
+    - food_balance
+  notes: Cash crop vs staple imports.
+- id: e112
+  question: "Across Nigeria and Ghana in 2023, which country shows a worse maize price-to-production stress signal (high prices + weak output)?"
+  lang: en
+  country: null
+  countries:
+    - Nigeria
+    - Ghana
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - Ghana
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - multi_hop
+    - compare
+    - price
+    - production
+  notes: Cross-country dual-measure stress index.
+- id: e113
+  question: How do fertilizer policy notes for Nigeria interact with observed 2022–2023 maize yields or prices in the sources?
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - multi_hop
+    - policy
+    - fertilizer
+  notes: Policy docs + agronomic outcomes.
+- id: e114
+  question: "Somalia 2022: connect drought, livestock stress, and food-insecurity caseload narratives into one synthesis."
+  lang: en
+  country: Somalia
+  countries:
+    - Somalia
+  category: multi_hop
+  complexity: expert
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Somalia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Somalia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - multi_hop
+    - climate
+    - livestock
+    - fs
+  notes: Triple narrative join.
+- id: e115
+  question: What is the latest available average maize price for Nigeria in the warehouse?
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: relative_time
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: true
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - relative_time
+    - latest
+    - wfp
+  notes: Latest available — should pin or state max date.
+- id: e116
+  question: Show Kenya rice prices for the last 3 months of data available.
+  lang: en
+  country: Kenya
+  countries:
+    - Kenya
+  category: relative_time
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: true
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - relative_time
+    - last_3_months
+  notes: Rolling window relative time.
+- id: e117
+  question: "What is Ethiopia's most recent food security assessment summary you can access?"
+  lang: en
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: relative_time
+  complexity: hard
+  expect:
+    measure: food_security
+    warehouse_likely: false
+    needs_year_pin: true
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - relative_time
+    - latest
+    - fs
+  notes: Latest FS doc.
+- id: e118
+  question: "Give me this year's maize production for Tanzania if 2024/2025 figures exist; otherwise the latest year."
+  lang: en
+  country: Tanzania
+  countries:
+    - Tanzania
+  category: relative_time
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: true
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Tanzania
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Tanzania
+    plan_type: Integrated
+    category: Government
+  tags:
+    - relative_time
+    - this_year
+    - needs_pin
+  notes: This year / latest fallback.
+- id: e119
+  question: Current sorghum price levels in Niger — use the newest month in the series.
+  lang: en
+  country: Niger
+  countries:
+    - Niger
+  category: relative_time
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: true
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Niger
+      - sorghum
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Niger
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - relative_time
+    - current
+    - sahel
+  notes: Current without calendar year.
+- id: e120
+  question: What are the most recent cassava prices recorded for Ghana?
+  lang: en
+  country: Ghana
+  countries:
+    - Ghana
+  category: relative_time
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: true
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+      - cassava
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - relative_time
+    - latest
+  notes: Latest cassava.
+- id: e121
+  question: Has maize gotten more expensive in Zambia over the last year of available data?
+  lang: en
+  country: Zambia
+  countries:
+    - Zambia
+  category: relative_time
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: true
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Zambia
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Zambia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - relative_time
+    - last_year
+    - trend
+  notes: Relative YoY on available series.
+- id: e122
+  question: "Latest available rainfall or climate note for Somalia's main season."
+  lang: en
+  country: Somalia
+  countries:
+    - Somalia
+  category: relative_time
+  complexity: hard
+  expect:
+    measure: rainfall
+    warehouse_likely: false
+    needs_year_pin: true
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Somalia
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: synthesis
+  user_profile:
+    country: Somalia
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - relative_time
+    - climate
+    - latest
+  notes: Latest climate narrative.
+- id: e123
+  question: Menene matsakaicin farashin masara a Najeriya a shekarar 2023?
+  lang: ha
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - multilingual
+    - hausa
+    - wfp
+    - regression_target
+  notes: "Multilingual regression target. Gloss: What was the average maize price in Nigeria in 2023?. Currently expected to fail or over-clarify until i18n improves."
+- id: e124
+  question: Ka gaya mini farashin shinkafa a Kenya a 2022.
+  lang: ha
+  country: Kenya
+  countries:
+    - Kenya
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - multilingual
+    - hausa
+    - regression_target
+  notes: "Multilingual regression target. Gloss: Tell me the rice price in Kenya in 2022.. Currently expected to fail or over-clarify until i18n improves."
+- id: e125
+  question: Kí ni iye owó àgbàdo ní Nàìjíríà ní ọdún 2024?
+  lang: yo
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - multilingual
+    - yoruba
+    - wfp
+    - regression_target
+  notes: "Multilingual regression target. Gloss: What is the maize price in Nigeria in 2024?. Currently expected to fail or over-clarify until i18n improves."
+- id: e126
+  question: Ṣe o le sọ iye owó iresi ní Ghana ní 2023?
+  lang: yo
+  country: Ghana
+  countries:
+    - Ghana
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - multilingual
+    - yoruba
+    - regression_target
+  notes: "Multilingual regression target. Gloss: Can you say the rice price in Ghana in 2023?. Currently expected to fail or over-clarify until i18n improves."
+- id: e127
+  question: Quel était le prix moyen du maïs au Sénégal en 2023 ?
+  lang: fr
+  country: Senegal
+  countries:
+    - Senegal
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Senegal
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Senegal
+    plan_type: Integrated
+    category: Government
+  tags:
+    - multilingual
+    - french
+    - wfp
+    - regression_target
+  notes: "Multilingual regression target. Gloss: Average maize price in Senegal in 2023?. Currently expected to fail or over-clarify until i18n improves."
+- id: e128
+  question: Quelle a été la production de mil au Mali en 2022 ?
+  lang: fr
+  country: Mali
+  countries:
+    - Mali
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Mali
+      - millet
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Mali
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - multilingual
+    - french
+    - production
+    - regression_target
+  notes: "Multilingual regression target. Gloss: Millet production in Mali in 2022?. Currently expected to fail or over-clarify until i18n improves."
+- id: e129
+  question: Bei ya wastani ya mahindi nchini Kenya mwaka 2023 ilikuwa ngapi?
+  lang: sw
+  country: Kenya
+  countries:
+    - Kenya
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Kenya
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Kenya
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - multilingual
+    - swahili
+    - wfp
+    - regression_target
+  notes: "Multilingual regression target. Gloss: Average maize price in Kenya in 2023?. Currently expected to fail or over-clarify until i18n improves."
+- id: e130
+  question: Uzalisaji wa mchele nchini Tanzania mwaka 2022 ulikuwa gani?
+  lang: sw
+  country: Tanzania
+  countries:
+    - Tanzania
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Tanzania
+      - rice
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Tanzania
+    plan_type: Integrated
+    category: Government
+  tags:
+    - multilingual
+    - swahili
+    - production
+    - regression_target
+  notes: "Multilingual regression target. Gloss: Rice production in Tanzania in 2022?. Currently expected to fail or over-clarify until i18n improves."
+- id: e131
+  question: በኢትዮጵያ የበቆሎ ዋጋ በ2022 ምን ነበር?
+  lang: am
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - multilingual
+    - amharic
+    - wfp
+    - regression_target
+  notes: "Multilingual regression target. Gloss: What was the maize price in Ethiopia in 2022?. Currently expected to fail or over-clarify until i18n improves."
+- id: e132
+  question: የኢትዮጵያ የስንዴ ምርት በ2020 ምን ያህል ነበር?
+  lang: am
+  country: Ethiopia
+  countries:
+    - Ethiopia
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: production
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ethiopia
+      - wheat
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ethiopia
+    plan_type: Integrated
+    category: Government
+  tags:
+    - multilingual
+    - amharic
+    - production
+    - regression_target
+  notes: "Multilingual regression target. Gloss: What was Ethiopia wheat production in 2020?. Currently expected to fail or over-clarify until i18n improves."
+- id: e133
+  question: Wetin be di average price of maize for Nigeria for 2023?
+  lang: pcm
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Nigeria
+      - maize
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - multilingual
+    - pidgin
+    - wfp
+    - regression_target
+  notes: "Multilingual regression target. Gloss: Average maize price Nigeria 2023. Currently expected to fail or over-clarify until i18n improves."
+- id: e134
+  question: Abeg tell me cassava price for Ghana for 2022.
+  lang: pcm
+  country: Ghana
+  countries:
+    - Ghana
+  category: multilingual
+  complexity: hard
+  expect:
+    measure: market_price
+    warehouse_likely: true
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      - Ghana
+      - cassava
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: numeric_with_unit
+  user_profile:
+    country: Ghana
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - multilingual
+    - pidgin
+    - regression_target
+  notes: "Multilingual regression target. Gloss: Cassava price Ghana 2022. Currently expected to fail or over-clarify until i18n improves."
+- id: e135
+  question: How much does maize cost?
+  lang: en
+  country: null
+  countries:
+    []
+  category: clarify
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: true
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: clarify
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - clarify
+    - underspecified
+  notes: "No country, no year — must clarify."
+- id: e136
+  question: What about rice prices lately?
+  lang: en
+  country: null
+  countries:
+    []
+  category: clarify
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: true
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: clarify
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Agribusinesses
+  tags:
+    - clarify
+    - underspecified
+  notes: "Vague crop+time, no geo."
+- id: e137
+  question: Give me the numbers for food security.
+  lang: en
+  country: null
+  countries:
+    []
+  category: clarify
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: true
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: clarify
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: NGOs
+  tags:
+    - clarify
+    - underspecified
+  notes: "No country, no year, no metric detail."
+- id: e138
+  question: Compare the two countries on cassava.
+  lang: en
+  country: null
+  countries:
+    []
+  category: clarify
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: true
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: clarify
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - clarify
+    - underspecified
+  notes: Countries unspecified.
+- id: e139
+  question: Is production up?
+  lang: en
+  country: Nigeria
+  countries:
+    - Nigeria
+  category: clarify
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: true
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: clarify
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Farmers
+  tags:
+    - clarify
+    - underspecified
+  notes: Country only; crop+year missing.
+- id: e140
+  question: Show me WFP data.
+  lang: en
+  country: null
+  countries:
+    []
+  category: clarify
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: true
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: clarify
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - clarify
+    - underspecified
+  notes: "Source named, question empty."
+- id: e141
+  question: What is the average olive oil price in Albania in 2023?
+  lang: en
+  country: Albania
+  countries:
+    - Albania
+  category: oos_trap
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: true
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: refuse
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - oos
+    - africa_scope
+    - regression_target
+  notes: Europe/Albania OOS; should refuse or Africa-scope.
+- id: e142
+  question: Compare wheat prices in France and Germany for 2022.
+  lang: en
+  country: null
+  countries:
+    - France
+    - Germany
+  category: oos_trap
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: true
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: refuse
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - oos
+    - africa_scope
+    - regression_target
+  notes: EU wheat — out of Africa scope.
+- id: e143
+  question: "What was maize production in Iowa, USA in 2023?"
+  lang: en
+  country: null
+  countries:
+    - United States
+  category: oos_trap
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: true
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: refuse
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - oos
+    - africa_scope
+    - regression_target
+  notes: US state — OOS.
+- id: e144
+  question: Average tomato prices in Spain last year?
+  lang: en
+  country: Spain
+  countries:
+    - Spain
+  category: oos_trap
+  complexity: medium
+  expect:
+    measure: market_price
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: true
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: refuse
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - oos
+    - africa_scope
+    - regression_target
+  notes: Spain horticulture OOS.
+- id: e145
+  question: How much rice does Japan produce annually?
+  lang: en
+  country: Japan
+  countries:
+    - Japan
+  category: oos_trap
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: true
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: refuse
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - oos
+    - africa_scope
+    - regression_target
+  notes: Asia OOS.
+- id: e146
+  question: Olive harvest yields in southern Italy 2021?
+  lang: en
+  country: Italy
+  countries:
+    - Italy
+  category: oos_trap
+  complexity: medium
+  expect:
+    measure: production
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: true
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: refuse
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - oos
+    - africa_scope
+    - regression_target
+  notes: Mediterranean olives — known prior false clarify/refuse bug.
+- id: e147
+  question: Who are you?
+  lang: en
+  country: null
+  countries:
+    []
+  category: meta
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: identity
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - meta
+    - demo_safe
+  notes: Hello — identity.
+- id: e148
+  question: What is OpenTrace?
+  lang: en
+  country: null
+  countries:
+    []
+  category: meta
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: identity
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - meta
+    - demo_safe
+  notes: Org identity.
+- id: e149
+  question: What can Ask ADZA answer?
+  lang: en
+  country: null
+  countries:
+    []
+  category: meta
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: identity
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - meta
+    - capabilities
+    - demo_safe
+  notes: Capabilities list.
+- id: e150
+  question: How do I use Ask ADZA effectively for market prices?
+  lang: en
+  country: null
+  countries:
+    []
+  category: meta
+  complexity: medium
+  expect:
+    measure: null
+    warehouse_likely: false
+    needs_year_pin: false
+    expect_clarify: false
+    expect_refuse_or_africa_scope: false
+    must_mention:
+      []
+    must_not_mention:
+      - YAML Columns
+      - failed validation
+      - was not submitted
+      - pip install torch
+    answer_shape: identity
+  user_profile:
+    country: Nigeria
+    plan_type: Integrated
+    category: Government
+  tags:
+    - meta
+    - howto
+    - demo_safe
+  notes: Usage guidance.
