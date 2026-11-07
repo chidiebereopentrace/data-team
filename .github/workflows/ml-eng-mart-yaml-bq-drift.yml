@@ -27,7 +27,6 @@ jobs:
           pip install google-cloud-bigquery pyyaml
       - name: Auth GCP
         uses: google-github-actions/auth@v2
-        continue-on-error: true
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - name: Check YAML ↔ BQ column drift
@@ -37,8 +36,8 @@ jobs:
         run: |
           . .venv/bin/activate
           if [ -z "$BQ_PROJECT" ]; then
-            echo "BQ_PROJECT secret not set; skip drift check"
-            exit 0
+            echo "::error::BQ_PROJECT secret not set"
+            exit 1
           fi
           export BQ_DATASET_GOLD="${BQ_DATASET_GOLD:-mart_dev}"
           PYTHONPATH=ml-eng python ml-eng/ml/rag/scripts/check_mart_yaml_bq_drift.py

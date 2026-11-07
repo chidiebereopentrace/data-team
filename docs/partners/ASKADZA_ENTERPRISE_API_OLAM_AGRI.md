@@ -67,7 +67,7 @@ The Enterprise API is a **RESTful, versioned HTTP service** that accepts natural
 **Integration pattern:**
 
 ```
-Olam application  →  POST /v1/chat/agribusinesses  →  OpenTrace intelligence engine
+Olam application  →  POST /query/agribusinesses  →  OpenTrace intelligence engine
                      (API key in header)              →  Answer + citations + ACF + optional exports
 ```
 
@@ -209,24 +209,22 @@ OpenTrace already collaborates with agricultural research and development instit
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| GET | `/v1/health` | Service health |
-| GET | `/v1/meta` | Plan types, categories, rate limits |
-| GET | `/v1/usage` | Current tenant usage (authenticated) |
-| POST | `/v1/sessions` | Create conversation session |
-| GET | `/v1/sessions/{id}` | Session status |
-| POST | `/v1/chat/agribusinesses` | **Primary endpoint** — Q&A with exports |
-| POST | `/v1/feedback` | Optional quality feedback (when tracing enabled) |
+| GET | `/health` | Service health |
+| POST | `/query/agribusinesses` | **Primary endpoint** — Q&A with exports (send `X-API-Key`) |
+| DELETE | `/session/{id}` | Clear a conversation session |
+| GET | `/artifacts/{id}/url` | Re-sign an export download URL |
+| POST | `/feedback` | Optional quality feedback (when tracing enabled) |
 
 **Request body (minimal):**
 
 ```json
 {
-  "message": "Compare cocoa production in Ghana and Côte d'Ivoire over the last 3 years",
+  "query": "Compare cocoa production in Ghana and Côte d'Ivoire over the last 3 years",
   "session_id": "optional-for-multi-turn"
 }
 ```
 
-**Response includes:** `assistant_message`, `citations[]`, `acf`, `usage`, `artifacts[]` (when export requested), `session_id`, `request_id`
+**Response includes:** `answer`, `citations[]`, `acf`, `usage`, `artifacts[]` (when export requested), `session_id`, `langfuse_trace_id`
 
 ---
 

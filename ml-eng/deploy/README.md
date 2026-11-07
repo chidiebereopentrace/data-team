@@ -155,7 +155,7 @@ When Langfuse keys are set, each `/query` emits a unified trace. When absent, tr
 
 **OpenRouter Sessions (LLM cost bundling):** When `RAG_LLM_BASE_URL` points at OpenRouter, leave `RAG_OPENROUTER_SESSION_ID` unset or `on` so decompose + NL2SQL + generate + `/rerank` share one `session_id` (= Langfuse trace id) in [OpenRouter Logs](https://openrouter.ai/logs?tab=sessions). Set `RAG_OPENROUTER_SESSION_ID=off` to disable.
 
-**User feedback:** `POST /feedback` with `{ "trace_id": "...", "score": 1.0, "comment": "..." }` (score 0–1) when tracing is enabled. `/v1/chat` returns `langfuse_trace_id`.
+**User feedback:** `POST /feedback` with `{ "trace_id": "...", "score": 1.0, "comment": "..." }` (score 0–1) when tracing is enabled. `/query` returns `langfuse_trace_id`.
 
 **Verify:** `python scripts/verify_langfuse_tracing.py` (from `ml-eng/` with keys loaded).
 

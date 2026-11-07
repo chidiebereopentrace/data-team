@@ -1,6 +1,224 @@
 {
   "components": {
     "schemas": {
+      "ACFSignal": {
+        "description": "Confidence signal attached to every RAG response (Path B).",
+        "properties": {
+          "applied_ceiling": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ceiling safeguard applied, if any.",
+            "title": "Applied Ceiling"
+          },
+          "band": {
+            "description": "Confidence band from open-trace ACF: very_strong, strong, moderate, limited, low, or no_evidence.",
+            "enum": [
+              "very_strong",
+              "strong",
+              "moderate",
+              "limited",
+              "low",
+              "no_evidence"
+            ],
+            "title": "Band",
+            "type": "string"
+          },
+          "band_label": {
+            "description": "Human-readable band label (e.g. 'Strong confidence').",
+            "title": "Band Label",
+            "type": "string"
+          },
+          "claim_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Level"
+          },
+          "components": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional T/A/F/G component breakdown.",
+            "title": "Components"
+          },
+          "config_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ACF config version used for scoring.",
+            "title": "Config Version"
+          },
+          "explanation": {
+            "description": "One-sentence rationale for the score.",
+            "title": "Explanation",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Alias of explanation (backward compatible).",
+            "title": "Note"
+          },
+          "question_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Type"
+          },
+          "score": {
+            "description": "Composite confidence score (0\u2013100).",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "band",
+          "band_label",
+          "score",
+          "explanation"
+        ],
+        "title": "ACFSignal",
+        "type": "object"
+      },
+      "ArtifactItem": {
+        "description": "Downloadable export produced on Agribusinesses / Integrated chat routes.",
+        "properties": {
+          "byte_size": {
+            "description": "Artifact size in bytes",
+            "minimum": 0.0,
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "citation_ids": {
+            "description": "Citation ids from the parent answer that underpin this export",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Citation Ids",
+            "type": "array"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "description": "Stable artifact id for this response",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Export format",
+            "enum": [
+              "csv",
+              "chart",
+              "docx",
+              "pdf",
+              "html"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "summary": {
+            "description": "Short description of the artifact contents",
+            "title": "Summary",
+            "type": "string"
+          },
+          "url": {
+            "description": "Signed HTTPS URL (GCS) or local file URI in dev",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "filename",
+          "mime_type",
+          "url",
+          "summary",
+          "byte_size"
+        ],
+        "title": "ArtifactItem",
+        "type": "object"
+      },
+      "ArtifactUrlResponse": {
+        "properties": {
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "storage_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Uri"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "url",
+          "expires_in_seconds"
+        ],
+        "title": "ArtifactUrlResponse",
+        "type": "object"
+      },
       "ChatMessage": {
         "properties": {
           "content": {
@@ -21,9 +239,78 @@
         "title": "ChatMessage",
         "type": "object"
       },
-      "ChatRequest": {
+      "CitationItem": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "text"
+        ],
+        "title": "CitationItem",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "QueryRequest": {
         "additionalProperties": false,
         "properties": {
+          "academic_top_k": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Academic Top K"
+          },
+          "bq_top_k": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bq Top K"
+          },
           "chat_history": {
             "anyOf": [
               {
@@ -36,7 +323,7 @@
                 "type": "null"
               }
             ],
-            "description": "Prior turns for this request (canonical).",
+            "description": "Prior turns for this request (canonical). Server session is not updated when set.",
             "title": "Chat History"
           },
           "conversation_history": {
@@ -54,29 +341,50 @@
             "description": "Deprecated alias for chat_history.",
             "title": "Conversation History"
           },
-          "message": {
+          "include_trace": {
+            "default": false,
+            "description": "Include sanitized SQL, decomposition, retrieval diagnostics, and stage timings in response",
+            "title": "Include Trace",
+            "type": "boolean"
+          },
+          "news_top_k": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "User message (alias for query)",
-            "title": "Message"
+            "title": "News Top K"
+          },
+          "ota_top_k": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ota Top K"
           },
           "query": {
+            "description": "Natural language question for the RAG",
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "rerank_top_k": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "User message (alias for message)",
-            "title": "Query"
+            "title": "Rerank Top K"
           },
           "session_id": {
             "anyOf": [
@@ -87,7 +395,30 @@
                 "type": "null"
               }
             ],
+            "description": "Omit to start a new session; reuse for multi-turn chat (server-side memory)",
             "title": "Session Id"
+          },
+          "time_end_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time End Override"
+          },
+          "time_start_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Start Override"
           },
           "user_id": {
             "anyOf": [
@@ -98,7 +429,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional product user id for Langfuse analytics (client-supplied until auth).",
+            "description": "Optional product user id for Langfuse user analytics (client-supplied until auth).",
             "title": "User Id"
           },
           "user_profile": {
@@ -110,81 +441,41 @@
                 "type": "null"
               }
             ],
-            "description": "User profile: country, plan_type, category."
+            "description": "User profile: country, plan_type (access/geo), category (generation persona)."
           }
         },
-        "title": "ChatRequest",
+        "required": [
+          "query"
+        ],
+        "title": "QueryRequest",
         "type": "object"
       },
-      "HTTPValidationError": {
+      "QueryResponse": {
         "properties": {
-          "detail": {
+          "acf": {
+            "$ref": "#/components/schemas/ACFSignal",
+            "description": "ADZA Confidence Framework (Path B): band, score 0\u2013100, and explanation from cited evidence. Surfaced on every response."
+          },
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "artifacts": {
+            "description": "Downloadable exports (CSV/chart/DOCX/PDF). Populated on Agribusinesses and Integrated plans when the query requests an export and builders succeed; otherwise empty. Signed URL TTL defaults to 86400s \u2014 refresh via GET /artifacts/{artifact_id}/url.",
             "items": {
-              "$ref": "#/components/schemas/ValidationError"
+              "$ref": "#/components/schemas/ArtifactItem"
             },
-            "title": "Detail",
+            "title": "Artifacts",
             "type": "array"
-          }
-        },
-        "title": "HTTPValidationError",
-        "type": "object"
-      },
-      "SessionCreateRequest": {
-        "properties": {
-          "category": {
-            "enum": [
-              "Government",
-              "NGOs",
-              "Agribusinesses",
-              "Farmers"
-            ],
-            "title": "Category",
-            "type": "string"
-          }
-        },
-        "required": [
-          "category"
-        ],
-        "title": "SessionCreateRequest",
-        "type": "object"
-      },
-      "SessionCreateResponse": {
-        "properties": {
-          "category": {
-            "enum": [
-              "Government",
-              "NGOs",
-              "Agribusinesses",
-              "Farmers"
-            ],
-            "title": "Category",
-            "type": "string"
           },
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationItem"
+            },
+            "title": "Citations",
+            "type": "array"
           },
-          "session_id": {
-            "title": "Session Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id",
-          "created_at",
-          "category"
-        ],
-        "title": "SessionCreateResponse",
-        "type": "object"
-      },
-      "SessionStatusResponse": {
-        "description": "Response for GET /v1/sessions/{session_id}.",
-        "properties": {
-          "alive": {
-            "title": "Alive",
-            "type": "boolean"
-          },
-          "category": {
+          "error": {
             "anyOf": [
               {
                 "type": "string"
@@ -193,28 +484,126 @@
                 "type": "null"
               }
             ],
-            "title": "Category"
+            "title": "Error"
           },
-          "has_summary": {
+          "langfuse_trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Langfuse trace id when tracing is enabled (for feedback / debugging)",
+            "title": "Langfuse Trace Id"
+          },
+          "session_found": {
             "default": false,
-            "title": "Has Summary",
+            "description": "True when a prior server-side session blob was loaded for this request (Redis / in-memory). False for new sessions, expired/missing ids, or when chat_history is supplied (server session is not read).",
+            "title": "Session Found",
             "type": "boolean"
           },
           "session_id": {
+            "description": "Pass on the next request for chat continuity",
             "title": "Session Id",
             "type": "string"
           },
-          "turn_count": {
-            "default": 0,
-            "title": "Turn Count",
+          "session_ttl_seconds": {
+            "description": "Configured server session TTL (RAG_SESSION_TTL_SECONDS, default 604800).",
+            "title": "Session Ttl Seconds",
             "type": "integer"
+          },
+          "source_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ontology routing basis when ADZA_ONTOLOGY_ROUTING=1: structured, documents_only, web_only, or none. Omitted / null when routing is off.",
+            "title": "Source Basis"
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageStats"
           }
         },
         "required": [
-          "session_id",
-          "alive"
+          "answer",
+          "acf",
+          "session_id"
         ],
-        "title": "SessionStatusResponse",
+        "title": "QueryResponse",
+        "type": "object"
+      },
+      "TraceFeedbackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "score": {
+            "description": "1.0 = thumbs up, 0.0 = thumbs down",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "trace_id": {
+            "minLength": 1,
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "score"
+        ],
+        "title": "TraceFeedbackRequest",
+        "type": "object"
+      },
+      "UsageStats": {
+        "properties": {
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "default": 0,
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "title": "UsageStats",
         "type": "object"
       },
       "UserProfile": {
@@ -263,6 +652,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -297,9 +693,9 @@
     }
   },
   "info": {
-    "description": "Public v1 API for Ask ADZA enterprise partners. Authenticate with X-API-Key or Authorization: Bearer when enterprise auth is enabled.",
-    "title": "Ask ADZA Enterprise Chatbot API",
-    "version": "1.0.0"
+    "description": "Ask ADZA RAG API for enterprise partners. Authenticate every request with X-API-Key or Authorization: Bearer.",
+    "title": "Ask ADZA Enterprise API",
+    "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -319,346 +715,29 @@
         "summary": "Root"
       }
     },
-    "/v1/chat": {
-      "post": {
-        "description": "POST /v1/chat \u2014 Generic chat endpoint (backward compatible).\n\nPrefer the plan-scoped routes (/v1/chat/{plan}) for new integrations.\nplan_type is read from user_profile.plan_type when using this endpoint.",
-        "operationId": "v1_chat_v1_chat_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "V1 Chat"
-      }
-    },
-    "/v1/chat/agribusinesses": {
-      "post": {
-        "description": "POST /v1/chat/agribusinesses \u2014 Agribusinesses tier (cross-country, market volatility).",
-        "operationId": "v1_chat_agribusinesses_v1_chat_agribusinesses_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "V1 Chat Agribusinesses"
-      }
-    },
-    "/v1/chat/farmers": {
-      "post": {
-        "description": "POST /v1/chat/farmers \u2014 Farmers tier (localized crop/rainfall/market).",
-        "operationId": "v1_chat_farmers_v1_chat_farmers_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "V1 Chat Farmers"
-      }
-    },
-    "/v1/chat/free": {
-      "post": {
-        "description": "POST /v1/chat/free \u2014 Free tier (single country, top-line answers only).",
-        "operationId": "v1_chat_free_v1_chat_free_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "V1 Chat Free"
-      }
-    },
-    "/v1/chat/government": {
-      "post": {
-        "description": "POST /v1/chat/government \u2014 Government tier (national/sub-national, food security).",
-        "operationId": "v1_chat_government_v1_chat_government_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "V1 Chat Government"
-      }
-    },
-    "/v1/chat/integrated": {
-      "post": {
-        "description": "POST /v1/chat/integrated \u2014 Integrated tier (full access, category lens per message).",
-        "operationId": "v1_chat_integrated_v1_chat_integrated_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "V1 Chat Integrated"
-      }
-    },
-    "/v1/chat/ngos": {
-      "post": {
-        "description": "POST /v1/chat/ngos \u2014 NGOs tier (multi-region risk, program angles).",
-        "operationId": "v1_chat_ngos_v1_chat_ngos_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "V1 Chat Ngos"
-      }
-    },
-    "/v1/health": {
+    "/artifacts/{artifact_id}/url": {
       "get": {
-        "operationId": "v1_health_v1_health_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "V1 Health"
-      }
-    },
-    "/v1/meta": {
-      "get": {
-        "operationId": "v1_meta_v1_meta_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "V1 Meta"
-      }
-    },
-    "/v1/sessions": {
-      "post": {
-        "operationId": "v1_create_session_v1_sessions_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SessionCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionCreateResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "V1 Create Session"
-      }
-    },
-    "/v1/sessions/{plan_type_slug}": {
-      "post": {
-        "description": "Create a session scoped to a specific plan type.\n\nThe plan_type is inferred from the URL slug (e.g. /v1/sessions/farmers).\nCategory defaults to the natural category for the plan; can be overridden\nby passing ?category=... as a query parameter in future.",
-        "operationId": "v1_create_plan_session_v1_sessions__plan_type_slug__post",
+        "description": "Re-sign a download URL for an existing export artifact.\n\nSigned URLs expire after ``RAG_ARTIFACT_SIGNED_URL_TTL_SECONDS`` (default **86400**).\nPass the ``id`` and ``filename`` from the original ``artifacts[]`` item.",
+        "operationId": "get_artifact_url_artifacts__artifact_id__url_get",
         "parameters": [
           {
             "in": "path",
-            "name": "plan_type_slug",
+            "name": "artifact_id",
             "required": true,
             "schema": {
-              "title": "Plan Type Slug",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Original artifact filename from the query response",
+            "in": "query",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "description": "Original artifact filename from the query response",
+              "minLength": 1,
+              "title": "Filename",
               "type": "string"
             }
           }
@@ -668,7 +747,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionCreateResponse"
+                  "$ref": "#/components/schemas/ArtifactUrlResponse"
                 }
               }
             },
@@ -685,13 +764,357 @@
             "description": "Validation Error"
           }
         },
-        "summary": "V1 Create Plan Session"
+        "summary": "Get Artifact Url"
       }
     },
-    "/v1/sessions/{session_id}": {
+    "/feedback": {
+      "post": {
+        "description": "Record user feedback (thumbs up/down) on a Langfuse trace.",
+        "operationId": "trace_feedback_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TraceFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trace Feedback"
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Liveness probe for GCE / orchestrators. Always returns quickly.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/query": {
+      "post": {
+        "description": "Run the RAG pipeline with the caller's tenant plan. Prefer /query/{plan} routes.",
+        "operationId": "query_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query"
+      }
+    },
+    "/query/agribusinesses": {
+      "post": {
+        "description": "Agribusinesses tier \u2014 cross-country, market volatility. Path locks plan_type.",
+        "operationId": "query_agribusinesses_query_agribusinesses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query (Agribusinesses plan)"
+      }
+    },
+    "/query/farmers": {
+      "post": {
+        "description": "Farmers tier \u2014 localized crop/rainfall/market. Path locks plan_type.",
+        "operationId": "query_farmers_query_farmers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query (Farmers plan)"
+      }
+    },
+    "/query/free": {
+      "post": {
+        "description": "Free tier \u2014 single country, top-line answers. Path locks plan_type; body cannot escalate.",
+        "operationId": "query_free_query_free_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query (Free plan)"
+      }
+    },
+    "/query/government": {
+      "post": {
+        "description": "Government tier \u2014 national/sub-national food security. Path locks plan_type.",
+        "operationId": "query_government_query_government_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query (Government plan)"
+      }
+    },
+    "/query/integrated": {
+      "post": {
+        "description": "Integrated tier \u2014 full access; category lens per message. Path locks plan_type.",
+        "operationId": "query_integrated_query_integrated_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query (Integrated plan)"
+      }
+    },
+    "/query/ngos": {
+      "post": {
+        "description": "NGOs tier \u2014 multi-region risk and program angles. Path locks plan_type.",
+        "operationId": "query_ngos_query_ngos_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query (NGOs plan)"
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "Readiness probe.\nReports whether the minimum configuration for Qdrant + LLM appears to be present\n(without revealing secrets). Useful for GCE managed instance groups / load balancers.\nRedis connectivity (if configured via RAG_REDIS_URL) is reported for observability but\ndoes not affect the ready status (sessions gracefully fall back to in-memory).\nWhen BQ_PROJECT is set, GCP credentials must be valid JSON and BigQuery must respond;\notherwise status is not_ready (Free/paid NL2SQL depends on BQ).",
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready"
+      }
+    },
+    "/session/{session_id}": {
       "delete": {
-        "description": "DELETE /v1/sessions/{session_id} \u2014 explicitly clear a session (logout / clear chat).\n\nIdempotent: returns success even if the session was already gone.",
-        "operationId": "v1_delete_session_v1_sessions__session_id__delete",
+        "description": "Delete a session and its conversation memory.\n\nSprint 1, Week 2: explicit session lifecycle management. The frontend should call\nthis when the user starts a new conversation or logs out, ensuring no stale memory\nbleeds into future queries.",
+        "operationId": "delete_session_endpoint_session__session_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -723,61 +1146,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "V1 Delete Session"
-      },
-      "get": {
-        "description": "GET /v1/sessions/{session_id} \u2014 check if a session is alive.\n\nReturns session metadata (category, turn count, whether a summary exists).\nReturns 404 if the session has expired or never existed.",
-        "operationId": "v1_get_session_v1_sessions__session_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "title": "Session Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "V1 Get Session"
-      }
-    },
-    "/v1/usage": {
-      "get": {
-        "operationId": "v1_usage_v1_usage_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "V1 Usage"
+        "summary": "Delete Session Endpoint"
       }
     }
   }

@@ -34,7 +34,7 @@ Provider grants Customer access to the Ask ADZA Enterprise API and related docum
 
 - Maintain API availability per the SLA (Exhibit A)
 - Provide security patches and scheduled maintenance with reasonable notice
-- Issue usage reports on request or via `/v1/usage` where enabled
+- Issue usage reports on request
 
 ## 6. Data and IP
 

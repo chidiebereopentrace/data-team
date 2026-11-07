@@ -34,7 +34,7 @@ Support channel: [dedicated email / Slack connect TBD]
 
 ## 5. Monitoring and status
 
-Provider monitors `/v1/health` and backend readiness. Status page: [URL TBD].
+Provider monitors `/health` and backend readiness. Status page: [URL TBD].
 
 ## 6. Incident communication
 

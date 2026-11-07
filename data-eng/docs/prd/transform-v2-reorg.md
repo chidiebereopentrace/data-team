@@ -8,7 +8,7 @@ Data-eng had competing mental models (Airbyte vs Python ingest, bronze/silver/go
 
 ## Solution
 
-Cut **transform-v2**: ingestion writes `landing_dev` and `raw_dev`; dbt treats `raw_dev` as the primordial source through `mart_dev`. Soft cutover — no rewrite of existing dbt model SQL. Airbyte removed from the active tree. Generated source catalog under `dbt/catalog/` (gitignored). Pipeline versions via git tags `transform-v1.0.0` / `transform-v2.*`.
+Cut **transform-v2**: ingestion writes `landing_dev` and `raw_dev`; dbt treats `raw_dev` as the primordial source through `mart_dev`. Soft cutover — no rewrite of existing dbt model SQL. Airbyte removed from the active tree. Generated source catalog under `dbt/catalog/` (committed). Pipeline versions via git tags `transform-v1.0.0` / `transform-v2.*`.
 
 ## User Stories
 

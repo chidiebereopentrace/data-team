@@ -274,73 +274,6 @@ def normalize_query_response(
     }
 
 
-def normalize_http_response(
-    payload: dict[str, Any],
-    *,
-    latency_ms: float,
-    query: str,
-    kwargs: dict[str, Any],
-) -> dict[str, Any]:
-    """Map POST /v1/chat/{plan} JSON (ChatSuccessResponse) into inspector shape.
-
-    Production response fields: assistant_message, citations, acf (nested ACFSignal),
-    session_id, usage, request_id, created_at, plan_type, langfuse_trace_id, artifacts.
-    There is no 'trace' field in production — retrieval counts are unavailable in HTTP mode.
-    """
-    usage_raw = payload.get("usage")
-    usage: dict[str, int] = {}
-    if isinstance(usage_raw, dict):
-        usage = {
-            "input_tokens": int(usage_raw.get("input_tokens") or 0),
-            "output_tokens": int(usage_raw.get("output_tokens") or 0),
-            "total_tokens": int(usage_raw.get("total_tokens") or 0),
-        }
-
-    # ACF is a nested ACFSignal object in production; flatten to the keys
-    # render_metrics_row already reads (acf_band, acf_score, acf_explanation, …).
-    acf = _as_dict(payload.get("acf"))
-    # plan_type echoed back by the API; fall back to kwargs when absent.
-    plan_type = payload.get("plan_type") or kwargs.get("plan_type")
-    user_profile = kwargs.get("user_profile")
-
-    return {
-        "answer": payload.get("assistant_message") or "",
-        "citations": payload.get("citations") or [],
-        "error": payload.get("error"),
-        "session_id": payload.get("session_id"),
-        "usage": usage,
-        "latency_ms": latency_ms,
-        "plan_type": plan_type,
-        "category": _as_dict(user_profile).get("category"),
-        "user_profile": user_profile,
-        "langfuse_trace_id": payload.get("langfuse_trace_id"),
-        "artifacts": payload.get("artifacts") or [],
-        # ACF flattened — mirrors the flat keys consumed by render_metrics_row.
-        "acf_band": acf.get("band") or "",
-        "acf_band_label": acf.get("band_label") or "",
-        "acf_score": acf.get("score"),
-        "acf_explanation": acf.get("explanation") or acf.get("note") or "",
-        "acf_claim_level": acf.get("claim_level"),
-        "acf_question_type": acf.get("question_type"),
-        # HTTP mode: no decomposition or retrieval counts from this endpoint.
-        "decomposition": {},
-        "bq_table_candidates": [],
-        "vector_news_results": [],
-        "vector_academic_papers_results": [],
-        "vector_policies_results": [],
-        "vector_public_reports_results": [],
-        "vector_formation_results": [],
-        "vector_academic_results": [],
-        "bq_results": [],
-        "vector_ota_results": [],
-        "merged_context": [],
-        "reranked_context": [],
-        "web_results": [],
-        "_backend_mode": "http_api",
-        "_query": query,
-    }
-
-
 def query_via_http_api(
     base_url: str,
     query: str,
@@ -386,6 +319,9 @@ def query_via_http_api(
 
     t0 = time.perf_counter()
     headers: dict[str, str] = {}
+    api_key = os.environ.get("RAG_API_KEY", "").strip()
+    if api_key:
+        headers["X-API-Key"] = api_key
     if trace_id:
         headers["X-Langfuse-Trace-Id"] = trace_id
     resp = requests.post(url, json=body, timeout=timeout_s, headers=headers or None)

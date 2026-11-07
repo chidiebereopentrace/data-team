@@ -12,7 +12,7 @@ Env vars `BQ_DATASET_BRONZE` / `SILVER` / `GOLD` are legacy *names*; values shou
 
 - BigQuery datasets: `landing_dev`, `raw_dev`, `staging_dev`, `intermediate_dev`, `mart_dev` (and any legacy `landing` still referenced by models).
 - Credentials: OAuth (`gcloud auth application-default login`) or service account for `*_sa` targets.
-- After clone: regenerate the source catalog (gitignored):
+- The generated source catalog is committed. After BigQuery schema changes, regenerate and commit it:
 
 ```bash
 cd data-eng
@@ -38,7 +38,7 @@ dbt/
 ├── dbt_project.yml          # version 2.0.0+
 ├── profiles.yml
 ├── catalog/
-│   └── sources.generated.yml  # generated, gitignored
+│   └── sources.generated.yml  # generated, committed
 └── models/
     ├── sources_ingestion.yml  # hand-written
     ├── sources_geoboundaries.yml

@@ -7,13 +7,18 @@ import json
 import pytest
 from fastapi import HTTPException
 
+from ml.rag import session_store
 from ml.rag.session_store import clear_fallback_for_tests
 from ml.serving.enterprise.metering import (
     check_tenant_quotas,
     get_usage,
     record_usage,
 )
-from ml.serving.enterprise.tenant_registry import EnterpriseTenant, reload_tenants
+from ml.serving.enterprise.tenant_registry import (
+    EnterpriseTenant,
+    hash_api_key,
+    reload_tenants,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -26,7 +31,7 @@ def _reset_state(monkeypatch, tmp_path):
                     {
                         "tenant_id": "meter-tenant",
                         "name": "Meter Tenant",
-                        "api_key": "meter-key",
+                        "api_key_sha256": hash_api_key("meter-key"),
                         "plan_slug": "agribusinesses",
                         "monthly_query_quota": 2,
                         "monthly_token_quota": 50,
@@ -40,7 +45,8 @@ def _reset_state(monkeypatch, tmp_path):
     )
     monkeypatch.setenv("ENTERPRISE_TENANTS_PATH", str(tenants_file))
     monkeypatch.setenv("ENTERPRISE_METERING_ENABLED", "1")
-    monkeypatch.delenv("RAG_REDIS_URL", raising=False)
+    monkeypatch.setattr(session_store, "_REDIS_URL", "")
+    monkeypatch.setattr(session_store, "_redis_client", None)
     clear_fallback_for_tests()
     reload_tenants()
     yield
@@ -49,7 +55,7 @@ def _reset_state(monkeypatch, tmp_path):
 
 
 def _tenant() -> EnterpriseTenant:
-    tenant = reload_tenants()["meter-key"]
+    tenant = reload_tenants()[hash_api_key("meter-key")]
     assert tenant is not None
     return tenant
 

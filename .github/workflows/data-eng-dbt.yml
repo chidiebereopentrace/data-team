@@ -1,29 +1,38 @@
-name: Data Eng — dbt project checks
+name: Data Eng — dbt parse
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'data-eng/dbt/**'
       - '.github/workflows/data-eng-dbt.yml'
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'data-eng/dbt/**'
       - '.github/workflows/data-eng-dbt.yml'
 
 jobs:
-  yaml-models:
+  dbt-parse:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: data-eng/dbt
+    env:
+      DBT_PROFILES_DIR: .
+      BQ_PROJECT: ci-dummy
     steps:
       - uses: actions/checkout@v4
-      - name: Verify dbt YAML parses
-        run: |
-          python - <<'PY'
-          import yaml
-          from pathlib import Path
-          root = Path("data-eng/dbt")
-          for p in root.rglob("*.yml"):
-              yaml.safe_load(p.read_text())
-          print("OK:", root)
-          PY
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dbt
+        run: pip install dbt-bigquery==1.12.2
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: dbt parse
+        run: dbt parse

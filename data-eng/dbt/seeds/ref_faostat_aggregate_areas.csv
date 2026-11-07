@@ -1,0 +1,2 @@
+area_code,country_name,reason
+24,Chagos Archipelago,FAOSTAT territory outside Africa in_africa_scope; no ISO3 in spine; expected null geography_key

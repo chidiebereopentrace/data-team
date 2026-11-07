@@ -1,0 +1,27 @@
+column_key,stored_value,reason
+agg_production_annual.product_name,Pyrethrum,"no ontology entity yet (Tanacetum cinerariifolium); add in ontology round 2"
+agg_production_annual.product_name,Goussi,"West African melon seed (egusi); local name, add in round 2"
+agg_production_annual.product_name,Sorrel,"ambiguous: Hibiscus sabdariffa (roselle) vs Rumex; confirm with data team"
+agg_production_annual.product_name,Pam Nut,"likely typo for Palm Nut in source; confirm upstream"
+agg_production_annual.product_name,Velvet Bean,"Mucuna pruriens; add in round 2"
+dim_organisation.country_code,UNKNOWN,null placeholder
+dim_organisation.country_code,OC,"Oceania region code, not a country"
+dim_organisation.country_name,Unknown,null placeholder
+dim_organisation.country_name,Oceania,"region, not a country"
+fct_biodiversity.country_code,None,null placeholder
+fct_biodiversity.country_code,ZZ,unknown-country code
+dim_season.season_name,Season C,"Rwanda/Burundi season C; add as season entity in round 2"
+dim_season.season_name,Bas-fond,"lowland (bas-fond) season, Sahel; round 2"
+dim_season.season_name,First,generic ordinal season label
+dim_season.season_name,Second,generic ordinal season label
+dim_season.season_name,1st Season,generic ordinal season label
+dim_season.season_name,2nd Season,generic ordinal season label
+dim_season.season_name,North 1st Season,generic ordinal season label
+dim_season.season_name,North 2nd Season,generic ordinal season label
+dim_season.season_name,Hot off-season,Sahel off-season label
+dim_season.season_name,Cold off-season,Sahel off-season label
+dim_season.season_name,Cold-off,Sahel off-season label
+dim_season.season_name,Main-off,off-season label
+dim_season.season_name,Decrue controlee,"controlled flood-recession (Senegal valley); round 2"
+dim_season.season_name,Dam retention,"dam-retention irrigation season; round 2"
+dim_season.season_name,Walo,"Senegal river flood-recession (walo); round 2"

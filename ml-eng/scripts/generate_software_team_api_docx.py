@@ -72,8 +72,8 @@ def build() -> None:
         doc,
         [
             "Entrypoint: uvicorn ml.rag.api:app",
-            "No authentication today — treat the URL as sensitive; gateway auth recommended.",
-            "CORS: RAG_CORS_ORIGINS (default *).",
+            "Every route except /, /health and /ready requires X-API-Key or Authorization: Bearer.",
+            "CORS: RAG_CORS_ORIGINS (default: no browser origin allowed).",
         ],
     )
 

@@ -18,7 +18,7 @@ Runtime ingest: **`data-eng/ingestion/`**.
 cd data-eng
 python data/local/scripts/bq_schema_catalog.py
 python data/local/scripts/generate_dbt_sources.py
-# writes dbt/catalog/sources.generated.yml (gitignored)
+# writes dbt/catalog/sources.generated.yml (committed; commit the refresh)
 ```
 
 ## Flow

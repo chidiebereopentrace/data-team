@@ -5,7 +5,7 @@ Modular RAG with **two co-equal retrieval legs** — **Qdrant** (six vector corp
 | Document | Use when |
 |----------|----------|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | System design, data flow, env matrix, extension points |
-| **[docs/API.md](docs/API.md)** | HTTP API reference (`POST /query`, `POST /v1/chat`, schemas, errors) |
+| **[docs/API.md](docs/API.md)** | HTTP API reference (`POST /query`, auth, schemas, errors) |
 | **[docs/SCRIPTS.md](docs/SCRIPTS.md)** | Every CLI/module: flags, examples, workflows |
 | [docs/BQ_NL2SQL_PLAN.md](docs/BQ_NL2SQL_PLAN.md) | Bronze NL-to-SQL design |
 | [docs/EXPECTED_QUESTIONS.md](docs/EXPECTED_QUESTIONS.md) | Example question types |
@@ -72,7 +72,7 @@ See also [`ml/rag/chat_history.py`](ml/rag/chat_history.py) (shim to [`chatbot/c
 
 **Streamlit** ([`chatbot/streamlit_app.py`](ml/rag/chatbot/streamlit_app.py)): multiple **chat sessions** in the sidebar; **pipeline debug** shows the last run’s decomposition and retrieval stats.
 
-**API** (`POST /query` and `POST /v1/chat`): responses include **`session_id`**, structured **`citations`**, and aggregated LLM **`usage`** (sum of all LLM calls in the request: decompose, BQ NL2SQL, memory fold, rerank if on, generation). Example shape:
+**API** (`POST /query`): responses include **`session_id`**, structured **`citations`**, and aggregated LLM **`usage`** (sum of all LLM calls in the request: decompose, BQ NL2SQL, memory fold, rerank if on, generation). Example shape:
 
 ```json
 {
@@ -351,7 +351,7 @@ Response:
 
 Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (EU Cloud) to emit **unified traces** for every RAG request.
 
-**Product analytics (push → Railway redeploy):** with keys already on the Railway service, richer nested spans and soft-fail scores appear after redeploy — no Dockerfile or service change. Optional `user_id` on `/query` and `/v1/chat` maps to Langfuse Users. `LANGFUSE_TRACING_RELEASE` falls back to Railway’s `RAILWAY_GIT_COMMIT_SHA` when unset.
+**Product analytics (push → Railway redeploy):** with keys already on the Railway service, richer nested spans and soft-fail scores appear after redeploy — no Dockerfile or service change. Optional `user_id` on `/query` maps to Langfuse Users. `LANGFUSE_TRACING_RELEASE` falls back to Railway’s `RAILWAY_GIT_COMMIT_SHA` when unset.
 
 | Layer | What appears in Langfuse |
 |-------|--------------------------|
@@ -397,7 +397,10 @@ Root metadata includes corpus counts, `empty_retrieval`, BQ soft-fail flags, `we
    - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (optional tracing)
 
 4. **CORS**  
-   For production, set **`RAG_CORS_ORIGINS`** to your frontend origin(s), comma-separated (e.g. `https://yourapp.com`). Default is `*`.
+   Set **`RAG_CORS_ORIGINS`** to your frontend origin(s), comma-separated (e.g. `https://yourapp.com`). Default allows no browser origin.
+
+5. **API keys**  
+   Every route except `/`, `/health` and `/ready` requires `X-API-Key` (or `Authorization: Bearer`). Set **`ENTERPRISE_TENANTS_JSON`** with one tenant per client (keys stored as SHA-256 digests); see [`ml/serving/README.md`](../serving/README.md). Use `RAG_API_AUTH=off` only for local development.
 
 5. **Port**  
    The app listens on **7860** (required by Hugging Face Spaces).
@@ -475,7 +478,7 @@ Stop: `docker compose --profile rag down` (or `down` without profile if no other
 For Qdrant-backed RAG, **indexes are not copied from `data/local/vector_db`** (that path was legacy). Use **Qdrant Cloud** (or a reachable Qdrant URL) and pass **`QDRANT_*`** secrets at runtime. Optional baked images can still pre-install dependencies and app code; see your repo’s `Dockerfile.rag-baked` / root `Dockerfile` for how the **serving** image is built.
 
 - **`Dockerfile.rag-baked`** (if present): may bundle app + Streamlit with [`scripts/hf-entrypoint.sh`](../../scripts/hf-entrypoint.sh) for optional **`GCP_SA_JSON`** / **`GCP_SA_JSON_B64`**.
-- **Root `Dockerfile`:** may target the public chat API (`ml.serving.chat.app`); vector state still comes from Qdrant when RAG is wired in.
+- **`Dockerfile` / `Dockerfile.railway`:** run the RAG API (`ml.rag.api:app`); vector state comes from Qdrant.
 
 **Secrets:** do not put **`HF_API_TOKEN`** or GCP JSON **into** the Dockerfile. Pass them at runtime via **`data/local/.env`** or `-e` (Compose already uses `env_file`). For GCP, either mount a key file (default path in Compose) or set **`GCP_SA_JSON`** so the entrypoint writes `/tmp/gcp-sa.json`.
 

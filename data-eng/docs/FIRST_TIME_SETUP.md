@@ -23,7 +23,7 @@ The script:
 2. **Ensures `data/local/.env` exists** — copies from `.env.example` if missing. You should edit it and set **`BQ_PROJECT`** (and optionally `BQ_DATASET_LANDING`, `BQ_DATASET_BRONZE`, etc.).
 3. **Reminds you to authenticate** — for OAuth (no key file), run once:  
    `gcloud auth application-default login`
-4. **Populates dbt sources from BigQuery** — runs `python data/local/scripts/generate_dbt_sources.py --refresh`, which fetches the BQ schema and writes **`dbt/catalog/sources.generated.yml`** (gitignored) so dbt stays in sync.
+4. **Populates dbt sources from BigQuery** — runs `python data/local/scripts/generate_dbt_sources.py --refresh`, which fetches the BQ schema and rewrites the committed **`dbt/catalog/sources.generated.yml`** so dbt stays in sync.
 
 If `BQ_PROJECT` is not set when you run the script, it will skip step 4 and tell you to set it and re-run (or run the generate script manually).
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -13,7 +12,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from ml.rag.session_store import get_json, incr_json_fields, set_json
+from ml.rag.session_store import get_json, incr_json_fields
 from ml.serving.enterprise.tenant_registry import EnterpriseTenant
 
 logger = logging.getLogger(__name__)

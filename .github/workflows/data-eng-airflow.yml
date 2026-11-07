@@ -2,12 +2,12 @@ name: Data Eng — Airflow DAG syntax
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'data-eng/airflow/**'
       - '.github/workflows/data-eng-airflow.yml'
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'data-eng/airflow/**'
       - '.github/workflows/data-eng-airflow.yml'

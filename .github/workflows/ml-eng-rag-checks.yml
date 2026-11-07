@@ -2,15 +2,17 @@ name: ML Eng — RAG (Qdrant) syntax checks
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
-      - 'ml-eng/ml/rag/**'
+      - 'ml-eng/ml/**'
+      - 'ml-eng/opentrace_ontology/**'
       - 'ml-eng/requirements*.txt'
       - '.github/workflows/ml-eng-rag-checks.yml'
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
-      - 'ml-eng/ml/rag/**'
+      - 'ml-eng/ml/**'
+      - 'ml-eng/opentrace_ontology/**'
       - 'ml-eng/requirements*.txt'
       - '.github/workflows/ml-eng-rag-checks.yml'
 
@@ -55,6 +57,10 @@ jobs:
             ml-eng/ml/rag/tests/chatbot/test_coverage_retry.py \
             ml-eng/ml/rag/tests/chatbot/test_decompose_context.py \
             ml-eng/ml/rag/tests/retrievers/test_bq_retriever_planned_path.py \
+            ml-eng/ml/rag/tests/test_api_auth.py \
+            ml-eng/ml/rag/tests/test_api_error_detail.py \
+            ml-eng/ml/serving \
+            ml-eng/opentrace_ontology/tests \
             -v --tb=short
       - name: Golden query views
         run: |
