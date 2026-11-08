@@ -5,7 +5,6 @@ from __future__ import annotations
 from ml.rag.chatbot.bq_sql_reasoner import _reasoner_model
 from ml.rag.chatbot.plan_policy import (
     allows_cross_country,
-    apply_category_domain_hints,
     apply_plan_decomposition_gates,
     instruction_for_category,
     is_valid_category,
@@ -97,13 +96,6 @@ def test_free_flag_on_prefers_query_country_over_profile(monkeypatch) -> None:
 def test_category_instruction_nonempty() -> None:
     assert "government" in instruction_for_category("Government").lower()
     assert "plain" in instruction_for_category("Farmers").lower()
-
-
-def test_category_domain_soft_fill() -> None:
-    filled = apply_category_domain_hints({"domains": []}, "NGOs")
-    assert "climate" in filled["domains"]
-    kept = apply_category_domain_hints({"domains": ["prices"]}, "NGOs")
-    assert kept["domains"] == ["prices"]
 
 
 def test_plan_addendum_free_is_brief() -> None:

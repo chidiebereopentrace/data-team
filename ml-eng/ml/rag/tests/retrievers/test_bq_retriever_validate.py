@@ -763,12 +763,11 @@ def _prepare_with_column_gate(sql_source: str) -> tuple[dict[str, int], str | No
     return calls, validated, err
 
 
-def test_post_checks_skips_column_allowlist_for_bind_compiler() -> None:
+def test_post_checks_gate_bind_compiler_sql_on_columns() -> None:
     calls, validated, err = _prepare_with_column_gate("bind_compiler")
-    assert err is None
-    assert validated is not None
-    assert calls["table"] >= 1
-    assert calls["col"] == 0
+    assert validated is None
+    assert err is not None and "YAML Columns" in err
+    assert calls["col"] >= 1
 
 
 def test_post_checks_keeps_column_allowlist_for_nl2sql() -> None:

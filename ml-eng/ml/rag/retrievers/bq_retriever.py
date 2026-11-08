@@ -43,12 +43,14 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     with_column_units,
 )
 from ml.rag.chatbot.compile_sql_from_bind import (
-    ROW_BUDGET,
+    RESULT_ROW_BUDGET,
     bind_contract_for_table,
-    compile_sql_from_bind,
+    compile_operation,
 )
 from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
+from ml.rag.chatbot.bq_execute_state import NON_EVIDENCE_ROW_STATUSES, evidence_id_for_sql
 from ml.rag.chatbot.mart_coverage import clamp_year, route_tables
+from ml.rag.chatbot.result_shape import check_result_shape
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 from ml.rag.observability import (
@@ -116,10 +118,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 _MART_TABLE_PREFIXES = ("fct_", "agg_", "dim_", "bridge_")
-# Contracted SQL already maps to YAML columns. NL2SQL / reasoner stay gated.
-_SKIP_COLUMN_ALLOWLIST_SOURCES = frozenset(
-    {"bind_compiler", "engine", "template", "pattern"}
-)
 
 
 def _is_mart_table_id(table_id: str) -> bool:
@@ -904,10 +902,9 @@ class BQRetriever(BaseRetriever):
             allow_err = None if _source == "template" else validate_sql_table_allowlist(sql, selected_tables)
             if allow_err:
                 return allow_err
-            if _source not in _SKIP_COLUMN_ALLOWLIST_SOURCES:
-                col_err = validate_sql_column_allowlist(sql, selected_tables or None)
-                if col_err:
-                    return col_err
+            col_err = validate_sql_column_allowlist(sql, selected_tables or None)
+            if col_err:
+                return col_err
             if trusted:
                 index_err = validate_sql_complete_index_literals(sql, selected_tables or None)
                 if index_err:
@@ -1372,6 +1369,8 @@ class BQRetriever(BaseRetriever):
         bind_contracts: dict[str, Any] | None = (
             bind_contracts_raw if isinstance(bind_contracts_raw, dict) and bind_contracts_raw else None
         )
+        contract_by_sql: dict[str, dict[str, Any]] = {}
+        bind_refusals: list[dict[str, Any]] = []
 
         if (
             not heavy_path
@@ -1492,7 +1491,7 @@ class BQRetriever(BaseRetriever):
                         raw_bind = bind_contract_for_table(bind_contracts, tid)
                         if raw_bind is None:
                             continue
-                        compiled = compile_sql_from_bind(
+                        compiled = compile_operation(
                             raw_bind,
                             project_id=self.project_id,
                             dataset=ds_name,
@@ -1501,14 +1500,31 @@ class BQRetriever(BaseRetriever):
                             pattern=shape_pattern,
                             breakdown=breakdown,
                         )
-                        if compiled:
-                            bind_sqls.append(compiled)
+                        if compiled is None:
+                            continue
+                        if compiled.sql:
+                            bind_sqls.append(compiled.sql)
+                            contract_by_sql[compiled.sql] = raw_bind
+                        elif compiled.refusal.startswith(compiled.operation):
+                            bind_refusals.append(
+                                {
+                                    "content": f"[BQ validation failed: {compiled.refusal}]",
+                                    "source": "bigquery",
+                                    "metadata": {
+                                        "status": "validation_failed",
+                                        "prep_error": compiled.refusal,
+                                        "sql_source": "bind_compiler",
+                                        "table_id": compiled.table_id,
+                                        "operation": compiled.operation,
+                                    },
+                                }
+                            )
                 if bind_sqls:
                     sql_source = "bind_compiler"
                     sql_queries = bind_sqls
                 else:
                     sql_source = "nl2sql"
-                    need_nl2sql = self.nl2sql_enabled and not contract_sql_only
+                    need_nl2sql = self.nl2sql_enabled and not contract_sql_only and not bind_refusals
                     if need_nl2sql:
                         nl_tables = sorted(selected_tables) if selected_tables else None
                         prev_max = os.environ.get("RAG_BQ_MAX_SQL_QUERIES")
@@ -1719,6 +1735,7 @@ class BQRetriever(BaseRetriever):
             if self.last_bq_nl2sql_ms is None:
                 self.last_bq_nl2sql_ms = 0.0
             return [
+                *bind_refusals,
                 _bq_diagnostic_item(
                     status="no_valid_sql",
                     message=reason,
@@ -1732,7 +1749,7 @@ class BQRetriever(BaseRetriever):
         max_queries = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
         allowed = set(self.datasets_config.values())
         budget = top_k or self.max_rows
-        items: list[dict[str, Any]] = []
+        items: list[dict[str, Any]] = list(bind_refusals)
         any_usable_rows = False
         prepared_ok = False
         queries_left = max_queries
@@ -1751,6 +1768,7 @@ class BQRetriever(BaseRetriever):
             limit: int
             slot_id: str
             batch_size: int
+            contract: dict[str, Any] | None = None
 
         def _run_sql_batch(
             batch: list[str],
@@ -1935,7 +1953,31 @@ class BQRetriever(BaseRetriever):
                     )
                     return exec_items, True
 
-                telem = _job_telemetry(row_count=min(len(rows), limit), status="ok")
+                if source == "bind_compiler" and len(rows) > RESULT_ROW_BUDGET:
+                    telem = _job_telemetry(row_count=len(rows), status="result_too_large")
+                    reason = f"result exceeds {RESULT_ROW_BUDGET} rows; narrow members, period or grain"
+                    exec_items.append(
+                        {
+                            "content": f"[BQ result_too_large: {reason}]",
+                            "source": "bigquery",
+                            "metadata": {
+                                "sql": validated,
+                                "sql_index": idx + 1,
+                                "sql_count": batch_size,
+                                "status": "result_too_large",
+                                "prep_error": reason,
+                                "sql_source": source,
+                                **telem,
+                            },
+                        }
+                    )
+                    return exec_items, True
+
+                shape = check_result_shape([dict(r) for r in rows], work.contract)
+                status = "ok" if shape.complete else "partial"
+                telem = _job_telemetry(row_count=min(len(rows), limit), status=status)
+                if not shape.complete:
+                    telem["result_shape"] = shape.to_dict()
                 read_tables = referenced_mart_tables(validated)
                 for row in rows[:limit]:
                     d = with_column_units(dict(row), read_tables)
@@ -1950,6 +1992,7 @@ class BQRetriever(BaseRetriever):
                             "sql_count": batch_size,
                             "sql_source": source,
                             "nl2sql_model": _nl2sql_model_id(),
+                            "evidence_id": evidence_id_for_sql(validated),
                             **telem,
                         }
                     )
@@ -1980,7 +2023,7 @@ class BQRetriever(BaseRetriever):
                 for entry in exec_items:
                     meta = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
                     status = str(meta.get("status") or "") if isinstance(meta, dict) else ""
-                    if status in ("timeout", "execution_error", "validation_failed", "empty_result"):
+                    if status in NON_EVIDENCE_ROW_STATUSES:
                         items.append(entry)
                         continue
                     if budget <= 0:
@@ -1993,8 +2036,8 @@ class BQRetriever(BaseRetriever):
 
             prepared: list[_PreparedWork] = []
             if source == "bind_compiler":
-                budget = max(budget, ROW_BUDGET)
-                batch_row_limit = budget
+                budget = max(budget, RESULT_ROW_BUDGET)
+                batch_row_limit = RESULT_ROW_BUDGET + 1
             else:
                 batch_row_limit = min(rows_per_query, budget) if budget > 0 else rows_per_query
             for idx, raw_sql in enumerate(batch):
@@ -2085,6 +2128,7 @@ class BQRetriever(BaseRetriever):
                         limit=limit,
                         slot_id=slot_id,
                         batch_size=len(batch),
+                        contract=contract_by_sql.get(raw_sql),
                     )
                 )
 

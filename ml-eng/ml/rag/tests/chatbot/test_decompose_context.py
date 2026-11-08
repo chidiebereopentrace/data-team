@@ -73,17 +73,14 @@ def test_from_graph_state_reads_profile_and_overrides() -> None:
         "conversation_summary": "Prior turn about maize.",
     }
     enrich = {
-        "enriched_query": "Prior. Follow-up: and in Ghana?",
-        "original_query": "and in Ghana?",
-        "enriched": True,
-        "prior_topic": "maize production in Kenya 2020",
+        "user_query": "and in Ghana?",
+        "context_rewrite": "and in Ghana? (carried from earlier turns: commodity: maize)",
+        "context_applied": True,
     }
     ctx = DecomposeContext.from_graph_state(state, enrich)
     assert ctx.plan_type == "Government"
     assert ctx.profile_country == "Kenya"
     assert ctx.geo_override == "Ghana"
-    assert ctx.memory_enriched is True
-    assert ctx.prior_topic == "maize production in Kenya 2020"
     assert ctx.query == "and in Ghana?"
     assert ctx.context_applied is True
-    assert "Follow-up" in ctx.context_rewrite
+    assert "carried from earlier turns" in ctx.context_rewrite

@@ -45,6 +45,7 @@ from ml.rag.chatbot.answer_language import (
     looks_like_degenerate_repetition,
 )
 from ml.rag.chatbot.answer_outcome import decide_outcome, gap_answer
+from ml.rag.chatbot.bq_execute_state import NON_EVIDENCE_ROW_STATUSES
 from ml.rag.chatbot.bq_user_messages import scrub_spoken_answer
 from ml.rag.chatbot.citation_pack import (
     _KNOWN_ANALYTICAL_HEADINGS,
@@ -69,7 +70,7 @@ from ml.rag.chatbot.export_intent import want_inline_citations
 from ml.rag.chatbot.geo_iso3 import countries_named_in_text, name_to_iso3
 from ml.rag.chatbot.geo_regions import is_zone_label
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
-from ml.rag.chatbot.numeric_grounding import append_unsourced_caveat, unsourced_figures
+from ml.rag.chatbot.numeric_grounding import strip_unsourced_figures, unsourced_figures
 from ml.rag.chatbot.output_format import forbidden_headings_for_type, output_type_from_plan
 from ml.rag.chatbot.turn_contract import TurnContract
 from ml.rag.observability import observed_span, trace_elapsed_ms, update_current_span_metadata
@@ -137,7 +138,7 @@ _BQ_ROW_HINT_KEYS = (
 )
 _BQ_PUBLIC_LABEL = "OpenTrace agricultural data"
 
-# Warehouse source_name / source_natural_key → public institution (dim_source.organisation_name).
+# Warehouse source_name / source_natural_key â†’ public institution (dim_source.organisation_name).
 _SOURCE_KEY_PUBLIC_LABELS: dict[str, str] = {
     "yield_raw_data": "FEWS NET",
     "fews_food_security": "FEWS NET",
@@ -538,14 +539,8 @@ def is_usable_context_item(item: dict[str, Any]) -> bool:
     if str(meta.get("source") or "").strip().lower() == "mart_yaml":
         return False
     status = str(meta.get("status") or "").strip().lower()
-    if status in {
-        "no_project",
-        "no_valid_sql",
-        "validation_failed",
-        "execution_error",
-        "empty_result",
-        "bq_timeout",
-    }:
+    if status in NON_EVIDENCE_ROW_STATUSES:
+
         return False
     raw = str(item.get("content") or item.get("text") or "").strip().lower()
     return not any(marker in raw for marker in _BQ_FAILURE_MARKERS)
@@ -590,14 +585,8 @@ def is_mergeable_bq_evidence(item: dict[str, Any]) -> bool:
         return False
     meta = _item_metadata(item)
     status = str(meta.get("status") or "").strip().lower()
-    if status in {
-        "no_project",
-        "no_valid_sql",
-        "validation_failed",
-        "execution_error",
-        "empty_result",
-        "bq_timeout",
-    }:
+    if status in NON_EVIDENCE_ROW_STATUSES:
+
         return False
     return True
 
@@ -979,7 +968,7 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
         src = str(meta.get("source") or meta.get("publisher") or "").strip()
         date = str(meta.get("published_at") or meta.get("date") or "").strip()[:10]
         if title:
-            entry = f"{title} — {src}" if src else title
+            entry = f"{title} â€” {src}" if src else title
             if date:
                 entry += f" ({date})"
             line = f"[News] {entry}"
@@ -989,19 +978,19 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
     if kind in ("ota_insight", "ota_metric"):
         name = str(meta.get("metric_text") or meta.get("title") or meta.get("label") or "").strip()
         if name:
-            return f"[OTA Insight] {name} — OpenTrace OTA"
+            return f"[OTA Insight] {name} â€” OpenTrace OTA"
         return None
 
     if kind == "web_wikipedia":
         title = str(meta.get("title") or "Wikipedia").strip()
         url = str(meta.get("url") or "").strip()
-        label = "[Wikipedia — tertiary, community-edited source]"
-        return f"{label} {title} — {url}" if url else f"{label} {title}"
+        label = "[Wikipedia â€” tertiary, community-edited source]"
+        return f"{label} {title} â€” {url}" if url else f"{label} {title}"
 
     if kind == "web_search":
         title = str(meta.get("title") or "Web source").strip()
         url = str(meta.get("url") or "").strip()
-        return f"[Web] {title} — {url}" if url else f"[Web] {title}"
+        return f"[Web] {title} â€” {url}" if url else f"[Web] {title}"
 
     return None
 
@@ -1332,36 +1321,14 @@ def _cap_acf_for_evidence_tier(acf: ACFResult, evidence_tier: EvidenceTier) -> A
     return acf
 
 
-def _safe_unsourced_figures(prose: str, cited_refs: list[Any]) -> list[str]:
-    """Flag uncited figures. A missing name must not fail the answer."""
-    try:
-        fn = unsourced_figures
-    except NameError:
-        try:
-            # Deploy skew / unbound name. Not a general import style.
-            from ml.rag.chatbot.numeric_grounding import unsourced_figures as fn
-        except Exception:
-            return []
-    try:
-        return list(fn(prose, cited_refs) or [])
-    except Exception:
-        return []
-
-
 def _cap_acf_for_unsourced_figures(acf: ACFResult, unsourced: list[str]) -> ACFResult:
     """Cap ACF when answer figures cannot be traced to cited evidence (ML-058)."""
     if not unsourced:
         return acf
     if acf.band in ("low", "no_evidence"):
         return acf
-    shown = unsourced[:3]
-    extra = len(unsourced) - len(shown)
-    fig_part = ", ".join(shown)
-    if extra > 0:
-        fig_part = f"{fig_part} (+{extra} more)"
     expl = (
-        f"{acf.explanation} Figures that could not be traced to a cited source: "
-        f"{fig_part}."
+        f"{acf.explanation} Figures that were not in the cited evidence were removed."
     )
     return ACFResult(
         band="limited",
@@ -1400,7 +1367,7 @@ def _strip_preamble_openers(text: str) -> str:
             break
         stripped = out[m.end():].lstrip()
         if not stripped:
-            # Preamble was the entire content — keep original rather than emptying.
+            # Preamble was the entire content â€” keep original rather than emptying.
             return text.strip()
         # Recapitalise the first alphabetic character of the remaining answer.
         out = stripped[0].upper() + stripped[1:] if stripped[0].isalpha() else stripped
@@ -1499,7 +1466,7 @@ def _referenced_source_refs(
     if suppress_unreferenced:
         return []
     if not inline_citations:
-        # No inline markers expected — return all packed sources for the citation block.
+        # No inline markers expected â€” return all packed sources for the citation block.
         return list(source_registry)
     mode = _citations_mode()
     if mode == "referenced":
@@ -1562,7 +1529,7 @@ def _decomposition_time_hint(decomposition: dict[str, Any] | None) -> str:
     ts = str(decomposition.get("time_start") or decomposition.get("start_date") or "").strip()
     te = str(decomposition.get("time_end") or decomposition.get("end_date") or "").strip()
     if ts and te:
-        return f"{ts} → {te}"
+        return f"{ts} â†’ {te}"
     return ts or te or str(decomposition.get("time_period") or "").strip()
 
 
@@ -1591,7 +1558,7 @@ def _gap_scope_lines(decomposition: dict[str, Any] | None) -> tuple[str, str]:
         ts = str(decomposition.get("filtered_time_start") or "").strip()
         te = str(decomposition.get("filtered_time_end") or "").strip()
         if ts and te:
-            time_hint = f"{ts} → {te}"
+            time_hint = f"{ts} â†’ {te}"
         else:
             time_hint = ts or te
     if time_hint and time_source == "ui":
@@ -1785,14 +1752,9 @@ def _finalize_generation_result(
             acf = no_evidence_acf()
             acf_status = "no_citations"
 
-        # ML-058: figures that cannot be traced to a cited source must not be
-        # presented as fact. Flag + cap rather than delete.
-        unsourced = _safe_unsourced_figures(prose, cited_refs)
+        unsourced = unsourced_figures(prose, cited_refs)
         if unsourced:
-            try:
-                prose = append_unsourced_caveat(prose, unsourced)
-            except Exception:
-                pass
+            prose = strip_unsourced_figures(prose, unsourced)
             acf = _cap_acf_for_unsourced_figures(acf, unsourced)
 
         acf = _cap_acf_for_evidence_tier(acf, evidence_tier)

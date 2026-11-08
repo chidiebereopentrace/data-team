@@ -7,10 +7,10 @@ detail_rewrite: deterministic enrichment twin (vector only).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from ml.rag.chatbot.query_enricher import enrich_query_with_memory
+from ml.rag.chatbot.active_request import ActiveRequest, resolve_turn, resolved_request_text
 from ml.rag.chatbot.query_normalize import normalize_query_text
 
 _ENTITY_BAG_MAX_TOKENS = 6
@@ -31,7 +31,7 @@ class QueryViews:
     context_rewrite: str
     detail_rewrite: str
     context_applied: bool
-    prior_topic: str | None = None
+    carried_slots: dict[str, Any] = field(default_factory=dict)
 
     def vector_texts(self) -> list[str]:
         """Distinct non-empty texts for vector retrieve; user_query always first."""
@@ -62,7 +62,7 @@ class QueryViews:
             "context_rewrite": self.context_rewrite,
             "detail_rewrite": self.detail_rewrite,
             "context_applied": self.context_applied,
-            "prior_topic": self.prior_topic,
+            "carried_slots": dict(self.carried_slots),
             "user_query_len": len(self.user_query or ""),
             "context_rewrite_len": len(self.context_rewrite or ""),
             "detail_rewrite_len": len(self.detail_rewrite or ""),
@@ -109,44 +109,26 @@ def _profile_scope_hints(
     return ". ".join(parts)
 
 
-_FOLLOWUP_CUE_RE = re.compile(
-    r"^\s*(what\s+about|how\s+about|and\s+for|same\s+for|and\s+in)\b",
-    re.I,
-)
-
-
 def build_context_rewrite(
     user_query: str,
     *,
+    active: ActiveRequest | None = None,
     conversation_summary: str | None = None,
     recent_turns: list[dict[str, Any]] | None = None,
     user_profile: dict[str, Any] | None = None,
     plan_type: str | None = None,
     category: str | None = None,
 ) -> dict[str, Any]:
-    """History+profile rewrite when related; empty string when not applied."""
-    enrich = enrich_query_with_memory(
-        user_query,
-        conversation_summary=conversation_summary,
-        recent_turns=recent_turns,
-    )
-    # Enricher elliptical regex is strict on trailing '?'; force follow-up cues.
-    if not enrich.get("enriched") and _FOLLOWUP_CUE_RE.search(user_query or ""):
-        prior = enrich.get("prior_topic")
-        if prior:
-            enrich = {
-                **enrich,
-                "enriched": True,
-                "enriched_query": f"{str(prior).rstrip('.!?')}. Follow-up: {user_query.strip()}",
-            }
-    context = ""
-    applied = False
-    prior = enrich.get("prior_topic")
-    if enrich.get("enriched"):
-        context = str(enrich.get("enriched_query") or "").strip()
-        applied = bool(context) and _materially_different(context, user_query)
-        if not applied:
-            context = ""
+    """The question plus its carried slots and profile scope; empty string when nothing applies."""
+    if active is None and (recent_turns or conversation_summary):
+        history = list(recent_turns or [])
+        if conversation_summary:
+            history = [{"role": "user", "content": conversation_summary}, *history]
+        active, _persisted = resolve_turn(user_query, persisted=None, recent_turns=history)
+    context = resolved_request_text(user_query, active) if active else ""
+    applied = bool(context) and _materially_different(context, user_query)
+    if not applied:
+        context = ""
     hints = _profile_scope_hints(
         user_profile=user_profile, plan_type=plan_type, category=category
     )
@@ -163,14 +145,7 @@ def build_context_rewrite(
     if context and not _materially_different(context, user_query):
         context = ""
         applied = False
-    return {
-        "context_rewrite": context,
-        "context_applied": applied,
-        "prior_topic": str(prior).strip() if prior else None,
-        "memory_enriched": bool(enrich.get("enriched") or applied),
-        "enriched_query": str(enrich.get("enriched_query") or user_query),
-        "original_query": str(enrich.get("original_query") or user_query),
-    }
+    return {"context_rewrite": context, "context_applied": applied}
 
 
 def _looks_needs_profile_scope(query: str) -> bool:
@@ -266,6 +241,7 @@ def build_detail_rewrite(
 def build_query_views(
     raw_query: str,
     *,
+    active: ActiveRequest | None = None,
     conversation_summary: str | None = None,
     recent_turns: list[dict[str, Any]] | None = None,
     user_profile: dict[str, Any] | None = None,
@@ -276,6 +252,7 @@ def build_query_views(
     user_query = normalize_query_text(raw_query)
     ctx = build_context_rewrite(
         user_query,
+        active=active,
         conversation_summary=conversation_summary,
         recent_turns=recent_turns,
         user_profile=user_profile,
@@ -288,7 +265,7 @@ def build_query_views(
         context_rewrite=str(ctx.get("context_rewrite") or ""),
         detail_rewrite=detail,
         context_applied=bool(ctx.get("context_applied")),
-        prior_topic=ctx.get("prior_topic") if isinstance(ctx.get("prior_topic"), str) else None,
+        carried_slots=active.carried() if active else {},
     )
 
 

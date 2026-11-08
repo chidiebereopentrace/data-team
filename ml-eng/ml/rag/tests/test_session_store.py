@@ -54,12 +54,38 @@ def test_session_helpers_memory():
     os.environ.pop("REDIS_URL", None)
 
     sid = "s123"
-    ss.save_session_blob(sid, {"conversation_summary": "s", "recent_turns": []})
-    b = ss.get_session_blob(sid)
-    assert b and b["conversation_summary"] == "s"
+    assert ss.save_session_blob("tenant:a", sid, {"conversation_summary": "s"}, expected_version=0)
+    b = ss.get_session_blob("tenant:a", sid)
+    assert b and b["conversation_summary"] == "s" and b["state_version"] == 1
 
-    ss.delete_session(sid)
-    assert ss.get_session_blob(sid) is None
+    ss.delete_session("tenant:a", sid)
+    assert ss.get_session_blob("tenant:a", sid) is None
+
+
+def test_session_ids_are_bound_to_their_owner():
+    _clear()
+    os.environ.pop("RAG_REDIS_URL", None)
+    assert ss.save_session_blob("tenant:a", "shared", {"conversation_summary": "a"}, expected_version=0)
+    assert ss.get_session_blob("tenant:b", "shared") is None
+    ss.delete_session("tenant:b", "shared")
+    assert ss.get_session_blob("tenant:a", "shared") is not None
+
+
+def test_stale_write_cannot_overwrite_newer_state():
+    _clear()
+    os.environ.pop("RAG_REDIS_URL", None)
+    assert ss.save_session_blob("o", "s", {"conversation_summary": "turn 1"}, expected_version=0)
+    assert ss.save_session_blob("o", "s", {"conversation_summary": "turn 2"}, expected_version=1)
+    assert not ss.save_session_blob("o", "s", {"conversation_summary": "late turn 1 retry"}, expected_version=1)
+    assert ss.get_session_blob("o", "s")["conversation_summary"] == "turn 2"
+
+
+def test_idempotent_responses_are_owner_scoped():
+    _clear()
+    os.environ.pop("RAG_REDIS_URL", None)
+    ss.save_idempotent_response("o1", "key-1", {"answer": "x"})
+    assert ss.get_idempotent_response("o1", "key-1") == {"answer": "x"}
+    assert ss.get_idempotent_response("o2", "key-1") is None
 
 
 def test_cache_helpers_memory():
@@ -99,9 +125,10 @@ def test_redis_backend_when_fakeredis_present():
         ss.delete_key(k)
         assert ss.get_json(k) is None
 
-        # session helper
-        ss.save_session_blob("sidX", {"conversation_summary": "x"})
-        blob = ss.get_session_blob("sidX")
+        # session helper with compare-and-set
+        assert ss.save_session_blob("o", "sidX", {"conversation_summary": "x"}, expected_version=0)
+        assert not ss.save_session_blob("o", "sidX", {"conversation_summary": "y"}, expected_version=0)
+        blob = ss.get_session_blob("o", "sidX")
         assert blob is not None
         assert blob["conversation_summary"] == "x"
     finally:
@@ -115,6 +142,8 @@ if __name__ == "__main__":
     # Allow direct execution: python -m ml.rag.tests.test_session_store
     test_memory_backend_basic()
     test_session_helpers_memory()
+    test_session_ids_are_bound_to_their_owner()
+    test_stale_write_cannot_overwrite_newer_state()
     test_cache_helpers_memory()
     print("memory backend tests passed")
     try:

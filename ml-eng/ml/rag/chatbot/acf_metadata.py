@@ -125,8 +125,17 @@ def metric_direction(
 
 
 def stamp_temporal_direction(meta: dict[str, Any]) -> dict[str, Any]:
-    """Map YoY SQL shapes and value/prior pairs into ACF direction fields."""
-    out = dict(meta)
+    """Map YoY SQL shapes and value/prior pairs into ACF direction fields.
+
+    A derived change records the evidence it was computed from (``derived_from``).
+    """
+    out = _stamp_direction(dict(meta))
+    if out.get("magnitude") is not None and out.get("evidence_id"):
+        out["derived_from"] = [str(out["evidence_id"])]
+    return out
+
+
+def _stamp_direction(out: dict[str, Any]) -> dict[str, Any]:
     try:
         curr = out.get("total_curr")
         prev = out.get("total_prev")

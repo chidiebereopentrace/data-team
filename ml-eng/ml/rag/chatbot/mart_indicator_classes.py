@@ -23,6 +23,10 @@ def _load_taxonomy() -> dict[str, Any]:
     return data if isinstance(data, dict) else {"classes": {}}
 
 
+def taxonomy_version() -> str:
+    return str(_load_taxonomy().get("version") or "")
+
+
 def all_class_codes() -> list[str]:
     classes = _load_taxonomy().get("classes") or {}
     return sorted(str(k) for k in classes.keys())

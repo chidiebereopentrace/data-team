@@ -183,7 +183,7 @@ def test_try_sql_patterns_compiles_production_and_trade() -> None:
         ],
         project_id="proj",
         dataset="staging_dev",
-        query="maize production and trade west africa 2022",
+        query="maize production and export quantity west africa 2022",
         time_start="2022-01-01",
         geo_countries=["Nigeria", "Ghana", "Senegal"],
     )

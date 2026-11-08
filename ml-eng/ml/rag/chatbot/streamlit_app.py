@@ -221,29 +221,27 @@ with st.sidebar:
     ota_top_k = st.number_input("OTA chunks (top_k)", min_value=1, max_value=30, value=10)
     rerank_top_k = st.number_input("Rerank context size", min_value=1, max_value=50, value=18)
     st.divider()
-    plan_type_options = [p["id"] for p in PLAN_TYPES]
-    category_options = [c["id"] for c in CATEGORIES]
-    _default_plan = "Farmers"
-    _default_category = "Farmers"
-    _plan_ix = plan_type_options.index(_default_plan) if _default_plan in plan_type_options else 0
-    _cat_ix = category_options.index(_default_category) if _default_category in category_options else 0
+    plan_type_options = ["", *[p["id"] for p in PLAN_TYPES]]
+    category_options = ["", *[c["id"] for c in CATEGORIES]]
 
     def _catalog_label(catalog: list[dict[str, str]], item_id: str) -> str:
+        if not item_id:
+            return "(not set)"
         for item in catalog:
             if item["id"] == item_id:
                 return str(item["label"])
         return item_id
 
     plan_type = st.selectbox(
-        "Plan type",
+        "Plan (commercial tier)",
         plan_type_options,
-        index=_plan_ix,
+        index=0,
         format_func=lambda x: _catalog_label(PLAN_TYPES, x),
     )
     category = st.selectbox(
-        "Category (audience lens)",
+        "Persona (answer audience)",
         category_options,
-        index=_cat_ix,
+        index=0,
         format_func=lambda x: _catalog_label(CATEGORIES, x),
     )
     profile_country = ""
@@ -290,6 +288,7 @@ if prompt:
         t_end=t_end,
         prior_summary=prior_summary,
         prior_recent=prior_recent,
+        active_request=sess.get("active_request") if backend_mode == "in_process" else None,
         preset_overrides=preset_overrides if isinstance(preset_overrides, dict) else None,
     )
 
@@ -326,6 +325,8 @@ if prompt:
                 )
                 sess["conversation_summary"] = new_summary
                 sess["recent_turns"] = new_recent
+                if isinstance(result.get("active_request"), dict):
+                    sess["active_request"] = result["active_request"]
             if show_debug:
                 st.session_state.last_rag_debug = result
                 st.session_state.last_rag_debug_meta = {

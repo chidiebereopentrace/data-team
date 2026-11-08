@@ -16,7 +16,7 @@ from ml.rag.chatbot.query_decomposer import (
     wants_africa_default_scope,
     wants_africa_panel_scope,
 )
-from ml.rag.chatbot.query_enricher import enrich_query_with_memory
+from ml.rag.chatbot.active_request import resolve_turn, resolved_request_text
 from ml.rag.chatbot.task_mode import (
     clarify_answer,
     needs_clarify,
@@ -153,19 +153,15 @@ def test_clarify_ux_not_maize_nigeria_only() -> None:
     assert "Suggested prompts" in text or "soil" in text.lower()
 
 
-def test_enricher_merges_elliptical_followup() -> None:
+def test_elliptical_followup_carries_the_commodity() -> None:
     prior = [
         {"role": "user", "content": "What does research say about maize drought tolerance?"},
         {"role": "assistant", "content": "Several studies discuss drought-tolerant maize."},
     ]
-    out = enrich_query_with_memory(
-        "Country is Niger",
-        conversation_summary="",
-        recent_turns=prior,
-    )
-    assert out["enriched"] is True
-    assert "maize" in out["enriched_query"].lower()
-    assert "Niger" in out["enriched_query"]
+    turn, _ = resolve_turn("Country is Niger", persisted=None, recent_turns=prior)
+    resolved = resolved_request_text("Country is Niger", turn)
+    assert "maize" in resolved.lower()
+    assert "Niger" in resolved
 
 
 def test_reasoner_ontology_fallback_on_empty_llm() -> None:

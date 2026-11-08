@@ -75,7 +75,6 @@ service-account*.json
 
 # ML / Data (large or generated)
 *.parquet
-*.csv
 # Ontology seeds must be trackable (aliases may be .csv.gz under ml-eng)
 !ml-eng/opentrace_ontology/seeds/
 !ml-eng/opentrace_ontology/seeds/**

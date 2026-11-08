@@ -1,7 +1,131 @@
-"""BigQuery execute-state flags shared across graph, gap messages, and web routing."""
+"""BigQuery execute-state flags and typed execution results shared across graph, generation and routing."""
 from __future__ import annotations
 
-from typing import Any
+import hashlib
+import json
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+ExecutionStatus = Literal[
+    "clarify",
+    "validation_failed",
+    "timeout",
+    "exec_failed",
+    "empty_ok",
+    "partial",
+    "result_too_large",
+    "ok",
+]
+
+# Row-item metadata status (as emitted by the retriever) -> typed execution status.
+_ROW_STATUS: dict[str, ExecutionStatus] = {
+    "ok": "ok",
+    "partial": "partial",
+    "empty_result": "empty_ok",
+    "result_too_large": "result_too_large",
+    "validation_failed": "validation_failed",
+    "no_valid_sql": "validation_failed",
+    "compile_error": "validation_failed",
+    "timeout": "timeout",
+    "bq_timeout": "timeout",
+    "execution_error": "exec_failed",
+    "bq_error": "exec_failed",
+    "no_project": "exec_failed",
+    "clarify": "clarify",
+}
+
+EVIDENCE_STATUSES: frozenset[ExecutionStatus] = frozenset({"ok", "partial"})
+
+NON_EVIDENCE_ROW_STATUSES = frozenset(
+    raw for raw, typed in _ROW_STATUS.items() if typed not in EVIDENCE_STATUSES
+)
+
+
+def execution_status(row_status: str) -> ExecutionStatus:
+    """Typed status for a retriever row status; rows without a status are data rows."""
+    return _ROW_STATUS.get((row_status or "ok").strip().lower(), "ok")
+
+
+def evidence_id_for_sql(sql: str) -> str:
+    return "bq:" + hashlib.sha256(" ".join((sql or "").split()).encode()).hexdigest()[:12]
+
+
+def rowset_hash(rows: list[dict[str, Any]]) -> str:
+    canonical = sorted(json.dumps(r, sort_keys=True, default=str) for r in rows)
+    return hashlib.sha256("\n".join(canonical).encode()).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class ExecutionResult:
+    """One executed (or refused) warehouse query and the rows it proved."""
+
+    evidence_id: str
+    status: ExecutionStatus
+    sql: str
+    rows: tuple[dict[str, Any], ...] = ()
+    rowset_hash: str = ""
+    job_id: str | None = None
+    detail: str = ""
+    result_shape: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_evidence(self) -> bool:
+        return self.status in EVIDENCE_STATUSES
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "evidence_id": self.evidence_id,
+            "status": self.status,
+            "sql": self.sql,
+            "row_count": len(self.rows),
+            "rowset_hash": self.rowset_hash,
+            "job_id": self.job_id,
+            "detail": self.detail,
+            "result_shape": dict(self.result_shape),
+        }
+
+
+_ROW_META_KEYS = frozenset(
+    {
+        "sql", "sql_index", "sql_count", "sql_source", "nl2sql_model", "status", "prep_error",
+        "job_id", "bytes_processed", "bq_ms", "row_count", "result_shape", "evidence_id",
+        "subquestion_id", "slot_id", "template", "pattern", "coverage_note", "value_semantics",
+    }
+)
+
+
+def execution_results_from_items(items: list[dict[str, Any]]) -> list[ExecutionResult]:
+    """Group retriever BigQuery items by SQL into typed results (one per query)."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for item in items or []:
+        if not isinstance(item, dict) or str(item.get("source") or "") != "bigquery":
+            continue
+        meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        sql = str(meta.get("sql") or "").strip()
+        if sql:
+            grouped.setdefault(sql, []).append(meta)
+    out: list[ExecutionResult] = []
+    for sql, metas in grouped.items():
+        status = execution_status(str(metas[0].get("status") or ""))
+        rows = (
+            [{k: v for k, v in m.items() if k not in _ROW_META_KEYS} for m in metas]
+            if status in EVIDENCE_STATUSES
+            else []
+        )
+        shape = metas[0].get("result_shape")
+        out.append(
+            ExecutionResult(
+                evidence_id=evidence_id_for_sql(sql),
+                status=status,
+                sql=sql,
+                rows=tuple(rows),
+                rowset_hash=rowset_hash(rows) if rows else "",
+                job_id=metas[0].get("job_id"),
+                detail=str(metas[0].get("prep_error") or ""),
+                result_shape=shape if isinstance(shape, dict) else {},
+            )
+        )
+    return out
 
 
 def collect_pre_queries(
@@ -35,17 +159,7 @@ def collect_pre_queries(
     return out
 
 
-_EXPLAINED_MISS_STATUSES = frozenset(
-    {
-        "empty_result",
-        "compile_error",
-        "validation_failed",
-        "timeout",
-        "execution_error",
-        "bq_timeout",
-        "bq_error",
-    }
-)
+_EXPLAINED_MISS_STATUSES = NON_EVIDENCE_ROW_STATUSES
 
 
 def ensure_planned_attempt_debug(
@@ -153,10 +267,18 @@ def bq_execute_flags(
 
 
 __all__ = [
+    "EVIDENCE_STATUSES",
+    "ExecutionResult",
+    "ExecutionStatus",
+    "NON_EVIDENCE_ROW_STATUSES",
     "bq_execute_flags",
     "collect_pre_queries",
     "ensure_planned_attempt_debug",
+    "evidence_id_for_sql",
+    "execution_results_from_items",
+    "execution_status",
     "plan_indicates_warehouse_attempt",
+    "rowset_hash",
 ]
 
 

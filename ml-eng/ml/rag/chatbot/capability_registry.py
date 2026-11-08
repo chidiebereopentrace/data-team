@@ -36,6 +36,10 @@ def _load_registry() -> dict[str, Any]:
         return yaml.safe_load(fh) or {}
 
 
+def registry_version() -> str:
+    return str(_load_registry().get("version") or "")
+
+
 @lru_cache(maxsize=1)
 def _load_measure_corpus_policy() -> dict[str, Any]:
     if not _MEASURE_POLICY_PATH.is_file():

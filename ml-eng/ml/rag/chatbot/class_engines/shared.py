@@ -5,9 +5,9 @@ from typing import Any, Sequence
 
 from ml.rag.chatbot.bq_engine_validate import validate_engine_sql
 from ml.rag.chatbot.bq_mart_sql import mart_table_fqn
+from ml.rag.chatbot.bind_planning import compile_bind_for_request, effective_time_bounds
 from ml.rag.chatbot.bq_table_schema_yaml import (
     compile_intent_for_table,
-    compile_table_bind_contract,
     pack_mart_table_hints,
 )
 from ml.rag.chatbot.class_engines.base import EngineResult
@@ -126,7 +126,7 @@ def build_planned_engine_result(
         if isinstance(product_hits, list)
         else None
     )
-    contract = compile_table_bind_contract(
+    contract = compile_bind_for_request(
         table_id,
         facets=facets,
         card=card,
@@ -135,8 +135,7 @@ def build_planned_engine_result(
         product_labels=product_labels,
     )
 
-    ts = str(facets.get("time_start") or "")[:10]
-    te = str(facets.get("time_end") or "")[:10]
+    ts, te = effective_time_bounds(contract, facets)
     africa_panel = bool(facets.get("africa_panel"))
     multi = africa_panel or len(geos) >= 2
     mid = measure_id or _measure_id_for_class(class_code, facets)
@@ -249,11 +248,8 @@ def build_planned_multi_table_result(
         if isinstance(product_hits, list)
         else None
     )
-    ts = str(facets.get("time_start") or "")[:10]
-    te = str(facets.get("time_end") or "")[:10]
     africa_panel = bool(facets.get("africa_panel"))
     multi = africa_panel or len(geos) >= 2
-    year_hint = (te or ts or "")[:4] or "year from question"
 
     bind_contracts: dict[str, Any] = {}
     intents: list[dict[str, Any]] = []
@@ -261,7 +257,7 @@ def build_planned_multi_table_result(
         mid = (measure_by_table or {}).get(tid) or measure_id or _measure_id_for_table(
             tid, class_code, facets
         )
-        contract = compile_table_bind_contract(
+        contract = compile_bind_for_request(
             tid,
             facets=facets,
             card=card,
@@ -270,6 +266,8 @@ def build_planned_multi_table_result(
             product_labels=product_labels,
         )
         bind_contracts[tid] = contract.to_dict()
+        ts, te = effective_time_bounds(contract, facets)
+        year_hint = (te or ts or "")[:4] or "year from question"
         intent = compile_intent_for_table(
             tid,
             measure_id=mid,

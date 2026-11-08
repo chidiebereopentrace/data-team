@@ -287,20 +287,7 @@ def test_broaden_empty_sql_noop_without_year_or_product() -> None:
     assert broaden_empty_sql_once(sql, crop_required=True) is None
 
 
-def test_rag_bq_skip_column_allowlist_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    bad_sql = (
-        "SELECT not_a_real_column FROM `opentrace-prod-5ga4.mart_dev.fct_prices` LIMIT 5"
-    )
-    monkeypatch.delenv("RAG_BQ_SKIP_COLUMN_ALLOWLIST", raising=False)
-    for value in ("1", "true", "on", "yes"):
-        monkeypatch.setenv("RAG_BQ_SKIP_COLUMN_ALLOWLIST", value)
-        assert validate_sql_column_allowlist(bad_sql, {"fct_prices"}) is None
-
-
-def test_column_allowlist_still_flags_invented_names_when_not_skipped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("RAG_BQ_SKIP_COLUMN_ALLOWLIST", raising=False)
+def test_column_allowlist_flags_invented_names() -> None:
     err = validate_sql_column_allowlist(
         "SELECT totally_invented_col FROM `proj.mart_dev.fct_prices` LIMIT 1",
         {"fct_prices"},

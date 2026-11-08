@@ -114,10 +114,8 @@ def test_compile_product_filter_fct_trade_maize() -> None:
         blob="rice export Nigeria 2022",
         labels=["Rice"],
     )
-    assert labels == ["Rice"]
-    assert "dim_product" in sql
-    assert "product_key IN (SELECT product_key" in sql
-    assert "product_name = 'Rice'" in sql
+    assert labels == ["Rice, milled"]
+    assert "product_name = 'Rice, milled'" in sql
     assert "product_name IN" not in sql
 
 

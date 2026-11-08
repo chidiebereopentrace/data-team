@@ -179,6 +179,7 @@ def test_unnamed_price_type_is_selected_not_pinned() -> None:
             "measure_columns": ["price_avg"],
             "required_filters_sql": "country_name = 'Ghana' AND year BETWEEN 2020 AND 2023",
             "time_sql": "year BETWEEN 2020 AND 2023",
+            "filter_provenance": {"time": "question"},
         },
         project_id="proj",
         dataset="mart_dev",

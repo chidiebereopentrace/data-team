@@ -8,6 +8,7 @@ langchain>=0.3.0
 
 # API (for ml.rag.api / Hugging Face deploy)
 fastapi>=0.115.0
+sqlglot>=30.17,<31
 uvicorn[standard]>=0.32.0
 redis>=5.2.0
 langfuse>=3.0

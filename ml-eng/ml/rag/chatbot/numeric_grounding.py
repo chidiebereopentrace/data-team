@@ -63,9 +63,9 @@ _CITATION_MARKER_RE = re.compile(r"\[\d+\]")
 # Ordinals and small counts carry little factual risk on their own.
 _SMALL_NUMBER_CEILING = 10
 
-_CAVEAT = (
-    "\n\n_Note: one or more figures above could not be traced to a cited "
-    "source and should be treated as indicative rather than verified._"
+_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+_UNSUPPORTED_LIMIT = (
+    "The cited evidence does not support a numerical claim for this question."
 )
 
 
@@ -157,10 +157,23 @@ def unsourced_figures(answer: str, cited_items: list[Any]) -> list[str]:
     return [f for f in figures if f not in evidence]
 
 
-def append_unsourced_caveat(answer: str, unsourced: list[str]) -> str:
-    """Append the traceability caveat once, when something was flagged."""
+def strip_unsourced_figures(answer: str, unsourced: list[str]) -> str:
+    """Drop sentences that state a figure the cited evidence does not contain."""
     if not answer or not unsourced:
         return answer
-    if "could not be traced to a cited source" in answer:
-        return answer
-    return answer.rstrip() + _CAVEAT
+    flagged = {_normalise(fig) for fig in unsourced}
+    kept: list[str] = []
+    for sentence in _SENTENCE_RE.split(answer.strip()):
+        figures = {_normalise(fig) for fig in _candidate_figures(sentence)}
+        if figures & flagged:
+            continue
+        if sentence.strip():
+            kept.append(sentence.strip())
+    if not kept:
+        return _UNSUPPORTED_LIMIT
+    return " ".join(kept)
+
+
+def append_unsourced_caveat(answer: str, unsourced: list[str]) -> str:
+    """Compatibility name: unsupported figures are removed, not disclaimed."""
+    return strip_unsourced_figures(answer, unsourced)

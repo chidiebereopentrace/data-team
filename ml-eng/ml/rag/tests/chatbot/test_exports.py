@@ -130,9 +130,14 @@ def test_run_exports_csv(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
     monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
     monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
-    bq = [{"source": "bigquery", "content": str(_SAMPLE_ROWS[0]), "metadata": {}}]
-    for i, row in enumerate(_SAMPLE_ROWS[1:], start=1):
-        bq.append({"source": "bigquery", "content": str(row), "metadata": {}})
+    bq = [
+        {
+            "source": "bigquery",
+            "content": str({"country_iso3": "KEN", "year": r["year"], "value": r["production_tonnes"]}),
+            "metadata": {},
+        }
+        for r in _SAMPLE_ROWS
+    ]
     state = {"acf_band_label": "Strong", "acf_score": 80, "acf_explanation": "Good evidence"}
     artifacts = run_exports(
         export_kind="csv",

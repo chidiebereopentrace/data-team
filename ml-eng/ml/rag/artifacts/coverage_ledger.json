@@ -1,0 +1,4115 @@
+{
+ "built_at": "2026-11-08T00:23:38.073684+00:00",
+ "snapshot_hash": "0c0b39aca16d827b",
+ "coverage_built_at": "2026-11-04T21:31:28.623549+00:00",
+ "classes": {
+  "AH": {
+   "name": "Animal health",
+   "serving_tables": [
+    "fct_animal_health",
+    "fct_food_hazards",
+    "fct_insurance"
+   ],
+   "default_table": "fct_animal_health",
+   "card_tables": [
+    "fct_animal_health",
+    "fct_food_hazards",
+    "fct_insurance"
+   ],
+   "corpora": [
+    "academic_papers",
+    "public_reports"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "BIO": {
+   "name": "Biodiversity and protection",
+   "serving_tables": [
+    "fct_biodiversity",
+    "fct_germplasm",
+    "fct_protected_areas"
+   ],
+   "default_table": "fct_biodiversity",
+   "card_tables": [
+    "fct_biodiversity",
+    "fct_germplasm",
+    "fct_protected_areas"
+   ],
+   "corpora": [
+    "academic_papers",
+    "public_reports"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "CLIM": {
+   "name": "Climate and weather",
+   "serving_tables": [
+    "fct_climate"
+   ],
+   "default_table": "fct_climate",
+   "card_tables": [
+    "dim_geography",
+    "dim_indicator",
+    "fct_climate"
+   ],
+   "corpora": [
+    "public_reports",
+    "academic_papers"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "EL": {
+   "name": "Economic and livelihood",
+   "serving_tables": [
+    "fct_economics",
+    "fct_employment",
+    "fct_household"
+   ],
+   "default_table": "fct_employment",
+   "card_tables": [
+    "dim_geography",
+    "dim_indicator",
+    "fct_economics",
+    "fct_employment",
+    "fct_household"
+   ],
+   "corpora": [
+    "public_reports",
+    "academic_papers"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "ENV": {
+   "name": "Environment and emissions",
+   "serving_tables": [
+    "agg_emissions_country_year",
+    "fct_emissions",
+    "fct_forestry"
+   ],
+   "default_table": "fct_emissions",
+   "card_tables": [
+    "fct_emissions"
+   ],
+   "corpora": [
+    "public_reports",
+    "academic_papers"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "FS": {
+   "name": "Food security and nutrition",
+   "serving_tables": [
+    "agg_food_security_country_month",
+    "agg_food_security_monthly",
+    "fct_food_balance",
+    "fct_food_security",
+    "fct_household",
+    "fct_humanitarian"
+   ],
+   "default_table": "fct_food_security",
+   "card_tables": [
+    "agg_food_security_monthly",
+    "fct_food_security"
+   ],
+   "corpora": [
+    "public_reports",
+    "ota",
+    "news"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "FVC": {
+   "name": "Food system and value chain",
+   "serving_tables": [
+    "fct_economics",
+    "fct_food_balance",
+    "fct_forestry",
+    "fct_prices",
+    "fct_trade"
+   ],
+   "default_table": "fct_food_balance",
+   "card_tables": [
+    "fct_economics",
+    "fct_food_balance",
+    "fct_forestry",
+    "fct_prices",
+    "fct_trade"
+   ],
+   "corpora": [
+    "public_reports",
+    "policies",
+    "ota"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "GYI": {
+   "name": "Gender, youth and inclusion",
+   "serving_tables": [
+    "fct_employment",
+    "fct_gender_inclusion",
+    "fct_household"
+   ],
+   "default_table": "fct_gender_inclusion",
+   "card_tables": [
+    "dim_geography",
+    "fct_employment",
+    "fct_gender_inclusion",
+    "fct_household"
+   ],
+   "corpora": [
+    "public_reports",
+    "academic_papers"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "HDI": {
+   "name": "Human development",
+   "serving_tables": [
+    "agg_hdi_latest",
+    "fct_economics",
+    "fct_hdi"
+   ],
+   "default_table": "fct_hdi",
+   "card_tables": [
+    "agg_hdi_latest",
+    "fct_economics",
+    "fct_hdi"
+   ],
+   "corpora": [
+    "public_reports",
+    "academic_papers"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "INP": {
+   "name": "Inputs",
+   "serving_tables": [
+    "fct_fertilizer",
+    "fct_land_inputs",
+    "fct_machinery",
+    "fct_pesticide"
+   ],
+   "default_table": "fct_land_inputs",
+   "card_tables": [
+    "fct_fertilizer",
+    "fct_land_inputs",
+    "fct_machinery",
+    "fct_pesticide"
+   ],
+   "corpora": [
+    "public_reports",
+    "academic_papers"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "PRC": {
+   "name": "Prices and markets",
+   "serving_tables": [
+    "agg_prices_country_month",
+    "fct_prices"
+   ],
+   "default_table": "fct_prices",
+   "card_tables": [
+    "agg_prices_country_month",
+    "dim_geography",
+    "dim_market",
+    "dim_product",
+    "fct_prices"
+   ],
+   "corpora": [
+    "news",
+    "public_reports",
+    "ota"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "PROD": {
+   "name": "Agricultural production",
+   "serving_tables": [
+    "agg_production_annual",
+    "agg_production_country_season",
+    "agg_production_country_year",
+    "fct_production",
+    "fct_yield"
+   ],
+   "default_table": "agg_production_country_year",
+   "card_tables": [
+    "agg_production_country_season",
+    "agg_production_country_year",
+    "fct_production",
+    "fct_yield"
+   ],
+   "corpora": [
+    "public_reports",
+    "academic_papers",
+    "ota"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "RES": {
+   "name": "Research system",
+   "serving_tables": [
+    "fct_investment",
+    "fct_research_expenditure",
+    "fct_researchers"
+   ],
+   "default_table": "fct_investment",
+   "card_tables": [
+    "dim_indicator",
+    "dim_organisation",
+    "dim_research_project",
+    "fct_investment",
+    "fct_research_expenditure",
+    "fct_researchers"
+   ],
+   "corpora": [
+    "academic_papers",
+    "public_reports"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "SOIL": {
+   "name": "Soil health and land",
+   "serving_tables": [
+    "agg_soil_admin",
+    "fct_land_degradation",
+    "fct_land_inputs",
+    "fct_soil_health"
+   ],
+   "default_table": "fct_soil_health",
+   "card_tables": [
+    "agg_soil_admin",
+    "bridge_geography_aez",
+    "fct_land_degradation",
+    "fct_land_inputs",
+    "fct_soil_health"
+   ],
+   "corpora": [
+    "public_reports",
+    "academic_papers"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  },
+  "VEG": {
+   "name": "Vegetation",
+   "serving_tables": [
+    "fct_vegetation"
+   ],
+   "default_table": "fct_vegetation",
+   "card_tables": [
+    "fct_vegetation"
+   ],
+   "corpora": [
+    "academic_papers",
+    "public_reports"
+   ],
+   "readiness": "fixture_verified",
+   "default_table_readiness": "fixture_verified"
+  }
+ },
+ "objects": {
+  "agg_economics_country_year": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": "fct_economics",
+   "grain": "Country \u00d7 item \u00d7 measurement_form \u00d7 year \u00d7 source",
+   "column_roles": {
+    "agg_economics_country_year_key": "key",
+    "geography_key": "geo",
+    "date_key": "time",
+    "country_name": "geo",
+    "item_key": "key",
+    "measurement_form": "attribute",
+    "unit": "attribute",
+    "year": "time",
+    "source_key": "lineage",
+    "value_avg": "measure",
+    "row_count": "lineage",
+    "loaded_at": "lineage"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "agg_emissions_country_year": {
+   "disposition": "serving",
+   "classes": [
+    "ENV"
+   ],
+   "lineage_parent": "fct_emissions",
+   "grain": "Country \u00d7 item \u00d7 element \u00d7 year \u00d7 source",
+   "column_roles": {
+    "agg_emissions_country_year_key": "key",
+    "geography_key": "geo",
+    "date_key": "time",
+    "country_name": "geo",
+    "item_key": "key",
+    "element_key": "key",
+    "unit": "attribute",
+    "year": "time",
+    "source_key": "lineage",
+    "value_avg": "measure",
+    "row_count": "lineage",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_emissions",
+    "members": 58,
+    "min_year": 1961,
+    "max_year": 2050
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value_avg, f.row_count, f.year, f.country_name, f.unit, d0.organisation_name, d1.item_name, d2.element_name FROM (SELECT value_avg, row_count, year, country_name, unit, source_key, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.agg_emissions_country_year` WHERE country_name = 'Kenya' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d1 ON d1.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d2 ON d2.element_key = f.element_key"
+   },
+   "readiness": "fixture_verified"
+  },
+  "agg_employment_country_year": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": "fct_employment",
+   "grain": "Country \u00d7 indicator \u00d7 sex \u00d7 year \u00d7 source",
+   "column_roles": {
+    "agg_employment_country_year_key": "key",
+    "geography_key": "geo",
+    "date_key": "time",
+    "country_name": "geo",
+    "indicator": "filter",
+    "sex": "attribute",
+    "unit": "attribute",
+    "year": "time",
+    "source_key": "lineage",
+    "value_avg": "measure",
+    "row_count": "lineage",
+    "loaded_at": "lineage"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "agg_food_balance_country_year": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": "fct_food_balance",
+   "grain": "Country \u00d7 product \u00d7 year \u00d7 source",
+   "column_roles": {
+    "agg_food_balance_country_year_key": "key",
+    "geography_key": "geo",
+    "date_key": "time",
+    "country_name": "geo",
+    "product_key": "key",
+    "year": "time",
+    "source_key": "lineage",
+    "production_sum": "measure",
+    "imports_sum": "measure",
+    "exports_sum": "measure",
+    "food_sum": "measure",
+    "feed_sum": "measure",
+    "losses_sum": "measure",
+    "row_count": "lineage",
+    "loaded_at": "lineage"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "agg_food_security_country_month": {
+   "disposition": "serving",
+   "classes": [
+    "FS"
+   ],
+   "lineage_parent": "fct_food_security",
+   "grain": "Country \u00d7 measure_type \u00d7 month \u00d7 source",
+   "column_roles": {
+    "agg_food_security_country_month_key": "key",
+    "geography_key": "geo",
+    "date_key": "time",
+    "country_name": "geo",
+    "country_iso2": "attribute",
+    "measure_type": "filter",
+    "year": "time",
+    "month": "time",
+    "source_key": "lineage",
+    "value_sum": "measure",
+    "pct_phase3_avg": "measure",
+    "pct_phase4_avg": "measure",
+    "pct_phase5_avg": "measure",
+    "unit_count": "measure",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_food_security",
+    "members": 28,
+    "min_year": 2011,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value_sum, f.pct_phase3_avg, f.pct_phase4_avg, f.pct_phase5_avg, f.year, f.month, f.country_name, f.measure_type, d0.organisation_name FROM (SELECT value_sum, pct_phase3_avg, pct_phase4_avg, pct_phase5_avg, year, month, country_name, measure_type, source_key FROM `opentrace-prod-5ga4.mart_dev.agg_food_security_country_month` WHERE country_name = 'Kenya' AND year = 2020 ORDER BY month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key ORDER BY f.month DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "agg_food_security_monthly": {
+   "disposition": "serving",
+   "classes": [
+    "FS"
+   ],
+   "lineage_parent": "fct_food_security",
+   "grain": "agg food security monthly",
+   "column_roles": {
+    "geo_key": "geo",
+    "country_code": "filter",
+    "country_name": "geo",
+    "time_key": "time",
+    "classification_key": "excluded",
+    "phase_name": "filter",
+    "phase_number": "measure",
+    "scenario_key": "excluded",
+    "scenario_name": "filter",
+    "record_count": "attribute",
+    "total_population_affected": "measure",
+    "avg_population_affected": "measure",
+    "avg_pct_phase3": "measure",
+    "avg_pct_phase4": "measure",
+    "avg_pct_phase5": "measure"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "agg_food_security_monthly",
+    "members": 3,
+    "min_year": 2016,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT phase_number, total_population_affected, avg_population_affected, avg_pct_phase3, time_key, country_name, phase_name, scenario_name FROM `opentrace-prod-5ga4.mart_dev.agg_food_security_monthly` WHERE country_name = 'Kenya' AND time_key = 2020 LIMIT 50"
+   },
+   "readiness": "fixture_verified"
+  },
+  "agg_forestry_country_year": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": "fct_forestry",
+   "grain": "Country \u00d7 item \u00d7 forestry_grain \u00d7 year \u00d7 source",
+   "column_roles": {
+    "agg_forestry_country_year_key": "key",
+    "geography_key": "geo",
+    "date_key": "time",
+    "country_name": "geo",
+    "item_key": "key",
+    "forestry_grain": "filter",
+    "unit": "attribute",
+    "year": "time",
+    "source_key": "lineage",
+    "value_avg": "measure",
+    "row_count": "lineage",
+    "loaded_at": "lineage"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "agg_hdi_latest": {
+   "disposition": "serving",
+   "classes": [
+    "HDI"
+   ],
+   "lineage_parent": "fct_hdi",
+   "grain": "Latest year per country",
+   "column_roles": {
+    "agg_hdi_latest_key": "key",
+    "geography_key": "geo",
+    "date_key": "time",
+    "country_name": "geo",
+    "country_iso3": "geo",
+    "latest_year": "measure",
+    "hdi_value": "measure",
+    "source_key": "lineage",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": false,
+     "reason": "holds only the latest HDI year per country; use fct_hdi for trends"
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_hdi",
+    "members": 54,
+    "min_year": 1990,
+    "max_year": 2023
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT latest_year, hdi_value, country_iso3 FROM `opentrace-prod-5ga4.mart_dev.agg_hdi_latest` WHERE country_iso3 = 'KEN' LIMIT 1"
+   },
+   "readiness": "fixture_verified"
+  },
+  "agg_prices_country_month": {
+   "disposition": "serving",
+   "classes": [
+    "PRC"
+   ],
+   "lineage_parent": "fct_prices",
+   "grain": "Country \u00d7 product \u00d7 month \u00d7 source",
+   "column_roles": {
+    "agg_prices_country_month_key": "key",
+    "geography_key": "geo",
+    "date_key": "time",
+    "country_name": "geo",
+    "product_key": "excluded",
+    "price_type": "filter",
+    "price_source": "filter",
+    "source_key": "lineage",
+    "year": "time",
+    "month": "time",
+    "price_avg": "measure",
+    "common_unit_price_avg": "measure",
+    "market_count": "measure",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "agg_prices_country_month",
+    "members": 57,
+    "min_year": 1960,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.price_avg, f.common_unit_price_avg, f.market_count, f.year, f.month, f.country_name, f.price_source, d0.product_name, d1.organisation_name FROM (SELECT price_avg, common_unit_price_avg, market_count, year, month, country_name, price_source, product_key, source_key FROM `opentrace-prod-5ga4.mart_dev.agg_prices_country_month` WHERE country_name = 'Kenya' AND year = 2020 AND price_type = 'Value' ORDER BY month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.month DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "agg_production_annual": {
+   "disposition": "serving",
+   "classes": [
+    "PROD"
+   ],
+   "lineage_parent": "fct_production",
+   "grain": "agg production annual",
+   "column_roles": {
+    "geo_key": "geo",
+    "country_code": "filter",
+    "country_name": "geo",
+    "time_key": "time",
+    "product_key": "excluded",
+    "product_name": "filter",
+    "source_key": "lineage",
+    "source_name": "filter",
+    "record_count": "attribute",
+    "total_production_qty": "measure",
+    "avg_production_qty": "measure",
+    "total_area": "measure",
+    "avg_yield": "measure"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "agg_production_annual",
+    "members": 33,
+    "min_year": 1960,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT total_production_qty, avg_production_qty, total_area, avg_yield, time_key, country_name, product_name, source_name FROM `opentrace-prod-5ga4.mart_dev.agg_production_annual` WHERE country_name = 'Kenya' AND time_key = 2020 LIMIT 50"
+   },
+   "readiness": "fixture_verified"
+  },
+  "agg_production_country_season": {
+   "disposition": "serving",
+   "classes": [
+    "PROD"
+   ],
+   "lineage_parent": "fct_yield",
+   "grain": "Country \u00d7 season \u00d7 product \u00d7 harvest_year \u00d7 source",
+   "column_roles": {
+    "agg_production_country_season_key": "key",
+    "geography_key": "geo",
+    "season_key": "key",
+    "date_key": "time",
+    "country_name": "geo",
+    "product_key": "excluded",
+    "harvest_year": "filter",
+    "source_key": "lineage",
+    "area_harvested": "measure",
+    "production_qty": "measure",
+    "yield_recomputed": "measure",
+    "fnid_count": "measure",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_yield",
+    "members": 33,
+    "min_year": 1960,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.area_harvested, f.production_qty, f.yield_recomputed, f.fnid_count, f.harvest_year, f.country_name, d0.product_name, d1.organisation_name, d2.season_name FROM (SELECT area_harvested, production_qty, yield_recomputed, fnid_count, harvest_year, country_name, product_key, source_key, season_key FROM `opentrace-prod-5ga4.mart_dev.agg_production_country_season` WHERE country_name = 'Kenya' AND harvest_year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_season` AS d2 ON d2.season_key = f.season_key"
+   },
+   "readiness": "fixture_verified"
+  },
+  "agg_production_country_year": {
+   "disposition": "serving",
+   "classes": [
+    "PROD"
+   ],
+   "lineage_parent": "fct_production",
+   "grain": "Country \u00d7 product \u00d7 year \u00d7 source (physical)",
+   "column_roles": {
+    "agg_production_country_year_key": "key",
+    "geography_key": "geo",
+    "date_key": "time",
+    "country_iso3": "geo",
+    "country_name": "geo",
+    "product_key": "excluded",
+    "year": "time",
+    "source_key": "lineage",
+    "area_harvested": "measure",
+    "production_qty": "measure",
+    "yield_recomputed": "measure",
+    "row_count": "lineage",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_production",
+    "members": 55,
+    "min_year": 1961,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.area_harvested, f.production_qty, f.yield_recomputed, f.row_count, f.year, f.country_iso3, d0.product_name, d1.organisation_name FROM (SELECT area_harvested, production_qty, yield_recomputed, row_count, year, country_iso3, product_key, source_key FROM `opentrace-prod-5ga4.mart_dev.agg_production_country_year` WHERE country_iso3 = 'KEN' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key"
+   },
+   "readiness": "fixture_verified"
+  },
+  "agg_soil_admin": {
+   "disposition": "serving",
+   "classes": [
+    "SOIL"
+   ],
+   "lineage_parent": "fct_soil_health",
+   "grain": "Admin geography \u00d7 soil_property \u00d7 depth \u00d7 source",
+   "column_roles": {
+    "agg_soil_admin_key": "key",
+    "geography_key": "geo",
+    "country_name": "geo",
+    "admin_1_name": "geo",
+    "soil_property": "attribute",
+    "depth": "attribute",
+    "source_key": "lineage",
+    "value_avg": "measure",
+    "point_count": "measure",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": false,
+     "reason": "admin soil averages carry no time column"
+    },
+    "series": {
+     "supported": false,
+     "reason": "admin soil averages carry no time column"
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value_avg, f.point_count, f.admin_1_name, f.soil_property, f.depth, f.country_name, d0.organisation_name FROM (SELECT value_avg, point_count, admin_1_name, soil_property, depth, country_name, source_key FROM `opentrace-prod-5ga4.mart_dev.agg_soil_admin` WHERE country_name = 'Kenya' LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key"
+   },
+   "readiness": "fixture_verified"
+  },
+  "bridge_geography_aez": {
+   "disposition": "bridge",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "geography_key \u00d7 AEZ",
+   "column_roles": {
+    "geography_aez_bridge_key": "key",
+    "geography_key": "geo",
+    "aez_key": "key",
+    "aez_code": "attribute",
+    "aez_name": "attribute",
+    "aez_version": "attribute",
+    "aez_source": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "bridge_household_crop": {
+   "disposition": "bridge",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "household_key": "key",
+    "product_key": "key"
+   },
+   "readiness": "discovered"
+  },
+  "bridge_household_disease": {
+   "disposition": "bridge",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "household_key": "key",
+    "disease_key": "key"
+   },
+   "readiness": "discovered"
+  },
+  "bridge_household_livestock": {
+   "disposition": "bridge",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "household_key": "key",
+    "livestock_key": "key"
+   },
+   "readiness": "discovered"
+  },
+  "bridge_project_organisation": {
+   "disposition": "bridge",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "research_project_key": "key",
+    "organisation_key": "key"
+   },
+   "readiness": "discovered"
+  },
+  "bridge_research_org": {
+   "disposition": "bridge",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Project \u2194 organisation edge",
+   "column_roles": {
+    "research_org_bridge_key": "key",
+    "openaire_id": "attribute",
+    "organisation_key": "key",
+    "target_id": "attribute",
+    "rel_name": "attribute",
+    "target_type": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "bridge_research_person": {
+   "disposition": "bridge",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Project \u2194 person edge",
+   "column_roles": {
+    "research_person_bridge_key": "key",
+    "openaire_id": "attribute",
+    "person_key": "key",
+    "target_id": "attribute",
+    "rel_name": "attribute",
+    "target_type": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "bridge_season_calendar": {
+   "disposition": "bridge",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "season_key": "key",
+    "time_key": "time",
+    "is_typical_window": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_aez": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "AEZ code \u00d7 version",
+   "column_roles": {
+    "aez_key": "key",
+    "aez_code": "attribute",
+    "aez_name": "attribute",
+    "aez_version": "attribute",
+    "aez_source": "attribute",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_audit": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "audit_key": "lineage",
+    "ingestion_timestamp": "attribute",
+    "source_system": "attribute",
+    "source_file_name": "attribute",
+    "batch_id": "attribute",
+    "pipeline_run_id": "attribute",
+    "processed_at": "attribute",
+    "record_hash": "attribute",
+    "is_deleted": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_breed_variety": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "breed_variety_key": "key",
+    "variety_code": "attribute",
+    "variety_name": "filter",
+    "species": "attribute",
+    "description": "attribute",
+    "valid_from": "attribute",
+    "valid_to": "attribute",
+    "is_current": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_classification": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "IPC phase code/name",
+   "column_roles": {
+    "classification_key": "key",
+    "phase_code": "filter",
+    "phase_name": "filter",
+    "classification_scale": "attribute",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_currency": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "currency_key": "key",
+    "currency_code": "filter",
+    "currency_name": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_date": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per calendar day",
+   "column_roles": {
+    "date_key": "time",
+    "date_day": "attribute",
+    "year": "time",
+    "month": "time",
+    "quarter": "measure",
+    "year_month": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_disease": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Hazard/disease name",
+   "column_roles": {
+    "disease_key": "key",
+    "disease_or_hazard": "filter",
+    "disease_family": "filter",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_element": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "FAOSTAT-style element",
+   "column_roles": {
+    "element_key": "key",
+    "element_name": "filter",
+    "element_code": "filter",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_emission_category": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "emission_category_key": "key",
+    "category_code": "filter",
+    "category_name": "filter",
+    "parent_category": "attribute",
+    "description": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_faostat_area": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per FAOSTAT area_code",
+   "column_roles": {
+    "faostat_area_key": "key",
+    "area_code": "filter",
+    "area_code_m49": "attribute",
+    "country_name": "geo",
+    "country_iso2": "attribute",
+    "country_iso3": "geo",
+    "match_method": "attribute",
+    "is_aggregate_area": "attribute",
+    "aggregate_reason": "attribute",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_geography": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per place (country, admin, city, FNID, point)",
+   "column_roles": {
+    "geography_key": "geo",
+    "geo_level": "filter",
+    "data_level": "attribute",
+    "country_name": "geo",
+    "country_iso2": "attribute",
+    "country_iso3": "geo",
+    "country_key": "key",
+    "admin_1_name": "geo",
+    "admin_2_name": "geo",
+    "city_name": "geo",
+    "fnid": "attribute",
+    "parent_geography_key": "key",
+    "latitude": "attribute",
+    "longitude": "attribute",
+    "population": "measure",
+    "capital_status": "attribute",
+    "native_id": "attribute",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_household": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Survey household identity",
+   "column_roles": {
+    "household_key": "key",
+    "household_id": "attribute",
+    "country": "attribute",
+    "region": "geo",
+    "district": "attribute",
+    "village_code": "filter",
+    "household_type": "filter",
+    "head_education_level": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_indicator": {
+   "disposition": "dimension",
+   "classes": [
+    "CLIM",
+    "EL",
+    "RES"
+   ],
+   "lineage_parent": null,
+   "grain": "Indicator name",
+   "column_roles": {
+    "indicator_key": "key",
+    "indicator_name": "filter",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_item": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "FAOSTAT-style item name/code",
+   "column_roles": {
+    "item_key": "key",
+    "item_name": "filter",
+    "item_code": "filter",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_land_use": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "land_use_key": "key",
+    "land_use_code": "filter",
+    "land_use_class": "filter",
+    "description": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_livestock": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Species",
+   "column_roles": {
+    "livestock_key": "key",
+    "species": "filter",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_market": {
+   "disposition": "dimension",
+   "classes": [
+    "PRC"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 market_name",
+   "column_roles": {
+    "market_key": "key",
+    "country": "attribute",
+    "admin_1": "attribute",
+    "market_name": "geo",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_organisation": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Organisation identity (OpenAIRE/ASTI)",
+   "column_roles": {
+    "organisation_key": "key",
+    "organisation_id": "attribute",
+    "legal_name": "filter",
+    "short_name": "filter",
+    "website_url": "attribute",
+    "country_code": "filter",
+    "country_name": "geo",
+    "org_source": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_person": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Person/author id",
+   "column_roles": {
+    "person_key": "key",
+    "person_id": "attribute",
+    "given_name": "filter",
+    "family_name": "filter",
+    "biography": "attribute",
+    "coauthor_count": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_pest": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "pest_key": "key",
+    "pest_natural_key": "key",
+    "pest_name": "filter",
+    "pest_type": "filter",
+    "target_crop_livestock": "attribute",
+    "description": "attribute",
+    "valid_from": "attribute",
+    "valid_to": "attribute",
+    "is_current": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_product": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Crop/commodity product identity",
+   "column_roles": {
+    "product_key": "key",
+    "item_code": "filter",
+    "product_name": "filter",
+    "cpcv2": "attribute",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_production_system": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "production_system_key": "key",
+    "system_code": "filter",
+    "system_name": "filter",
+    "description": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_ref_country": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per ISO3 country",
+   "column_roles": {
+    "country_name": "geo",
+    "country_iso2": "attribute",
+    "country_iso3": "geo",
+    "population": "measure",
+    "in_africa_scope": "attribute",
+    "m49_code": "filter",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_research_project": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Project id",
+   "column_roles": {
+    "research_project_key": "key",
+    "project_id": "attribute",
+    "project_code": "filter",
+    "acronym": "attribute",
+    "project_title": "attribute",
+    "start_date": "attribute",
+    "currency": "attribute",
+    "total_cost": "measure",
+    "funded_amount": "measure",
+    "primary_funder_name": "filter",
+    "jurisdiction": "attribute",
+    "funding_stream_desc": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_scenario": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "scenario_key": "key",
+    "scenario_code": "filter",
+    "scenario_name": "filter",
+    "description": "attribute",
+    "is_current": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_season": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 season_name",
+   "column_roles": {
+    "season_key": "key",
+    "country": "attribute",
+    "season_name": "filter",
+    "season_name_norm": "attribute",
+    "start_month": "measure",
+    "end_month": "measure",
+    "crosses_year": "attribute",
+    "is_off_season": "attribute",
+    "n_rows": "measure",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_sensor": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "sensor_key": "key",
+    "sensor_id": "attribute",
+    "sensor_type": "filter",
+    "location_description": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_sex": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Sex label",
+   "column_roles": {
+    "sex_key": "key",
+    "sex_label": "filter",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_soil": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "soil_key": "key",
+    "depth_layer": "attribute",
+    "depth_min_cm": "measure",
+    "depth_max_cm": "measure",
+    "description": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_soil_property": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "soil_property \u00d7 depth",
+   "column_roles": {
+    "soil_property_key": "key",
+    "soil_property": "filter",
+    "depth": "filter",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_source": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per source_natural_key",
+   "column_roles": {
+    "source_key": "lineage",
+    "source_natural_key": "key",
+    "organisation_name": "filter",
+    "tier": "measure",
+    "default_data_level": "attribute",
+    "producer_scale": "attribute",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_status": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "status_key": "key",
+    "status_code": "filter",
+    "status_name": "filter",
+    "status_type": "filter"
+   },
+   "readiness": "discovered"
+  },
+  "dim_time": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "time_key": "time",
+    "date_actual": "attribute",
+    "year": "time",
+    "quarter": "measure",
+    "month": "time",
+    "month_name": "filter",
+    "day_of_month": "measure",
+    "day_of_week": "measure",
+    "week_of_year": "measure",
+    "is_weekend": "attribute",
+    "fiscal_year": "measure",
+    "created_at": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_trade_flow": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "trade_flow_key": "key",
+    "flow_type": "filter",
+    "trade_type": "filter",
+    "description": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "dim_unit": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Unit code \u00d7 type",
+   "column_roles": {
+    "unit_key": "key",
+    "unit_code": "filter",
+    "unit_type": "filter",
+    "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_water": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "",
+   "column_roles": {
+    "water_key": "key",
+    "water_source": "attribute",
+    "water_access_type": "filter",
+    "description": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "fct_air_quality": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "Sensor observation timestamp",
+   "column_roles": {
+    "air_quality_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "sensor_id": "attribute",
+    "latitude": "attribute",
+    "longitude": "attribute",
+    "observed_at": "attribute",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "pm2_5": "attribute",
+    "pm10": "attribute",
+    "humidity_pct": "attribute",
+    "temperature_c": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "fct_animal_health": {
+   "disposition": "serving",
+   "classes": [
+    "AH"
+   ],
+   "lineage_parent": null,
+   "grain": "Household \u00d7 species",
+   "column_roles": {
+    "animal_health_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "household_key": "key",
+    "livestock_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "sub_county": "attribute",
+    "village_name": "filter",
+    "farmer_sex": "attribute",
+    "education_level": "attribute",
+    "housing_type": "filter",
+    "breed_type": "filter",
+    "animals_sold": "attribute",
+    "cash_received": "attribute",
+    "clinical_disease_score": "attribute",
+    "positive_cases": "attribute",
+    "incidence_rate": "attribute",
+    "treatment_cost": "attribute",
+    "average_herd_size": "attribute",
+    "mortality_count": "attribute",
+    "species": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_animal_health",
+    "members": 3,
+    "min_year": 2026,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, as_of_date, species, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_animal_health` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_biodiversity": {
+   "disposition": "serving",
+   "classes": [
+    "BIO"
+   ],
+   "lineage_parent": null,
+   "grain": "GBIF occurrence",
+   "column_roles": {
+    "biodiversity_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "gbif_id": "attribute",
+    "scientific_name": "filter",
+    "country_code": "filter",
+    "latitude": "attribute",
+    "longitude": "attribute",
+    "individual_count": "attribute",
+    "year": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "rich_all": "attribute",
+    "rar_all": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, year, as_of_date, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_biodiversity` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_climate": {
+   "disposition": "serving",
+   "classes": [
+    "CLIM"
+   ],
+   "lineage_parent": null,
+   "grain": "point_obs | country_model",
+   "column_roles": {
+    "climate_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "indicator_key": "key",
+    "climate_grain": "filter",
+    "latitude": "attribute",
+    "longitude": "attribute",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "date_key": "time",
+    "value": "measure",
+    "unit": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_climate",
+    "members": 56,
+    "min_year": 2005,
+    "max_year": 2100
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.as_of_date, f.country_iso3, f.metric, f.climate_grain, f.unit, d0.indicator_name, d1.organisation_name FROM (SELECT value, as_of_date, country_iso3, metric, climate_grain, unit, indicator_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_climate` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_indicator` AS d0 ON d0.indicator_key = f.indicator_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_economics": {
+   "disposition": "serving",
+   "classes": [
+    "EL",
+    "FVC",
+    "HDI"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 item \u00d7 element \u00d7 measurement_form \u00d7 year",
+   "column_roles": {
+    "economics_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "item_key": "key",
+    "element_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "measurement_form": "attribute",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_economics",
+    "members": 54,
+    "min_year": 1970,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.measurement_form, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, measurement_form, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_economics` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_emissions": {
+   "disposition": "serving",
+   "classes": [
+    "ENV"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 item \u00d7 element \u00d7 year",
+   "column_roles": {
+    "emissions_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "item_key": "key",
+    "element_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_emissions",
+    "members": 58,
+    "min_year": 1961,
+    "max_year": 2050
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_emissions` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_employment": {
+   "disposition": "serving",
+   "classes": [
+    "EL",
+    "GYI"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 indicator \u00d7 sex \u00d7 year",
+   "column_roles": {
+    "employment_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "item_key": "key",
+    "element_key": "key",
+    "indicator_key": "key",
+    "sex_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "indicator": "filter",
+    "sex": "attribute",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_employment",
+    "members": 58,
+    "min_year": 1950,
+    "max_year": 2100
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, year, as_of_date, country_iso3, indicator, sex, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_employment` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_fertilizer": {
+   "disposition": "serving",
+   "classes": [
+    "INP"
+   ],
+   "lineage_parent": null,
+   "grain": "fct fertilizer",
+   "column_roles": {
+    "fertilizer_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "product_key": "excluded",
+    "unit_key": "key",
+    "quantity": "measure",
+    "source_record_id": "attribute"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.quantity, f.time_key, d0.product_name, d1.organisation_name, d2.unit_code, d3.country_name FROM (SELECT quantity, time_key, product_key, source_key, unit_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_fertilizer` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d2 ON d2.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_food_balance": {
+   "disposition": "serving",
+   "classes": [
+    "FS",
+    "FVC"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 item \u00d7 element \u00d7 year",
+   "column_roles": {
+    "food_balance_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "product_key": "excluded",
+    "element_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "element": "filter",
+    "element_code": "filter",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "production": "attribute",
+    "imports": "attribute",
+    "exports": "attribute",
+    "food": "attribute",
+    "feed": "attribute",
+    "losses": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_food_balance",
+    "members": 49,
+    "min_year": 1961,
+    "max_year": 2023
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.element, f.metric, f.unit, d0.product_name FROM (SELECT value, year, as_of_date, country_iso3, element, metric, unit, product_key FROM `opentrace-prod-5ga4.mart_dev.fct_food_balance` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_food_hazards": {
+   "disposition": "serving",
+   "classes": [
+    "AH"
+   ],
+   "lineage_parent": null,
+   "grain": "Study \u00d7 site \u00d7 hazard \u00d7 year",
+   "column_roles": {
+    "food_hazard_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "disease_key": "key",
+    "source_key": "lineage",
+    "tier": "measure",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "author_year": "attribute",
+    "publication_year": "attribute",
+    "study_site": "attribute",
+    "samples_type": "filter",
+    "foodborne_hazard": "attribute",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "total_samples": "attribute",
+    "positive_samples": "attribute",
+    "mean_cfu_per_g_log": "attribute",
+    "country": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_food_hazards",
+    "members": 1,
+    "min_year": 2002,
+    "max_year": 2019
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT tier, as_of_date, metric FROM `opentrace-prod-5ga4.mart_dev.fct_food_hazards` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_food_security": {
+   "disposition": "serving",
+   "classes": [
+    "FS"
+   ],
+   "lineage_parent": null,
+   "grain": "FNID \u00d7 measure_type \u00d7 month (FEWS)",
+   "column_roles": {
+    "food_security_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "classification_key": "excluded",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "measure_type": "filter",
+    "scenario_name": "filter",
+    "year": "time",
+    "month": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "low_value": "attribute",
+    "high_value": "attribute",
+    "pct_phase3": "attribute",
+    "pct_phase4": "attribute",
+    "pct_phase5": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_food_security",
+    "members": 28,
+    "min_year": 2011,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, year, month, as_of_date, measure_type, metric, scenario_name, unit FROM `opentrace-prod-5ga4.mart_dev.fct_food_security` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_forestry": {
+   "disposition": "serving",
+   "classes": [
+    "ENV",
+    "FVC"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 item \u00d7 forestry_grain \u00d7 year",
+   "column_roles": {
+    "forestry_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "item_key": "key",
+    "element_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "forestry_grain": "filter",
+    "partner_countries": "attribute",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.forestry_grain, f.metric, f.unit, d0.item_name FROM (SELECT value, year, as_of_date, country_iso3, forestry_grain, metric, unit, item_key FROM `opentrace-prod-5ga4.mart_dev.fct_forestry` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_gender_inclusion": {
+   "disposition": "serving",
+   "classes": [
+    "GYI"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 item \u00d7 element \u00d7 year (national SDG)",
+   "column_roles": {
+    "gender_inclusion_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "item_key": "key",
+    "element_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "industry": "attribute",
+    "factor": "attribute",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_gender_inclusion` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_germplasm": {
+   "disposition": "serving",
+   "classes": [
+    "BIO"
+   ],
+   "lineage_parent": null,
+   "grain": "Germplasm accession point",
+   "column_roles": {
+    "germplasm_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "germplasm_id": "attribute",
+    "taxon": "attribute",
+    "latitude": "attribute",
+    "longitude": "attribute",
+    "geometry_wkt": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_germplasm",
+    "members": 41,
+    "min_year": 2026,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, as_of_date, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_germplasm` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_hdi": {
+   "disposition": "serving",
+   "classes": [
+    "HDI"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 year",
+   "column_roles": {
+    "hdi_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_hdi",
+    "members": 54,
+    "min_year": 1990,
+    "max_year": 2023
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, year, as_of_date, country_iso3, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_hdi` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_household": {
+   "disposition": "serving",
+   "classes": [
+    "EL",
+    "FS",
+    "GYI"
+   ],
+   "lineage_parent": null,
+   "grain": "Household survey snapshot",
+   "column_roles": {
+    "household_fact_key": "key",
+    "household_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "hh_size": "attribute",
+    "hh_size_mae": "attribute",
+    "land_cultivated": "attribute",
+    "livestock_holdings": "attribute",
+    "fies_score": "attribute",
+    "total_income": "attribute",
+    "farm_income": "attribute",
+    "offfarm_income": "attribute",
+    "food_availability": "attribute",
+    "food_self_sufficiency": "attribute",
+    "total_energy_available": "attribute",
+    "gender_male_control": "attribute",
+    "gender_female_control": "attribute",
+    "gender_male_youth_control": "attribute",
+    "gender_female_youth_control": "attribute",
+    "crop_diversity": "attribute",
+    "livestock_diversity": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": false,
+     "reason": "household survey sample, not a census; ranking countries on it misleads"
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_household",
+    "members": 1,
+    "min_year": 2026,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, as_of_date, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_household` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_humanitarian": {
+   "disposition": "serving",
+   "classes": [
+    "FS"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 item \u00d7 element \u00d7 year",
+   "column_roles": {
+    "humanitarian_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "item_key": "key",
+    "element_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_humanitarian",
+    "members": 54,
+    "min_year": 1988,
+    "max_year": 2016
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_humanitarian` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_insurance": {
+   "disposition": "serving",
+   "classes": [
+    "AH"
+   ],
+   "lineage_parent": null,
+   "grain": "Household insurance record",
+   "column_roles": {
+    "insurance_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "household_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "attribute",
+    "metric": "filter",
+    "source_id": "attribute",
+    "household_id": "attribute",
+    "country": "attribute",
+    "herd_size_category": "attribute",
+    "insurance_start_year": "attribute",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "record_type": "filter",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_insurance",
+    "members": 1,
+    "min_year": 1997,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, as_of_date, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_insurance` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_investment": {
+   "disposition": "serving",
+   "classes": [
+    "RES"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 donor/item/element/indicator/sex/institution \u00d7 year",
+   "column_roles": {
+    "investment_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "item_key": "key",
+    "element_key": "key",
+    "indicator_key": "key",
+    "sex_key": "key",
+    "organisation_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "donor": "attribute",
+    "purpose": "attribute",
+    "indicator": "filter",
+    "institution": "attribute",
+    "sex": "attribute",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_investment",
+    "members": 56,
+    "min_year": 1970,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.donor, f.indicator, f.sex, f.institution, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, donor, indicator, sex, institution, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_investment` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_land_degradation": {
+   "disposition": "serving",
+   "classes": [
+    "SOIL"
+   ],
+   "lineage_parent": null,
+   "grain": "fct land degradation",
+   "column_roles": {
+    "land_degradation_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "unit_key": "key",
+    "pct_degraded": "measure",
+    "upper_bound": "measure",
+    "lower_bound": "measure",
+    "source_record_id": "attribute"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.pct_degraded, f.upper_bound, f.lower_bound, f.time_key, d0.organisation_name, d1.unit_code, d2.country_name FROM (SELECT pct_degraded, upper_bound, lower_bound, time_key, source_key, unit_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_land_degradation` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geo_key"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_land_inputs": {
+   "disposition": "serving",
+   "classes": [
+    "INP",
+    "SOIL"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 item \u00d7 element \u00d7 input_grain \u00d7 year",
+   "column_roles": {
+    "land_input_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "item_key": "key",
+    "element_key": "key",
+    "input_grain": "filter",
+    "country_name": "geo",
+    "partner_countries": "attribute",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_land_inputs",
+    "members": 58,
+    "min_year": 1961,
+    "max_year": 2025
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.input_grain, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, input_grain, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_land_inputs` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_land_use": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "fct land use",
+   "column_roles": {
+    "land_use_fact_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "land_use_key": "key",
+    "area": "measure",
+    "source_record_id": "attribute"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "fct_machinery": {
+   "disposition": "serving",
+   "classes": [
+    "INP"
+   ],
+   "lineage_parent": null,
+   "grain": "Country \u00d7 item \u00d7 element \u00d7 year",
+   "column_roles": {
+    "machinery_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "item_key": "key",
+    "element_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "country_name": "geo",
+    "item": "attribute",
+    "element": "filter",
+    "year": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_machinery",
+    "members": 54,
+    "min_year": 1961,
+    "max_year": 2009
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, year, as_of_date, country_iso3, item, element, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_machinery` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_market_access": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "fct market access",
+   "column_roles": {
+    "market_access_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "market_key": "key",
+    "audit_key": "lineage",
+    "access_index": "measure",
+    "distance_to_market": "measure",
+    "travel_time_minutes": "measure",
+    "purchase_frequency": "attribute",
+    "outlet_choice_cleanliness": "measure",
+    "outlet_choice_hygiene": "measure",
+    "outlet_choice_quality": "measure",
+    "outlet_choice_price": "attribute",
+    "years_operating": "attribute",
+    "operating_days_per_week": "attribute",
+    "avg_daily_sales_volume": "attribute",
+    "primary_supply_source": "attribute",
+    "source_record_id": "attribute"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "fct_pesticide": {
+   "disposition": "serving",
+   "classes": [
+    "INP"
+   ],
+   "lineage_parent": null,
+   "grain": "fct pesticide",
+   "column_roles": {
+    "pesticide_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "product_key": "excluded",
+    "pest_key": "key",
+    "unit_key": "key",
+    "quantity": "measure",
+    "application_frequency": "measure",
+    "eiq_score": "measure",
+    "eiq_field_use": "measure",
+    "treatment_misuse_flag": "attribute",
+    "source_record_id": "attribute"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.quantity, f.application_frequency, f.eiq_score, f.eiq_field_use, f.time_key, d0.product_name, d1.organisation_name, d2.unit_code, d3.pest_name, d4.country_name FROM (SELECT quantity, application_frequency, eiq_score, eiq_field_use, time_key, product_key, source_key, unit_key, pest_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_pesticide` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d2 ON d2.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_pest` AS d3 ON d3.pest_key = f.pest_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d4 ON d4.geography_key = f.geo_key"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_population_dynamics": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "fct population dynamics",
+   "column_roles": {
+    "population_fact_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "population_count": "measure",
+    "source_record_id": "attribute"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "fct_prices": {
+   "disposition": "serving",
+   "classes": [
+    "FVC",
+    "PRC"
+   ],
+   "lineage_parent": null,
+   "grain": "Market \u00d7 product \u00d7 month \u00d7 source",
+   "column_roles": {
+    "price_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "market_key": "key",
+    "product_key": "excluded",
+    "unit_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "price_type": "filter",
+    "price_source": "filter",
+    "year": "time",
+    "month": "time",
+    "month_code": "filter",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "common_unit_price": "attribute",
+    "common_currency_price": "attribute",
+    "currency": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_prices",
+    "members": 57,
+    "min_year": 1960,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.metric, f.price_source, f.currency, f.unit, d0.product_name, d1.organisation_name, d2.market_name, d3.unit_code FROM (SELECT value, year, month, as_of_date, metric, price_source, currency, unit, product_key, source_key, market_key, unit_key FROM `opentrace-prod-5ga4.mart_dev.fct_prices` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' AND price_type = 'Value' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_market` AS d2 ON d2.market_key = f.market_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d3 ON d3.unit_key = f.unit_key ORDER BY f.as_of_date DESC, f.month DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_production": {
+   "disposition": "serving",
+   "classes": [
+    "PROD"
+   ],
+   "lineage_parent": null,
+   "grain": "FAOSTAT country\u2013year long-form (area/item/element/year/source)",
+   "column_roles": {
+    "production_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "season_key": "key",
+    "product_key": "excluded",
+    "element_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "production_unit_key": "key",
+    "production_grain": "filter",
+    "element": "filter",
+    "year": "time",
+    "month": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "grain_flag": "attribute",
+    "area_harvested": "attribute",
+    "production_qty": "attribute",
+    "yield_value": "attribute",
+    "area_unit": "attribute",
+    "production_unit": "attribute",
+    "yield_unit": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_production",
+    "members": 55,
+    "min_year": 1961,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.country_iso3, f.element, f.metric, f.production_grain, f.area_unit, f.production_unit, f.unit, f.yield_unit, d0.product_name, d1.organisation_name FROM (SELECT value, year, month, as_of_date, country_iso3, element, metric, production_grain, area_unit, production_unit, unit, yield_unit, product_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_production` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.as_of_date DESC, f.month DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_protected_areas": {
+   "disposition": "serving",
+   "classes": [
+    "BIO"
+   ],
+   "lineage_parent": null,
+   "grain": "Protected area feature",
+   "column_roles": {
+    "protected_area_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "protected_area_name": "filter",
+    "latitude": "attribute",
+    "longitude": "attribute",
+    "geometry_wkt": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_protected_areas",
+    "members": 52,
+    "min_year": 2026,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT value, as_of_date, country_iso3, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_protected_areas` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_research_expenditure": {
+   "disposition": "serving",
+   "classes": [
+    "RES"
+   ],
+   "lineage_parent": null,
+   "grain": "fct research expenditure",
+   "column_roles": {
+    "research_exp_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "organisation_key": "key",
+    "unit_key": "key",
+    "expenditure_amount": "measure",
+    "source_record_id": "attribute"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.expenditure_amount, f.time_key, d0.organisation_name, d1.unit_code, d2.short_name, d3.country_name FROM (SELECT expenditure_amount, time_key, source_key, unit_key, organisation_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_research_expenditure` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_organisation` AS d2 ON d2.organisation_key = f.organisation_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_researchers": {
+   "disposition": "serving",
+   "classes": [
+    "RES"
+   ],
+   "lineage_parent": null,
+   "grain": "fct researchers",
+   "column_roles": {
+    "researcher_fact_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "organisation_key": "key",
+    "person_key": "key",
+    "unit_key": "key",
+    "researcher_count_fte": "measure",
+    "researcher_count_hc": "measure",
+    "source_record_id": "attribute"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.researcher_count_fte, f.researcher_count_hc, f.time_key, d0.organisation_name, d1.unit_code, d2.short_name, d3.country_name FROM (SELECT researcher_count_fte, researcher_count_hc, time_key, source_key, unit_key, organisation_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_researchers` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_organisation` AS d2 ON d2.organisation_key = f.organisation_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_soil_health": {
+   "disposition": "serving",
+   "classes": [
+    "SOIL"
+   ],
+   "lineage_parent": null,
+   "grain": "Point \u00d7 property \u00d7 depth \u00d7 source",
+   "column_roles": {
+    "soil_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "soil_property_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "latitude": "attribute",
+    "longitude": "attribute",
+    "soil_property": "attribute",
+    "depth": "attribute",
+    "value": "measure",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.as_of_date, f.depth, f.metric, f.unit, d0.organisation_name FROM (SELECT value, as_of_date, depth, metric, unit, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_soil_health` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_technology": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "fct technology",
+   "column_roles": {
+    "technology_fact_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "organisation_key": "key",
+    "technology_key": "key",
+    "unit_key": "key",
+    "audit_key": "lineage",
+    "machinery_stock": "measure",
+    "rd_expenditure": "measure",
+    "rd_intensity": "measure",
+    "source_record_id": "attribute"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "fct_trade": {
+   "disposition": "serving",
+   "classes": [
+    "FVC"
+   ],
+   "lineage_parent": null,
+   "grain": "faostat_country_year | fews_border_month",
+   "column_roles": {
+    "trade_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "product_key": "excluded",
+    "item_key": "key",
+    "element_key": "key",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "trade_grain": "filter",
+    "country_name": "geo",
+    "source_country": "attribute",
+    "destination_country": "attribute",
+    "border_point": "attribute",
+    "trade_flow": "attribute",
+    "product_name": "filter",
+    "element": "filter",
+    "year": "time",
+    "month": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_trade",
+    "members": 55,
+    "min_year": 1961,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.country_iso3, f.element, f.trade_flow, f.trade_grain, f.border_point, f.product_name, f.metric, f.unit, d0.organisation_name FROM (SELECT value, year, month, as_of_date, country_iso3, element, trade_flow, trade_grain, border_point, product_name, metric, unit, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_trade` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key ORDER BY f.as_of_date DESC, f.month DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_value_chain": {
+   "disposition": "unsupported",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "fct value chain",
+   "column_roles": {
+    "value_chain_key": "key",
+    "geo_key": "geo",
+    "time_key": "time",
+    "source_key": "lineage",
+    "product_key": "key",
+    "unit_key": "key",
+    "value_share": "measure",
+    "source_record_id": "attribute"
+   },
+   "reason": "no indicator class lists or labels this table",
+   "readiness": "discovered"
+  },
+  "fct_vegetation": {
+   "disposition": "serving",
+   "classes": [
+    "VEG"
+   ],
+   "lineage_parent": null,
+   "grain": "ndvi_grid | ilri_site",
+   "column_roles": {
+    "vegetation_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "vegetation_grain": "filter",
+    "grid_id": "attribute",
+    "latitude": "attribute",
+    "longitude": "attribute",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "value": "measure",
+    "unit": "attribute",
+    "quantity_trees": "attribute",
+    "quantity_shrubs": "attribute",
+    "quantity_grass": "attribute",
+    "palatability_trees": "attribute",
+    "palatability_shrubs": "attribute",
+    "palatability_grass": "attribute",
+    "currently_grazing": "attribute",
+    "lifeform_mix": "attribute",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_vegetation",
+    "members": 2,
+    "min_year": 2026,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.as_of_date, f.country_iso3, f.metric, f.vegetation_grain, f.grid_id, f.unit, d0.organisation_name FROM (SELECT value, as_of_date, country_iso3, metric, vegetation_grain, grid_id, unit, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_vegetation` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "fixture_verified"
+  },
+  "fct_yield": {
+   "disposition": "serving",
+   "classes": [
+    "PROD"
+   ],
+   "lineage_parent": null,
+   "grain": "FNID\u2013season yield_raw (area/qty/yield)",
+   "column_roles": {
+    "yield_key": "key",
+    "geography_key": "geo",
+    "geo_level": "attribute",
+    "country_iso3": "geo",
+    "season_key": "key",
+    "product_key": "excluded",
+    "source_key": "lineage",
+    "tier": "attribute",
+    "data_level": "attribute",
+    "geo_scope": "attribute",
+    "place_scope": "filter",
+    "metric": "filter",
+    "source_id": "attribute",
+    "production_unit_key": "key",
+    "year": "time",
+    "month": "time",
+    "date_key": "time",
+    "as_of_date": "time",
+    "as_of_date_basis": "attribute",
+    "grain_flag": "attribute",
+    "area_harvested": "attribute",
+    "production_qty": "attribute",
+    "yield_value": "attribute",
+    "area_unit": "attribute",
+    "production_unit": "attribute",
+    "yield_unit": "attribute",
+    "value": "measure",
+    "source_natural_key": "key",
+    "loaded_at": "lineage"
+   },
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_yield",
+    "members": 33,
+    "min_year": 1960,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.country_iso3, f.metric, f.area_unit, f.production_unit, f.yield_unit, d0.product_name, d1.organisation_name, d2.season_name FROM (SELECT value, year, month, as_of_date, country_iso3, metric, area_unit, production_unit, yield_unit, product_key, source_key, season_key FROM `opentrace-prod-5ga4.mart_dev.fct_yield` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_season` AS d2 ON d2.season_key = f.season_key ORDER BY f.as_of_date DESC, f.month DESC"
+   },
+   "readiness": "fixture_verified"
+  }
+ },
+ "disagreements": [
+  {
+   "table": "agg_emissions_country_year",
+   "kind": "class_membership",
+   "taxonomy": [],
+   "table_yaml": [
+    "ENV"
+   ]
+  },
+  {
+   "table": "agg_food_security_country_month",
+   "kind": "class_membership",
+   "taxonomy": [],
+   "table_yaml": [
+    "FS"
+   ]
+  },
+  {
+   "table": "agg_production_country_season",
+   "kind": "class_membership",
+   "taxonomy": [
+    "PROD"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_biodiversity",
+   "kind": "class_membership",
+   "taxonomy": [
+    "BIO"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_fertilizer",
+   "kind": "class_membership",
+   "taxonomy": [
+    "INP"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_forestry",
+   "kind": "class_membership",
+   "taxonomy": [
+    "FVC"
+   ],
+   "table_yaml": [
+    "ENV"
+   ]
+  },
+  {
+   "table": "fct_gender_inclusion",
+   "kind": "class_membership",
+   "taxonomy": [
+    "GYI"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_germplasm",
+   "kind": "class_membership",
+   "taxonomy": [
+    "BIO"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_humanitarian",
+   "kind": "class_membership",
+   "taxonomy": [
+    "FS"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_investment",
+   "kind": "class_membership",
+   "taxonomy": [
+    "RES"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_land_degradation",
+   "kind": "class_membership",
+   "taxonomy": [
+    "SOIL"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_pesticide",
+   "kind": "class_membership",
+   "taxonomy": [
+    "INP"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_protected_areas",
+   "kind": "class_membership",
+   "taxonomy": [
+    "BIO"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_research_expenditure",
+   "kind": "class_membership",
+   "taxonomy": [
+    "RES"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_researchers",
+   "kind": "class_membership",
+   "taxonomy": [
+    "RES"
+   ],
+   "table_yaml": []
+  },
+  {
+   "table": "fct_vegetation",
+   "kind": "class_membership",
+   "taxonomy": [
+    "VEG"
+   ],
+   "table_yaml": []
+  }
+ ]
+}

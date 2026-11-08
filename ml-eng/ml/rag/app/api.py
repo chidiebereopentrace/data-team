@@ -12,6 +12,7 @@ Run locally: uvicorn ml.rag.api:app --reload --host 0.0.0.0 --port 7860
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -45,27 +46,37 @@ from ml.rag.api_schemas import (
 )
 from ml.rag.chat_history import normalize_messages
 from ml.rag.chat_memory import flat_messages_to_memory
-from ml.rag.chat_turn import persist_session_turn
+from ml.rag.chat_turn import empty_session_blob, load_session, persist_session_turn
 from ml.rag.chatbot.artifact_storage import refresh_artifact_url
 from ml.rag.chatbot.bq_sql_diagnostics import (
     MAX_DIAGNOSTIC_SQL_STATEMENTS,
     sql_debug_rows_for_diagnostics,
     sql_statements_for_diagnostics,
 )
+from ml.rag.chatbot.capability_registry import registry_version
+from ml.rag.chatbot.compile_sql_from_bind import RESULT_ROW_BUDGET
+from ml.rag.chatbot.coverage_ledger import load_ledger
+from ml.rag.chatbot.mart_indicator_classes import taxonomy_version
 from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS, allows_export
+from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
+from ml.rag.chatbot.time_policy import trend_years
 from ml.rag.chatbot.time_resolver import utc_today
+from ml.rag.llm_model_config import resolved_llm_models
 from ml.rag.observability import (
     flush_langfuse,
     get_current_trace_id,
     rag_trace_context,
     record_trace_score,
+    tracing_release,
 )
 from ml.rag.rate_limiter import check_plan_rate_limit
 from ml.rag.request_context import resolve_request_context
+from ml.rag.retrievers.web_retriever import web_fallback_enabled
 from ml.rag.session_store import (
     delete_session,
-    get_session_blob,
+    get_idempotent_response,
     redis_status,
+    save_idempotent_response,
     session_ttl_seconds,
 )
 from ml.serving.enterprise.auth import EnterpriseAuthMiddleware, get_request_tenant
@@ -129,7 +140,7 @@ app.add_middleware(
     allow_origins=[o.strip() for o in _cors_origins if o.strip()],
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key", "Idempotency-Key"],
 )
 
 
@@ -350,49 +361,53 @@ async def ready():
     }
     if redis_info:
         payload["redis"] = redis_info
-    from ml.rag.llm_model_config import resolved_llm_models
-
     payload["llm_models"] = resolved_llm_models()
     return payload
 
 
-def _resolve_prior_memory(
-    session_id: str | None,
-    history_messages: list[dict[str, str]] | None,
-) -> tuple[str, str, list[dict[str, str]], bool]:
-    """Return (session_id, conversation_summary, recent_turns, session_found)."""
-    if history_messages is not None:
-        sid = (session_id or "").strip() or uuid.uuid4().hex
-        prior = normalize_messages(history_messages)
-        summary, recent = flat_messages_to_memory(prior)
-        return sid, summary, recent, False
-
-    sid = (session_id or "").strip() or uuid.uuid4().hex
-    blob = get_session_blob(sid)
-    session_found = blob is not None
-    blob = blob or {"conversation_summary": "", "recent_turns": []}
-    summary = str(blob.get("conversation_summary") or "")
-    recent = normalize_messages(blob.get("recent_turns"))
-    return sid, summary, recent, session_found
+def _version_settings() -> dict[str, Any]:
+    """Behaviour-shaping settings only: flags, budgets and model ids. Never keys or URLs."""
+    return {
+        "sql_compiler": sql_compiler_enabled(),
+        "slot_reasoner": os.environ.get("RAG_SLOT_REASONER", "").strip().lower() in ("1", "true", "yes", "on"),
+        "web_fallback": web_fallback_enabled(),
+        "trend_latest_years": trend_years(),
+        "result_row_budget": RESULT_ROW_BUDGET,
+        "llm_models": resolved_llm_models(),
+    }
 
 
-def _persist_session_turn(
-    session_id: str,
-    user_msg: str,
-    assistant_msg: str,
-    *,
-    category: str | None = None,
-    plan_type: str | None = None,
-    country: str | None = None,
-) -> None:
-    persist_session_turn(
-        session_id,
-        user_msg,
-        assistant_msg,
-        category=category,
-        plan_type=plan_type,
-        country=country,
-    )
+@app.get("/version")
+async def version():
+    """Build and contract identity: SHA, execution mode, catalog and ledger versions, settings fingerprint."""
+    settings = _version_settings()
+    ledger = load_ledger()
+    return {
+        "service": "rag",
+        "sha": tracing_release() or "unknown",
+        "execution_mode": "bind_compiler" if settings["sql_compiler"] else "nl2sql",
+        "catalog_version": taxonomy_version(),
+        "registry_version": registry_version(),
+        "ledger_snapshot": ledger.get("snapshot_hash"),
+        "ledger_built_at": ledger.get("built_at"),
+        "coverage_built_at": ledger.get("coverage_built_at"),
+        "settings_fingerprint": hashlib.sha256(
+            json.dumps(settings, sort_keys=True, default=str).encode()
+        ).hexdigest()[:16],
+    }
+
+
+def _session_owner(http_request: Request) -> str:
+    """Sessions belong to the authenticated tenant; with auth off there is one local owner."""
+    tenant = get_request_tenant(http_request)
+    return f"tenant:{tenant.tenant_id}" if tenant is not None else "local"
+
+
+def _client_history_memory(
+    history_messages: list[dict[str, str]],
+) -> tuple[str, list[dict[str, str]]]:
+    """(conversation_summary, recent_turns) folded from client-supplied history."""
+    return flat_messages_to_memory(normalize_messages(history_messages))
 
 
 _GENERIC_500_DETAIL = "The question could not be answered due to an internal error; retry later."
@@ -427,14 +442,26 @@ async def _run_query(
     tenant = get_request_tenant(http_request)
     if injected_plan_type is None and tenant is not None:
         injected_plan_type = PLAN_ROUTE_SLUGS[tenant.plan_slug]
+    owner = _session_owner(http_request)
+    idempotency_key = http_request.headers.get("idempotency-key", "").strip()
+    if idempotency_key:
+        replay = get_idempotent_response(owner, idempotency_key)
+        if replay is not None:
+            return QueryResponse.model_validate(replay)
     langfuse_trace_id: str | None = None
     try:
+        client_history = request.chat_history is not None or request.conversation_history is not None
+        session_id = (request.session_id or "").strip() or uuid.uuid4().hex
+        if client_history:
+            loaded, session_found = empty_session_blob(), False
+        else:
+            loaded, session_found = load_session(owner, session_id)
         try:
             ctx = resolve_request_context(
                 user_profile=request.user_profile,
                 chat_history=request.chat_history,
                 conversation_history=request.conversation_history,
-                session_id=request.session_id,
+                session_blob=None if client_history else loaded,
                 injected_plan_type=injected_plan_type,
             )
         except ValueError as e:
@@ -452,15 +479,20 @@ async def _run_query(
 
         from ml.rag.graph import run_rag
 
-        session_id, prior_summary, prior_recent, session_found = _resolve_prior_memory(
-            request.session_id,
-            ctx.history_messages,
-        )
+        if ctx.history_messages is not None:
+            prior_summary, prior_recent = _client_history_memory(ctx.history_messages)
+        else:
+            prior_summary = str(loaded.get("conversation_summary") or "")
+            prior_recent = normalize_messages(loaded.get("recent_turns"))
 
         kwargs: dict = {}
         if prior_summary.strip() or prior_recent:
             kwargs["conversation_summary"] = prior_summary
             kwargs["recent_turns"] = prior_recent
+        if isinstance(loaded.get("active_request"), dict):
+            kwargs["active_request"] = loaded["active_request"]
+        if isinstance(loaded.get("last_bq_facts"), list):
+            kwargs["last_bq_facts"] = loaded["last_bq_facts"]
         if ctx.user_profile is not None:
             kwargs["user_profile"] = ctx.user_profile
         if ctx.plan_type:
@@ -553,14 +585,19 @@ async def _run_query(
         answer = result.get("answer", "") or ""
         if not ctx.has_client_history:
             profile = ctx.user_profile or {}
-            _persist_session_turn(
+            saved = persist_session_turn(
+                owner,
                 session_id,
                 request.query.strip(),
                 answer,
+                loaded=loaded,
+                result=result,
                 category=ctx.category,
                 plan_type=ctx.plan_type,
                 country=str(profile.get("country") or "").strip() or None,
             )
+            if not saved:
+                logger.warning("session %s moved on during this turn; stale state not written", session_id)
 
         raw_citations = result.get("citations") or []
         citations = [CitationItem.model_validate(c) for c in raw_citations if isinstance(c, dict)]
@@ -582,7 +619,7 @@ async def _run_query(
         if source_basis is not None:
             source_basis = str(source_basis).strip() or None
 
-        return QueryResponse(
+        response = QueryResponse(
             answer=answer,
             citations=citations,
             acf=acf,
@@ -596,6 +633,9 @@ async def _run_query(
             langfuse_trace_id=langfuse_trace_id,
             artifacts=artifacts,
         )
+        if idempotency_key:
+            save_idempotent_response(owner, idempotency_key, response.model_dump(mode="json"))
+        return response
     except HTTPException:
         raise
     except Exception as e:
@@ -650,7 +690,7 @@ async def query_integrated(request: QueryRequest, http_request: Request):
 
 
 @app.delete("/session/{session_id}")
-async def delete_session_endpoint(session_id: str):
+async def delete_session_endpoint(session_id: str, http_request: Request):
     """
     Delete a session and its conversation memory.
 
@@ -661,7 +701,7 @@ async def delete_session_endpoint(session_id: str):
     sid = session_id.strip()
     if not sid:
         raise HTTPException(status_code=400, detail="session_id must not be empty")
-    delete_session(sid)
+    delete_session(_session_owner(http_request), sid)
     logger.info("session deleted: %s", sid)
     return {"status": "deleted", "session_id": sid}
 

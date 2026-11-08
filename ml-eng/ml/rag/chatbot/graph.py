@@ -28,10 +28,15 @@ from ml.rag.chatbot.geo_policy import (
     sanitize_profile_country,
 )
 from ml.rag.chatbot.plan_policy import (
-    apply_category_domain_hints,
     apply_plan_decomposition_gates,
 )
 from ml.rag.chatbot.task_mode import clarify_answer, resolve_task_mode
+from ml.rag.chatbot.active_request import (
+    add_decomposed_slots,
+    fill_decomposition,
+    resolve_turn,
+    resolved_request_text,
+)
 from ml.rag.chatbot.query_views import build_detail_rewrite, build_query_views
 from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_measures, resolve_recency_tier
 from ml.rag.chatbot.product_knowledge import is_help_query, is_product_query
@@ -56,6 +61,7 @@ from ml.rag.chatbot.class_engine_runner import engine_results_to_bq_plan, run_cl
 from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
 from ml.rag.chatbot.class_supervisor import SupervisorPlan, compile_supervisor_plan, corpora_for_supervisor_plan, tables_for_supervisor_plan
 from ml.rag.chatbot.context_diversity import diversify_context_pack
+from ml.rag.chatbot.evidence_kinds import is_warehouse_item
 from ml.rag.chatbot.coverage_retry import should_coverage_retry, should_retry_bq
 from ml.rag.chatbot.corpus_catalog import CORPUS_CATALOG, CorpusSelection, formation_doc_kinds, select_corpora
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
@@ -66,6 +72,7 @@ from ml.rag.chatbot.bq_execute_state import (
     bq_execute_flags,
     collect_pre_queries,
     ensure_planned_attempt_debug,
+    execution_results_from_items,
     plan_indicates_warehouse_attempt,
     warehouse_was_attempted,
 )
@@ -672,11 +679,14 @@ class RAGGraphState(TypedDict, total=False):
     detail_rewrite: str | None
     context_applied: bool | None
     query_views: dict[str, Any] | None
+    active_request: dict[str, Any] | None
+    resolved_request: str | None
     vector_texts_used: list[str] | None
     user_query_dropped: bool | None
     vector_cache_hit: bool | None
     coverage_retry: int | None
     last_bq_facts: list[dict[str, Any]] | None
+    execution_results: list[dict[str, Any]]
     measure_id: str | None
     recency_tier: str | None
     turn_contract: dict[str, Any]
@@ -783,14 +793,14 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             "context_applied": False,
         }
         return early
+    active_turn, active_state = resolve_turn(
+        raw_q,
+        persisted=state.get("active_request") if isinstance(state.get("active_request"), dict) else None,
+        recent_turns=state.get("recent_turns") if isinstance(state.get("recent_turns"), list) else None,
+    )
     views0 = build_query_views(
         raw_q,
-        conversation_summary=state.get("conversation_summary")
-        if isinstance(state.get("conversation_summary"), str)
-        else None,
-        recent_turns=state.get("recent_turns")
-        if isinstance(state.get("recent_turns"), list)
-        else None,
+        active=active_turn,
         user_profile=state.get("user_profile")
         if isinstance(state.get("user_profile"), dict)
         else None,
@@ -801,16 +811,14 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
     enrich = {
         "user_query": user_q,
         "original_query": user_q,
-        "enriched_query": views0.context_rewrite or user_q,
-        "enriched": views0.context_applied,
         "context_rewrite": views0.context_rewrite,
         "context_applied": views0.context_applied,
-        "prior_topic": views0.prior_topic,
     }
-    # Decompose grounding uses the real user question (+ context companion in prompt)
-    q = user_q
+    # Planning and grounding read the resolved request: the question plus its carried slots.
+    resolved_request = resolved_request_text(user_q, active_turn)
+    q = resolved_request or user_q
     ctx = DecomposeContext.from_graph_state(state, enrich)
-    with observed_span("decompose", input_data={"query": q[:200], "enriched": bool(enrich.get("enriched"))}):
+    with observed_span("decompose", input_data={"query": q[:200], "carried": bool(resolved_request)}):
         dec_raw = decompose_query(q, context=ctx)
         decompose_llm_ms = float(dec_raw.pop("_decompose_llm_ms", 0.0) or 0.0)
         skipped_decompose_llm = bool(dec_raw.pop("_skipped_decompose_llm", False))
@@ -830,10 +838,11 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             dec = expand_regions_in_decomposition(dec, q)
         dec = apply_plan_decomposition_gates(dec, state.get("plan_type"), country)
         category = str(state.get("category") or (profile or {}).get("category") or "").strip() or None
-        dec = apply_category_domain_hints(dec, category)
         dec = apply_profile_geography_default(dec, country)
         # UI / API scopes must land in decomp so clarify, BQ plans, and retrieval agree.
         dec = _apply_ui_scope_overrides(dec, state)
+        add_decomposed_slots(active_turn, dec)
+        dec = fill_decomposition(dec, active_turn)
         # Grounded entity/domain enrich → multi-measure retrieval contract tags.
         dec = enrich_decomposition_facets(q, dec)
         matched_bundles = match_intent_bundles(q, dec, breakdown=compile_breakdown(q))
@@ -913,7 +922,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
                 "turn_job": turn.job,
                 "serve_status": turn.serve_status,
                 "recency_tier": recency,
-                "query_enriched": bool(enrich.get("enriched")),
+                "carried_slots": sorted(active_turn.carried()),
                 "context_applied": bool(views0.context_applied),
                 "decompose_llm_ms": decompose_llm_ms,
                 "skipped_decompose_llm": skipped_decompose_llm,
@@ -922,12 +931,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         detail = build_detail_rewrite(user_q, dec)
         views = build_query_views(
             user_q,
-            conversation_summary=state.get("conversation_summary")
-            if isinstance(state.get("conversation_summary"), str)
-            else None,
-            recent_turns=state.get("recent_turns")
-            if isinstance(state.get("recent_turns"), list)
-            else None,
+            active=active_turn,
             user_profile=profile if isinstance(profile, dict) else None,
             plan_type=str(state.get("plan_type") or "") or None,
             category=category,
@@ -958,6 +962,8 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
                 "detail_rewrite_len": len(detail_final or ""),
             },
             "enriched_query": views0.context_rewrite if views0.context_applied else None,
+            "resolved_request": resolved_request,
+            "active_request": active_state.to_dict(),
             "measure_id": turn.measure_id or (measure_hit.measure.id if measure_hit else None),
             "recency_tier": recency,
             "turn_contract": turn.to_dict(),
@@ -1770,12 +1776,9 @@ def _build_bq_sql_plan(
 
 
 def _bq_planning_query(state: RAGGraphState) -> str:
-    """User question plus related context_rewrite for warehouse planning/execute."""
-    user_q = str(state.get("user_query") or state.get("query") or "").strip()
-    ctx = str(state.get("context_rewrite") or "").strip()
-    if bool(state.get("context_applied")) and ctx and ctx.casefold() != user_q.casefold():
-        return f"{user_q}\n\nContext: {ctx}" if user_q else ctx
-    return user_q
+    """The resolved request (question plus carried slots) for warehouse planning and execution."""
+    resolved = str(state.get("resolved_request") or "").strip()
+    return resolved or str(state.get("user_query") or state.get("query") or "").strip()
 
 
 def _fp_equal(a: Any, b: Any) -> bool:
@@ -2348,6 +2351,7 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
         set_cached_facts(fact_key, fact_entry)
     out: dict[str, Any] = {
         "bq_results": results,
+        "execution_results": [r.to_dict() for r in execution_results_from_items(results)],
         "bq_sql_queries": bq_sql_queries,
         "bq_sql_debug": bq_sql_debug,
         "bq_cache_hit": False,
@@ -2524,9 +2528,13 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
         active_raw = corpus_sel.get("active")
         if isinstance(active_raw, list):
             active_corpora = len(active_raw)
-    if len(merged) <= 8 and active_corpora <= 1:
-        packed = diversify_context_pack(list(merged), top_k=None, task_mode=task_mode)
-        pack = typed_context_pack(packed, contract, top_k=top_k if top_k > 0 else None)
+    structured = [item for item in merged if is_warehouse_item(item)]
+    documents = [item for item in merged if not is_warehouse_item(item)]
+    if len(documents) <= 8 and active_corpora <= 1:
+        packed = diversify_context_pack(list(documents), top_k=None, task_mode=task_mode)
+        pack = typed_context_pack(
+            [*structured, *packed], contract, top_k=top_k if top_k > 0 else None
+        )
         items, dropped = _pack_fields(pack)
         return {
             "reranked_context": items,
@@ -2534,6 +2542,12 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
             "rerank_mode": "skipped_trivial",
             "rerank_ms": trace_elapsed_ms(rerank_t0),
             "rerank_pool_size": 0,
+            "retrieval_stage_counts": {
+                "candidate": len(merged),
+                "structured": len(structured),
+                "reranked": 0,
+                "packed": len(items),
+            },
         }
 
     try:
@@ -2548,13 +2562,15 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
     comparative_query = is_comparative_bq_query(str(query), dec)
     scored = rerank(
         query,
-        merged,
+        documents,
         top_k=score_k,
         numeric_query=numeric_query,
         comparative_query=comparative_query,
-    )
+    ) if documents else []
     packed = diversify_context_pack(scored, top_k=None, task_mode=task_mode)
-    pack = typed_context_pack(packed, contract, top_k=top_k if top_k > 0 else None)
+    pack = typed_context_pack(
+        [*structured, *packed], contract, top_k=top_k if top_k > 0 else None
+    )
     items, dropped = _pack_fields(pack)
     return {
         "reranked_context": items,
@@ -2562,6 +2578,12 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
         "rerank_mode": last_rerank_mode(),
         "rerank_ms": trace_elapsed_ms(rerank_t0),
         "rerank_pool_size": pool,
+        "retrieval_stage_counts": {
+            "candidate": len(merged),
+            "structured": len(structured),
+            "reranked": len(scored),
+            "packed": len(items),
+        },
     }
 
 
@@ -3367,17 +3389,13 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
     ):
         if key in kwargs and kwargs[key] is not None:
             initial[key] = kwargs[key]  # type: ignore[assignment]
-    if "session_id" in kwargs and kwargs["session_id"]:
+    if kwargs.get("session_id"):
         initial["session_id"] = kwargs["session_id"]  # type: ignore[assignment]
-        sid = str(kwargs["session_id"]).strip()
-        if sid:
-            from ml.rag.session_store import get_session_blob
-
-            blob = get_session_blob(sid)
-            if isinstance(blob, dict) and blob.get("last_structured_ranking"):
-                initial["structured_ranking_cache"] = blob["last_structured_ranking"]  # type: ignore[assignment]
-            if isinstance(blob, dict) and isinstance(blob.get("last_bq_facts"), list):
-                initial["last_bq_facts"] = blob["last_bq_facts"]  # type: ignore[assignment]
+    # Session state is loaded by the adapter (owner-bound) and handed in; the core never reads the store.
+    if isinstance(kwargs.get("active_request"), dict):
+        initial["active_request"] = kwargs["active_request"]  # type: ignore[assignment]
+    if isinstance(kwargs.get("last_bq_facts"), list):
+        initial["last_bq_facts"] = kwargs["last_bq_facts"]  # type: ignore[assignment]
     if "conversation_summary" in kwargs:
         initial["conversation_summary"] = kwargs["conversation_summary"]  # type: ignore[assignment]
     if "recent_turns" in kwargs:

@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import os
 import re
+import time
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -39,9 +41,9 @@ from ml.rag.mart_yaml_contract import dim_expose_columns
 _DEFAULT_DIR = Path(__file__).resolve().parents[1] / "bq_tables_yaml_files"
 _DEFAULT_MART_DIR = Path(__file__).resolve().parents[1] / "bq_mart_tables_yaml_files"
 
-# Cache: (cache_key, index)
-_cache: tuple[tuple[Any, ...], dict[str, dict[str, Any]]] | None = None
-_mart_cache: tuple[tuple[Any, ...], dict[str, dict[str, Any]]] | None = None
+_INDEX_RECHECK_S = 2.0
+# directory -> (file signature, last check, index)
+_index_cache: dict[str, tuple[tuple[tuple[str, int], ...], float, dict[str, dict[str, Any]]]] = {}
 
 
 def _yaml_dir() -> Path:
@@ -104,31 +106,32 @@ def _index_yaml_files(directory: Path) -> dict[str, dict[str, Any]]:
     return out
 
 
-def _build_index() -> dict[str, dict[str, Any]]:
-    """Load all YAML files; cache by (dir_path, dir_mtime, sorted file mtimes)."""
-    global _cache
-    directory = _yaml_dir()
+def _file_signature(directory: Path) -> tuple[tuple[str, int], ...]:
     try:
-        dir_mtime = directory.stat().st_mtime_ns if directory.is_dir() else None
+        return tuple(sorted((p.name, p.stat().st_mtime_ns) for p in directory.glob("*.yml")))
     except OSError:
-        dir_mtime = None
-    file_sig: tuple[tuple[str, int], ...] = tuple()
-    if dir_mtime is not None and directory.is_dir():
-        try:
-            file_sig = tuple(
-                sorted(
-                    (p.name, p.stat().st_mtime_ns)
-                    for p in directory.glob("*.yml")
-                )
-            )
-        except OSError:
-            file_sig = tuple()
-    cache_key = ("v1", str(directory), dir_mtime, file_sig)
-    if _cache is not None and _cache[0] == cache_key:
-        return _cache[1]
+        return tuple()
+
+
+def _cached_index(directory: Path) -> dict[str, dict[str, Any]]:
+    """YAML index for a directory. File mtimes are re-checked at most every few seconds,
+    so edits are picked up without stat-ing every file on each schema lookup."""
+    key = str(directory)
+    now = time.monotonic()
+    cached = _index_cache.get(key)
+    if cached is not None and now - cached[1] < _INDEX_RECHECK_S:
+        return cached[2]
+    signature = _file_signature(directory) if directory.is_dir() else tuple()
+    if cached is not None and cached[0] == signature:
+        _index_cache[key] = (signature, now, cached[2])
+        return cached[2]
     index = _index_yaml_files(directory)
-    _cache = (cache_key, index)
+    _index_cache[key] = (signature, now, index)
     return index
+
+
+def _build_index() -> dict[str, dict[str, Any]]:
+    return _cached_index(_yaml_dir())
 
 
 def known_table_names() -> set[str]:
@@ -151,30 +154,7 @@ def load_table_schema(table_name: str) -> dict[str, Any] | None:
 
 
 def _build_mart_index() -> dict[str, dict[str, Any]]:
-    """Load all mart YAML files; cache by (dir_path, dir_mtime, sorted file mtimes)."""
-    global _mart_cache
-    directory = _mart_yaml_dir()
-    try:
-        dir_mtime = directory.stat().st_mtime_ns if directory.is_dir() else None
-    except OSError:
-        dir_mtime = None
-    file_sig: tuple[tuple[str, int], ...] = tuple()
-    if dir_mtime is not None and directory.is_dir():
-        try:
-            file_sig = tuple(
-                sorted(
-                    (p.name, p.stat().st_mtime_ns)
-                    for p in directory.glob("*.yml")
-                )
-            )
-        except OSError:
-            file_sig = tuple()
-    cache_key = ("v1", str(directory), dir_mtime, file_sig)
-    if _mart_cache is not None and _mart_cache[0] == cache_key:
-        return _mart_cache[1]
-    index = _index_yaml_files(directory)
-    _mart_cache = (cache_key, index)
-    return index
+    return _cached_index(_mart_yaml_dir())
 
 
 def known_mart_table_names() -> set[str]:
@@ -368,8 +348,7 @@ def match_subnational_geo_labels(blob: str) -> list[tuple[str, str]]:
                 blob_tokens = set(_alnum_tokens(expand_speech_text(text)))
                 if not toks or toks[0] not in blob_tokens:
                     continue
-                # Still require multi-char distinctive match for short admin labels.
-                if len(cand_s) <= 5:
+                if len(toks[0]) < 4:
                     continue
             out.append((col, cand_s))
             seen_cols.add(col)
@@ -1314,21 +1293,48 @@ def resolve_measure_column(table_id: str, requested: str | None) -> str | None:
     return measures[0]
 
 
+def fold_accents(text: str) -> str:
+    """Lowercase and strip diacritics so 'Ségou' tokenizes as one word, 'segou'."""
+    decomposed = unicodedata.normalize("NFKD", text or "")
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower()
+
+
 def _alnum_tokens(text: str) -> list[str]:
-    return [m.group(0).lower() for m in _WORD_RE.finditer(text or "")]
+    return [m.group(0) for m in _WORD_RE.finditer(fold_accents(text))]
+
+
+def _singular(token: str) -> str:
+    if len(token) <= 3 or token.endswith("ss"):
+        return token
+    if token.endswith("ies"):
+        return token[:-3] + "y"
+    if token.endswith("oes"):
+        return token[:-2]
+    if token.endswith("s"):
+        return token[:-1]
+    return token
+
+
+def _canon_token(token: str) -> str:
+    return _singular(_SPEECH_SYNONYMS.get(token, token))
 
 
 def expand_speech_text(text: str) -> str:
-    out = (text or "").lower()
+    out = fold_accents(text)
     for src, dst in _SPEECH_SYNONYMS.items():
         out = re.sub(rf"\b{re.escape(src)}\b", dst, out)
     return out
 
 
 def match_value_samples(blob: str, samples: set[str] | list[str]) -> list[str]:
-    """Pick warehouse labels whose head token appears in the query (speech synonyms expanded)."""
+    """Pick warehouse labels whose head token appears in the query (speech synonyms expanded).
+
+    Tokens are accent-folded and singularized on both sides; a head token must be at
+    least two characters so possessive 's' or initials never select a label.
+    """
     expanded = expand_speech_text(blob)
-    blob_tokens = set(_alnum_tokens(expanded))
+    raw_blob_tokens = {_singular(t) for t in _alnum_tokens(expanded)}
+    blob_tokens = {_canon_token(t) for t in _alnum_tokens(expanded)}
     if not blob_tokens:
         return []
     grouped: dict[str, list[str]] = {}
@@ -1340,8 +1346,8 @@ def match_value_samples(blob: str, samples: set[str] | list[str]) -> list[str]:
         toks = [t for t in _alnum_tokens(sample) if t not in _GENERIC_SAMPLE_TOKENS]
         if not toks:
             continue
-        head = _SPEECH_SYNONYMS.get(toks[0], toks[0])
-        if head not in blob_tokens:
+        head = _canon_token(toks[0])
+        if len(head) < 2 or head not in blob_tokens:
             continue
         grouped.setdefault(head, []).append(sample)
     chosen: list[str] = []
@@ -1351,17 +1357,15 @@ def match_value_samples(blob: str, samples: set[str] | list[str]) -> list[str]:
             sample_tokens = [t for t in _alnum_tokens(sample) if t not in _GENERIC_SAMPLE_TOKENS]
 
             def _said(token: str) -> bool:
-                if token in blob_tokens:
+                if _singular(token) in raw_blob_tokens:
                     return True
-                synonym = _SPEECH_SYNONYMS.get(token, token)
-                if synonym == head:
-                    return False
-                return synonym in blob_tokens
+                canonical = _canon_token(token)
+                return canonical != head and canonical in blob_tokens
 
             extra = []
             for token in sample_tokens:
-                canonical = _SPEECH_SYNONYMS.get(token, token)
-                if canonical == head and (token == sample_tokens[0] or token in blob_tokens):
+                canonical = _canon_token(token)
+                if canonical == head and (token == sample_tokens[0] or _singular(token) in raw_blob_tokens):
                     continue
                 extra.append(token)
             extra_hits = sum(1 for token in extra if _said(token))
@@ -1568,26 +1572,29 @@ def _resolve_product_labels_for_table(
         primary_measures=primary_measures,
     )
     table_samples = column_samples_for_table(bare, _PRODUCT_LABEL_COL)
-    if table_samples:
-        if hinted:
-            in_table = [h for h in hinted if h in table_samples]
-            if in_table:
-                return in_table[:6]
-        matched = match_value_samples(blob, table_samples)
-        if matched:
-            return matched[:6]
-        if hinted:
-            return hinted[:6]
-        return []
-
-    prefer = [bare, *_PRODUCT_PREFER_TABLES]
-    if hinted:
-        return hinted[:6]
-    return resolve_dictionary_labels(
-        column=_PRODUCT_LABEL_COL,
-        blob=blob,
-        prefer_tables=prefer,
+    dictionary = dictionary_samples_for_column(
+        _PRODUCT_LABEL_COL, prefer_tables=[bare, *_PRODUCT_PREFER_TABLES]
     )
+    pool = table_samples or dictionary
+    if hinted:
+        resolved = _resolve_hints_against(hinted, pool, pool)
+        if resolved:
+            return resolved[:6]
+    return match_value_samples(blob, pool)[:6]
+
+
+def _resolve_hints_against(hints: list[str], exact_pool: list[str], fuzzy_pool: list[str]) -> list[str]:
+    """Map each hint to a warehouse label (exact first, then speech match); unmatched hints are dropped."""
+    exact = {s.casefold(): s for s in reversed(exact_pool)}
+    out: list[str] = []
+    for hint in hints:
+        label = exact.get(hint.casefold())
+        if label is None:
+            matched = match_value_samples(hint, fuzzy_pool)
+            label = matched[0] if matched else None
+        if label and label not in out:
+            out.append(label)
+    return out
 
 
 def _resolve_bind_product_labels(
@@ -1925,7 +1932,9 @@ def compile_time_filter_sql(
     te = (time_end or "")[:10]
     if "as_of_date" in col_names and ts and te:
         return f"AND as_of_date BETWEEN DATE '{ts}' AND DATE '{te}' "
-    ycol = year_column(bare) or "year"
+    ycol = year_column(bare)
+    if not ycol:
+        return ""
     if year is not None:
         return f"AND {ycol} = {int(year)} "
     if ts[:4].isdigit() and te[:4].isdigit():
@@ -2101,9 +2110,24 @@ class TableBindContract:
     nomenclature: str = ""
     anti_patterns: list[str] = field(default_factory=list)
     bind_spine: dict[str, str] = field(default_factory=dict)
+    filter_provenance: dict[str, str] = field(default_factory=dict)
+    time_policy: dict[str, Any] = field(default_factory=dict)
+
+    def unproven_filters(self) -> list[str]:
+        """Bound facets with no recorded origin (Question, resolved request or documented policy)."""
+        bound = {
+            "geo": bool(self.geo_literals),
+            "product": bool(self.product_literals),
+            "time": bool(str(self.time_sql or "").strip()),
+            "spine_entities": bool(self.spine_entity_filters),
+            "subnational": bool(re.search(r"\b(admin_\d\w*|city_name)\b", self.required_filters_sql or "")),
+        }
+        return [facet for facet, is_bound in bound.items() if is_bound and facet not in self.filter_provenance]
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "filter_provenance": dict(self.filter_provenance),
+            "time_policy": dict(self.time_policy),
             "table_id": self.table_id,
             "geo_column": self.geo_column,
             "geo_literals": list(self.geo_literals),
@@ -2153,6 +2177,10 @@ class TableBindContract:
                 for k, v in (raw.get("bind_spine") or {}).items()
                 if str(k).strip() and str(v).strip()
             },
+            filter_provenance={
+                str(k): str(v) for k, v in (raw.get("filter_provenance") or {}).items()
+            },
+            time_policy=dict(raw.get("time_policy") or {}),
         )
 
 
@@ -2275,19 +2303,24 @@ def compile_table_bind_contract(
         year_hint = end_year
 
     parts: list[str] = []
-    geo_blob = " ".join(
-        [query or "", *[str(e).strip() for e in entities if str(e).strip()]]
-    ).strip()
+    provenance: dict[str, str] = {}
+    # Places come only from the Question or the resolved geography, never from entities.
+    geo_blob = " ".join([query or "", *geo_labels]).strip()
     geo_clause = compile_semantic_filter(
         bare,
         "geo",
-        blob=geo_blob or query,
+        blob=geo_blob,
         project_id=proj,
         dataset=ds,
         country_labels=geo_labels or geo_literals,
     )
     if geo_clause and geo_clause.sql.strip():
         parts.append(geo_clause.sql.strip())
+        folded_q = fold_accents(query)
+        named = [g for g in geo_labels if fold_accents(g) in folded_q]
+        provenance["geo"] = "question" if named or not geo_labels else "resolved_request"
+        if "admin_" in geo_clause.sql or "city_name" in geo_clause.sql:
+            provenance["subnational"] = "question"
 
     time_clause = compile_semantic_filter(
         bare,
@@ -2303,6 +2336,7 @@ def compile_table_bind_contract(
     time_sql = time_clause.sql.strip() if time_clause else None
     if time_clause and time_clause.sql.strip():
         parts.append(time_clause.sql.strip())
+        provenance["time"] = str(dec.get("time_policy_source") or dec.get("time_source") or "question")
 
     bind_product_labels = _resolve_bind_product_labels(
         bare,
@@ -2325,6 +2359,7 @@ def compile_table_bind_contract(
     product_literals = list(prod_clause.labels) if prod_clause and prod_clause.labels else []
     if prod_clause and prod_clause.sql.strip():
         parts.append(prod_clause.sql.strip())
+        provenance["product"] = "question" if match_value_samples(query, product_literals) else "resolved_request"
 
     roles_raw = dec.get("entity_roles")
     entity_roles: dict[str, list[str]] | None = None
@@ -2370,6 +2405,9 @@ def compile_table_bind_contract(
     )
     if meas_clause and meas_clause.sql.strip():
         parts.append(meas_clause.sql.strip())
+        provenance["measure"] = "question" if primary_measures is None else "resolved_request"
+    if spine_entity_filters:
+        provenance["spine_entities"] = "question"
 
     required_sql = " ".join(parts)
     measure_cols = measure_columns_mart(bare) or measure_columns(bare)
@@ -2393,6 +2431,7 @@ def compile_table_bind_contract(
         anti_patterns=anti,
         nomenclature="",
         bind_spine=bind_spine_map(bare),
+        filter_provenance=provenance,
     )
     contract.nomenclature = format_bind_nomenclature(contract)
     return contract

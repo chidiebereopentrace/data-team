@@ -87,6 +87,8 @@ def enrich_metadata(
     semantic_lane: str = "",
     section_role: str = "",
     content_type: str = "",
+    page: str = "",
+    locator: str = "",
 ) -> dict[str, Any]:
     out = dict(meta)
     out["document_id"] = document_id
@@ -108,6 +110,10 @@ def enrich_metadata(
         out["section_role"] = section_role
     if content_type:
         out["content_type"] = content_type
+    if page:
+        out["page"] = str(page)
+    if locator:
+        out["locator"] = locator
     out["id"] = make_chunk_id(
         corpus=corpus,
         document_id=document_id,

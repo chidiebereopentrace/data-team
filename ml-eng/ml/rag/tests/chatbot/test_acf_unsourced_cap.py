@@ -23,9 +23,10 @@ def test_strong_is_capped_when_figures_unsourced() -> None:
     assert out.applied_ceiling == "unsourced_figures"
 
 
-def test_explanation_names_the_offending_figure() -> None:
+def test_explanation_records_that_figures_were_removed() -> None:
     out = _cap_acf_for_unsourced_figures(_strong(), ["4200"])
-    assert "4200" in out.explanation
+    assert "removed" in out.explanation
+    assert "4200" not in out.explanation
 
 
 def test_original_explanation_is_preserved() -> None:
@@ -49,8 +50,9 @@ def test_already_low_band_is_left_alone() -> None:
     assert _cap_acf_for_unsourced_figures(low, ["4200"]) is low
 
 
-def test_many_figures_are_summarised_not_listed_in_full() -> None:
+def test_many_figures_are_not_copied_into_the_explanation() -> None:
     out = _cap_acf_for_unsourced_figures(
         _strong(), ["11", "22", "33", "44", "55"]
     )
-    assert "+2 more" in out.explanation
+    assert "55" not in out.explanation
+    assert "removed" in out.explanation

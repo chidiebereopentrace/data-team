@@ -513,6 +513,16 @@ def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = Non
     with r1b[2]:
         st.metric("→ cited", len(result.get("citations") or []))
 
+    stages = result.get("retrieval_stage_counts")
+    if isinstance(stages, dict) and stages:
+        drops = result.get("evidence_drops") if isinstance(result.get("evidence_drops"), dict) else {}
+        drop_text = ", ".join(f"{k}={v}" for k, v in drops.items()) or "none"
+        st.caption(
+            "Stages: "
+            + ", ".join(f"{k}={v}" for k, v in stages.items())
+            + f" · excluded: {drop_text}"
+        )
+
     r2 = st.columns(4)
     with r2[0]:
         st.metric("Latency (ms)", f"{lat:.0f}" if isinstance(lat, (int, float)) else "—")

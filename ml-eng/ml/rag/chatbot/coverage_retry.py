@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ml.rag.chatbot.facet_coverage import missing_required_facets
 from ml.rag.chatbot.schema_card import load_schema_card
 from ml.rag.chatbot.web_policy import primary_class_from_state
 
@@ -67,21 +68,10 @@ def _blob_text(state: dict[str, Any]) -> str:
 
 
 def slots_missing_from_evidence(state: dict[str, Any]) -> bool:
-    """True when required geos or entity families are absent from rows+chunks."""
-    blob = _blob_text(state)
-    if not blob.strip():
+    """True when a requested geography, or every requested entity, is absent."""
+    if not _blob_text(state).strip():
         return True
-    geos = required_geos(state)
-    if geos:
-        hit = any(g.casefold() in blob for g in geos)
-        if not hit:
-            return True
-    families = required_entity_families(state)
-    if len(families) >= 2:
-        hits = sum(1 for f in families[:8] if f in blob)
-        if hits == 0:
-            return True
-    return False
+    return bool(missing_required_facets(state))
 
 
 def should_coverage_retry(state: dict[str, Any]) -> bool:
