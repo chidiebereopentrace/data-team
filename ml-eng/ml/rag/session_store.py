@@ -39,6 +39,7 @@ _REDIS_URL: str = (os.environ.get("RAG_REDIS_URL") or os.environ.get("REDIS_URL"
 _REDIS_CONNECT_TIMEOUT_S: float = float(os.environ.get("RAG_REDIS_CONNECT_TIMEOUT_S", "2") or 2)
 _SESSION_TTL_S: int = int(os.environ.get("RAG_SESSION_TTL_SECONDS", "604800") or 604800)
 _CACHE_TTL_S: int = int(os.environ.get("RAG_CACHE_TTL_SECONDS", "3600") or 3600)
+_IDEMPOTENCY_TTL_S: int = int(os.environ.get("RAG_IDEMPOTENCY_TTL_SECONDS", "86400") or 86400)
 
 # Redis client (lazy, thread-safe init)
 _redis_client: Any | None = None
@@ -198,27 +199,89 @@ def delete_key(key: str) -> None:
 
 
 # --- High-level session helpers (used by api.py and chat_turn.py) ---
+# Sessions are keyed by the authenticated owner, so a session id alone never reaches another
+# owner's memory. Writes are compare-and-set on state_version: a response computed from an
+# older state cannot overwrite a newer one.
 
-def get_session_blob(session_id: str) -> dict[str, Any] | None:
-    """Return the stored session blob or None."""
-    if not session_id:
+def _session_key(owner: str, session_id: str) -> str:
+    return _make_key("session", f"{owner}:{session_id}")
+
+
+def get_session_blob(owner: str, session_id: str) -> dict[str, Any] | None:
+    """Return the owner's stored session blob or None."""
+    if not owner or not session_id:
         return None
-    return get_json(_make_key("session", session_id))
+    return get_json(_session_key(owner, session_id))
 
 
-def save_session_blob(session_id: str, blob: dict[str, Any], ttl_s: int | None = None) -> None:
-    """Persist (or update) a session blob. Defaults to RAG_SESSION_TTL_SECONDS."""
-    if not session_id:
+def _version(blob: Any) -> int:
+    return int(blob.get("state_version") or 0) if isinstance(blob, dict) else 0
+
+
+def save_session_blob(
+    owner: str,
+    session_id: str,
+    blob: dict[str, Any],
+    *,
+    expected_version: int,
+    ttl_s: int | None = None,
+) -> bool:
+    """Write ``blob`` as version expected_version + 1 if the stored version is still expected_version."""
+    if not owner or not session_id:
+        return False
+    key = _session_key(owner, session_id)
+    stored = {**blob, "state_version": expected_version + 1}
+    payload = json.dumps(stored)
+    eff_ttl = ttl_s if ttl_s is not None else _SESSION_TTL_S
+    client = _get_client()
+    if client is not None and redis is not None:
+        try:
+            with client.pipeline() as pipe:
+                pipe.watch(key)
+                raw = pipe.get(key)
+                if _version(json.loads(raw) if raw else None) != expected_version:
+                    pipe.unwatch()
+                    return False
+                pipe.multi()
+                if eff_ttl > 0:
+                    pipe.set(key, payload, ex=eff_ttl)
+                else:
+                    pipe.set(key, payload)
+                pipe.execute()
+                return True
+        except redis.WatchError:
+            return False
+        except Exception as exc:
+            logger.warning("session_store: redis CAS failed for %s: %s (writing to fallback)", key, exc)
+    with _fallback_lock:
+        current = _fallback.get(key)
+        live_blob = None
+        if current is not None and (current[1] is None or _now() <= current[1]):
+            live_blob = current[0]
+        if _version(live_blob) != expected_version:
+            return False
+        _fallback[key] = (stored, _now() + eff_ttl if eff_ttl > 0 else None)
+    return True
+
+
+def delete_session(owner: str, session_id: str) -> None:
+    """Remove one of the owner's sessions."""
+    if not owner or not session_id:
         return
-    eff = ttl_s if ttl_s is not None else _SESSION_TTL_S
-    set_json(_make_key("session", session_id), blob, ttl_s=eff)
+    delete_key(_session_key(owner, session_id))
 
 
-def delete_session(session_id: str) -> None:
-    """Remove a session entirely."""
-    if not session_id:
-        return
-    delete_key(_make_key("session", session_id))
+def get_idempotent_response(owner: str, key: str) -> dict[str, Any] | None:
+    """A response already produced for this owner's idempotency key, if any."""
+    if not owner or not key:
+        return None
+    value = get_json(_make_key("idem", f"{owner}:{key}"))
+    return value if isinstance(value, dict) else None
+
+
+def save_idempotent_response(owner: str, key: str, response: dict[str, Any]) -> None:
+    if owner and key:
+        set_json(_make_key("idem", f"{owner}:{key}"), response, ttl_s=_IDEMPOTENCY_TTL_S)
 
 
 # --- Convenience cache helpers for known RAG caches ---

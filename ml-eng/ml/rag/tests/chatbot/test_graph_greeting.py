@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest import mock
 
 from ml.rag.chatbot.graph import node_decompose
-from ml.rag.chatbot.query_enricher import enrich_query_with_memory
+from ml.rag.chatbot.active_request import resolve_turn
 
 
 def test_node_decompose_greeting_skips_memory_and_decompose() -> None:
@@ -90,12 +90,11 @@ def test_node_decompose_incident_query_short_circuits() -> None:
     assert flags.get("skipped_retrieval") is True
 
 
-def test_enricher_never_merges_social_followups() -> None:
+def test_social_followups_never_carry_slots() -> None:
     prior = [{"role": "user", "content": "maize yields in Kenya 2020"}]
     for msg in ["hi", "merci", "asante", "sannu", "kedu", "sawubona"]:
-        out = enrich_query_with_memory(msg, recent_turns=prior)
-        assert out["enriched"] is False, msg
-        assert out["enriched_query"] == msg, msg
+        turn, _ = resolve_turn(msg, persisted=None, recent_turns=prior)
+        assert turn.carried() == {}, msg
 
 
 def test_node_decompose_agri_query_runs_full_decompose() -> None:

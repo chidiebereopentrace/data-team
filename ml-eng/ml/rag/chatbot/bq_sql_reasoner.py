@@ -21,8 +21,8 @@ from ml.rag.chatbot.analytical_bq_plan import (
     build_analytical_bq_plan,
 )
 from ml.rag.chatbot.bq_sql_patterns import normalize_pattern_name
+from ml.rag.chatbot.bind_planning import compile_bind_for_request
 from ml.rag.chatbot.bq_table_schema_yaml import (
-    compile_table_bind_contract,
     format_mart_reasoner_index,
     list_mart_table_index,
     pack_mart_table_hints,
@@ -254,7 +254,7 @@ def _reasoner_bind_nomenclature(
     blocks: list[str] = []
     for tid in candidates[:3]:
         try:
-            contract = compile_table_bind_contract(tid, facets=dec, query=query)
+            contract = compile_bind_for_request(tid, facets=dec, query=query)
         except Exception:
             continue
         nom = str(contract.nomenclature or "").strip()

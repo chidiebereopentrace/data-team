@@ -21,10 +21,21 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     year_column,
 )
 from ml.rag.chatbot.price_vocab import price_vocab_values
+from ml.rag.chatbot.sql_ast_validate import parse_select, physical_tables, unknown_columns
 from ml.rag.chatbot.value_index import complete_enum
 from ml.rag.helpers.mart_semantic_relationships import SEMANTIC_RELATIONSHIPS
 
 _SHARED_DICTIONARY_COLUMNS = frozenset({"product_name"})
+
+# Profiling stores at most this many samples per column; a shorter list is the whole domain.
+PROFILE_SAMPLE_CAP = 50
+
+_DIMENSION_LABEL_COLUMNS: dict[str, tuple[str, str]] = {
+    "product_name": ("dim_product", "product_name"),
+    "element": ("dim_element", "element_name"),
+    "indicator": ("dim_indicator", "indicator_name"),
+    "indicator_name": ("dim_indicator", "indicator_name"),
+}
 
 _LARGE_PARTITIONED_TABLES = frozenset({"fct_production", "fct_trade", "fct_prices", "fct_yield"})
 
@@ -346,56 +357,6 @@ def validate_sql_table_allowlist(sql: str, allowed: set[str]) -> str | None:
 
 def _strip_string_literals(sql: str) -> str:
     return _STRING_LIT_RE.sub("''", sql or "")
-
-
-def _aliases_in_sql(sql: str) -> set[str]:
-    names = {m.group(1).lower() for m in _AS_ALIAS_RE.finditer(sql or "")}
-    names |= {m.group(1).lower() for m in _CTE_NAME_RE.finditer(sql or "")}
-    for match in _TABLE_ALIAS_RE.finditer(sql or ""):
-        alias = match.group(1).lower()
-        # Avoid treating ON/WHERE keywords after FROM as aliases when regex over-matches.
-        if alias in _SQL_KEYWORDS:
-            continue
-        names.add(alias)
-    return names
-
-
-def _strip_table_refs(sql: str) -> str:
-    """Remove FROM/JOIN table targets and backtick FQNs so project ids are not scanned as columns."""
-
-    def _repl(match: re.Match[str]) -> str:
-        full = match.group(0)
-        target = match.group(1)
-        return full[: len(full) - len(target)] + " "
-
-    text = _FROM_JOIN_TABLE_RE.sub(_repl, sql or "")
-    return _BACKTICK_RE.sub(" ", text)
-
-
-def candidate_column_idents(sql: str) -> set[str]:
-    """Heuristic column identifiers referenced outside string literals and table FQNs."""
-    scrubbed = _strip_table_refs(_strip_string_literals(sql))
-    aliases = _aliases_in_sql(sql)
-    tables = referenced_tables(sql)
-    out: set[str] = set()
-    for match in _IDENT_RE.finditer(scrubbed):
-        ident = match.group(1)
-        low = ident.lower()
-        if low in _SQL_KEYWORDS:
-            continue
-        if low in aliases:
-            continue
-        if low in tables:
-            continue
-        if low.startswith("stg_") or low.startswith(("fct_", "agg_", "dim_", "bridge_")):
-            continue
-        if low in {"proj", "project", "staging_dev", "mart_dev", "raw_dev", "opentrace"}:
-            continue
-        # Hyphen-split GCP project fragments (e.g. opentrace-prod-5ga4 → prod).
-        if low in {"prod", "dev", "raw"} or low[:1].isdigit():
-            continue
-        out.add(ident)
-    return out
 
 
 def _filtered_columns(sql: str) -> set[str]:
@@ -869,52 +830,34 @@ def validate_required_metric_filters(sql: str, table_ids: set[str] | None = None
     )
 
 
+def _yaml_columns_for_table(bare: str) -> set[str] | None:
+    names = _columns_for_refs({bare}).get(bare)
+    return set(names) if names else None
+
+
 def validate_sql_column_allowlist(sql: str, table_ids: set[str] | None = None) -> str | None:
     """
-    Reject identifiers that are not YAML columns of tables referenced in the statement.
+    Reject column references that no source in their scope exposes.
 
-    When YAML columns cannot be loaded for any referenced table, skip the check.
-    Escape hatch: set RAG_BQ_SKIP_COLUMN_ALLOWLIST=1|true|on|yes to disable (demo / incident).
+    Columns are resolved on the parsed statement: qualified names against their table
+    alias, CTE or derived table; unqualified names against every source in scope.
+    Sources without YAML columns are not checked.
     """
-    if os.environ.get("RAG_BQ_SKIP_COLUMN_ALLOWLIST", "").strip().lower() in (
-        "1",
-        "true",
-        "on",
-        "yes",
-    ):
-        return None
-    refs = _refs_for_sql_checks(sql, table_ids)
-    if not refs:
-        return None
-    col_map = _columns_for_refs(refs)
-    if not col_map:
-        return None
-    allowed: set[str] = set()
-    for names in col_map.values():
-        allowed |= {n.lower() for n in names}
-    if not allowed:
-        return None
-    aliases = _aliases_in_sql(sql)
-    bad: list[str] = []
-    for ident in candidate_column_idents(sql):
-        low = ident.lower()
-        if low in aliases:
-            continue
-        if low in allowed:
-            continue
-        bad.append(ident)
+    root, err = parse_select(sql)
+    if err:
+        return err
+    bad = unknown_columns(root, _yaml_columns_for_table)
     if not bad:
         return None
-    seen: set[str] = set()
-    uniq: list[str] = []
-    for b in sorted(bad, key=str.lower):
-        if b.lower() in seen:
-            continue
-        seen.add(b.lower())
-        uniq.append(b)
+    refs = {t.name for t in physical_tables(root)} | {
+        str(t).strip().split(".")[-1].lower() for t in (table_ids or set())
+    }
+    allowed: set[str] = set()
+    for names in _columns_for_refs(refs).values():
+        allowed |= {n.lower() for n in names}
     allowed_preview = ", ".join(sorted(allowed)[:40])
     return (
-        f"SQL uses columns not in the YAML Columns blocks: {', '.join(uniq)}. "
+        f"SQL uses columns not in the YAML Columns blocks: {', '.join(bad)}. "
         f"Allowed columns include: {allowed_preview}. "
         "Use only exact column names from the table hints; do not invent bronze/raw names."
     )
@@ -963,10 +906,47 @@ def validate_sql_complete_index_literals(
     return f"SQL uses labels not in complete value index: {', '.join(bad[:8])}"
 
 
+def _profiled_domain(table_id: str, column: str) -> list[str] | None:
+    """All labels of ``table.column`` when the profile captured the full domain, else None."""
+    schema = _load_schema_for_ref(table_id) or {}
+    samples = schema.get(f"{column}_value_samples")
+    if not isinstance(samples, list) or not samples:
+        return None
+    stats = schema.get(f"{column}_value_stats")
+    if isinstance(stats, dict) and "is_truncated" in stats:
+        complete = stats.get("is_truncated") is False
+    else:
+        complete = len(samples) < PROFILE_SAMPLE_CAP
+    return [str(s).strip() for s in samples if str(s).strip()] if complete else None
+
+
+def label_domain(table_ids: set[str], column: str) -> set[str] | None:
+    """Complete lower-cased label domain for a filter column, from the fact profile or its dimension.
+
+    None means only a capped sample is known, so an unseen label is not evidence of a bad label.
+    """
+    col = column.lower()
+    domains = [
+        _profiled_domain(t, col)
+        for t in table_ids
+        if (_load_schema_for_ref(t) or {}).get(f"{col}_value_samples")
+    ]
+    if domains and all(d is not None for d in domains):
+        return {label.lower() for d in domains for label in d or []}
+    dimension = _DIMENSION_LABEL_COLUMNS.get(col)
+    if dimension:
+        dim_domain = _profiled_domain(*dimension)
+        if dim_domain is not None:
+            return {label.lower() for label in dim_domain}
+    return None
+
+
 def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> str | None:
     """
-    Soft-check equality / IN string literals against YAML ``*_value_samples``.
+    Check equality / IN string literals against the label domain of their column.
 
+    A label outside the YAML samples is rejected only when the samples (or the column's
+    dimension) cover the full domain; capped samples cannot prove a label absent.
     Skips columns with no samples and leaves LIKE filters alone.
     """
     refs = _refs_for_sql_checks(sql, table_ids)
@@ -995,9 +975,11 @@ def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> s
                 allowed = set(shared)
         if not allowed:
             return True
-        lit = literal.replace("''", "'").strip()
-        allowed_l = {a.lower() for a in allowed}
-        return lit.lower() in allowed_l
+        lit = literal.replace("''", "'").strip().lower()
+        if lit in {a.lower() for a in allowed}:
+            return True
+        domain = label_domain(refs, col_l)
+        return domain is None or lit in domain
 
     bad: list[str] = []
     for match in _EQ_FILTER_RE.finditer(sql or ""):

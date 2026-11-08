@@ -7,7 +7,6 @@ from typing import Any
 from ml.rag.api_schemas import UserProfile
 from ml.rag.chatbot.geo_policy import sanitize_profile_country
 from ml.rag.chatbot.plan_policy import is_valid_category, is_valid_plan_type
-from ml.rag.session_store import get_session_blob
 
 
 @dataclass(frozen=True)
@@ -87,15 +86,14 @@ def resolve_request_context(
     user_profile: UserProfile | dict[str, Any] | None = None,
     chat_history: list[Any] | None = None,
     conversation_history: list[Any] | None = None,
-    session_id: str | None = None,
-    use_session_category_fallback: bool = True,
+    session_blob: dict[str, Any] | None = None,
     injected_plan_type: str | None = None,
 ) -> ResolvedRequestContext:
     """
     Resolve plan tier, category persona, geo profile, and client history from a request.
 
-    plan_type and category come from user_profile when present.
-    When omitted, fall back to session blob (category, plan_type, country) if session_id is set.
+    plan_type and category come from user_profile when present. When omitted, fall back to
+    the owner's loaded session blob (category, plan_type, country).
 
     injected_plan_type: when set (by plan-scoped routes such as POST /v1/chat/farmers),
         overrides any plan_type in user_profile. The route owns the tier; the payload
@@ -110,10 +108,9 @@ def resolve_request_context(
         plan_type = _normalize_plan_type(profile.get("plan_type"))
     category = _normalize_category(profile.get("category"))
 
-    if use_session_category_fallback:
-        sid = (session_id or "").strip()
-        if sid and (category is None or plan_type is None or country is None):
-            blob = get_session_blob(sid) or {}
+    if session_blob:
+        blob = session_blob
+        if category is None or plan_type is None or country is None:
             if category is None:
                 raw_cat = _blob_str(blob, "category")
                 if raw_cat and is_valid_category(raw_cat):

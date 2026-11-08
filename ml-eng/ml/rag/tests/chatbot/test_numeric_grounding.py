@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from ml.rag.chatbot.numeric_grounding import (
     _candidate_figures,
-    append_unsourced_caveat,
+    strip_unsourced_figures,
     unsourced_figures,
 )
 
@@ -139,24 +139,22 @@ def test_candidate_figures_keeps_decimals() -> None:
 # --- caveat ----------------------------------------------------------------
 
 
-def test_caveat_appended_when_flagged() -> None:
-    out = append_unsourced_caveat("Production was 4200 tonnes.", ["4200"])
-    assert "could not be traced to a cited source" in out
-    assert out.startswith("Production was 4200 tonnes.")
+def test_unsourced_sentence_is_removed() -> None:
+    out = strip_unsourced_figures(
+        "Production was 4200 tonnes. Rainfall was described as average.",
+        ["4200"],
+    )
+    assert "4200" not in out
+    assert "average" in out
+    assert "indicative" not in out
 
 
-def test_caveat_not_appended_when_nothing_flagged() -> None:
+def test_nothing_flagged_keeps_the_answer() -> None:
     answer = "Production was 4200 tonnes."
-    assert append_unsourced_caveat(answer, []) == answer
+    assert strip_unsourced_figures(answer, []) == answer
 
 
-def test_caveat_not_duplicated() -> None:
-    once = append_unsourced_caveat("Production was 4200 tonnes.", ["4200"])
-    twice = append_unsourced_caveat(once, ["4200"])
-    assert twice.count("could not be traced to a cited source") == 1
-
-
-def test_figures_are_not_deleted_from_the_answer() -> None:
-    """Flag, never delete -- the original prose must survive intact."""
-    out = append_unsourced_caveat("Production was 4200 tonnes.", ["4200"])
-    assert "4200 tonnes" in out
+def test_every_sentence_unsourced_becomes_a_limitation() -> None:
+    out = strip_unsourced_figures("Production was 4200 tonnes.", ["4200"])
+    assert "4200" not in out
+    assert "does not support a numerical claim" in out

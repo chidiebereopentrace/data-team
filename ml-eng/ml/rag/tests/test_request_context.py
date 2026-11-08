@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ml.rag.api_schemas import UserProfile
-from ml.rag.app.api import ChatMessage, QueryRequest, _resolve_prior_memory
+from ml.rag.app.api import QueryRequest, _client_history_memory
 from ml.rag.request_context import (
     bootstrap_category,
     effective_chat_history_messages,
@@ -24,7 +24,7 @@ def test_resolve_from_user_profile() -> None:
     assert ctx.plan_type == "Farmers"
     assert ctx.category == "Farmers"
     assert ctx.user_profile == {
-        "country": "Ghana",
+        "country": "GHA",
         "plan_type": "Farmers",
         "category": "Farmers",
     }
@@ -79,7 +79,6 @@ def test_query_request_accepts_canonical_shape() -> None:
         user_profile=req.user_profile,
         chat_history=req.chat_history,
         conversation_history=req.conversation_history,
-        session_id=req.session_id,
     )
     assert ctx.plan_type == "Government"
     assert ctx.category == "Government"
@@ -109,23 +108,25 @@ def test_plan_scoped_query_routes_registered() -> None:
     assert "/query" in paths
 
 
-def test_resolve_prior_memory_accepts_history_messages() -> None:
-    sid, summary, recent = _resolve_prior_memory(
-        "sess-1",
+def test_client_history_folds_into_memory() -> None:
+    summary, recent = _client_history_memory(
         [
             {"role": "user", "content": "Prior question"},
             {"role": "assistant", "content": "Prior answer"},
         ],
     )
-    assert sid == "sess-1"
+    assert summary == ""
     assert len(recent) == 2
 
 
-def test_resolve_prior_memory_no_history_uses_empty_summary() -> None:
-    sid, summary, recent = _resolve_prior_memory(None, None)
-    assert sid
-    assert summary == ""
-    assert recent == []
+def test_session_blob_supplies_missing_profile_fields() -> None:
+    ctx = resolve_request_context(
+        user_profile=None,
+        session_blob={"category": "Government", "plan_type": "NGOs", "country": "Kenya"},
+    )
+    assert ctx.category == "Government"
+    assert ctx.plan_type == "NGOs"
+    assert ctx.user_profile == {"country": "KEN", "plan_type": "NGOs", "category": "Government"}
 
 
 def test_user_profile_rejects_old_fields() -> None:

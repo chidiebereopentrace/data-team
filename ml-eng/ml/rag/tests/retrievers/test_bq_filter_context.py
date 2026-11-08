@@ -47,17 +47,15 @@ def test_format_query_constraints_multi_geo_prefers_country_name() -> None:
     assert "GROUP BY country when comparing" not in block
 
 
-def test_rewrite_faostat_bare_country() -> None:
+def test_rewrite_mart_production_bare_country() -> None:
     sql = (
         "SELECT country, product_name, MAX(value) AS max_production "
-        "FROM `proj.staging_dev.stg_faostat_production` "
-        "WHERE country = 'Nigeria' GROUP BY country, product_name LIMIT 10"
+        "FROM `proj.mart_dev.fct_production` "
+        "WHERE country = 'NGA' GROUP BY country, product_name LIMIT 10"
     )
     out = _rewrite_faostat_country_ident(sql)
-    assert "country_name" in out
+    assert "country_iso3" in out
     assert re.search(r"(?<![A-Za-z0-9_])country(?![A-Za-z0-9_])", out) is None
-    # Already-correct identifiers stay intact.
-    assert "country_name" in out
 
 
 def test_rewrite_skips_non_faostat() -> None:
@@ -69,15 +67,15 @@ def test_rewrite_skips_non_faostat() -> None:
     assert _rewrite_faostat_country_ident(sql) == sql
 
 
-def test_validate_sql_rewrites_faostat_bare_country() -> None:
+def test_validate_sql_rewrites_mart_production_bare_country() -> None:
     sql = (
         "SELECT country, product_name, MAX(value) AS max_production "
-        "FROM `proj.staging_dev.stg_faostat_production` "
+        "FROM `proj.mart_dev.fct_production` "
         "WHERE year = 2020 GROUP BY country, product_name"
     )
-    validated = _validate_sql(sql, {"staging_dev"}, 10)
+    validated = _validate_sql(sql, {"mart_dev"}, 10)
     assert validated is not None
-    assert "country_name" in validated
+    assert "country_iso3" in validated
     assert re.search(r"(?<![A-Za-z0-9_])country(?![A-Za-z0-9_])", validated) is None
     assert "LIMIT 10" in validated.upper()
 

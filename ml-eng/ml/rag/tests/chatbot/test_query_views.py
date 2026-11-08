@@ -59,7 +59,8 @@ def test_elliptical_follow_up_applies_context() -> None:
         ],
     )
     assert views.context_applied is True
-    assert "Follow-up" in views.context_rewrite or "Kenya" in views.context_rewrite
+    assert "maize" in views.context_rewrite.lower()
+    assert "nigeria" in views.context_rewrite.lower()
     assert views.user_query.lower().startswith("what about")
 
 

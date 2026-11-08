@@ -104,8 +104,6 @@ class DecomposeContext:
     context_rewrite: str = ""
     context_applied: bool = False
     conversation_summary: str = ""
-    prior_topic: str | None = None
-    memory_enriched: bool = False
     plan_type: str = ""
     category: str = ""
     profile_country: str = ""
@@ -143,12 +141,6 @@ class DecomposeContext:
             if "context_applied" in enrich
             else state.get("context_applied")
         )
-        if not context_applied and enrich.get("enriched") and not context_rewrite:
-            # Legacy enrich dict shape
-            enriched_q = str(enrich.get("enriched_query") or "").strip()
-            if enriched_q and enriched_q != raw_q:
-                context_rewrite = enriched_q
-                context_applied = True
         profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else {}
         category = str(state.get("category") or (profile or {}).get("category") or "").strip()
         ref_raw = str(state.get("reference_date") or "").strip()[:10]
@@ -159,8 +151,6 @@ class DecomposeContext:
             context_rewrite=context_rewrite if context_applied else "",
             context_applied=context_applied,
             conversation_summary=str(state.get("conversation_summary") or "").strip(),
-            prior_topic=str(enrich.get("prior_topic") or "").strip() or None,
-            memory_enriched=bool(enrich.get("enriched") or context_applied),
             plan_type=str(state.get("plan_type") or "").strip(),
             category=category,
             profile_country=str((profile or {}).get("country") or "").strip(),
@@ -251,13 +241,10 @@ def format_decompose_user_prompt(
     if ctx.conversation_summary:
         blocks.append(f"Conversation summary:\n{ctx.conversation_summary[:1200]}")
 
-    if ctx.prior_topic and ctx.context_applied:
-        blocks.append(f"Prior user topic:\n{ctx.prior_topic[:800]}")
-
     blocks.append(f"Question: {ctx.query}")
     if ctx.context_applied and ctx.context_rewrite and ctx.context_rewrite != ctx.query:
         blocks.append(
-            "Context rewrite (related history/profile; use for elliptical grounding only):\n"
+            "Resolved request (slots carried from earlier turns; the question's own words win):\n"
             f"{ctx.context_rewrite[:1200]}"
         )
 

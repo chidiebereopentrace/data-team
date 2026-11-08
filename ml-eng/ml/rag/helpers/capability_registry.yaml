@@ -204,6 +204,63 @@ entries:
     max_geo_level: national
     contract_sql_only: false
 
+# Served operations per serving mart table (lookup, latest, series, compare, rank, categorical).
+# The coverage ledger checks each declaration against the table shape; an operation not
+# listed is refused with the recorded reason. Every serving fct_/agg_ table must appear.
+table_operations:
+  agg_emissions_country_year: &all_ops
+    supported: [lookup, latest, series, compare, rank, categorical]
+  agg_food_security_country_month: *all_ops
+  agg_food_security_monthly: *all_ops
+  agg_hdi_latest:
+    supported: [lookup, latest, compare, rank, categorical]
+    unsupported:
+      series: holds only the latest HDI year per country; use fct_hdi for trends
+  agg_prices_country_month: *all_ops
+  agg_production_annual: *all_ops
+  agg_production_country_year: *all_ops
+  agg_production_country_season: *all_ops
+  agg_soil_admin:
+    supported: [lookup, compare, rank, categorical]
+    unsupported:
+      latest: admin soil averages carry no time column
+      series: admin soil averages carry no time column
+  fct_animal_health: *all_ops
+  fct_biodiversity: *all_ops
+  fct_climate: *all_ops
+  fct_economics: *all_ops
+  fct_emissions: *all_ops
+  fct_employment: *all_ops
+  fct_fertilizer: &no_categorical
+    supported: [lookup, latest, series, compare, rank]
+  fct_food_balance: *all_ops
+  fct_food_hazards: *all_ops
+  fct_food_security: *all_ops
+  fct_forestry: *all_ops
+  fct_gender_inclusion: *all_ops
+  fct_germplasm: *all_ops
+  fct_hdi: *all_ops
+  fct_household:
+    supported: [lookup, latest, series, compare, categorical]
+    unsupported:
+      rank: household survey sample, not a census; ranking countries on it misleads
+  fct_humanitarian: *all_ops
+  fct_insurance: *all_ops
+  fct_investment: *all_ops
+  fct_land_degradation: *no_categorical
+  fct_land_inputs: *all_ops
+  fct_machinery: *all_ops
+  fct_pesticide: *no_categorical
+  fct_prices: *all_ops
+  fct_production: *all_ops
+  fct_protected_areas: *all_ops
+  fct_research_expenditure: *no_categorical
+  fct_researchers: *no_categorical
+  fct_soil_health: *all_ops
+  fct_trade: *all_ops
+  fct_vegetation: *all_ops
+  fct_yield: *all_ops
+
 geo_level_order:
   point: 0
   admin2: 1

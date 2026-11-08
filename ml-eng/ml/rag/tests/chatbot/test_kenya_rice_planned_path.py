@@ -102,6 +102,7 @@ def test_kenya_rice_retrieve_compiles_from_bind() -> None:
             ),
             "required_filters_sql": "country_iso3 = 'KEN' AND year = 2016",
             "product_literals": ["Rice"],
+            "filter_provenance": {"product": "question"},
             "measure_columns": ["production_qty"],
         }
     }

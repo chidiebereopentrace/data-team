@@ -141,7 +141,7 @@ def test_generate_honors_structured_bq_numeric_available_flag() -> None:
         "primary_measures": ["production"],
     }
     item = {
-        "content": "[Structured data] production for Kenya 2016",
+        "content": "[Structured data] production for Kenya 2016: 100000 tons",
         "source": "bigquery",
         "_context_kind": "bigquery",
         "metadata": {

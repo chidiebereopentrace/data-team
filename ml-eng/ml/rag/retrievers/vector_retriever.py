@@ -4,14 +4,13 @@ Vector DB retriever: Qdrant Cloud.
 This module keeps the retriever interface stable (`BaseRetriever`) while allowing
 the vector store implementation to be swapped. In this repo, RAG uses Qdrant Cloud.
 
-Typical collection layouts (embedding model must match how points were indexed):
+Collection layouts come from ``scripts/qdrant_collection_specs`` and the corpus profile:
 
-  news_data / research_other_papers        – single named ``dense`` vector (mode: **dense_named**; e5-small)
-  legacy dual-vector collections           – named ``sentence`` + ``semantic`` (mode: **dual**)
-  research_other_papers (legacy schema)    – ``abstract_vector`` + ``content_vector`` (mode: **research_dual**)
+  news_data / research_other_papers        – single named ``dense`` vector (mode: **dense_named**)
   OTA_insights                             – insight / metric / recommendation (mode: **ota_triple**)
-  single-vector collections                – unnamed vector (mode: **legacy**)
-  legacy sentence-named collections        – named ``sentence`` only (mode: **sentence_named**)
+
+Every query first checks the index contract (``index_contract.collection_health``); an
+incompatible collection returns no hits instead of silently mismatched vectors.
 """
 
 from __future__ import annotations
@@ -29,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from ml.rag.retrievers.base import BaseRetriever
+from ml.rag.retrievers.index_contract import IndexHealth, collection_health
 from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
 from ml.rag.text_processors.chunking_config import profile_for_collection
 
@@ -462,16 +462,9 @@ def _merge_scored_hits(hits_lists: list[list[Any]], limit: int) -> list[Any]:
 
 # -- Named vector definitions per collection schema --------------------------
 
-RESEARCH_VECTORS = ("abstract_vector", "content_vector")
-DUAL_SENTENCE_SEMANTIC = ("sentence", "semantic")
 OTA_VECTORS = ("insight_vector", "metric_vector", "recommendation_vector")
 
 # Maps a query_using shorthand → actual named vector(s) to search.
-_RESEARCH_USING: dict[str, tuple[str, ...]] = {
-    "abstract": ("abstract_vector",),
-    "content": ("content_vector",),
-    "both": RESEARCH_VECTORS,
-}
 _OTA_USING: dict[str, tuple[str, ...]] = {
     "insight": ("insight_vector",),
     "metric": ("metric_vector",),
@@ -505,9 +498,6 @@ class VectorRetriever(BaseRetriever):
       - QDRANT_URL / QDRANT_API_KEY / QDRANT_COLLECTION
       - RAG_EMBEDDINGS_MODE=local|fastembed (in-container only; fastembed on Railway)
       - RAG_EMBEDDING_MODEL_ID (default BAAI/bge-m3)
-      - RAG_QDRANT_VECTOR_SEARCH_MODE=legacy|dual|sentence_named|research_dual|ota_triple
-      - RAG_QDRANT_DUAL_QUERY_USING=sentence|semantic|both (only for mode dual; default both)
-      - RAG_QDRANT_RESEARCH_QUERY_USING=abstract|content|both
       - RAG_QDRANT_OTA_QUERY_USING=insight|metric|recommendation|merge
       - RAG_SPARSE_EMBEDDINGS=on|off (BM25 sparse vectors on upsert; default on)
       - RAG_QDRANT_HYBRID_SEARCH=on|off (dense+sparse RRF at query; default on)
@@ -526,6 +516,7 @@ class VectorRetriever(BaseRetriever):
         self._client = None
         self._embed_mode = _env("RAG_EMBEDDINGS_MODE", "local") or "local"
         self._embed_model_id = embedding_model_id(self.collection_name)
+        self.last_index_health: IndexHealth | None = None
 
     def _get_client(self):
         if self._client is not None:
@@ -537,24 +528,6 @@ class VectorRetriever(BaseRetriever):
             raise ImportError("Install qdrant-client: pip install qdrant-client") from e
         self._client = make_qdrant_client(timeout_s=timeout_s)
         return self._client
-
-    def _ensure_collection(self) -> None:
-        """Auto-create only legacy single-vector collections; named-vector collections are created by the create script."""
-        client = self._get_client()
-        collection = self.collection_name
-        try:
-            client.get_collection(collection_name=collection)
-            return
-        except Exception:
-            pass
-
-        dim = len(_embed_texts(["ping"], model_id=self._embed_model_id, mode=self._embed_mode)[0])
-        from qdrant_client.http.models import Distance, VectorParams
-
-        client.create_collection(
-            collection_name=collection,
-            vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
-        )
 
     def _metadata_passes_filters(
         self,
@@ -767,7 +740,7 @@ class VectorRetriever(BaseRetriever):
         Each item: { "content", "score", "metadata", "source": "vector" }.
 
         Kwargs:
-          vector_search_mode: legacy | dual | sentence_named | research_dual | ota_triple
+          vector_search_mode: dense_named | ota_triple (default: the collection profile's mode)
           doc_kind / doc_kinds / geo_country / published_at_from / published_at_to / domains_substring
         """
         doc_kind = kwargs.get("doc_kind")
@@ -837,13 +810,21 @@ class VectorRetriever(BaseRetriever):
             ]
         )
 
-        vector_search_mode = kwargs.pop("vector_search_mode", None)
-        if vector_search_mode is None:
-            vector_search_mode = _env("RAG_QDRANT_VECTOR_SEARCH_MODE", "legacy") or "legacy"
-        vector_search_mode = str(vector_search_mode).strip().lower()
+        collection = self.collection_name
+        vector_search_mode = str(
+            kwargs.pop("vector_search_mode", None) or profile_for_collection(collection).qdrant_vector_mode
+        ).strip().lower()
+        if vector_search_mode not in ("dense_named", "ota_triple"):
+            raise ValueError(f"Unknown vector_search_mode: {vector_search_mode!r} (use dense_named or ota_triple)")
 
         client = self._get_client()
-        collection = self.collection_name
+        health = collection_health(client, collection, backend=_resolve_embed_backend(self._embed_mode))
+        self.last_index_health = health
+        if not health.queryable:
+            update_current_span_metadata(
+                {"collection": collection, "index_health": health.to_dict(), "hit_count": 0}
+            )
+            return []
         use_hybrid = _collection_has_hybrid_sparse(collection)
         if use_hybrid:
             overfetch = 1
@@ -886,59 +867,12 @@ class VectorRetriever(BaseRetriever):
         except Exception:
             q_filter = None
 
-        query_kwargs: dict[str, Any] = {"limit": fetch_n, "with_payload": True}
-        if q_filter is not None:
-            query_kwargs["query_filter"] = q_filter
-
-        # ----- legacy: single unnamed vector --------------------------------
-        if vector_search_mode == "legacy":
-            self._ensure_collection()
-            query_vec = _embed_texts_for_indexing(
-                [query], model_id=self._embed_model_id, mode=self._embed_mode, is_query=True
-            )[0]
-            resp = client.query_points(
-                collection_name=collection,
-                query=query_vec,
-                **query_kwargs,
-            )
-            hits = resp.points or []
-
-        # ----- dual: sentence + semantic (news/research JSONL loaders) -----
-        elif vector_search_mode == "dual":
-            using = _env("RAG_QDRANT_DUAL_QUERY_USING", "both").lower()
-            if using == "sentence":
-                vector_names: tuple[str, ...] = ("sentence",)
-            elif using == "semantic":
-                vector_names = ("semantic",)
-            else:
-                vector_names = DUAL_SENTENCE_SEMANTIC
-            hits = self._query_named_vectors(query, vector_names, fetch_n, q_filter, top_k=top_k)
-
-        # ----- dense_named: single named ``dense`` vector (news_data) -----
-        elif vector_search_mode == "dense_named":
-            hits = self._query_named_vectors(query, ("dense",), fetch_n, q_filter, top_k=top_k)
-
-        # ----- sentence_named: single named ``sentence`` vector ------------
-        elif vector_search_mode == "sentence_named":
-            hits = self._query_named_vectors(query, ("sentence",), fetch_n, q_filter, top_k=top_k)
-
-        # ----- research_dual: abstract_vector + content_vector --------------
-        elif vector_search_mode == "research_dual":
-            using = _env("RAG_QDRANT_RESEARCH_QUERY_USING", "content").lower()
-            vector_names = _RESEARCH_USING.get(using, ("content_vector",))
-            hits = self._query_named_vectors(query, vector_names, fetch_n, q_filter, top_k=top_k)
-
-        # ----- ota_triple: insight / metric / recommendation ----------------
-        elif vector_search_mode == "ota_triple":
+        if vector_search_mode == "ota_triple":
             using = _env("RAG_QDRANT_OTA_QUERY_USING", "merge").lower()
             vector_names = _OTA_USING.get(using, OTA_VECTORS)
-            hits = self._query_named_vectors(query, vector_names, fetch_n, q_filter, top_k=top_k)
-
         else:
-            raise ValueError(
-                f"Unknown vector_search_mode: {vector_search_mode!r} "
-                "(use legacy, dense_named, dual, sentence_named, research_dual, or ota_triple)"
-            )
+            vector_names = ("dense",)
+        hits = self._query_named_vectors(query, vector_names, fetch_n, q_filter, top_k=top_k)
 
         items: list[dict[str, Any]] = []
         for h in hits or []:
@@ -981,6 +915,8 @@ class VectorRetriever(BaseRetriever):
 
         items.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
         result = items[:top_k]
+        for rank, item in enumerate(result, start=1):
+            item["metadata"]["retriever_rank"] = rank
         update_current_span_metadata(
             {
                 "corpus": profile_for_collection(collection).corpus,
@@ -988,6 +924,7 @@ class VectorRetriever(BaseRetriever):
                 "top_k": top_k,
                 "hit_count": len(result),
                 "vector_search_mode": vector_search_mode,
+                "index_health": health.to_dict(),
                 "hybrid": use_hybrid,
                 "geo_filter": bool(geo_country or geo_countries),
                 "latency_ms": trace_elapsed_ms(t0),

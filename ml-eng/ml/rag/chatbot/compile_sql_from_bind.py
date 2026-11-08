@@ -7,9 +7,11 @@ has to filter it, which the validator enforces.
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from ml.rag.chatbot.bq_mart_sql import mart_dataset
 from ml.rag.chatbot.bq_sql_validate import metric_discriminator_names
@@ -20,7 +22,11 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     grain_columns,
     load_mart_table_schema,
     load_table_schema,
+    year_column,
 )
+from ml.rag.chatbot.coverage_ledger import operation_supported
+
+logger = logging.getLogger(__name__)
 
 _YEAR_EQ_RE = re.compile(
     r"\b(?:year|time_key|harvest_year|observation_year|mp_year)\s*=\s*\d{4}\b",
@@ -49,8 +55,9 @@ _TIME_GRAIN = (
 )
 _FINE_GRAIN = ("as_of_date", "month")
 ROW_BUDGET = 60
+# Series and comparisons fetch the complete shape; one row over the budget signals result_too_large.
+RESULT_ROW_BUDGET = 500
 _OPEN_GRAIN_POINT_ROWS = 50
-_OPEN_GRAIN_FANOUT = 10
 
 
 def bind_contract_for_table(
@@ -129,16 +136,6 @@ def _is_series(text: str, *, job: str, pattern: str) -> bool:
     return _is_trend(job, pattern)
 
 
-def _series_row_limit(text: str, names: set[str]) -> int:
-    bounds = _span_bounds(text)
-    years = 1
-    if bounds is not None:
-        years = max(1, bounds[1] - bounds[0] + 1)
-    if "month" in names or "as_of_date" in names:
-        return min(ROW_BUDGET, max(12, years * 12))
-    return min(ROW_BUDGET, max(1, years))
-
-
 def _filtered_columns(sql: str) -> set[str]:
     return {match.group(1).lower() for match in _FILTERED_COL_RE.finditer(sql or "")}
 
@@ -214,7 +211,13 @@ def compile_sql_from_bind(
             return None
         contract = parsed
 
-    if not str(contract.required_filters_sql or "").strip():
+    # An unfiltered scan is only a question shape on untimed snapshot tables (rank the continent).
+    unfiltered_rank = _job_kind(job, pattern) == "rank" and not year_column(contract.table_id)
+    if not str(contract.required_filters_sql or "").strip() and not unfiltered_rank:
+        return None
+    unproven = contract.unproven_filters()
+    if unproven:
+        logger.warning("bind contract %s refused: filters without provenance %s", contract.table_id, unproven)
         return None
 
     cols = [c for c in contract.measure_columns if str(c).strip()]
@@ -232,7 +235,9 @@ def compile_sql_from_bind(
     if where_sql.upper().startswith("AND "):
         where_sql = where_sql[4:].strip()
     if not where_sql:
-        return None
+        if not unfiltered_rank:
+            return None
+        where_sql = "TRUE"
 
     names = _schema_column_names(bare)
     shape_text = f"{where_sql} {contract.time_sql or ''}"
@@ -270,13 +275,11 @@ def compile_sql_from_bind(
     elif kind in ("compare", "region", "breakdown"):
         order_cols = [col for col in _TIME_GRAIN if col in names]
         order_sql = (" ORDER BY " + ", ".join(order_cols)) if order_cols else ""
-        cap = max(_OPEN_GRAIN_POINT_ROWS, int(limit or 1))
+        cap = RESULT_ROW_BUDGET + 1
     elif series:
         order_cols = [col for col in _TIME_GRAIN if col in names]
         order_sql = (" ORDER BY " + ", ".join(f"{col} DESC" for col in order_cols)) if order_cols else ""
-        cap = _series_row_limit(shape_text, names)
-        if open_grain:
-            cap = min(ROW_BUDGET, cap * _OPEN_GRAIN_FANOUT)
+        cap = RESULT_ROW_BUDGET + 1
     else:
         if undated:
             order_cols = [col for col in ("year", "month") if col in names]
@@ -328,4 +331,83 @@ def compile_sql_from_bind(
     )
 
 
-__all__ = ["ROW_BUDGET", "bind_contract_for_table", "compile_sql_from_bind"]
+Operation = Literal["lookup", "latest", "series", "compare", "rank", "categorical"]
+
+# Operation -> (job, pattern) understood by compile_sql_from_bind.
+_OPERATION_SHAPE: dict[Operation, tuple[str, str]] = {
+    "lookup": ("fact", ""),
+    "latest": ("fact", ""),
+    "series": ("trend", "time_series"),
+    "compare": ("compare", ""),
+    "rank": ("rank", ""),
+    "categorical": ("breakdown", ""),
+}
+
+
+@dataclass(frozen=True)
+class CompiledOperation:
+    table_id: str
+    operation: Operation
+    sql: str | None
+    refusal: str = ""
+
+
+def operation_for(contract: TableBindContract, *, job: str = "", pattern: str = "") -> Operation:
+    """The registry operation a question shape asks of one bound table."""
+    kind = _job_kind(job, pattern)
+    if kind == "rank":
+        return "rank"
+    if kind in ("compare", "region"):
+        return "compare"
+    if kind == "breakdown":
+        return "categorical"
+    if _is_series(f"{contract.required_filters_sql} {contract.time_sql or ''}", job=job, pattern=pattern):
+        return "series"
+    if not str(contract.time_sql or "").strip() and year_column(contract.table_id):
+        return "latest"
+    return "lookup"
+
+
+def compile_operation(
+    contract: TableBindContract | dict[str, Any],
+    *,
+    job: str = "",
+    pattern: str = "",
+    breakdown: list[str] | None = None,
+    project_id: str | None = None,
+    dataset: str | None = None,
+    limit: int = 1,
+) -> CompiledOperation | None:
+    """Compile the operation the ledger declares for this table, or refuse it with the recorded reason."""
+    parsed = TableBindContract.from_dict(contract) if isinstance(contract, dict) else contract
+    if parsed is None:
+        return None
+    bare = parsed.table_id.strip().split(".")[-1].lower()
+    operation = operation_for(parsed, job=job, pattern=pattern)
+    supported, reason = operation_supported(bare, operation)
+    if not supported:
+        return CompiledOperation(bare, operation, None, f"{operation} is not supported on {bare}: {reason}")
+    op_job, op_pattern = _OPERATION_SHAPE[operation]
+    dims = breakdown or (discriminator_columns(bare) if operation == "categorical" else [])
+    sql = compile_sql_from_bind(
+        parsed,
+        project_id=project_id,
+        dataset=dataset,
+        limit=limit,
+        job=job or op_job,
+        pattern=pattern or op_pattern,
+        breakdown=dims,
+    )
+    return CompiledOperation(bare, operation, sql, "" if sql else "bind compiler produced no SQL")
+
+
+__all__ = [
+    "RESULT_ROW_BUDGET",
+    "ROW_BUDGET",
+    "CompiledOperation",
+    "Operation",
+    "bind_contract_for_table",
+    "compile_operation",
+    "compile_sql_from_bind",
+    "operation_for",
+]

@@ -1,48 +1,32 @@
-"""Context isolation: short standalone statements must not merge with stale prior topic (ML-056)."""
+"""Context isolation: unrelated statements carry no slots; real follow-ups carry the active request."""
 
 from __future__ import annotations
 
-from ml.rag.chatbot.query_enricher import enrich_query_with_memory
+import pytest
+
+from ml.rag.chatbot.active_request import resolve_turn
+
+PRIOR = [{"role": "user", "content": "maize production in Kasese, Uganda"}]
 
 
-def test_unrelated_short_statement_does_not_merge_with_prior_topic() -> None:
-    prior = [{"role": "user", "content": "maize production in Kasese, Uganda"}]
-    out = enrich_query_with_memory("my cow is sick", recent_turns=prior)
-    assert out["enriched"] is False
-    assert out["enriched_query"] == "my cow is sick"
+@pytest.mark.parametrize(
+    "message",
+    ["my cow is sick", "treat a sick cow", "i need help", "hi", "merci", "asante", "sannu", "kedu", "sawubona"],
+)
+def test_unrelated_or_social_turn_carries_nothing(message: str) -> None:
+    turn, persisted = resolve_turn(message, persisted=None, recent_turns=PRIOR)
+    assert turn.carried() == {}
+    assert persisted.value("commodity") == ["maize"]
 
 
-def test_treat_a_sick_cow_does_not_merge() -> None:
-    prior = [{"role": "user", "content": "maize production in Kasese, Uganda"}]
-    out = enrich_query_with_memory("treat a sick cow", recent_turns=prior)
-    assert out["enriched"] is False
+@pytest.mark.parametrize("message", ["same crop", "and Nigeria?", "how about Ghana", "kenya"])
+def test_follow_up_carries_the_commodity(message: str) -> None:
+    turn, _ = resolve_turn(message, persisted=None, recent_turns=PRIOR)
+    assert turn.value("commodity") == ["maize"]
+    assert turn.slots["commodity"].source == "carried"
 
 
-def test_i_need_help_does_not_merge() -> None:
-    prior = [{"role": "user", "content": "maize production in Kasese, Uganda"}]
-    out = enrich_query_with_memory("i need help", recent_turns=prior)
-    assert out["enriched"] is False
-
-
-def test_bare_fragment_still_merges_with_prior_topic() -> None:
-    prior = [{"role": "user", "content": "maize production in Kasese, Uganda"}]
-    out = enrich_query_with_memory("same crop", recent_turns=prior)
-    assert out["enriched"] is True
-
-
-def test_and_country_followup_still_merges() -> None:
-    prior = [{"role": "user", "content": "maize production in Kasese, Uganda"}]
-    out = enrich_query_with_memory("and Nigeria?", recent_turns=prior)
-    assert out["enriched"] is True
-
-
-def test_how_about_followup_still_merges() -> None:
-    prior = [{"role": "user", "content": "maize production in Kasese, Uganda"}]
-    out = enrich_query_with_memory("how about Ghana", recent_turns=prior)
-    assert out["enriched"] is True
-
-
-def test_bare_country_name_still_merges() -> None:
-    prior = [{"role": "user", "content": "maize production in Kasese, Uganda"}]
-    out = enrich_query_with_memory("kenya", recent_turns=prior)
-    assert out["enriched"] is True
+def test_named_country_overrides_the_carried_place() -> None:
+    turn, _ = resolve_turn("and Nigeria?", persisted=None, recent_turns=PRIOR)
+    assert turn.value("geographies") == ["Nigeria"]
+    assert turn.slots["geographies"].source == "question"
