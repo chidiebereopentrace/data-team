@@ -118,15 +118,32 @@ def run_history(client: bigquery.Client, table_id: str) -> list[dict[str, object
 
 def attempted_source_ids(client: bigquery.Client, table_id: str) -> set[str]:
     """Return source ids that have already been fetched. A missing table means none."""
+    finished, _started = source_cursor(client, table_id)
+    return finished
+
+
+def source_cursor(client: bigquery.Client, table_id: str) -> tuple[set[str], set[str]]:
+    """Return finished source ids, and ids left STARTED with no finished row."""
     query = (
-        f"SELECT DISTINCT source_id FROM `{table_id}` "
-        "WHERE status IN ('LOADED', 'PARTIAL', 'FAILED')"
+        f"SELECT source_id, status FROM `{table_id}` "
+        "WHERE status IN ('LOADED', 'PARTIAL', 'FAILED', 'STARTED')"
     )
     try:
         rows = client.query(query).result()
     except NotFound:
-        return set()
-    return {str(row.source_id) for row in rows if row.source_id}
+        return set(), set()
+    finished: set[str] = set()
+    started: set[str] = set()
+    for row in rows:
+        source_id = str(row.source_id or "")
+        if not source_id:
+            continue
+        status = str(row.status or "")
+        if status in {"LOADED", "PARTIAL", "FAILED"}:
+            finished.add(source_id)
+        elif status == "STARTED":
+            started.add(source_id)
+    return finished, started - finished
 
 
 def report_load_config(fieldnames: list[str]) -> bigquery.LoadJobConfig:
