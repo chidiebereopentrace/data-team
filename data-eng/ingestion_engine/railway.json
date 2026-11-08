@@ -1,7 +1,7 @@
 {
   "build": {"builder": "DOCKERFILE", "dockerfilePath": "Dockerfile"},
   "deploy": {
-    "startCommand": "ingestion-engine --execute",
+    "startCommand": "sh -c \"rm -rf /storage/landing /storage/prepared /storage/quarantine /storage/raw && ingestion-engine --execute\"",
     "restartPolicyType": "NEVER",
     "cronSchedule": "0 2 * * 0"
   }

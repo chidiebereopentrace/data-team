@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir .
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     INGEST_OUT=/storage \
     INGEST_MANIFESTS=/app/manifests
-CMD ["ingestion-engine", "--execute"]
+CMD ["sh", "-c", "rm -rf /storage/landing /storage/prepared /storage/quarantine /storage/raw && ingestion-engine --execute"]

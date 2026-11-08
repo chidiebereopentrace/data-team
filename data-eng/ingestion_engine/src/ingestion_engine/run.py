@@ -15,6 +15,7 @@ from typing import Callable
 
 from ingestion_engine.countries import Countries, load_africa, load_countries
 from ingestion_engine.fetch import AuthError, FetchError, default_get, iter_pages
+from ingestion_engine.http import HttpError
 from ingestion_engine.manifest import ManifestProblem, Source, load_manifests
 from ingestion_engine.shape import prepare_row, subject_iso3
 
@@ -46,6 +47,31 @@ class SourceResult:
     quarantine: list[dict[str, object]] = field(default_factory=list)
     load_mode: str = ""
     coverage: dict[tuple[str, str, str, int], int] = field(default_factory=dict)
+
+
+Begin = Callable[[str, Source], None]
+Finish = Callable[[str, SourceResult], None]
+
+
+def _halted(source: Source) -> SourceResult:
+    """A source left STARTED by a dead run. It is not fetched again."""
+    return SourceResult(
+        manifest_file=source.manifest_file,
+        source_id=source.source_id,
+        source_name=source.source_name,
+        source_url=source.source_url,
+        endpoint=source.endpoint,
+        table_name=source.table_name,
+        indicator_class=source.indicator_class,
+        contract_type=source.contract_type,
+        auth_required=source.auth_required,
+        auth_type=source.auth_type,
+        owner=source.owner,
+        status="FAILED",
+        failure_stage="fetch",
+        error="stopped before finish",
+        load_mode=source.load_mode,
+    )
 
 
 def _from_problem(problem: ManifestProblem, status: str) -> SourceResult:
@@ -217,6 +243,14 @@ def _process(
         result.failure_stage = exc.stage
         result.error = str(exc)
         return result
+    except HttpError as exc:
+        result.failure_stage = "fetch"
+        result.error = str(exc)
+        return result
+    except Exception as exc:
+        result.failure_stage = "fetch"
+        result.error = str(exc)
+        return result
     finally:
         for handle in (landing_handle, prepared_handle, quarantine_handle, raw_handle):
             if handle is not None:
@@ -359,26 +393,67 @@ def _failures(results: list[SourceResult], run_id: str) -> list[dict[str, object
     return rows
 
 
+def source_row(result: SourceResult, run_id: str) -> dict[str, object]:
+    """One ingest_sources row for a finished source."""
+    return {
+        "run_id": run_id,
+        "source_id": result.source_id,
+        "source_name": result.source_name,
+        "table_name": result.table_name,
+        "indicator_class": result.indicator_class,
+        "contract_type": result.contract_type,
+        "owner": result.owner,
+        "status": result.status,
+        "failure_stage": result.failure_stage,
+        "rows_loaded": result.rows_loaded,
+        "rows_quarantined": result.rows_quarantined,
+        "rows_outside_africa": result.rows_outside_africa,
+        "quarantine_reasons": _reason_text(result.quarantine_reasons),
+        "error": result.error,
+    }
+
+
+def started_row(source: Source, run_id: str) -> dict[str, object]:
+    """One ingest_sources row written before a source is fetched."""
+    return {
+        "run_id": run_id,
+        "source_id": source.source_id,
+        "source_name": source.source_name,
+        "table_name": source.table_name,
+        "indicator_class": source.indicator_class,
+        "contract_type": source.contract_type,
+        "owner": source.owner,
+        "status": "STARTED",
+        "failure_stage": "",
+        "rows_loaded": 0,
+        "rows_quarantined": 0,
+        "rows_outside_africa": 0,
+        "quarantine_reasons": "",
+        "error": "",
+    }
+
+
 def _sources(results: list[SourceResult], run_id: str) -> list[dict[str, object]]:
-    return [
-        {
-            "run_id": run_id,
-            "source_id": result.source_id,
-            "source_name": result.source_name,
-            "table_name": result.table_name,
-            "indicator_class": result.indicator_class,
-            "contract_type": result.contract_type,
-            "owner": result.owner,
-            "status": result.status,
-            "failure_stage": result.failure_stage,
-            "rows_loaded": result.rows_loaded,
-            "rows_quarantined": result.rows_quarantined,
-            "rows_outside_africa": result.rows_outside_africa,
-            "quarantine_reasons": _reason_text(result.quarantine_reasons),
-            "error": result.error,
-        }
-        for result in results
-    ]
+    return [source_row(result, run_id) for result in results]
+
+
+def _note(result: SourceResult) -> None:
+    print(
+        f"{result.source_id}\t{result.status}\tloaded={result.rows_loaded}\t"
+        f"quarantined={result.rows_quarantined}\t{result.error}",
+        flush=True,
+    )
+
+
+def _close(run_id: str, result: SourceResult, on_done: Finish | None) -> None:
+    if on_done is None:
+        return
+    try:
+        on_done(run_id, result)
+    except Exception as exc:
+        result.status = "FAILED"
+        result.failure_stage = result.failure_stage or "publish"
+        result.error = str(exc)
 
 
 def run_manifests(
@@ -391,6 +466,9 @@ def run_manifests(
     clock: Clock | None = None,
     africa: frozenset[str] | None = None,
     done: set[str] | None = None,
+    stopped: set[str] | None = None,
+    on_begin: Begin | None = None,
+    on_done: Finish | None = None,
 ) -> int:
     """Fetch and prepare every enabled manifest row that has not been fetched before."""
     now = (clock or (lambda: datetime.now(timezone.utc)))()
@@ -402,14 +480,36 @@ def run_manifests(
     african = africa if africa is not None else load_africa()
     sources, problems, skipped = load_manifests(directory)
     done_ids = done or set()
+    stopped_ids = stopped or set()
     already_done = [source for source in sources if source.source_id in done_ids]
-    sources = [source for source in sources if source.source_id not in done_ids]
+    halted = [
+        source for source in sources
+        if source.source_id in stopped_ids and source.source_id not in done_ids
+    ]
+    sources = [
+        source for source in sources
+        if source.source_id not in done_ids and source.source_id not in stopped_ids
+    ]
     for source in already_done:
         print(f"{source.source_id}\tALREADY_DONE\tloaded=0\tquarantined=0\talready ingested", flush=True)
     results = [_from_problem(item, "FAILED") for item in problems]
     results.extend(_from_problem(item, "SKIPPED") for item in skipped)
+    for source in halted:
+        result = _halted(source)
+        _close(run_id, result, on_done)
+        results.append(result)
+        _note(result)
     manifest_sha = _manifest_sha(directory) if directory.is_dir() else ""
     for source in sources:
+        if on_begin is not None:
+            try:
+                on_begin(run_id, source)
+            except Exception as exc:
+                result = _halted(source)
+                result.error = str(exc)
+                results.append(result)
+                _note(result)
+                continue
         result = _process(
             source,
             get=fetcher,
@@ -422,12 +522,9 @@ def run_manifests(
             manifest_sha=manifest_sha,
             out_dir=out_dir,
         )
+        _close(run_id, result, on_done)
         results.append(result)
-        print(
-            f"{result.source_id}\t{result.status}\tloaded={result.rows_loaded}\t"
-            f"quarantined={result.rows_quarantined}\t{result.error}",
-            flush=True,
-        )
+        _note(result)
 
     coverage = _coverage(results, run_id)
     failures = _failures(results, run_id)
@@ -439,7 +536,7 @@ def run_manifests(
         "started_at": now.isoformat(),
         "ended_at": datetime.now(timezone.utc).isoformat(),
         "manifest_files": len(list(directory.glob("*.csv"))) if directory.is_dir() else 0,
-        "sources_enabled": len(sources) + len(already_done) + len(problems),
+        "sources_enabled": len(sources) + len(already_done) + len(halted) + len(problems),
         "sources_already_done": len(already_done),
         "sources_ingested": sum(item.rows_loaded > 0 for item in results),
         "sources_loaded": sum(item.status == "LOADED" for item in results),
@@ -459,11 +556,7 @@ def run_manifests(
     (reports / "run.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     for result in results:
         if result.status == "SKIPPED" or result.failure_stage == "manifest":
-            print(
-                f"{result.source_id}\t{result.status}\tloaded={result.rows_loaded}\t"
-                f"quarantined={result.rows_quarantined}\t{result.error}",
-                flush=True,
-            )
+            _note(result)
     print(str(reports), flush=True)
     return 0 if summary["status"] == "FINISHED" else 1
 

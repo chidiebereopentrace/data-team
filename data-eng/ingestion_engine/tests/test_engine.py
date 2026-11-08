@@ -15,8 +15,8 @@ from openpyxl import Workbook
 from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 
-from ingestion_engine.bq import attempted_source_ids, landing_destination, report_load_config, run_history
-from ingestion_engine.cli import clear_staged, materialize_service_account, paired_raw_dataset
+from ingestion_engine.bq import attempted_source_ids, landing_destination, report_load_config, run_history, source_cursor
+from ingestion_engine.cli import clear_staged, main, materialize_service_account, paired_raw_dataset
 from ingestion_engine.countries import Countries, load_africa, load_countries
 from ingestion_engine.fetch import parse_csv
 from ingestion_engine.http import HttpError, request_bytes
@@ -239,12 +239,149 @@ def test_run_finishes_when_every_source_is_already_done(tmp_path: Path) -> None:
     assert summary["status"] == "FINISHED"
 
 
+def test_http_error_fails_one_source_and_the_next_source_still_runs(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "prices.csv", [
+        _row(),
+        _row(
+            source_id="ke_prices",
+            source_name="Kenya prices",
+            endpoint="https://example.test/ke.csv",
+            table_name="ke_market_prices",
+        ),
+    ])
+    places = _places()
+    places.names["KEN"] = "Kenya"
+    places.to_iso3["kenya"] = "KEN"
+    fetched: list[str] = []
+
+    def get(url: str, params: dict[str, str], headers: dict[str, str]) -> bytes:
+        fetched.append(url)
+        if url.endswith("prices.csv"):
+            raise HttpError("HTTP 404", status_code=404)
+        return (
+            "country,market,observed,commodity,price,currency\n"
+            "Kenya,Nairobi,2024-05-01,Maize,100,KES\n"
+        ).encode()
+
+    code = run_manifests(manifests, tmp_path / "out", get=get, env={}, countries=places, clock=_clock)
+    assert code == 1
+    assert fetched == ["https://example.test/prices.csv", "https://example.test/ke.csv"]
+    sources = _loaded_rows(tmp_path / "out")
+    assert [(row["source_id"], row["status"], row["error"]) for row in sources] == [
+        ("ng_prices", "FAILED", "HTTP 404"),
+        ("ke_prices", "LOADED", ""),
+    ]
+
+
+def test_unexpected_error_fails_one_source_and_the_next_source_still_runs(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "prices.csv", [
+        _row(),
+        _row(
+            source_id="ke_prices",
+            source_name="Kenya prices",
+            endpoint="https://example.test/ke.csv",
+            table_name="ke_market_prices",
+        ),
+    ])
+    places = _places()
+    places.names["KEN"] = "Kenya"
+    places.to_iso3["kenya"] = "KEN"
+
+    def get(url: str, params: dict[str, str], headers: dict[str, str]) -> bytes:
+        if url.endswith("prices.csv"):
+            raise RuntimeError("disk full")
+        return (
+            "country,market,observed,commodity,price,currency\n"
+            "Kenya,Nairobi,2024-05-01,Maize,100,KES\n"
+        ).encode()
+
+    code = run_manifests(manifests, tmp_path / "out", get=get, env={}, countries=places, clock=_clock)
+    assert code == 1
+    sources = _loaded_rows(tmp_path / "out")
+    assert sources[0]["error"] == "disk full"
+    assert sources[1]["status"] == "LOADED"
+
+
+def test_started_source_is_closed_without_a_download(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "a.csv", [_row()])
+    _write_manifest(manifests, "b.csv", [_row(
+        source_id="ke_prices",
+        source_name="Kenya prices",
+        endpoint="https://example.test/ke.csv",
+        table_name="ke_market_prices",
+    )])
+    places = _places()
+    places.names["KEN"] = "Kenya"
+    places.to_iso3["kenya"] = "KEN"
+    fetched: list[str] = []
+
+    def get(url: str, params: dict[str, str], headers: dict[str, str]) -> bytes:
+        fetched.append(url)
+        return (
+            "country,market,observed,commodity,price,currency\n"
+            "Kenya,Nairobi,2024-05-01,Maize,100,KES\n"
+        ).encode()
+
+    code = run_manifests(
+        manifests,
+        tmp_path / "out",
+        get=get,
+        env={},
+        countries=places,
+        clock=_clock,
+        stopped={"ng_prices"},
+    )
+    assert code == 1
+    assert fetched == ["https://example.test/ke.csv"]
+    sources = _loaded_rows(tmp_path / "out")
+    assert [(row["source_id"], row["status"], row["error"]) for row in sources] == [
+        ("ng_prices", "FAILED", "stopped before finish"),
+        ("ke_prices", "LOADED", ""),
+    ]
+
+
 def test_missing_report_table_has_no_attempted_sources() -> None:
     class Missing:
         def query(self, query: str) -> object:
             raise NotFound("ingest_sources")
 
     assert attempted_source_ids(Missing(), "opentrace.landing_dev.ingest_sources") == set()
+
+
+def test_cursor_keeps_finished_sources_and_names_unfinished_starts() -> None:
+    class Row:
+        def __init__(self, source_id: str, status: str) -> None:
+            self.source_id = source_id
+            self.status = status
+
+    class Client:
+        def query(self, query: str) -> "Client":
+            assert "STARTED" in query
+            return self
+
+        def result(self) -> list[Row]:
+            return [
+                Row("ng_prices", "STARTED"),
+                Row("ng_prices", "LOADED"),
+                Row("ke_prices", "STARTED"),
+                Row("gh_prices", "FAILED"),
+                Row("", "STARTED"),
+            ]
+
+    finished, started = source_cursor(Client(), "opentrace.landing_dev.ingest_sources")
+    assert finished == {"ng_prices", "gh_prices"}
+    assert started == {"ke_prices"}
+
+
+def test_missing_source_table_has_no_cursor() -> None:
+    class Missing:
+        def query(self, query: str) -> object:
+            raise NotFound("ingest_sources")
+
+    assert source_cursor(Missing(), "opentrace.landing_dev.ingest_sources") == (set(), set())
 
 
 def test_missing_run_table_has_no_history() -> None:
@@ -818,6 +955,101 @@ def test_report_email_is_skipped_without_recipients(tmp_path: Path, monkeypatch:
         raise AssertionError("smtp")
 
     send_report(tmp_path, smtp=connect)
+
+
+def test_execute_records_started_before_the_next_fetch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    manifests = tmp_path / "manifests"
+    out = tmp_path / "out"
+    _write_manifest(manifests, "a.csv", [_row()])
+    _write_manifest(manifests, "b.csv", [_row(
+        source_id="ke_prices",
+        source_name="Kenya prices",
+        endpoint="https://example.test/ke.csv",
+        table_name="ke_market_prices",
+    )])
+    _write_manifest(manifests, "c.csv", [_row(
+        source_id="gh_prices",
+        source_name="Ghana prices",
+        endpoint="https://example.test/gh.csv",
+        table_name="gh_market_prices",
+    )])
+    events: list[str] = []
+
+    class Job:
+        output_rows = 1
+
+        def result(self) -> None:
+            return None
+
+    class Client:
+        def __init__(self, project: str) -> None:
+            self.project = project
+
+        def query(self, sql: str) -> object:
+            if "ingest_runs" in sql:
+                raise NotFound("ingest_runs")
+
+            class Answer:
+                def result(self) -> list[object]:
+                    return [
+                        type("Row", (), {"source_id": "ng_prices", "status": "LOADED"})(),
+                        type("Row", (), {"source_id": "ke_prices", "status": "STARTED"})(),
+                    ]
+
+            return Answer()
+
+        def get_table(self, table_id: str) -> None:
+            raise NotFound(table_id)
+
+        def create_table(self, table: object) -> object:
+            return table
+
+        def load_table_from_file(self, handle: object, destination: str, job_config: object) -> Job:
+            body = handle.read()
+            assert isinstance(body, bytes)
+            events.append(body.decode("utf-8"))
+            return Job()
+
+    def get(url: str, params: dict[str, str], headers: dict[str, str]) -> bytes:
+        events.append(f"fetch {url}")
+        return (
+            "country,market,observed,commodity,price,currency\n"
+            "Nigeria,Lagos,2024-05-01,Maize,100,NGN\n"
+        ).encode()
+
+    monkeypatch.setattr("ingestion_engine.cli.load_env_file", lambda path: None)
+    monkeypatch.setattr("ingestion_engine.cli.materialize_service_account", lambda: None)
+    monkeypatch.setattr("ingestion_engine.cli.send_report", lambda *args, **kwargs: None)
+    monkeypatch.setattr("ingestion_engine.cli.bigquery.Client", Client)
+    monkeypatch.setattr("ingestion_engine.run.default_get", get)
+    monkeypatch.setenv("BQ_PROJECT", "opentrace-test")
+    monkeypatch.setenv("INGEST_TARGET_DATASET", "landing_dev")
+    monkeypatch.delenv("INGEST_REPORT_DATASET", raising=False)
+    monkeypatch.delenv("INGEST_REPORT_EMAILS", raising=False)
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.delenv("BQ_SERVICE_ACCOUNT_JSON", raising=False)
+
+    code = main(["--execute", "--manifests", str(manifests), "--out", str(out)])
+    assert code == 1
+    fetch_at = next(index for index, item in enumerate(events) if item.startswith("fetch "))
+    before = "\n".join(events[:fetch_at])
+    assert "ke_prices" in before
+    assert "stopped before finish" in before
+    assert "gh_prices" in before
+    assert "STARTED" in before
+    assert events[fetch_at] == "fetch https://example.test/gh.csv"
+    assert [item for item in events if item.startswith("fetch ")] == ["fetch https://example.test/gh.csv"]
+    after = "\n".join(events[fetch_at + 1:])
+    assert "LOADED" in after
+
+
+def test_railway_start_clears_staging_and_does_not_restart() -> None:
+    config = json.loads((Path(__file__).parents[1] / "railway.json").read_text(encoding="utf-8"))
+    command = config["deploy"]["startCommand"]
+    assert "rm -rf /storage/landing /storage/prepared /storage/quarantine /storage/raw" in command
+    assert "ingestion-engine --execute" in command
+    assert config["deploy"]["restartPolicyType"] == "NEVER"
+    assert config["deploy"]["cronSchedule"] == "0 2 * * 0"
 
 
 def test_clear_staged_keeps_the_reports(tmp_path: Path) -> None:
