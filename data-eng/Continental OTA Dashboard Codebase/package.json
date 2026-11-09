@@ -1,0 +1,9 @@
+{
+  "name": "continental-ota-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenTrace Africa Continental OTA Dashboard: indicator, country and crop coverage across Africa",
+  "type": "module",
+  "scripts": { "build": "bash build.sh" },
+  "dependencies": { "d3-geo": "3.1.2", "topojson-client": "3.1.0", "world-atlas": "2.0.2" }
+}

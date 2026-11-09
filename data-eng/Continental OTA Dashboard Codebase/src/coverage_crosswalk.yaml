@@ -1,0 +1,716 @@
+sources:
+  fao_production:
+    mart:
+      table: fct_production
+      value: value
+      year_sql: t.year
+      where: t.production_grain = 'physical'
+      product_sql: pr.product_name
+      join: LEFT JOIN `{project}.mart_dev.dim_product` pr ON pr.product_key = t.product_key
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_production_Crops_and_livestock
+  yield_survey:
+    mart:
+      table: fct_yield
+      value: yield_value
+      year_sql: t.year
+      product_sql: pr.product_name
+      join: LEFT JOIN `{project}.mart_dev.dim_product` pr ON pr.product_key = t.product_key
+    landing:
+      kind: harveststat_yield
+  producer_prices:
+    mart:
+      table: fct_prices
+      value: value
+      year_sql: t.year
+      where: LOWER(t.price_source) = 'faostat'
+      product_sql: pr.product_name
+      join: LEFT JOIN `{project}.mart_dev.dim_product` pr ON pr.product_key = t.product_key
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Prices_Producer_Prices
+  hdx_prices:
+    mart:
+      table: fct_prices
+      value: value
+      year_sql: t.year
+      where: LOWER(t.price_source) != 'faostat'
+      product_sql: pr.product_name
+      join: LEFT JOIN `{project}.mart_dev.dim_product` pr ON pr.product_key = t.product_key
+    landing:
+      kind: hdx_prices
+  trade:
+    mart:
+      table: fct_trade
+      value: value
+      year_sql: t.year
+      product_sql: t.product_name
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Trade_Crops_and_livestock_products
+  border_trade:
+    mart:
+      table: fct_trade
+      value: value
+      year_sql: t.year
+      where: t.border_point IS NOT NULL
+      product_sql: t.product_name
+  food_balance:
+    mart:
+      table: fct_food_balance
+      value: value
+      year_sql: t.year
+      product_sql: pr.product_name
+      join: LEFT JOIN `{project}.mart_dev.dim_product` pr ON pr.product_key = t.product_key
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Food_Balances_Supply_Utilization_Accounts_2010-23
+  emissions:
+    mart:
+      table: fct_emissions
+      value: value
+      year_sql: t.year
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Climate_Change_Agrifood_systems_emissions_Totals_and_Indicators_Emissions_totals
+  employment:
+    mart:
+      table: fct_employment
+      value: value
+      year_sql: t.year
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Population_and_Employment_Employment_Indicators_Employment_Indicators_Agriculture_and_agrifood_systems
+  macro:
+    mart:
+      table: fct_economics
+      value: value
+      year_sql: t.year
+      where: REGEXP_CONTAINS(LOWER(t.metric), r'agric') AND REGEXP_CONTAINS(LOWER(t.metric),
+        r'gdp|share')
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Macro-Economic_Indicators_Macro_Indicators
+  exchange:
+    mart:
+      table: fct_economics
+      value: value
+      year_sql: t.year
+      where: REGEXP_CONTAINS(LOWER(t.metric), r'exchange')
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Prices_Exchange_rates
+  cpi:
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Prices_Consumer_Price_Indices
+  fertilizer:
+    mart:
+      table: fct_land_inputs
+      value: value
+      year_sql: t.year
+      where: REGEXP_CONTAINS(LOWER(t.metric), r'fertil')
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Fertilizers_by_Nutrient
+  pesticide:
+    mart:
+      table: fct_land_inputs
+      value: value
+      year_sql: t.year
+      where: REGEXP_CONTAINS(LOWER(t.metric), r'pestic')
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Land_Inputs_and_Sustainability_Inputs_Pesticides_Use
+  machinery:
+    mart:
+      table: fct_machinery
+      value: value
+      year_sql: t.year
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Discontinued_archives_and_data_series_Machinery
+  land_use:
+    mart:
+      table: fct_land_use
+      value: area
+      year_sql: t.time_key
+      iso_sql: g.country_iso3
+      product_sql: lu.land_use_class
+      join: LEFT JOIN `{project}.mart_dev.dim_geography` g ON g.geography_key = t.geo_key
+        LEFT JOIN `{project}.mart_dev.dim_land_use` lu ON lu.land_use_key = t.land_use_key
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Land_Inputs_and_Sustainability_Land_Land_Use
+  temperature:
+    mart:
+      table: fct_climate
+      value: value
+      year_sql: EXTRACT(YEAR FROM t.as_of_date)
+      where: t.metric = 'temperature_2m'
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Land_Inputs_and_Sustainability_Climate_Change_Indicators_Temperature_change_on_land
+  ndvi:
+    mart:
+      table: fct_vegetation
+      value: value
+      year_sql: COALESCE(EXTRACT(YEAR FROM t.as_of_date), EXTRACT(YEAR FROM t.loaded_at))
+      where: t.vegetation_grain = 'ndvi_grid'
+  soil:
+    mart:
+      table: fct_soil_health
+      value: value
+      year_sql: COALESCE(EXTRACT(YEAR FROM t.as_of_date), EXTRACT(YEAR FROM t.loaded_at))
+  household:
+    mart:
+      table: fct_household
+      value: hh_size
+      year_sql: COALESCE(EXTRACT(YEAR FROM t.as_of_date), EXTRACT(YEAR FROM t.loaded_at))
+  animal:
+    mart:
+      table: fct_animal_health
+      value: mortality_count
+      year_sql: COALESCE(EXTRACT(YEAR FROM t.loaded_at))
+  food_security_suite:
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Food_Security_and_Nutrition_Suite_of_Food_Security_Indicators
+  fews:
+    mart:
+      table: fct_food_security
+      value: value
+      year_sql: t.year
+  healthy_diet:
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Cost_and_Affordability_of_a_Healthy_Diet_Cost_and_Affordability_of_a_Healthy_Diet
+  gov_expenditure:
+    mart:
+      table: fct_investment
+      value: value
+      year_sql: t.year
+      where: REGEXP_CONTAINS(LOWER(COALESCE(t.metric, '')), r'government|expenditure')
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Investment_Government_Expenditure
+  asti:
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Agricultural_Science_and_Technology_ASTI-Expenditures
+  oda:
+    mart:
+      table: fct_investment
+      value: value
+      year_sql: t.year
+      where: REGEXP_CONTAINS(LOWER(COALESCE(t.purpose, '')), r'agric')
+    landing:
+      kind: faostat_wide
+      dataset: landing
+      table: FAOstat_africa_Investment_Development_Flows_to_Agriculture
+  humanitarian:
+    mart:
+      table: fct_humanitarian
+      value: value
+      year_sql: t.year
+indicators:
+- name: Total production (metric tons)
+  source: fao_production
+  element: Production
+- name: Farmgate prices (by region, crop)
+  source: producer_prices
+- name: Fertilizer type and usage (kg/ha)
+  source: fertilizer
+- name: Area harvested (hectares)
+  source: fao_production
+  element: Area harvested
+- name: Wholesale/retail market prices (daily/weekly)
+  source: hdx_prices
+- name: Seed type (improved, certified, traditional)
+  empty: true
+- name: Yield per hectare (kg/ha or t/ha)
+  source: fao_production
+  element: Yield
+- name: Export/import volumes and values
+  source: trade
+  element_regex: ^(import|export) (quantity|value)( |$)
+- name: Pesticide/herbicide application
+  source: pesticide
+- name: Cultivated vs uncultivated land
+  empty: true
+- name: Price volatility or margin spreads
+  empty: true
+- name: Irrigation method and coverage
+  empty: true
+- name: Seasonal planting and harvesting calendars
+  empty: true
+- name: Warehouse receipt or storage data
+  empty: true
+- name: Mechanization level (e.g., use of tractors)
+  source: machinery
+- name: Irrigated vs rainfed cultivation
+  empty: true
+- name: Input/output value chain mapping
+  empty: true
+- name: Labour intensity (manual vs mechanized)
+  empty: true
+- name: Agroecological zone classification
+  empty: true
+- name: Crop contribution to household income
+  source: household
+  value: farm_income
+- name: Use of climate-smart agriculture practices
+  empty: true
+- name: Soil health (pH, nutrients, organic matter)
+  source: soil
+- name: Gender-disaggregated farm ownership/use
+  empty: true
+- name: Crop failure rates
+  empty: true
+- name: Water availability & use (evapotranspiration, rainfall)
+  empty: true
+- name: On-farm employment (paid/unpaid labor)
+  source: employment
+  indicator_regex: employment in agriculture by status of employment, total
+- name: Access to early warning systems
+  empty: true
+- name: Drought/flood exposure or resilience index
+  empty: true
+- name: Access to credit/inputs
+  empty: true
+- name: Participation in cooperatives or extension services
+  empty: true
+- name: Land degradation risk (erosion, overcultivation)
+  empty: true
+- name: Value addition (processing, storage)
+  empty: true
+- name: Insurance coverage or use
+  empty: true
+- name: Rainfall levels (mm/month by region)
+  empty: true
+- name: Mechanization rate (tractors per 1000 farmers or hectares)
+  source: machinery
+- name: Distance to nearest market (km)
+  empty: true
+- name: Prevalence of undernourishment (% of population)
+  source: food_security_suite
+  item_regex: prevalence of undernourishment
+- name: Rainfall variability (year-on-year)
+  empty: true
+- name: Mobile phone penetration among farmers
+  empty: true
+- name: Access to rural roads (paved/unpaved)
+  empty: true
+- name: Food consumption score (FCS)
+  empty: true
+- name: Temperature patterns (min/max/avg seasonal)
+  source: temperature
+- name: Access to extension services (% of farmers)
+  empty: true
+- name: Availability of cold storage (capacity per region)
+  empty: true
+- name: Household Dietary Diversity Score (HDDS)
+  empty: true
+- name: Drought frequency and severity
+  empty: true
+- name: Digital agriculture platform usage (% by region)
+  empty: true
+- name: Aggregation centers per 1000 farmers
+  empty: true
+- name: Minimum Acceptable Diet (MAD) for children 6–23 months
+  empty: true
+- name: Flood occurrence (by season/region)
+  empty: true
+- name: Adoption of precision agri-tech (e.g., drones, IoT sensors)
+  empty: true
+- name: Time to market (avg. hours or days)
+  empty: true
+- name: Prevalence of stunting, wasting, and underweight (children under 5)
+  source: food_security_suite
+  item_regex: stunted|wasting
+- name: Length of growing season (days)
+  empty: true
+- name: Access to logistics and transport services
+  empty: true
+- name: '% of households with access to sufficient calories per day'
+  source: food_balance
+  element: Food supply (kcal/capita/day)
+- name: Climate risk exposure index (by region/crop)
+  empty: true
+- name: Use of certified seeds (% of total)
+  empty: true
+- name: '% of farmers selling through cooperatives vs. individually'
+  empty: true
+- name: '% of population experiencing food insecurity (by IPC phase)'
+  parts:
+  - source: fews
+  - source: food_security_suite
+    item_regex: prevalence of moderate or severe food insecurity in the total population
+- name: Soil moisture content (seasonal)
+  empty: true
+- name: Access to weather or market apps
+  empty: true
+- name: Access to input dealers (within X km)
+  empty: true
+- name: Nutrition-sensitive crops grown (e.g., orange-flesh sweet potato, legumes)
+  empty: true
+- name: Carbon emissions per hectare (by farming practice)
+  source: emissions
+- name: Use of irrigation technologies (drip, solar, manual)
+  empty: true
+- name: Digital marketplace usage
+  empty: true
+- name: Food affordability index (cost of basic food basket as % of income)
+  empty: true
+- name: Use of climate-resilient crop varieties
+  empty: true
+- name: Micronutrient availability in local production (vitamin A, iron, zinc)
+  empty: true
+- name: Adoption rate of climate-smart practices
+  empty: true
+- name: Green cover or NDVI (Normalized Difference Vegetation Index)
+  source: ndvi
+- name: Crop yield per hectare (by season, variety, region)
+  parts:
+  - source: fao_production
+    element: Yield
+  - source: yield_survey
+- name: Government agricultural subsidy coverage
+  empty: true
+- name: Harvested area per crop (in hectares)
+  source: fao_production
+  element: Area harvested
+- name: Number of active farmer cooperatives or groups
+  empty: true
+- name: Number of actors across each stage of the value chain (input, production,
+    processing, retail)
+  empty: true
+- name: Sown area per crop
+  empty: true
+- name: Extension agents per 1000 farmers
+  empty: true
+- name: Crop perishability index (post-harvest shelf life in days)
+  empty: true
+- name: Total arable land (hectares)
+  source: land_use
+  item_regex: arable|cropland
+- name: Crop loss before harvest (%)
+  empty: true
+- name: Public spending on agricultural R&D
+  source: asti
+- name: '% of produce processed locally'
+  empty: true
+- name: Land under cultivation per crop
+  source: fao_production
+  element: Area harvested
+- name: Multi-cropping index (frequency of multiple cropping per year)
+  empty: true
+- name: Land policy enforcement index
+  empty: true
+- name: Food loss and waste (volume, % of production)
+  source: food_balance
+  element_regex: loss
+- name: Crop rotation frequency
+  empty: true
+- name: Livestock numbers (where applicable)
+  source: fao_production
+  element: Stocks
+- name: Access to crop insurance (policyholders per 1000 farmers)
+  empty: true
+- name: Storage capacity (public/private, by region)
+  empty: true
+- name: Land tenure status (title deed, customary, leasehold)
+  empty: true
+- name: Inputs used per hectare (kg of fertilizer, pesticide, seed)
+  source: fertilizer
+- name: Policy support for climate adaptation (yes/no by region)
+  empty: true
+- name: Processing capacity (number and capacity of processing plants)
+  empty: true
+- name: Landholding size (avg. per household/farm)
+  empty: true
+- name: Seed type (hybrid, local, GMO, organic)
+  empty: true
+- name: Regulatory frameworks on agri-inputs (e.g., fertilizer import control)
+  empty: true
+- name: Value addition share (farmgate vs. retail price ratio)
+  empty: true
+- name: Land use change (e.g., forest to farmland)
+  empty: true
+- name: Input-output efficiency ratios
+  empty: true
+- name: Taxation on agri-products (by crop/value chain)
+  empty: true
+- name: Linkages to nutrition programs (e.g., school feeding, biofortified crops)
+  empty: true
+- name: Soil pH levels (by region)
+  source: soil
+  property_regex: \bph\b
+- name: Presence of aggregation models (e.g., contract farming, cooperatives)
+  empty: true
+- name: Soil organic carbon content
+  source: soil
+  property_regex: organic carbon|organic_carbon|\bsoc\b
+- name: Food traceability and certification coverage (organic, fair trade, etc.)
+  empty: true
+- name: Soil erosion rate
+  empty: true
+- name: '% of female-headed agricultural households'
+  empty: true
+- name: Fertility index / nutrient levels (NPK)
+  source: soil
+  property_regex: nitrogen|phosphorus|potassium
+- name: Women’s land ownership (% of total)
+  empty: true
+- name: Degraded land (% of total arable land)
+  empty: true
+- name: Youth (<35 years) participation in agri-value chains
+  empty: true
+- name: Number of people in need of food assistance (seasonal, by region)
+  source: fews
+  measure_type: population
+- name: Access to extension services (women vs. men)
+  empty: true
+- name: Agricultural livelihood loss due to conflict, flood, or drought (% of households)
+  source: humanitarian
+- name: Wage gaps by gender in agri-labor
+  source: employment
+  indicator_regex: share of female employees in total employees in agriculture
+- name: Number of agribusinesses formally registered (SMEs, cooperatives)
+  empty: true
+- name: Time spent on unpaid agri work (by gender)
+  empty: true
+- name: '% of agri-SMEs with business plans or audited financials'
+  empty: true
+- name: Access to finance (by gender/youth)
+  empty: true
+- name: Access to equity or venture capital (by sector/region)
+  empty: true
+- name: Representation in farmers’ cooperatives (by gender/youth)
+  empty: true
+- name: Availability of incubators or accelerators for agri-enterprises
+  empty: true
+- name: Access to technology (men vs. women)
+  empty: true
+- name: Digital financial service adoption (mobile banking, credit scoring tools)
+  empty: true
+- name: Disability inclusion in agricultural programs
+  empty: true
+- name: Investor perception index (e.g., ease of doing agri-business)
+  empty: true
+- name: Creditworthiness ratings (where applicable)
+  empty: true
+- name: Presence of bankable investment pipelines (by crop or region)
+  empty: true
+- name: ESG compliance or environmental risk rating (agribusinesses)
+  empty: true
+- name: Use of MIS (management information systems) in agribusiness
+  empty: true
+- name: Livestock population by species (cattle, goats, sheep, camels, pigs, poultry)
+  source: fao_production
+  element: Stocks
+- name: Milk production (litres per year, per animal)
+  source: fao_production
+  element: Production
+  item_regex: milk
+- name: Meat production by species (metric tons)
+  source: fao_production
+  element: Production
+  item_regex: meat
+- name: Egg production (number per year)
+  source: fao_production
+  element: Production
+  item_regex: egg
+- name: Livestock market prices (live animal, per head)
+  source: producer_prices
+  item_regex: cattle|goat|sheep|pig|poultry|chicken|camel
+- name: Animal disease outbreaks (FMD, PPR, CBPP, Newcastle, ASF)
+  source: animal
+  value: positive_cases
+- name: Vaccination coverage by disease (% of herd)
+  empty: true
+- name: Livestock mortality rate (% per year)
+  source: animal
+  value: mortality_count
+- name: Veterinary services per 1000 livestock keepers
+  empty: true
+- name: Rangeland and pasture condition (biomass, NDVI)
+  source: ndvi
+- name: Feed and fodder availability and price
+  empty: true
+- name: Transhumance corridors and pastoral mobility
+  empty: true
+- name: Hides, skins and leather output
+  source: fao_production
+  element: Production
+  item_regex: hide|skin|wool
+- name: Capture fisheries landings (marine and inland, metric tons)
+  source: fao_production
+  element: Production
+  item_regex: fish|crustacea|mollusc
+- name: Aquaculture production by species (metric tons)
+  source: fao_production
+  element: Production
+  item_regex: aquaculture|tilapia|catfish
+- name: Fish market prices (landing site, retail)
+  source: hdx_prices
+  item_regex: fish
+- name: Fish consumption per capita (kg per year)
+  source: food_balance
+  element: Food supply quantity (kg/capita/yr)
+  item_regex: fish
+- name: Registered fishing vessels and fishers
+  empty: true
+- name: Number of aquaculture farms and hatcheries
+  empty: true
+- name: Fish post-harvest losses (%)
+  empty: true
+- name: Fish feed availability and price
+  empty: true
+- name: Fall armyworm incidence (% of maize area affected)
+  empty: true
+- name: Desert locust presence and swarm alerts
+  empty: true
+- name: Crop disease outbreaks (cassava mosaic, maize lethal necrosis, banana wilt,
+    wheat rust)
+  empty: true
+- name: Pest and disease yield loss (%)
+  empty: true
+- name: Aflatoxin and mycotoxin prevalence in grain and nuts
+  empty: true
+- name: Pest surveillance coverage (% of districts)
+  empty: true
+- name: Quarantine pest interceptions at borders
+  empty: true
+- name: Input subsidy programmes (start, stop, scale, crops covered)
+  empty: true
+- name: Export bans and export restrictions (dated, by commodity)
+  empty: true
+- name: Import tariffs and quotas on food and inputs
+  empty: true
+- name: Minimum support prices and price controls
+  empty: true
+- name: National programme launches and closures (agriculture, food security)
+  empty: true
+- name: Currency devaluations and exchange rate regime changes
+  empty: true
+- name: Fuel price changes and fuel subsidy removal
+  empty: true
+- name: Trade agreement milestones (AfCFTA, REC protocols)
+  empty: true
+- name: Seed and fertiliser law changes
+  empty: true
+- name: Conflict events affecting farming areas (count, by district)
+  empty: true
+- name: Internally displaced and refugee populations in farming areas
+  empty: true
+- name: Farmer and herder clashes (count, location)
+  empty: true
+- name: Farmland abandoned due to insecurity (hectares)
+  empty: true
+- name: Market closures and trade route disruptions
+  empty: true
+- name: Agriculture share of GDP (%)
+  source: macro
+  item_regex: value added \(agriculture, forestry and fishing\)
+  element_regex: share of gdp
+- name: Agricultural credit volume (share of total lending)
+  empty: true
+- name: Interest rates on agricultural loans (%)
+  empty: true
+- name: Food inflation (food CPI, year on year)
+  source: cpi
+  item_regex: food
+- name: Exchange rate (official and parallel)
+  source: exchange
+- name: Public agriculture expenditure (% of budget, Malabo 10% target)
+  source: gov_expenditure
+- name: Official development assistance to agriculture (USD)
+  source: oda
+- name: Climate finance flows to agriculture and land use (USD)
+  empty: true
+- name: Remittances received by rural households
+  empty: true
+- name: Crop insurance premiums and payouts
+  empty: true
+- name: Rural electrification rate (% of households)
+  empty: true
+- name: Mobile network coverage of farming areas (2G, 3G, 4G)
+  empty: true
+- name: Rural internet penetration (%)
+  empty: true
+- name: Solar irrigation pumps installed (count)
+  empty: true
+- name: Diesel and petrol retail price
+  empty: true
+- name: Mobile money accounts among rural adults (%)
+  empty: true
+- name: Rural population and growth rate
+  empty: true
+- name: Agriculture share of employment (%)
+  source: employment
+  indicator_regex: share of employment in agriculture in total employment$
+- name: Number of smallholder farms and households
+  source: household
+  value: hh_size
+- name: Average age of farmers
+  empty: true
+- name: Rural to urban migration rate
+  empty: true
+- name: Farm household size
+  source: household
+  value: hh_size
+- name: Irrigation potential vs area equipped for irrigation (hectares)
+  source: food_security_suite
+  item_regex: percent of arable land equipped for irrigation
+- name: Area actually irrigated by crop (hectares)
+  empty: true
+- name: Groundwater levels and recharge
+  empty: true
+- name: Reservoir and dam storage levels
+  empty: true
+- name: Water user associations (count, members)
+  empty: true
+- name: Agricultural water withdrawal (% of total)
+  empty: true
+- name: Fertiliser and seed retail prices
+  source: producer_prices
+  item_regex: fertil|seed
+- name: Transport cost per tonne-km for produce
+  empty: true
+- name: Informal cross-border trade flows (volume, by border post)
+  source: border_trade
+- name: Commodity exchange and warehouse receipt trading volumes
+  empty: true
+- name: Post-harvest losses by crop and stage (%)
+  source: food_balance
+  element_regex: loss
+- name: Crop varieties released and in use
+  empty: true
+- name: Cost of a healthy diet (per person per day)
+  source: healthy_diet
+- name: Biofortified crop adoption (vitamin A cassava, orange maize, iron beans)
+  empty: true
+- name: Heat stress days during growing season
+  empty: true
+- name: Seasonal rainfall forecasts (onset, cessation, totals)
+  empty: true
