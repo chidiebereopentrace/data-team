@@ -1,0 +1,103 @@
+# Canonical crop universe for the Continental OTA Dashboard.
+# (key, display name, category, tier, aliases)  tier 1 = major traded commodity, 2 = common, 3 = minor / niche
+C = "Cereals"; R = "Roots & tubers"; L = "Legumes & pulses"; O = "Oilseeds & oil crops"; F = "Fruits"
+V = "Vegetables"; S = "Spices, herbs & medicinals"; I = "Cash & industrial crops"; N = "Nuts"; FD = "Forage & fodder"; SP = "Flowers & specialty"
+
+MASTER = [
+ # cereals
+ ("maize","Maize",C,1,["maize","corn"]),("rice","Rice",C,1,["rice"]),("sorghum","Sorghum",C,1,["sorghum"]),
+ ("pearl_millet","Pearl millet",C,1,["pearl millet","mahangu"]),("finger_millet","Finger millet",C,2,["finger millet"]),
+ ("millet","Millet",C,1,["millet"]),("fonio","Fonio",C,2,["fonio","acha"]),("wheat","Wheat",C,1,["wheat"]),
+ ("durum_wheat","Durum wheat",C,2,["durum"]),("barley","Barley",C,1,["barley"]),("teff","Teff",C,1,["teff"]),
+ ("oats","Oats",C,3,["oats"]),("triticale","Triticale",C,3,["triticale"]),("rye","Rye",C,3,["rye"]),
+ # roots and tubers
+ ("cassava","Cassava",R,1,["cassava"]),("yam","Yam",R,1,["yam"]),("sweet_potato","Sweet potato",R,1,["sweet potato"]),
+ ("potato","Irish potato",R,1,["irish potato","potatoes","potato"]),("cocoyam","Cocoyam / taro",R,2,["cocoyam","taro","arrowroot","colocase"]),
+ ("enset","Enset (false banana)",R,2,["enset"]),("tannia","Tannia",R,3,["tannia"]),("livingstone_potato","Livingstone potato",R,3,["livingstone"]),
+ # legumes
+ ("cowpea","Cowpea",L,1,["cowpea"]),("common_bean","Common bean",L,1,["beans (common","common bean","haricot","beans"]),
+ ("groundnut","Groundnut",L,1,["groundnut","peanut"]),("soybean","Soybean",L,1,["soybean","soya"]),
+ ("bambara","Bambara groundnut",L,2,["bambara"]),("pigeon_pea","Pigeon pea",L,2,["pigeon pea"]),
+ ("chickpea","Chickpea",L,1,["chickpea"]),("lentil","Lentil",L,2,["lentil"]),("faba_bean","Faba bean",L,1,["faba","broad bean"]),
+ ("field_pea","Field pea",L,2,["field pea","peas (field","peas"]),("mung_bean","Mung bean / green gram",L,2,["green gram","mung"]),
+ ("lima_bean","Lima bean",L,3,["lima"]),("grass_pea","Grass pea",L,3,["grass pea","lathyrus"]),("lupin","Lupin",L,3,["lupin"]),
+ ("mucuna","Mucuna (velvet bean)",L,3,["mucuna"]),("kersting","Kersting's groundnut",L,3,["kersting"]),("lablab","Lablab bean",L,3,["lablab"]),
+ ("morama","Morama bean",L,3,["morama"]),("congo_bean","Congo bean",L,3,["congo bean"]),
+ # oil crops
+ ("oil_palm","Oil palm",O,1,["oil palm","palm oil"]),("sesame","Sesame",O,1,["sesame","beniseed","simsim"]),
+ ("sunflower","Sunflower",O,1,["sunflower"]),("shea","Shea",O,1,["shea"]),("coconut","Coconut",O,1,["coconut"]),
+ ("olive","Olive",O,1,["olive"]),("castor","Castor",O,3,["castor"]),("canola","Canola / rapeseed",O,2,["canola","rapeseed"]),
+ ("linseed","Linseed / flax",O,2,["linseed","flax"]),("niger_seed","Niger seed",O,2,["niger seed","noug"]),
+ ("safflower","Safflower",O,3,["safflower"]),("jatropha","Jatropha",O,3,["jatropha"]),("argan","Argan",O,2,["argan"]),
+ ("melon_seed","Melon seed (egusi)",O,2,["egusi","melon seed"]),
+ # cash and industrial
+ ("cocoa","Cocoa",I,1,["cocoa"]),("coffee_arabica","Coffee (Arabica)",I,1,["arabica"]),("coffee_robusta","Coffee (Robusta)",I,1,["robusta"]),
+ ("coffee","Coffee",I,1,["coffee"]),("tea","Tea",I,1,["tea"]),("cotton","Cotton",I,1,["cotton"]),("sugarcane","Sugarcane",I,1,["sugarcane"]),
+ ("tobacco","Tobacco",I,1,["tobacco"]),("rubber","Rubber",I,2,["rubber"]),("sisal","Sisal",I,2,["sisal"]),("kola","Kola nut",I,2,["kola"]),
+ ("khat","Khat",I,2,["khat","chat"]),("pyrethrum","Pyrethrum",I,2,["pyrethrum"]),("gum_arabic","Gum arabic",I,2,["gum arabic"]),
+ ("vanilla","Vanilla",I,1,["vanilla"]),("hops","Hops",I,3,["hops"]),("sugar_beet","Sugar beet",I,2,["sugar beet"]),
+ ("kenaf","Kenaf",I,3,["kenaf"]),("hemp","Hemp",I,3,["hemp"]),("stevia","Stevia",I,3,["stevia"]),("rooibos","Rooibos",I,2,["rooibos"]),
+ ("honeybush","Honeybush",I,3,["honeybush"]),("ylang","Ylang-ylang",I,2,["ylang"]),("cinchona","Cinchona",I,3,["cinchona"]),
+ ("raffia","Raffia palm",I,3,["raffia"]),("bamboo","Bamboo",I,3,["bamboo"]),("eucalyptus","Eucalyptus",I,3,["eucalyptus"]),
+ ("frankincense","Frankincense",I,2,["frankincense","boswellia"]),("myrrh","Myrrh",I,3,["myrrh"]),("henna","Henna",I,3,["henna"]),
+ ("devils_claw","Devil's claw",I,3,["devil"]),
+ # nuts
+ ("cashew","Cashew",N,1,["cashew"]),("macadamia","Macadamia",N,1,["macadamia"]),("almond","Almond",N,1,["almond"]),
+ ("pecan","Pecan",N,2,["pecan"]),("walnut","Walnut",N,3,["walnut"]),("pistachio","Pistachio",N,3,["pistachio"]),
+ ("bush_mango","Bush mango (ogbono)",N,2,["bush mango","ogbono","irvingia"]),("marula","Marula",N,3,["marula"]),
+ ("breadfruit_african","African breadfruit (ukwa)",N,3,["ukwa"]),
+ # fruits
+ ("banana","Banana",F,1,["banana"]),("plantain","Plantain",F,1,["plantain"]),("matooke","Matooke (cooking banana)",F,1,["matooke","cooking banana"]),
+ ("mango","Mango",F,1,["mango"]),("orange","Orange",F,1,["orange"]),("tangerine","Tangerine / mandarin",F,2,["tangerine","mandarin"]),
+ ("lemon","Lemon",F,2,["lemon"]),("lime","Lime",F,2,["lime"]),("grapefruit","Grapefruit",F,2,["grapefruit"]),
+ ("citrus","Citrus (mixed)",F,1,["citrus"]),("pineapple","Pineapple",F,1,["pineapple"]),("papaya","Papaya",F,1,["papaya","pawpaw"]),
+ ("avocado","Avocado",F,1,["avocado"]),("guava","Guava",F,2,["guava"]),("watermelon","Watermelon",F,1,["watermelon"]),
+ ("melon","Melon",F,2,["melon"]),("passion_fruit","Passion fruit",F,2,["passion"]),("soursop","Soursop",F,3,["soursop"]),
+ ("star_apple","African star apple",F,3,["star apple","agbalumo","udala"]),("date_palm","Date palm",F,1,["date palm","dates"]),
+ ("african_pear","African pear / safou",F,3,["african pear","safou","ube"]),("breadfruit","Breadfruit",F,3,["breadfruit"]),
+ ("tree_tomato","Tree tomato (tamarillo)",F,3,["tree tomato","tamarillo"]),("apple","Apple",F,1,["apple"]),("pear","Pear",F,2,["pear"]),
+ ("grape","Grape",F,1,["grape"]),("strawberry","Strawberry",F,2,["strawberr"]),("blueberry","Blueberry",F,2,["blueberr"]),
+ ("raspberry","Raspberry",F,3,["raspberr"]),("jackfruit","Jackfruit",F,3,["jackfruit"]),("fig","Fig",F,2,["fig"]),
+ ("pomegranate","Pomegranate",F,2,["pomegranate"]),("apricot","Apricot",F,2,["apricot"]),("peach","Peach / nectarine",F,2,["peach","nectarine"]),
+ ("plum","Plum",F,3,["plum"]),("cherry","Cherry",F,3,["cherr"]),("prickly_pear","Prickly pear",F,3,["prickly"]),("carob","Carob",F,3,["carob"]),
+ ("baobab","Baobab",F,2,["baobab"]),("tamarind","Tamarind",F,3,["tamarind"]),("jujube","Jujube",F,3,["jujube"]),
+ ("litchi","Litchi",F,2,["litchi","lychee"]),("custard_apple","Custard apple",F,3,["custard apple"]),("monkey_orange","Monkey orange",F,3,["monkey orange"]),
+ ("loquat","Loquat",F,3,["loquat"]),("quince","Quince",F,3,["quince"]),
+ # vegetables
+ ("tomato","Tomato",V,1,["tomato"]),("onion","Onion",V,1,["onion"]),("pepper","Sweet and hot peppers",V,1,["pepper (chili","peppers (bell","bell pepper","green pepper","capsicum","sweet pepper"]),
+ ("chili","Chili pepper",V,1,["chili","chilli","hot pepper","scotch bonnet"]),("okra","Okra",V,1,["okra"]),("cabbage","Cabbage",V,1,["cabbage"]),
+ ("kale","Kale / collards (sukuma wiki)",V,2,["kale","sukuma","rape (kale"]),("amaranth","Amaranth",V,2,["amaranth","terere","dodo"]),
+ ("spinach","Spinach",V,2,["spinach"]),("lettuce","Lettuce",V,2,["lettuce"]),("carrot","Carrot",V,1,["carrot"]),
+ ("garden_egg","Garden egg / African eggplant",V,2,["garden egg","african eggplant"]),("eggplant","Eggplant / brinjal",V,2,["eggplant","brinjal"]),
+ ("cucumber","Cucumber",V,2,["cucumber"]),("pumpkin","Pumpkin / squash",V,2,["pumpkin","squash","butternut"]),("fluted_pumpkin","Fluted pumpkin (ugu)",V,2,["fluted pumpkin","ugu"]),
+ ("waterleaf","Waterleaf",V,3,["waterleaf"]),("bitter_leaf","Bitter leaf",V,3,["bitter leaf","vernonia"]),("celosia","Celosia (soko)",V,3,["celosia"]),
+ ("jute_mallow","Jute mallow (ewedu / molokhia)",V,2,["jute mallow","ewedu","molokhia"]),("nightshade","African nightshade",V,3,["nightshade","managu","osuga"]),
+ ("spider_plant","Spider plant",V,3,["spider plant"]),("cassava_leaves","Cassava and potato leaves",V,2,["cassava leaves","leafy greens"]),
+ ("french_bean","French bean / green bean",V,2,["french bean","green bean"]),("garden_pea","Garden and snow peas",V,2,["garden pea","snow pea","peas (garden"]),
+ ("celery","Celery",V,3,["celery"]),("leek","Leek",V,3,["leek"]),("beetroot","Beetroot",V,3,["beetroot"]),("cauliflower","Cauliflower / broccoli",V,3,["cauliflower","broccoli"]),
+ ("artichoke","Artichoke",V,3,["artichoke"]),("zucchini","Courgette / zucchini",V,3,["courgette","zucchini"]),("asparagus","Asparagus",V,3,["asparagus"]),
+ ("mushroom","Mushrooms",V,3,["mushroom"]),("moringa","Moringa",V,2,["moringa"]),("hibiscus_leaf","Roselle / hibiscus",I,2,["roselle","hibiscus"]),
+ ("gnetum","Gnetum (eru / fumbwa)",V,3,["gnetum","eru","fumbwa"]),("radish","Radish / turnip",V,3,["radish","turnip"]),
+ # spices
+ ("ginger","Ginger",S,1,["ginger"]),("garlic","Garlic",V,1,["garlic"]),("turmeric","Turmeric",S,2,["turmeric"]),
+ ("black_pepper","Black pepper",S,2,["black pepper","piper nigrum"]),("clove","Clove",S,1,["clove"]),("cinnamon","Cinnamon",S,2,["cinnamon"]),
+ ("nutmeg","Nutmeg",S,3,["nutmeg"]),("cardamom","Cardamom",S,3,["cardamom","korarima"]),("basil","Basil",S,3,["basil","scent leaf"]),
+ ("thyme","Thyme",S,3,["thyme"]),("mint","Mint",S,3,["mint"]),("coriander","Coriander",S,2,["coriander","cilantro","dhania"]),
+ ("cumin","Cumin",S,2,["cumin"]),("fenugreek","Fenugreek",S,3,["fenugreek"]),("saffron","Saffron",S,2,["saffron"]),
+ ("alligator_pepper","Alligator pepper",S,3,["alligator pepper"]),("grains_paradise","Grains of paradise",S,3,["grains of paradise"]),
+ ("locust_bean","African locust bean (iru / dawadawa)",S,2,["locust bean","dawadawa","iru"]),("curry_leaf","Curry leaf",S,3,["curry leaf"]),
+ ("mustard","Mustard",S,3,["mustard"]),("rue","Rue (tena adam)",S,3,["rue"]),("lemongrass","Lemongrass",S,3,["lemongrass"]),
+ ("aloe","Aloe vera",S,3,["aloe"]),("artemisia","Artemisia",S,3,["artemisia"]),("paprika","Paprika",S,2,["paprika"]),
+ ("anise","Anise / fennel",S,3,["anise","fennel"]),("rosemary","Rosemary / lavender",S,3,["rosemary","lavender"]),
+ ("rose_geranium","Rose geranium",S,3,["geranium"]),("black_cumin","Black cumin (nigella)",S,3,["nigella","black cumin"]),
+ # forage
+ ("napier","Napier / elephant grass",FD,2,["napier","elephant grass"]),("guinea_grass","Guinea grass",FD,3,["guinea grass"]),
+ ("stylosanthes","Stylosanthes",FD,3,["stylosanthes"]),("alfalfa","Alfalfa / lucerne",FD,2,["alfalfa","lucerne","medicago"]),
+ ("desmodium","Desmodium",FD,3,["desmodium"]),("sudan_grass","Sudan grass",FD,3,["sudan grass"]),("vetch","Vetch",FD,3,["vetch"]),
+ ("sesbania","Sesbania",FD,3,["sesbania"]),("brachiaria","Brachiaria",FD,3,["brachiaria"]),("rhodes_grass","Rhodes grass",FD,3,["rhodes"]),
+ ("berseem","Berseem clover",FD,2,["berseem"]),("leucaena","Leucaena",FD,3,["leucaena"]),("crop_residue","Crop residues / stover (feed)",FD,3,["stover"]),
+ # specialty
+ ("cut_flowers","Cut flowers (roses, carnations)",SP,1,["flowers","roses"]),("anthurium","Anthurium",SP,3,["anthurium"]),
+ ("horticulture_export","Export horticulture (mixed)",SP,3,["horticultural crops"]),
+]
+BYKEY = {m[0]: m for m in MASTER}
