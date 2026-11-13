@@ -74,3 +74,5 @@ semantic_role:
   - research
 bind_spine:
   person_key: dim_person.family_name
+indicator_classes:
+- RES

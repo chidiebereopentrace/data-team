@@ -25,6 +25,8 @@ import logging
 import os
 import threading
 import time
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 try:
@@ -102,6 +104,21 @@ def _now() -> float:
     return time.time()
 
 
+def _json_default(value: Any) -> str:
+    """BigQuery rows carry date and Decimal values into session and cache blobs."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _dumps(value: Any) -> str:
+    return json.dumps(value, default=_json_default)
+
+
 def get_json(key: str) -> Any | None:
     """
     Retrieve and JSON-decode a value, or None if missing/expired/unavailable.
@@ -128,7 +145,7 @@ def get_json(key: str) -> Any | None:
             return None
         # Return a deep copy for safety (callers mutate)
         try:
-            return json.loads(json.dumps(value))
+            return json.loads(_dumps(value))
         except Exception:
             return value
 
@@ -141,7 +158,7 @@ def set_json(key: str, value: Any, *, ttl_s: int | None = None) -> None:
     """
     # Serialize up front so we fail fast on non-serializable
     try:
-        payload = json.dumps(value)
+        payload = _dumps(value)
     except (TypeError, ValueError) as exc:
         logger.error("session_store: cannot JSON-serialize value for %s: %s", key, exc)
         return
@@ -231,7 +248,7 @@ def save_session_blob(
         return False
     key = _session_key(owner, session_id)
     stored = {**blob, "state_version": expected_version + 1}
-    payload = json.dumps(stored)
+    payload = _dumps(stored)
     eff_ttl = ttl_s if ttl_s is not None else _SESSION_TTL_S
     client = _get_client()
     if client is not None and redis is not None:

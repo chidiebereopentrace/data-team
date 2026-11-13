@@ -32,3 +32,5 @@ time_key_value_stats:
   patched: true
 bind_spine:
   season_key: dim_season.season_name
+indicator_classes:
+- PROD

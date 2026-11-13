@@ -1,6 +1,7 @@
 """Decomposition-driven retrieval contract: multi-measure → tables + corpus domains."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,8 +16,10 @@ from ml.rag.chatbot.analytical_bq_plan import build_food_security_bq_plan
 from ml.rag.chatbot.bq_table_schema_yaml import (
     compile_intent_for_table,
     list_mart_table_index,
+    match_subnational_geo_labels,
     pack_mart_table_hints,
 )
+from ml.rag.chatbot.geo_iso3 import name_to_iso3
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
 from ml.rag.chatbot.intent_bundles import bundle_primary_measures, bundles_from_ids
 from ml.rag.chatbot.mart_indicator_classes import class_for_query, do_not_mix_tables
@@ -87,6 +90,52 @@ def _intent_for_table(
     )
 
 
+_PLACE_DETAIL_RE = re.compile(
+    r"\b(?:fnids?|households?|villages?|cities|city|districts?|counties|county|wards?|"
+    r"admin(?:istrative)?(?:\s*[12])?)\b",
+    re.IGNORECASE,
+)
+_COMPASS_PLACE = frozenset(
+    {
+        "east",
+        "eastern",
+        "west",
+        "western",
+        "north",
+        "northern",
+        "south",
+        "southern",
+        "central",
+        "africa",
+        "region",
+    }
+)
+_PLACE_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+_COUNTRY_ROLLUP = {
+    "fct_employment": "agg_employment_country_year",
+    "fct_economics": "agg_economics_country_year",
+    "fct_emissions": "agg_emissions_country_year",
+    "fct_forestry": "agg_forestry_country_year",
+    "fct_food_balance": "agg_food_balance_country_year",
+    "fct_food_security": "agg_food_security_country_month",
+}
+
+
+def _names_finer_place(query: str) -> bool:
+    """A named admin, city, or FNID. Compass words in a region name are not a place."""
+    if _PLACE_DETAIL_RE.search(query or ""):
+        return True
+    said = {tok.lower() for tok in _PLACE_TOKEN_RE.findall(query or "")}
+    for _col, label in match_subnational_geo_labels(query or ""):
+        if name_to_iso3(label):
+            continue
+        tokens = [tok.lower() for tok in _PLACE_TOKEN_RE.findall(label) if len(tok) >= 5]
+        specific = [tok for tok in tokens if tok not in _COMPASS_PLACE and tok in said]
+        if specific:
+            return True
+    return False
+
+
 def choose_agg_vs_fact(
     table_id: str,
     *,
@@ -105,15 +154,19 @@ def choose_agg_vs_fact(
         or "national" in q
         or "country" in q
     )
+    if national and _names_finer_place(query):
+        return table_id
     annual = "month" not in q and "season" not in q and "fnid" not in q
+    if table_id == "fct_production" and national and "season" in q and "fnid" not in q:
+        return "agg_production_country_season"
     if table_id == "fct_production" and national and annual:
-        if multi_country or iso_count >= 2:
-            return "agg_production_country_year"
         return "agg_production_country_year"
     if table_id == "fct_food_security" and national and "month" in q:
         return "agg_food_security_monthly"
     if table_id == "fct_prices" and national and "market" not in q:
         return "agg_prices_country_month"
+    if national:
+        return _COUNTRY_ROLLUP.get(table_id, table_id)
     return table_id
 
 

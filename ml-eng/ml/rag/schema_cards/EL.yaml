@@ -6,8 +6,27 @@ tables:
   - fct_employment
   - fct_economics
   - fct_household
+  - agg_employment_country_year
+  - agg_economics_country_year
+  - fct_population_dynamics
   - dim_indicator
   - dim_geography
+joins_when_needed:
+  - dim_indicator
+  - dim_geography
+  - dim_source
+  - dim_date
+  - dim_item
+  - dim_element
+  - dim_sex
+  - dim_household
+  - dim_ref_country
+  - gold_dim_indicator
+  - gold_dim_geography
+  - gold_dim_source
+  - bridge_household_crop
+  - bridge_household_livestock
+  - bridge_household_disease
 default_measures:
   series:
     - employment_rate

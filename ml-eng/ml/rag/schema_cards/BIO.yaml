@@ -6,6 +6,11 @@ tables:
 - fct_biodiversity
 - fct_protected_areas
 - fct_germplasm
+joins_when_needed:
+- dim_geography
+- dim_source
+- gold_dim_geography
+- gold_dim_source
 columns: {}
 hard_rules: []
 exclude_prompt_columns:

@@ -2,6 +2,12 @@
   "venvPath": "ml-eng",
   "venv": "venv",
   "extraPaths": ["ml-eng"],
+  "executionEnvironments": [
+    {
+      "root": "data-eng",
+      "extraPaths": ["data-eng/typings"]
+    }
+  ],
   "exclude": [
     "**/node_modules",
     "**/__pycache__",

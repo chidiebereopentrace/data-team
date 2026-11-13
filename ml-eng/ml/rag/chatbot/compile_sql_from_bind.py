@@ -25,6 +25,7 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     year_column,
 )
 from ml.rag.chatbot.coverage_ledger import operation_supported
+from ml.rag.helpers.mart_semantic_relationships import relationships_for
 
 logger = logging.getLogger(__name__)
 
@@ -165,22 +166,79 @@ def _is_unit_column(name: str) -> bool:
     return low in ("unit", "currency") or low.endswith(("_unit", "_currency"))
 
 
+_LABEL_PREFERENCE = (
+    "country_name",
+    "product_name",
+    "item_name",
+    "element_name",
+    "indicator_name",
+    "organisation_name",
+    "market_name",
+    "unit_code",
+    "season_name",
+    "land_use_code",
+    "sex_name",
+)
+
+
+def _label_column(dim: str) -> str | None:
+    cols = _schema_column_names(dim)
+    for cand in _LABEL_PREFERENCE:
+        if cand in cols:
+            return cand
+    for col in sorted(cols):
+        if col.endswith("_name") or col.endswith("_code"):
+            return col
+    return None
+
+
+def _declared_label_joins(
+    bare: str, names: set[str], joined: set[str]
+) -> list[tuple[str, str, str, str]]:
+    """Dim and bridge joins declared for this table, skipping keys already joined."""
+    out: list[tuple[str, str, str, str]] = []
+    for spec in relationships_for(bare).get("joins_with") or []:
+        if not isinstance(spec, dict):
+            continue
+        dim = str(spec.get("table") or "").strip()
+        if not dim.startswith(("dim_", "bridge_")):
+            continue
+        on_cols = [str(col).strip() for col in (spec.get("on") or []) if str(col).strip()]
+        fk = next((col for col in on_cols if col.lower() in names), "")
+        dim_key = fk
+        if not fk and any(col.lower() == "geography_key" for col in on_cols) and "geo_key" in names:
+            fk, dim_key = "geo_key", "geography_key"
+        if not fk or fk.lower() in joined:
+            continue
+        label = _label_column(dim)
+        dim_cols = _schema_column_names(dim)
+        if not label or label not in dim_cols or dim_key.lower() not in dim_cols:
+            continue
+        out.append((fk, dim, dim_key, label))
+        joined.add(fk.lower())
+    return out
+
+
 def _grain_labels(
     bare: str, grain: list[str], names: set[str]
 ) -> tuple[list[str], list[tuple[str, str, str, str]]]:
     """Readable labels for hash-key grain columns: fact columns that carry them, else dim joins."""
     direct: list[str] = []
     joins: list[tuple[str, str, str, str]] = []
+    joined: set[str] = set()
     for fk, (dim, key, label) in dim_label_joins(bare).items():
         low_fk, low_label = fk.lower(), label.lower()
         if low_fk not in grain and low_fk != "unit_key":
             continue
         if low_label in names:
             direct.append(low_label)
+            joined.add(low_fk)
             continue
         dim_cols = _schema_column_names(dim)
         if key.lower() in dim_cols and low_label in dim_cols:
             joins.append((fk, dim, key, label))
+            joined.add(low_fk)
+    joins.extend(_declared_label_joins(bare, names, joined))
     return direct, joins
 
 
@@ -256,6 +314,20 @@ def compile_sql_from_bind(
     direct_labels, joins = _grain_labels(bare, grain, names)
     join_keys = {fk.lower() for fk, _, _, _ in joins}
 
+    primary_measure = str(cols[0]).strip()
+    alias_value = primary_measure.lower() != "value"
+
+    def _output_name(col: str) -> str:
+        if alias_value and col.lower() == primary_measure.lower():
+            return "value"
+        return col
+
+    def _projected(col: str) -> str:
+        out = _output_name(col)
+        if out != col:
+            return f"{col} AS {out}"
+        return col
+
     select_list = [c for c in cols[:4]]
     _append_columns(select_list, [col for col in _TIME_GRAIN if col in names])
     _append_columns(select_list, [col for col in grain if col in names and col not in hash_keys])
@@ -269,7 +341,7 @@ def compile_sql_from_bind(
 
     open_grain = _grain_is_open(grain, filtered, series=series or kind in ("rank", "compare", "region", "breakdown"))
     if kind == "rank":
-        order_cols = [cols[0]] if cols else []
+        order_cols = [_output_name(cols[0])] if cols else []
         order_sql = f" ORDER BY {order_cols[0]} DESC" if order_cols else ""
         cap = min(ROW_BUDGET, max(10, int(limit or 10)))
     elif kind in ("compare", "region", "breakdown"):
@@ -297,27 +369,32 @@ def compile_sql_from_bind(
         discriminators = metric_discriminator_names()
         measure_set = {c.lower() for c in cols[:4] if c.lower() not in discriminators}
         grouped = [c for c in select_list if c.lower() not in measure_set]
-        agg = [f"{_aggregate_fn(c)}({c}) AS {c}" for c in select_list if c.lower() in measure_set]
+        agg = [
+            f"{_aggregate_fn(c)}({c}) AS {_output_name(c)}"
+            for c in select_list
+            if c.lower() in measure_set
+        ]
         if grouped and agg:
             inner_select = agg + grouped
             group_sql = " GROUP BY " + ", ".join(grouped)
             if kind == "rank" and cols:
-                order_sql = f" ORDER BY {cols[0]} DESC"
+                order_sql = f" ORDER BY {_output_name(cols[0])} DESC"
 
+    shown = inner_select if group_sql else [_projected(col) for col in inner_select]
     if not joins:
         return (
-            f"SELECT {', '.join(inner_select)} FROM {fqn} "
+            f"SELECT {', '.join(shown)} FROM {fqn} "
             f"WHERE {where_sql}{group_sql}{order_sql} LIMIT {cap}"
         )
 
-    inner_cols = list(inner_select)
+    inner_cols = list(shown)
     _append_columns(inner_cols, [fk for fk, _, _, _ in joins])
     if group_sql:
         group_sql = group_sql + ", " + ", ".join(
             fk for fk, _, _, _ in joins if fk.lower() not in {c.lower() for c in grouped}
         )
     outer_cols = [
-        f"f.{col}" for col in select_list if col.lower() not in join_keys
+        f"f.{_output_name(col)}" for col in select_list if col.lower() not in join_keys
     ]
     join_sql = ""
     for i, (fk, dim, key, label) in enumerate(joins):
@@ -332,6 +409,49 @@ def compile_sql_from_bind(
 
 
 Operation = Literal["lookup", "latest", "series", "compare", "rank", "categorical"]
+
+_RANK_RE = re.compile(
+    r"\b(rank(?:ing|ed)?|highest|lowest|most|least|top\s+\d+|which\s+countr(?:y|ies)|what\s+countr(?:y|ies))\b",
+    re.IGNORECASE,
+)
+_COMPARE_RE = re.compile(
+    r"\b(compar(?:e|ed|ing|ison)|versus|vs\.?|differ(?:s|ence|ences)?)\b",
+    re.IGNORECASE,
+)
+_CATEGORY_RE = re.compile(
+    r"\b(?:break\s*down|broken\s+down|by\s+(?:sex|gender|crop|product|source|element|category|sector|item|indicator))\b",
+    re.IGNORECASE,
+)
+_SERIES_RE = re.compile(
+    r"\b(trends?|over\s+time|time\s+series|since\s+(?:19|20)\d{2}|from\s+(?:19|20)\d{2}\s+to|year[-\s]by[-\s]year|changed|change\s+over)\b",
+    re.IGNORECASE,
+)
+_LATEST_RE = re.compile(
+    r"\b(latest|most\s+recent|current|right\s+now|as\s+of\s+now)\b",
+    re.IGNORECASE,
+)
+_NAMED_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
+
+
+def requested_operation(query: str) -> Operation:
+    """The one warehouse operation the question asks for."""
+    text = query or ""
+    if _RANK_RE.search(text):
+        return "rank"
+    if _COMPARE_RE.search(text):
+        return "compare"
+    if _CATEGORY_RE.search(text):
+        return "categorical"
+    if _SERIES_RE.search(text):
+        return "series"
+    if _LATEST_RE.search(text):
+        return "latest"
+    return "lookup"
+
+
+def question_names_year(query: str) -> bool:
+    """True when the question itself names a calendar year."""
+    return bool(_NAMED_YEAR_RE.search(query or ""))
 
 # Operation -> (job, pattern) understood by compile_sql_from_bind.
 _OPERATION_SHAPE: dict[Operation, tuple[str, str]] = {
@@ -373,6 +493,7 @@ def compile_operation(
     *,
     job: str = "",
     pattern: str = "",
+    operation: Operation | None = None,
     breakdown: list[str] | None = None,
     project_id: str | None = None,
     dataset: str | None = None,
@@ -383,22 +504,22 @@ def compile_operation(
     if parsed is None:
         return None
     bare = parsed.table_id.strip().split(".")[-1].lower()
-    operation = operation_for(parsed, job=job, pattern=pattern)
-    supported, reason = operation_supported(bare, operation)
+    chosen = operation or operation_for(parsed, job=job, pattern=pattern)
+    supported, reason = operation_supported(bare, chosen)
     if not supported:
-        return CompiledOperation(bare, operation, None, f"{operation} is not supported on {bare}: {reason}")
-    op_job, op_pattern = _OPERATION_SHAPE[operation]
-    dims = breakdown or (discriminator_columns(bare) if operation == "categorical" else [])
+        return CompiledOperation(bare, chosen, None, f"{chosen} is not supported on {bare}: {reason}")
+    op_job, op_pattern = _OPERATION_SHAPE[chosen]
+    dims = breakdown or (discriminator_columns(bare) if chosen == "categorical" else [])
     sql = compile_sql_from_bind(
         parsed,
         project_id=project_id,
         dataset=dataset,
-        limit=limit,
-        job=job or op_job,
-        pattern=pattern or op_pattern,
+        limit=limit if chosen == "lookup" else max(limit, RESULT_ROW_BUDGET),
+        job=op_job,
+        pattern=op_pattern,
         breakdown=dims,
     )
-    return CompiledOperation(bare, operation, sql, "" if sql else "bind compiler produced no SQL")
+    return CompiledOperation(bare, chosen, sql, "" if sql else "bind compiler produced no SQL")
 
 
 __all__ = [
@@ -410,4 +531,6 @@ __all__ = [
     "compile_operation",
     "compile_sql_from_bind",
     "operation_for",
+    "question_names_year",
+    "requested_operation",
 ]

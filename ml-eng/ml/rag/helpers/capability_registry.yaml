@@ -260,6 +260,16 @@ table_operations:
   fct_trade: *all_ops
   fct_vegetation: *all_ops
   fct_yield: *all_ops
+  agg_economics_country_year: *all_ops
+  agg_employment_country_year: *all_ops
+  agg_food_balance_country_year: *all_ops
+  agg_forestry_country_year: *all_ops
+  fct_air_quality: *all_ops
+  fct_land_use: *no_categorical
+  fct_market_access: *no_categorical
+  fct_population_dynamics: *no_categorical
+  fct_technology: *no_categorical
+  fct_value_chain: *no_categorical
 
 geo_level_order:
   point: 0

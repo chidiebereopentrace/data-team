@@ -74,3 +74,5 @@ semantic_role:
   - research
 bind_spine:
   organisation_key: dim_organisation.short_name
+indicator_classes:
+- RES

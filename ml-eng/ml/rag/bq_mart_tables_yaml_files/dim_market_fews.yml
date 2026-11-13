@@ -1,0 +1,52 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_market_fews
+description: FEWS market labels.
+source:
+  layer: mart_dev
+grain: One row per market_key
+entity_type: market
+columns:
+- name: market_key
+  type: STRING
+  description: Market key
+- name: market_natural_key
+  type: STRING
+  description: Market natural key
+- name: market_name
+  type: STRING
+  description: Market name
+- name: market_type
+  type: STRING
+  description: Market type
+- name: geo_key
+  type: STRING
+  description: Geography key
+- name: has_electricity
+  type: BOOL
+  description: Has electricity
+- name: has_running_water
+  type: BOOL
+  description: Has running water
+- name: has_handwashing
+  type: BOOL
+  description: Has handwashing
+- name: has_waste_disposal
+  type: BOOL
+  description: Has waste disposal
+- name: has_refrigeration
+  type: BOOL
+  description: Has refrigeration
+- name: outlet_structure_type
+  type: STRING
+  description: Outlet structure type
+- name: floor_condition
+  type: STRING
+  description: Floor condition
+- name: infrastructure_adequacy
+  type: STRING
+  description: Infrastructure adequacy
+- name: description
+  type: STRING
+  description: Description
+- name: is_current
+  type: BOOL
+  description: Is current

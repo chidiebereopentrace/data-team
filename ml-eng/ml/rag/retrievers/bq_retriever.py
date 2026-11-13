@@ -46,10 +46,12 @@ from ml.rag.chatbot.compile_sql_from_bind import (
     RESULT_ROW_BUDGET,
     bind_contract_for_table,
     compile_operation,
+    question_names_year,
+    requested_operation,
 )
 from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
 from ml.rag.chatbot.bq_execute_state import NON_EVIDENCE_ROW_STATUSES, evidence_id_for_sql
-from ml.rag.chatbot.mart_coverage import clamp_year, route_tables
+from ml.rag.chatbot.mart_coverage import clamp_year, load_coverage, route_tables
 from ml.rag.chatbot.result_shape import check_result_shape
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
@@ -67,6 +69,83 @@ from ml.rag.session_store import get_bq_schema_cache, set_bq_schema_cache
 logger = logging.getLogger(__name__)
 
 _AGG_TABLE_RE = re.compile(r"\bagg_", re.I)
+_TIME_PRED_RE = re.compile(
+    r"\b(time_key|year|harvest_year|observation_year|mp_year)\s*(=|BETWEEN)\s*(\d{4})(?:\s+AND\s+(\d{4}))?",
+    re.IGNORECASE,
+)
+_AS_OF_RE = re.compile(
+    r"as_of_date BETWEEN DATE '(\d{4})-\d{2}-\d{2}' AND DATE '(\d{4})-\d{2}-\d{2}'",
+    re.IGNORECASE,
+)
+
+
+def _coverage_spans(sql: str, geo_country: str | None) -> list[tuple[str, int, int]]:
+    """(table, min year, max year) the mart holds for this country."""
+    iso = (geo_country or "").strip().upper()
+    if len(iso) != 3:
+        iso = name_to_iso3(geo_country or "") or ""
+    if not iso:
+        return []
+    spans: list[tuple[str, int, int]] = []
+    for table in sorted(referenced_mart_tables(sql)):
+        if not table.startswith(("fct_", "agg_")):
+            continue
+        hit = load_coverage().entry(table, iso)
+        if hit is not None:
+            spans.append((table, hit.min_year, hit.max_year))
+    return spans
+
+
+def _coverage_sentence(spans: list[tuple[str, int, int]]) -> str:
+    if not spans:
+        return ""
+    parts = [f"{table} holds {start}-{end}" for table, start, end in spans]
+    return " Covered years: " + "; ".join(parts) + "."
+
+
+def retry_empty_sql(
+    sql: str,
+    query: str,
+    geo_country: str | None,
+    *,
+    crop_required: bool,
+    geography_required: bool,
+) -> tuple[str | None, int | None]:
+    """One retry. A named year stays put. An unnamed year moves to the latest covered year."""
+    if question_names_year(query or ""):
+        return None, None
+    spans = _coverage_spans(sql, geo_country)
+    if spans:
+        latest = max(end for _table, _start, end in spans)
+        shifted = _shift_time_to_latest(sql, latest)
+        if shifted != sql:
+            return shifted, latest
+    broadened = broaden_empty_sql_once(
+        sql,
+        crop_required=crop_required,
+        geography_required=geography_required,
+    )
+    return broadened, None
+
+
+def _shift_time_to_latest(sql: str, latest: int) -> str:
+    """Move a missed time window onto one covered year, keeping a span's length."""
+
+    def _as_of(match: re.Match[str]) -> str:
+        start, end = int(match.group(1)), int(match.group(2))
+        width = max(0, end - start)
+        begin = latest - width
+        return f"as_of_date BETWEEN DATE '{begin}-01-01' AND DATE '{latest}-12-31'"
+
+    def _pred(match: re.Match[str]) -> str:
+        col, op, first, second = match.group(1), match.group(2), match.group(3), match.group(4)
+        if op.upper() == "BETWEEN" and second:
+            width = max(0, int(second) - int(first))
+            return f"{col} BETWEEN {latest - width} AND {latest}"
+        return f"{col} = {latest}"
+
+    shifted = _AS_OF_RE.sub(_as_of, sql)
+    return _TIME_PRED_RE.sub(_pred, shifted)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -1487,6 +1566,7 @@ class BQRetriever(BaseRetriever):
                                 shape_pattern = str(intent.get("pattern") or "")
                             if not shape_job and intent.get("shape"):
                                 shape_job = str(intent.get("shape") or "")
+                    asked = requested_operation(query or "")
                     for tid in sorted(selected_tables):
                         raw_bind = bind_contract_for_table(bind_contracts, tid)
                         if raw_bind is None:
@@ -1498,6 +1578,7 @@ class BQRetriever(BaseRetriever):
                             limit=1,
                             job=shape_job,
                             pattern=shape_pattern,
+                            operation=asked,
                             breakdown=breakdown,
                         )
                         if compiled is None:
@@ -1880,9 +1961,12 @@ class BQRetriever(BaseRetriever):
                     )
                     return exec_items, True
 
+                used_year: int | None = None
                 if not rows and source != "engine":
-                    broadened = broaden_empty_sql_once(
+                    broadened, used_year = retry_empty_sql(
                         validated,
+                        query or "",
+                        geo_country,
                         crop_required=crop_required,
                         geography_required=geography_required,
                     )
@@ -1934,10 +2018,12 @@ class BQRetriever(BaseRetriever):
 
                 if not rows:
                     telem = _job_telemetry(row_count=0, status="empty_result")
+                    spans = _coverage_spans(validated, geo_country)
+                    covered = _coverage_sentence(spans)
                     reason = "SQL executed successfully but returned no rows"
                     exec_items.append(
                         {
-                            "content": f"[BQ empty_result: {reason}]",
+                            "content": f"[BQ empty_result: {reason}.{covered}]",
                             "source": "bigquery",
                             "metadata": {
                                 "sql": validated,
@@ -1947,6 +2033,10 @@ class BQRetriever(BaseRetriever):
                                 "prep_error": f"{reason}; model={_nl2sql_model_id()}",
                                 "sql_source": source,
                                 "nl2sql_model": _nl2sql_model_id(),
+                                "covered_years": [
+                                    {"table": table, "min_year": start, "max_year": end}
+                                    for table, start, end in spans
+                                ],
                                 **telem,
                             },
                         }
@@ -1999,7 +2089,11 @@ class BQRetriever(BaseRetriever):
                     if slot_id:
                         row_meta["subquestion_id"] = slot_id
                         row_meta["slot_id"] = slot_id
+                    if used_year is not None:
+                        row_meta["year_used"] = used_year
                     content = str(d)
+                    if used_year is not None:
+                        content = f"{content} (year used: {used_year})"
                     if template_meta and source == "template":
                         row_meta["template"] = template_meta.get("template")
                         if template_meta.get("widened"):

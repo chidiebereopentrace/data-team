@@ -62,3 +62,5 @@ grain_columns: [geo_key, time_key, source_key]
 bind_spine:
   source_key: dim_source.organisation_name
   geo_key: dim_geography.country_iso3
+indicator_classes:
+- EL

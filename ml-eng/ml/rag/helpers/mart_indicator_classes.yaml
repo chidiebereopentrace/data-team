@@ -20,9 +20,25 @@ classes:
       - fct_employment
       - fct_economics
       - fct_household
+      - agg_employment_country_year
+      - agg_economics_country_year
+      - fct_population_dynamics
     companion_facts:
       - dim_indicator
       - dim_geography
+      - dim_source
+      - dim_date
+      - dim_item
+      - dim_element
+      - dim_sex
+      - dim_household
+      - dim_ref_country
+      - gold_dim_indicator
+      - gold_dim_geography
+      - gold_dim_source
+      - bridge_household_crop
+      - bridge_household_livestock
+      - bridge_household_disease
     do_not_mix:
       - tables: [fct_employment, fct_household]
         reason: Do not union employment % shares with household income sample rows without grain caveat
@@ -35,6 +51,18 @@ classes:
         table: fct_household
         filters: farm_income vs offfarm_income columns; sample not census
         example_claim: Farm vs off-farm income in ILRI household sample
+      - id: employment_country_year
+        table: agg_employment_country_year
+        filters: Country × indicator × sex × year × source
+        example_claim: National employment rollup beside fct_employment
+      - id: economics_country_year
+        table: agg_economics_country_year
+        filters: Country × item × measurement_form × year × source
+        example_claim: National economics rollup beside fct_economics
+      - id: population_dynamics
+        table: fct_population_dynamics
+        filters: geo_key × time_key × source; population_count
+        example_claim: Population count for a place and year
 
   GYI:
     code: GYI
@@ -52,6 +80,19 @@ classes:
       - fct_employment
     companion_facts:
       - dim_geography
+      - dim_source
+      - dim_date
+      - dim_indicator
+      - dim_item
+      - dim_element
+      - dim_sex
+      - dim_household
+      - gold_dim_geography
+      - gold_dim_source
+      - gold_dim_indicator
+      - bridge_household_crop
+      - bridge_household_livestock
+      - bridge_household_disease
     do_not_mix:
       - tables: [fct_gender_inclusion, fct_household]
         reason: Never union SDG national gender rows with household control scores
@@ -78,10 +119,25 @@ classes:
       - fct_prices
       - fct_trade
       - fct_forestry
+      - agg_food_balance_country_year
+      - agg_forestry_country_year
+      - fct_value_chain
+      - fct_market_access
     companion_facts:
       - dim_product
       - dim_geography
       - dim_source
+      - dim_item
+      - dim_element
+      - dim_unit
+      - dim_market
+      - dim_market_fews
+      - dim_date
+      - dim_audit
+      - dim_trade_flow
+      - gold_dim_geography
+      - gold_dim_source
+      - gold_dim_unit
     do_not_mix:
       - tables: [fct_trade, fct_food_balance]
         reason: Filter trade_grain before border vs national trade claims
@@ -92,6 +148,18 @@ classes:
       - id: food_losses
         table: fct_food_balance
         filters: losses via element_code; SUA disappearance not farm-gate waste
+      - id: food_balance_country_year
+        table: agg_food_balance_country_year
+        filters: Country × product × year × source
+      - id: forestry_country_year
+        table: agg_forestry_country_year
+        filters: Country × item × forestry_grain × year × source
+      - id: value_chain_share
+        table: fct_value_chain
+        filters: geo_key × time_key × product_key × source; value_share
+      - id: market_access
+        table: fct_market_access
+        filters: geo_key × time_key × market_key × source; access_index and distance_to_market
 
   FS:
     code: FS
@@ -112,10 +180,25 @@ classes:
       - fct_household
       - fct_humanitarian
       - fct_food_balance
+      - agg_food_security_monthly
+      - agg_food_security_country_month
     companion_facts:
       - agg_food_security_monthly
       - dim_classification
+      - dim_scenario
       - dim_geography
+      - dim_source
+      - dim_date
+      - dim_household
+      - dim_item
+      - dim_element
+      - dim_product
+      - dim_status
+      - gold_dim_geography
+      - gold_dim_source
+      - bridge_household_crop
+      - bridge_household_livestock
+      - bridge_household_disease
     do_not_mix:
       - tables: [fct_food_security]
         reason: "measure_type=population vs classification — never union in one query"
@@ -129,6 +212,9 @@ classes:
       - id: household_fies
         table: fct_household
         filters: fies_score; project sample not national census
+      - id: food_security_country_month
+        table: agg_food_security_country_month
+        filters: Country × measure_type × month × source
 
   PROD:
     code: PROD
@@ -147,11 +233,23 @@ classes:
       - fct_production
       - fct_yield
       - agg_production_annual
+      - agg_production_country_year
+      - agg_production_country_season
     companion_facts:
       - dim_product
       - dim_geography
       - dim_source
+      - dim_element
+      - dim_season
+      - dim_date
+      - dim_faostat_area
+      - dim_production_system
+      - gold_dim_geography
+      - gold_dim_source
+      - gold_dim_season
       - agg_production_country_year
+      - bridge_season_calendar
+      - bridge_household_crop
     do_not_mix:
       - tables: [fct_production, fct_yield]
         reason: FAOSTAT country-year production vs FNID-season yield — never mix
@@ -192,21 +290,36 @@ classes:
       - wholesale
     primary_facts:
       - fct_prices
+      - agg_prices_country_month
     companion_facts:
       - dim_market
+      - dim_market_fews
       - dim_geography
       - dim_product
+      - dim_unit
+      - dim_currency
+      - dim_source
+      - dim_date
+      - gold_dim_geography
+      - gold_dim_source
+      - gold_dim_unit
       - agg_prices_country_month
     do_not_mix:
       - tables: [fct_prices]
         reason: "Filter price_source (fews/wfp/faostat) — do not blend without explicit caveat"
     families:
       - id: fews_market
+        table: fct_prices
         filters: "price_source='fews'; common_unit_price may be populated"
       - id: wfp_market
+        table: fct_prices
         filters: "price_source='wfp'; common_unit_price often null"
       - id: faostat_national
+        table: fct_prices
         filters: "price_source='faostat'; national country×item×element grain"
+      - id: prices_country_month
+        table: agg_prices_country_month
+        filters: Country × product × month; national price rollup beside fct_prices
 
   CLIM:
     code: CLIM
@@ -226,6 +339,12 @@ classes:
     companion_facts:
       - dim_indicator
       - dim_geography
+      - dim_source
+      - dim_date
+      - dim_water
+      - gold_dim_indicator
+      - gold_dim_geography
+      - gold_dim_source
     families:
       - id: point_obs
         filters: "climate_grain='point_obs'"
@@ -245,12 +364,29 @@ classes:
       - fct_soil_health
       - fct_land_inputs
       - fct_land_degradation
+      - agg_soil_admin
     companion_facts:
       - agg_soil_admin
+      - dim_geography
+      - dim_source
+      - dim_date
+      - dim_soil
+      - dim_soil_property
+      - dim_aez
+      - dim_item
+      - dim_element
+      - dim_unit
+      - gold_dim_geography
+      - gold_dim_source
+      - gold_dim_unit
       - bridge_geography_aez
     do_not_mix:
       - tables: [fct_soil_health]
         reason: Compare iSDA vs ISRIC sources; do not average across source_key
+    families:
+      - id: soil_admin
+        table: agg_soil_admin
+        filters: Admin soil averages; no time column
 
   AH:
     code: AH
@@ -265,6 +401,18 @@ classes:
       - fct_animal_health
       - fct_food_hazards
       - fct_insurance
+    companion_facts:
+      - dim_geography
+      - dim_source
+      - dim_household
+      - dim_livestock
+      - dim_disease
+      - dim_disease_ilri
+      - dim_breed_variety
+      - gold_dim_geography
+      - gold_dim_source
+      - bridge_household_livestock
+      - bridge_household_disease
     families:
       - id: farm_cds
         table: fct_animal_health
@@ -282,6 +430,11 @@ classes:
       - carrying capacity
     primary_facts:
       - fct_vegetation
+    companion_facts:
+      - dim_geography
+      - dim_source
+      - gold_dim_geography
+      - gold_dim_source
     families:
       - id: ndvi_grid
         filters: "vegetation_grain='ndvi_grid'"
@@ -301,9 +454,35 @@ classes:
       - carbon
     primary_facts:
       - fct_emissions
+      - agg_emissions_country_year
+      - fct_air_quality
+      - fct_land_use
+    companion_facts:
+      - dim_geography
+      - dim_source
+      - dim_date
+      - dim_item
+      - dim_element
+      - dim_indicator
+      - dim_land_use
+      - dim_emission_category
+      - dim_sensor
+      - gold_dim_geography
+      - gold_dim_source
+      - gold_dim_indicator
     families:
       - id: element_total
+        table: fct_emissions
         filters: Filter element for total vs intensity
+      - id: emissions_country_year
+        table: agg_emissions_country_year
+        filters: Country × item × element × year × source
+      - id: air_quality_point
+        table: fct_air_quality
+        filters: Sensor observation timestamp; country_iso3 and as_of_date
+      - id: land_use_area
+        table: fct_land_use
+        filters: geo_key × time_key × land_use_key × source; area
 
   INP:
     code: INP
@@ -319,6 +498,18 @@ classes:
       - fct_fertilizer
       - fct_machinery
       - fct_pesticide
+    companion_facts:
+      - dim_geography
+      - dim_source
+      - dim_date
+      - dim_item
+      - dim_element
+      - dim_product
+      - dim_pest
+      - dim_unit
+      - gold_dim_geography
+      - gold_dim_source
+      - gold_dim_unit
     families:
       - id: use_vs_trade
         table: fct_land_inputs
@@ -335,11 +526,23 @@ classes:
     primary_facts:
       - fct_hdi
       - fct_economics
+      - agg_hdi_latest
     companion_facts:
       - agg_hdi_latest
+      - dim_geography
+      - dim_source
+      - dim_date
+      - dim_item
+      - dim_element
+      - gold_dim_geography
+      - gold_dim_source
     families:
       - id: country_year
+        table: fct_hdi
         filters: country-year only; skip rows with null geography_key
+      - id: hdi_latest
+        table: agg_hdi_latest
+        filters: Latest HDI year per country
 
   BIO:
     code: BIO
@@ -353,6 +556,11 @@ classes:
       - fct_biodiversity
       - fct_protected_areas
       - fct_germplasm
+    companion_facts:
+      - dim_geography
+      - dim_source
+      - gold_dim_geography
+      - gold_dim_source
     families:
       - id: occurrence
         table: fct_biodiversity
@@ -373,12 +581,33 @@ classes:
       - fct_investment
       - fct_researchers
       - fct_research_expenditure
+      - fct_technology
     companion_facts:
       - dim_research_project
+      - dim_research_project_openaire
       - dim_organisation
       - dim_indicator
+      - dim_geography
+      - dim_source
+      - dim_person
+      - dim_person_openaire
+      - dim_unit
+      - dim_item
+      - dim_element
+      - dim_sex
+      - dim_audit
+      - gold_dim_geography
+      - gold_dim_source
+      - gold_dim_indicator
+      - gold_dim_unit
+      - bridge_project_organisation
+      - bridge_research_org
+      - bridge_research_person
     families:
       - id: asti_expenditure
         table: fct_research_expenditure
       - id: asti_researchers
         table: fct_researchers
+      - id: technology_stock
+        table: fct_technology
+        filters: geo_key × time_key × organisation_key × technology_key × source; machinery_stock and rd_expenditure

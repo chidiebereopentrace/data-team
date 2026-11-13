@@ -4,9 +4,24 @@ web_policy: never
 default_table: agg_production_country_year
 tables:
   - agg_production_country_year
+  - agg_production_country_season
+  - agg_production_annual
   - fct_production
   - fct_yield
-  - agg_production_country_season
+joins_when_needed:
+  - dim_product
+  - dim_geography
+  - dim_source
+  - dim_element
+  - dim_season
+  - dim_date
+  - dim_faostat_area
+  - dim_production_system
+  - gold_dim_geography
+  - gold_dim_source
+  - gold_dim_season
+  - bridge_season_calendar
+  - bridge_household_crop
 hard_rules:
   - production_grain=physical for fct_production volume
   - Never mix fct_yield with FAOSTAT country-year production

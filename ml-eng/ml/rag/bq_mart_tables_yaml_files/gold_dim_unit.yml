@@ -1,0 +1,28 @@
+table_name: opentrace-prod-5ga4.mart_dev.gold_dim_unit
+description: Gold unit dimension extended from dim_unit.
+source:
+  layer: mart_dev
+grain: One row per unit_key
+entity_type: unit
+columns:
+- name: unit_key
+  type: STRING
+  description: Unit key shared with dim_unit
+- name: unit_code
+  type: STRING
+  description: Unit code
+- name: unit_name
+  type: STRING
+  description: Unit name
+- name: unit_type
+  type: STRING
+  description: Unit type
+- name: common_unit
+  type: STRING
+  description: Common unit
+- name: currency_code
+  type: STRING
+  description: Currency code
+- name: description
+  type: STRING
+  description: Description

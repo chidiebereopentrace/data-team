@@ -6,6 +6,15 @@ tables:
   - fct_climate
   - dim_indicator
   - dim_geography
+joins_when_needed:
+  - dim_indicator
+  - dim_geography
+  - dim_source
+  - dim_date
+  - dim_water
+  - gold_dim_indicator
+  - gold_dim_geography
+  - gold_dim_source
 default_measures:
   series:
     - precipitation

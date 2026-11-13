@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -86,6 +88,36 @@ def test_idempotent_responses_are_owner_scoped():
     ss.save_idempotent_response("o1", "key-1", {"answer": "x"})
     assert ss.get_idempotent_response("o1", "key-1") == {"answer": "x"}
     assert ss.get_idempotent_response("o2", "key-1") is None
+
+
+def test_session_blob_serializes_bq_dates_and_decimals():
+    """Price rows from BigQuery include date and Decimal; Redis storage is JSON."""
+    _clear()
+    os.environ.pop("RAG_REDIS_URL", None)
+    os.environ.pop("REDIS_URL", None)
+
+    blob = {
+        "last_bq_facts": [
+            {
+                "items": [
+                    {
+                        "price_date": date(2024, 6, 1),
+                        "value": Decimal("415.50"),
+                    }
+                ]
+            }
+        ]
+    }
+    assert ss.save_session_blob("tenant:a", "price", blob, expected_version=0)
+    saved = ss.get_session_blob("tenant:a", "price")
+    assert saved is not None
+    item = saved["last_bq_facts"][0]["items"][0]
+    assert item["price_date"] == "2024-06-01"
+    assert item["value"] == "415.50"
+
+    ss.set_json("adza:bq:v1:fact", blob, ttl_s=60)
+    cached = ss.get_json("adza:bq:v1:fact")
+    assert cached["last_bq_facts"][0]["items"][0]["price_date"] == "2024-06-01"
 
 
 def test_cache_helpers_memory():

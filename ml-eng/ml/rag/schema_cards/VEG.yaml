@@ -4,6 +4,11 @@ web_policy: never
 default_table: fct_vegetation
 tables:
 - fct_vegetation
+joins_when_needed:
+- dim_geography
+- dim_source
+- gold_dim_geography
+- gold_dim_source
 columns: {}
 hard_rules: []
 exclude_prompt_columns:

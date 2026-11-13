@@ -50,7 +50,7 @@ def test_region_agri_panel_multi_class_bind_keys(region_label: str, expected_iso
     plan = engine_results_to_bq_plan(results)
     binds = plan.get("bind_contracts") or {}
     assert "agg_production_country_year" in binds
-    assert "fct_food_balance" in binds
+    assert "agg_food_balance_country_year" in binds
     assert "fct_trade" in binds
     assert len(binds) >= 3
     assert plan.get("retrieve_mode") in (None, "planned") or plan.get("plan_source") == "class_engine"
@@ -83,7 +83,7 @@ def test_fvc_select_table_plans_panel_roles() -> None:
     card = load_schema_card("FVC") or {}
     plans = select_table_plans("FVC", query=q, facets=dec, bundles=bundles, card=card, iso_list=iso)
     assert len(plans) == 2
-    assert plans[0].table_id == "fct_food_balance"
+    assert plans[0].table_id == "agg_food_balance_country_year"
     assert plans[0].role == "panel"
     assert plans[1].table_id == "fct_trade"
     assert plans[1].role == "companion"
@@ -182,7 +182,11 @@ def test_fs_engine_uses_router_plans() -> None:
     }
     result = FsEngine().run_plan(q, facets=dec, card=None)
     assert result.status == "planned", result.caveats
-    assert "fct_food_security" in result.bind_contracts or "agg_food_security_monthly" in result.bind_contracts
+    assert (
+        "fct_food_security" in result.bind_contracts
+        or "agg_food_security_monthly" in result.bind_contracts
+        or "agg_food_security_country_month" in result.bind_contracts
+    )
 
 
 def test_food_balance_share_stays_fvc_only() -> None:

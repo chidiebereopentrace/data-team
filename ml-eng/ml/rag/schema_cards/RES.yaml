@@ -6,9 +6,31 @@ tables:
 - fct_investment
 - fct_researchers
 - fct_research_expenditure
+- fct_technology
 - dim_research_project
 - dim_organisation
 - dim_indicator
+joins_when_needed:
+- dim_research_project
+- dim_research_project_openaire
+- dim_organisation
+- dim_indicator
+- dim_geography
+- dim_source
+- dim_person
+- dim_person_openaire
+- dim_unit
+- dim_item
+- dim_element
+- dim_sex
+- dim_audit
+- gold_dim_geography
+- gold_dim_source
+- gold_dim_indicator
+- gold_dim_unit
+- bridge_project_organisation
+- bridge_research_org
+- bridge_research_person
 columns: {}
 hard_rules: []
 exclude_prompt_columns:

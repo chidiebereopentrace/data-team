@@ -7,6 +7,21 @@ tables:
 - fct_household
 - fct_employment
 - dim_geography
+joins_when_needed:
+- dim_geography
+- dim_source
+- dim_date
+- dim_indicator
+- dim_item
+- dim_element
+- dim_sex
+- dim_household
+- gold_dim_geography
+- gold_dim_source
+- gold_dim_indicator
+- bridge_household_crop
+- bridge_household_livestock
+- bridge_household_disease
 columns: {}
 hard_rules: []
 exclude_prompt_columns:
