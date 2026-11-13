@@ -1,0 +1,92 @@
+table_name: opentrace-prod-5ga4.mart_dev.gold_dim_geography
+description: Gold geography dimension extended from dim_geography.
+source:
+  layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
+grain: One row per geography_key
+entity_type: geography
+columns:
+- name: geography_key
+  type: STRING
+  description: Geography key shared with dim_geography
+- name: geo_natural_key
+  type: STRING
+  description: Natural key of country and admin region
+- name: country_code
+  type: STRING
+  description: Country code
+- name: country_name
+  type: STRING
+  description: Country name
+- name: admin_0
+  type: STRING
+  description: Country name
+- name: admin_1
+  type: STRING
+  description: Admin 1 name
+- name: admin_2
+  type: STRING
+  description: Admin 2 name
+- name: admin_3
+  type: STRING
+  description: Admin 3 name
+- name: admin_4
+  type: STRING
+  description: Admin 4 name
+- name: fnid
+  type: STRING
+  description: FEWS FNID
+- name: geographic_unit
+  type: STRING
+  description: Geographic unit
+- name: geographic_unit_name
+  type: STRING
+  description: Geographic unit name
+- name: geographic_group
+  type: STRING
+  description: Geographic group
+- name: fewsnet_region
+  type: STRING
+  description: FEWS NET region
+- name: latitude
+  type: FLOAT64
+  description: Latitude
+- name: longitude
+  type: FLOAT64
+  description: Longitude
+- name: elevation_meters
+  type: FLOAT64
+  description: Elevation meters
+- name: market_name
+  type: STRING
+  description: Market name
+- name: border_point
+  type: STRING
+  description: Border point
+- name: aez_code
+  type: STRING
+  description: AEZ code
+- name: aez_name
+  type: STRING
+  description: AEZ name
+- name: aez_version
+  type: STRING
+  description: AEZ version
+- name: aez_source
+  type: STRING
+  description: AEZ source
+- name: valid_from
+  type: DATE
+  description: Valid from
+- name: valid_to
+  type: DATE
+  description: Valid to
+- name: is_current
+  type: BOOL
+  description: Is current
+- name: created_at
+  type: TIMESTAMP
+  description: Created at
+- name: updated_at
+  type: TIMESTAMP
+  description: Updated at

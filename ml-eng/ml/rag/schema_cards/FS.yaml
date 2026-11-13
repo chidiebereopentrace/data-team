@@ -4,7 +4,27 @@ web_policy: never
 default_table: fct_food_security
 tables:
   - fct_food_security
+  - fct_household
+  - fct_humanitarian
+  - fct_food_balance
   - agg_food_security_monthly
+  - agg_food_security_country_month
+joins_when_needed:
+  - dim_classification
+  - dim_scenario
+  - dim_geography
+  - dim_source
+  - dim_date
+  - dim_household
+  - dim_item
+  - dim_element
+  - dim_product
+  - dim_status
+  - gold_dim_geography
+  - gold_dim_source
+  - bridge_household_crop
+  - bridge_household_livestock
+  - bridge_household_disease
 default_measures:
   series:
     - value

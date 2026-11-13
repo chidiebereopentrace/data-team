@@ -24,6 +24,14 @@ from ml.rag.chatbot.generator import (
 
 _YEAR_SQL_RE = re.compile(r"\byear\s*=\s*(\d{4})\b", re.IGNORECASE)
 _ELEMENT_SQL_RE = re.compile(r"\belement\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
+_BOUND_NAME_RE = re.compile(
+    r"\b(indicator|metric|element|measure_type)\s*=\s*'((?:''|[^'])*)'",
+    re.IGNORECASE,
+)
+_VALUE_SOURCE_RE = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)\s+AS\s+value\b",
+    re.IGNORECASE,
+)
 
 _STG_TABLE_RE = re.compile(r"\bstg_[a-z0-9_]+\b", re.IGNORECASE)
 _MART_TABLE_RE = re.compile(r"\b(?:fct|agg|dim)_[a-z0-9_]+\b", re.IGNORECASE)
@@ -360,12 +368,49 @@ def _resolve_unit(table_id: str, row: dict[str, Any], measure_col: str) -> str:
     return unit or "units"
 
 
+def _mart_column_description(table_id: str, column: str) -> str:
+    schema = load_mart_table_schema(table_id) or {}
+    for col in schema.get("columns") or []:
+        if not isinstance(col, dict):
+            continue
+        if str(col.get("name") or "").strip().lower() == column.lower():
+            return " ".join(str(col.get("description") or "").split())[:160]
+    return column_description(table_id, column)
+
+
+def _bound_measure_name(sql: str) -> str:
+    match = _BOUND_NAME_RE.search(sql or "")
+    if not match:
+        return ""
+    return match.group(2).replace("''", "'").strip()
+
+
+def _value_source_column(sql: str) -> str:
+    match = _VALUE_SOURCE_RE.search(sql or "")
+    if not match:
+        return ""
+    name = match.group(1)
+    return "" if name.lower() in {"sum", "avg", "min", "max", "count"} else name
+
+
 def _resolve_measure_label(
     table_id: str,
     row: dict[str, Any],
     measure_col: str,
+    *,
+    sql: str = "",
 ) -> str:
     bare = table_id.lower()
+    bound = _bound_measure_name(sql)
+    if bound:
+        if _BOUND_NAME_RE.search(sql or "").group(1).lower() == "element":
+            return _element_measure_label(bound)
+        return bound
+    source = _value_source_column(sql)
+    if source and source.lower() != "value":
+        desc = _mart_column_description(bare, source)
+        if desc:
+            return desc
     element = _s(row.get("element"))
     if element:
         return _element_measure_label(element)
@@ -478,7 +523,7 @@ def resolve_row_semantics(
         schema = load_mart_table_schema(bare) or {}
     src = table_source_meta(bare)
     measure_col, measure_val = _pick_measure_column(row, table_id=bare, sql=sql)
-    measure_label = _resolve_measure_label(bare, row, measure_col)
+    measure_label = _resolve_measure_label(bare, row, measure_col, sql=sql)
     unit = _resolve_unit(bare, row, measure_col)
     sub_place = _first_present(row, _SUB_PLACE_KEYS)
     country = _first_present(row, ("country_name", "country", "country_iso3"))

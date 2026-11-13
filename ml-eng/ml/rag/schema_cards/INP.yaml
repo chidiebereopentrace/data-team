@@ -7,6 +7,18 @@ tables:
 - fct_machinery
 - fct_fertilizer
 - fct_pesticide
+joins_when_needed:
+- dim_geography
+- dim_source
+- dim_date
+- dim_item
+- dim_element
+- dim_product
+- dim_pest
+- dim_unit
+- gold_dim_geography
+- gold_dim_source
+- gold_dim_unit
 columns: {}
 hard_rules:
 - Prefer fct_land_inputs with input_grain filter for fertilizer/pesticide use and trade questions.

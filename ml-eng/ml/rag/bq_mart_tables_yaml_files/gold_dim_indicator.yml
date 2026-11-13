@@ -1,0 +1,32 @@
+table_name: opentrace-prod-5ga4.mart_dev.gold_dim_indicator
+description: Gold indicator dimension extended from dim_indicator.
+source:
+  layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
+grain: One row per indicator_key
+entity_type: indicator
+columns:
+- name: indicator_key
+  type: STRING
+  description: Indicator key shared with dim_indicator
+- name: indicator_code
+  type: STRING
+  description: Indicator code
+- name: indicator_name
+  type: STRING
+  description: Indicator name
+- name: indicator_category
+  type: STRING
+  description: Indicator category
+- name: description
+  type: STRING
+  description: Description
+- name: valid_from
+  type: DATE
+  description: Valid from
+- name: valid_to
+  type: DATE
+  description: Valid to
+- name: is_current
+  type: BOOL
+  description: Is current

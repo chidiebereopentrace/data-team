@@ -1,0 +1,50 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_person_openaire
+description: OpenAIRE person labels.
+source:
+  layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
+grain: One row per person_key
+entity_type: research
+columns:
+- name: person_key
+  type: STRING
+  description: Person key
+- name: person_natural_key
+  type: STRING
+  description: Person natural key
+- name: full_name
+  type: STRING
+  description: Full name
+- name: gender
+  type: STRING
+  description: Gender
+- name: age
+  type: INT64
+  description: Age
+- name: year_of_birth
+  type: INT64
+  description: Year of birth
+- name: education_level
+  type: STRING
+  description: Education level
+- name: marital_status
+  type: STRING
+  description: Marital status
+- name: years_farm_experience
+  type: INT64
+  description: Years of farm experience
+- name: role
+  type: STRING
+  description: Role
+- name: household_id
+  type: STRING
+  description: Household id
+- name: valid_from
+  type: DATE
+  description: Valid from
+- name: valid_to
+  type: DATE
+  description: Valid to
+- name: is_current
+  type: BOOL
+  description: Is current

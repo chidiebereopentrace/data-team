@@ -20,3 +20,5 @@ organisation_key_value_stats:
   is_truncated: false
 bind_spine:
   organisation_key: dim_organisation.short_name
+indicator_classes:
+- RES

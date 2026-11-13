@@ -96,6 +96,16 @@ _YEAR_ASK_RE = re.compile(
     re.IGNORECASE,
 )
 
+# The act of the question, not a saved sentence. These jobs read documents or explain.
+_DOCUMENT_JOB_RE = re.compile(
+    r"\b("
+    r"polic(?:y|ies)|outlook|why|explain|explanation|describe|overview|"
+    r"background|strategy|roadmap|regulations?|laws?|subsid(?:y|ies)|"
+    r"what\s+drove|impact\s+of"
+    r")\b",
+    re.IGNORECASE,
+)
+
 
 def _geo_list(decomposition: dict[str, Any] | None) -> list[str]:
     if not isinstance(decomposition, dict):
@@ -121,6 +131,31 @@ def _measure_hit(query: str, decomposition: dict[str, Any] | None) -> MeasureHit
     return resolve_measure(query, decomposition)
 
 
+def is_numeric_warehouse_job(
+    query: str,
+    decomposition: dict[str, Any] | None = None,
+    measure_hit: MeasureHit | None = None,
+) -> bool:
+    """True only when the question asks for a number from the mart.
+
+    Document, policy, explanation, briefing, research, and analytical jobs are
+    not this job, even when they contain a measure word such as production.
+    """
+    q = (query or "").strip()
+    if not q:
+        return False
+    if is_analytical_query(q, decomposition) or _DOCUMENT_JOB_RE.search(q):
+        return False
+    if is_research_query(q, decomposition) or is_briefing_query(q, decomposition):
+        return False
+    hit = measure_hit if measure_hit is not None else _measure_hit(q, decomposition)
+    if hit and hit.measure.default_task_mode in ("briefing", "research", "analytical"):
+        return False
+    if is_data_export_only_query(q, decomposition):
+        return True
+    return bool(is_numeric_data_query(q, decomposition))
+
+
 def needs_clarify(
     query: str,
     decomposition: dict[str, Any] | None = None,
@@ -128,17 +163,15 @@ def needs_clarify(
     profile_country: str | None = None,
     measure_hit: MeasureHit | None = None,
 ) -> bool:
-    """Slot-aware clarify using measure ontology (crop not always required)."""
+    """Open only for a numeric warehouse job that is missing a required slot."""
     q = (query or "").strip()
     if not q:
         return False
-    if is_analytical_query(q, decomposition):
-        return False
 
     hit = measure_hit if measure_hit is not None else _measure_hit(q, decomposition)
-    if hit and hit.measure.country_is_answer:
+    if not is_numeric_warehouse_job(q, decomposition, hit):
         return False
-    if hit and hit.measure.id in ("news_briefing", "research_synthesis", "research_meta"):
+    if hit and hit.measure.country_is_answer:
         return False
     if decomposition_has_africa_scope(decomposition):
         # Continental ranking / full panel: country is not a missing slot.
@@ -148,9 +181,6 @@ def needs_clarify(
         if _has_crop_or_commodity(q, decomposition):
             return False
         # Panel/ranking with crop required but missing → clarify crop only (handled below).
-
-    if not (is_numeric_data_query(q, decomposition) or _AGRI_RE.search(q)):
-        return False
 
     has_region = bool(detect_regions_in_text(q))
     africa = decomposition_has_africa_scope(decomposition)
@@ -385,6 +415,7 @@ __all__ = [
     "is_briefing_query",
     "is_data_export_only_query",
     "is_fact_lookup_query",
+    "is_numeric_warehouse_job",
     "is_research_query",
     "needs_clarify",
     "resolve_task_mode",

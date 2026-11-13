@@ -1,0 +1,35 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_research_project_openaire
+description: OpenAIRE research project labels.
+source:
+  layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
+grain: One row per research_project_key
+entity_type: research
+columns:
+- name: research_project_key
+  type: STRING
+  description: Research project key
+- name: project_code
+  type: STRING
+  description: Project code
+- name: project_name
+  type: STRING
+  description: Project name
+- name: doi
+  type: STRING
+  description: DOI
+- name: journal_name
+  type: STRING
+  description: Journal name
+- name: keywords
+  type: STRING
+  description: Keywords
+- name: start_date
+  type: DATE
+  description: Start date
+- name: end_date
+  type: DATE
+  description: End date
+- name: description
+  type: STRING
+  description: Description

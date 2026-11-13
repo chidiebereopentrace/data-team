@@ -1,0 +1,458 @@
+{
+ "tables": {
+  "agg_economics_country_year": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "agg_emissions_country_year": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "agg_employment_country_year": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 14,
+   "error": ""
+  },
+  "agg_food_balance_country_year": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "agg_food_security_country_month": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 12,
+   "error": ""
+  },
+  "agg_food_security_monthly": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "agg_forestry_country_year": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "agg_hdi_latest": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 1,
+   "error": ""
+  },
+  "agg_prices_country_month": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 3,
+   "error": ""
+  },
+  "agg_production_annual": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "agg_production_country_season": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "agg_production_country_year": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "agg_soil_admin": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_air_quality": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_animal_health": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_biodiversity": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 1,
+   "error": ""
+  },
+  "fct_climate": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_economics": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_emissions": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_employment": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 18,
+   "error": ""
+  },
+  "fct_fertilizer": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_food_balance": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_food_hazards": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_food_security": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_forestry": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_gender_inclusion": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_germplasm": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_hdi": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 1,
+   "error": ""
+  },
+  "fct_household": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_humanitarian": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_insurance": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_investment": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_land_degradation": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_land_inputs": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_land_use": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_machinery": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_market_access": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_pesticide": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_population_dynamics": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_prices": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 36,
+   "error": ""
+  },
+  "fct_production": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_protected_areas": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_research_expenditure": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_researchers": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_soil_health": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_technology": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_trade": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  },
+  "fct_value_chain": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_vegetation": {
+   "ok": true,
+   "outcome": "zero_rows",
+   "row_count": 0,
+   "error": ""
+  },
+  "fct_yield": {
+   "ok": true,
+   "outcome": "rows",
+   "row_count": 50,
+   "error": ""
+  }
+ },
+ "note": "row_count is the bind-compiler result for Kenya 2020. 50 is the compiler page cap, so 50 means the page was full.",
+ "probe": {
+  "country": "Kenya",
+  "iso3": "KEN",
+  "year": 2020
+ },
+ "rerun": {
+  "note": "Kenya 2020 bind-compiler lookup after the time_key predicate matches a literal year or dim_time.year. ok here is the rerun, not the ledger probe.",
+  "probe": {
+   "country": "Kenya",
+   "iso3": "KEN",
+   "year": 2020
+  },
+  "tables": {
+   "agg_food_security_monthly": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_air_quality": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_animal_health": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_climate": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_fertilizer": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_food_hazards": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_germplasm": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_household": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_humanitarian": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_insurance": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_land_degradation": {
+    "ok": true,
+    "outcome": "profiled_empty",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_land_use": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_machinery": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_market_access": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_pesticide": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_population_dynamics": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_protected_areas": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_research_expenditure": {
+    "ok": true,
+    "outcome": "profiled_empty",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_researchers": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_soil_health": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_technology": {
+    "ok": true,
+    "outcome": "profiled_empty",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_value_chain": {
+    "ok": true,
+    "outcome": "profiled_empty",
+    "row_count": 0,
+    "error": ""
+   },
+   "fct_vegetation": {
+    "ok": true,
+    "outcome": "zero_rows",
+    "row_count": 0,
+    "error": ""
+   }
+  }
+ }
+}

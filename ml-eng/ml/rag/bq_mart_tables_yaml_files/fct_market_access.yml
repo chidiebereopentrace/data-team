@@ -153,3 +153,5 @@ bind_spine:
   source_key: dim_source.organisation_name
   market_key: dim_market.market_name
   geo_key: dim_geography.country_iso3
+indicator_classes:
+- FVC

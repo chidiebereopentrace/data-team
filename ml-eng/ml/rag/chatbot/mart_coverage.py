@@ -26,6 +26,7 @@ from ml.rag.chatbot.bq_sql_validate import max_bytes_billed_for_source
 from ml.rag.chatbot.bq_table_schema_yaml import (
     columns_for_mart_tables,
     geo_column,
+    known_mart_table_names,
     year_column,
 )
 from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
@@ -187,20 +188,28 @@ def build_table_coverage(
     return out
 
 
+def serving_fact_tables() -> list[str]:
+    """Every fct_ and agg_ the mart catalog knows, plus the indicator-table list."""
+    names = {
+        name.split(".")[-1].lower()
+        for name in known_mart_table_names()
+        if name.split(".")[-1].lower().startswith(("fct_", "agg_"))
+    }
+    names.update(table_id.split(".")[-1].lower() for _indicator, table_id in indicator_tables())
+    return sorted(names)
+
+
 def build_coverage(client: bigquery.Client, *, admit: bool = True) -> Coverage:
     proj = os.environ.get("BQ_PROJECT", "opentrace-prod-5ga4").strip()
     ds = mart_dataset()
     entries: list[CoverageEntry] = []
-    seen: set[str] = set()
-    for _indicator, table_id in indicator_tables():
-        if table_id in seen:
-            continue
-        seen.add(table_id)
+    for table_id in serving_fact_tables():
         entries.extend(build_table_coverage(client, table_id, project_id=proj, dataset=ds))
     shapes: dict[str, list[str]] = {}
     if admit:
-        from_admission = _admitted_shapes(client)
-        shapes.update(from_admission)
+        shapes.update(_admitted_shapes(client))
+    else:
+        shapes.update(load_coverage().admitted_shapes)
     return Coverage(
         entries=entries,
         admitted_shapes=shapes,

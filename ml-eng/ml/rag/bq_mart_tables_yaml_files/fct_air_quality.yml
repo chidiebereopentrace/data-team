@@ -239,3 +239,5 @@ sql_generation_hints:
 bind_spine:
   geography_key: dim_geography.country_iso3
   source_key: dim_source.organisation_name
+indicator_classes:
+- ENV

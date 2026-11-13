@@ -81,3 +81,5 @@ semantic_role:
   - geography
 bind_spine:
   geography_key: dim_geography.country_iso3
+indicator_classes:
+- SOIL

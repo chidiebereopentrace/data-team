@@ -60,7 +60,7 @@ def _classes_from_measure_hit(measure_hit: MeasureHit | None) -> tuple[str | Non
     if not iclasses:
         return None, [], ""
     primary = iclasses[0]
-    secondary = [c for c in iclasses[1:3] if c != primary]
+    secondary = [c for c in iclasses[1:] if c != primary]
     return primary, secondary, f"measure={measure_hit.measure.id}→{primary}"
 
 
@@ -73,7 +73,7 @@ def _classes_from_primary_measures(primary_measures: list[str] | None) -> tuple[
         return None, [], ""
     iclasses = [c.upper() for c in spec.indicator_classes]
     primary = iclasses[0]
-    secondary = [c for c in iclasses[1:3] if c != primary]
+    secondary = [c for c in iclasses[1:] if c != primary]
     return primary, secondary, f"primary_measure={mid}→{primary}"
 
 
@@ -176,10 +176,10 @@ def compile_supervisor_plan(
     scored = class_for_query(q)
     if not primary and scored:
         primary = scored[0]
-        for code in scored[1:3]:
-            if code != primary:
-                secondary.append(code)
-        rationale_parts.append(f"class_for_query={','.join(scored[:3])}")
+        rationale_parts.append(f"class_for_query={','.join(scored)}")
+    for code in scored:
+        if code != primary and code not in secondary:
+            secondary.append(code)
 
     if not primary:
         pm = bundle_primary_measure(bundles, q)
@@ -209,7 +209,7 @@ def compile_supervisor_plan(
         )
 
     classes = (primary,)
-    sec = tuple(s for s in secondary if s != primary)[:2]
+    sec = tuple(dict.fromkeys(s for s in secondary if s != primary))
 
     if primary == "FVC" and _FOOD_BALANCE_SHARE_RE.search(q):
         sec = ()

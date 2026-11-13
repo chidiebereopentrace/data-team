@@ -4,10 +4,22 @@ web_policy: never
 default_table: fct_prices
 tables:
   - fct_prices
+  - agg_prices_country_month
   - dim_market
   - dim_geography
   - dim_product
-  - agg_prices_country_month
+joins_when_needed:
+  - dim_market
+  - dim_market_fews
+  - dim_geography
+  - dim_product
+  - dim_unit
+  - dim_currency
+  - dim_source
+  - dim_date
+  - gold_dim_geography
+  - gold_dim_source
+  - gold_dim_unit
 default_measures:
   series:
     - retail_price

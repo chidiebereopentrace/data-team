@@ -8,10 +8,25 @@ tables:
   - fct_prices
   - fct_economics
   - fct_forestry
-do_not_use:
+  - agg_food_balance_country_year
+  - agg_forestry_country_year
   - fct_value_chain
+  - fct_market_access
 joins_when_needed:
   - dim_product
+  - dim_geography
+  - dim_source
+  - dim_item
+  - dim_element
+  - dim_unit
+  - dim_market
+  - dim_market_fews
+  - dim_date
+  - dim_audit
+  - dim_trade_flow
+  - gold_dim_geography
+  - gold_dim_source
+  - gold_dim_unit
 hard_rules:
   - Prefer metric slugs over element string matching
   - Filter year INT64 or as_of_date BETWEEN; never EXTRACT(YEAR FROM as_of_date) in WHERE

@@ -244,3 +244,5 @@ bind_spine:
   geography_key: dim_geography.country_iso3
   product_key: dim_product.product_name
   source_key: dim_source.organisation_name
+indicator_classes:
+- FVC

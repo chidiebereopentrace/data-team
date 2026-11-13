@@ -6,6 +6,18 @@ tables:
 - fct_animal_health
 - fct_food_hazards
 - fct_insurance
+joins_when_needed:
+- dim_geography
+- dim_source
+- dim_household
+- dim_livestock
+- dim_disease
+- dim_disease_ilri
+- dim_breed_variety
+- gold_dim_geography
+- gold_dim_source
+- bridge_household_livestock
+- bridge_household_disease
 columns: {}
 hard_rules: []
 exclude_prompt_columns:

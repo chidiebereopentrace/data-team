@@ -95,3 +95,5 @@ bind_spine:
   unit_key: dim_unit.unit_code
   organisation_key: dim_organisation.short_name
   geo_key: dim_geography.country_iso3
+indicator_classes:
+- RES

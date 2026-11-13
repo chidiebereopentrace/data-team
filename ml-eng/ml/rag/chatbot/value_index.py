@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ml.rag.chatbot.bq_table_schema_yaml import (
+    MEASURE_NAME_COLUMNS,
     load_mart_table_schema,
     value_samples_for_mart_tables,
 )
@@ -49,6 +50,17 @@ def _load_index_file() -> dict[str, Any]:
     return {}
 
 
+def clear_value_index_cache() -> None:
+    _load_index_file.cache_clear()
+
+
+def _index_enum(bare: str, column: str) -> list[str]:
+    indexed = _load_index_file().get("enums", {}).get(f"{bare}.{column}")
+    if isinstance(indexed, list) and indexed:
+        return [str(x) for x in indexed if str(x).strip()]
+    return []
+
+
 def _yaml_enums(table_id: str, column: str) -> list[str]:
     bare = _bare_table(table_id)
     samples_map = value_samples_for_mart_tables({bare}).get(bare) or {}
@@ -62,7 +74,15 @@ def _yaml_enums(table_id: str, column: str) -> list[str]:
                 vals.append(s)
     stats_key = f"{column}{_STATS_SUFFIX}"
     stats = schema.get(stats_key) if isinstance(schema.get(stats_key), dict) else {}
-    if stats.get("is_truncated") is False and vals:
+    # The index wins for a measure name once it holds at least the YAML preview.
+    # A shorter index is still the old sample and must not replace a fuller preview.
+    if column.lower() in MEASURE_NAME_COLUMNS:
+        indexed = _index_enum(bare, column.lower())
+        if indexed and len(indexed) > len(vals):
+            return indexed
+        if vals:
+            return vals
+    if stats and isinstance(stats, dict) and stats.get("is_truncated") is False and vals:
         return vals
     index = _load_index_file()
     key = f"{bare}.{column}"
@@ -211,6 +231,7 @@ def resolve_source_natural_key(table_id: str, query: str = "") -> list[str]:
 
 
 __all__ = [
+    "clear_value_index_cache",
     "complete_enum",
     "resolve_labels",
     "resolve_country",

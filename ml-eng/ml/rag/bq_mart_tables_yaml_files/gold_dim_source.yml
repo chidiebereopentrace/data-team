@@ -1,0 +1,41 @@
+table_name: opentrace-prod-5ga4.mart_dev.gold_dim_source
+description: Gold source dimension extended from dim_source.
+source:
+  layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
+grain: One row per source_key
+entity_type: source
+columns:
+- name: source_key
+  type: STRING
+  description: Source key shared with dim_source
+- name: source_natural_key
+  type: STRING
+  description: Source natural key
+- name: source_name
+  type: STRING
+  description: Source name
+- name: organisation_key
+  type: INT64
+  description: Organisation key
+- name: tier
+  type: INT64
+  description: Producer tier
+- name: data_level
+  type: STRING
+  description: Data level
+- name: reliability_score
+  type: INT64
+  description: Reliability score
+- name: data_usage_policy
+  type: STRING
+  description: Data usage policy
+- name: valid_from
+  type: DATE
+  description: Valid from
+- name: valid_to
+  type: DATE
+  description: Valid to
+- name: is_current
+  type: BOOL
+  description: Is current

@@ -23,7 +23,7 @@ def test_fvc_engine_ghana_wheat_sql() -> None:
     facets = {"geography": ["Ghana"], "time_start": "2010-01-01", "time_end": "2024-12-31"}
     result = FvcEngine().run_plan(q, facets=facets, card=None)
     assert result.status == "planned"
-    assert result.table_id == "fct_food_balance"
+    assert result.table_id == "agg_food_balance_country_year"
     assert result.sql is None
     assert result.bind_contract is not None
     assert result.value_hits.get("country_iso3") == ["GHA"]
@@ -114,7 +114,7 @@ def test_generic_engine_fs_picks_food_security_table() -> None:
     facets = {"geography": ["Ethiopia"], "time_start": "2020-01-01", "time_end": "2024-12-31"}
     result = GenericEngine("FS").run_plan(q, facets=facets, card=None)
     assert result.status == "planned", result.caveats
-    assert result.table_id == "fct_food_security"
+    assert result.table_id == "agg_food_security_country_month"
     assert result.bind_contract is not None
 
 

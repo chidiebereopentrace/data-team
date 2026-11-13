@@ -21,3 +21,8 @@ disease_key_value_stats:
 bind_spine:
   disease_key: dim_disease.disease_or_hazard
   household_key: dim_household.household_type
+indicator_classes:
+- EL
+- GYI
+- FS
+- AH

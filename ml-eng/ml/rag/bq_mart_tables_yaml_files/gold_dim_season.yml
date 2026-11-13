@@ -1,0 +1,47 @@
+table_name: opentrace-prod-5ga4.mart_dev.gold_dim_season
+description: Gold season dimension extended from dim_season.
+source:
+  layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
+grain: One row per season_key
+entity_type: production
+columns:
+- name: season_key
+  type: STRING
+  description: Season key shared with dim_season
+- name: season_natural_key
+  type: STRING
+  description: Season natural key
+- name: season_name
+  type: STRING
+  description: Season name
+- name: season_name_std
+  type: STRING
+  description: Standard season name
+- name: season_type
+  type: STRING
+  description: Season type
+- name: typical_start_month
+  type: INT64
+  description: Typical start month
+- name: typical_end_month
+  type: INT64
+  description: Typical end month
+- name: applies_to_region
+  type: STRING
+  description: Region the season applies to
+- name: source_system
+  type: STRING
+  description: Source system
+- name: description
+  type: STRING
+  description: Description
+- name: valid_from
+  type: DATE
+  description: Valid from
+- name: valid_to
+  type: DATE
+  description: Valid to
+- name: is_current
+  type: BOOL
+  description: Is current

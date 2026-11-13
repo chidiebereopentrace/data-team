@@ -3,15 +3,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from ml.rag.chatbot.bq_table_schema_yaml import known_mart_table_names
 from ml.rag.chatbot.bundle_metrics import is_agri_activities_panel, is_multi_country_panel
 from ml.rag.chatbot.intent_bundles import MatchedBundle, has_bundle
 from ml.rag.chatbot.mart_indicator_classes import (
+    best_declared_family,
     companion_facts_for_class,
     facts_for_class,
-    families_for_class,
 )
 from ml.rag.chatbot.retrieval_contract import choose_agg_vs_fact
 
@@ -26,8 +26,12 @@ _TRADE_RE = re.compile(r"\b(trade|imports?|exports?)\b", re.I)
 _PRICE_RE = re.compile(r"\b(price|prices|market|retail|wholesale)\b", re.I)
 _MARKET_DETAIL_RE = re.compile(r"\b(market|bamako|kano|nairobi|retail|wholesale|urban)\b", re.I)
 
-_TABLE_PREFIX_SKIP = ("dim_", "bridge_")
+_TABLE_PREFIX_SKIP = ("dim_", "bridge_", "gold_dim_")
 _MAX_COMPANIONS = 2
+# A single subject token scores 10. Two subject tokens score 40.
+# A full grain phrase adds 50. These floors keep the coarse branches.
+_COARSE_BRANCH_SCORE = 15
+_COARSE_SHARE_SCORE = 45
 
 
 def _bare_table(table_id: str) -> str:
@@ -77,23 +81,26 @@ def _candidate_tables(class_code: str, card: dict[str, Any]) -> list[str]:
     return out
 
 
-def _family_matches_query(family: dict[str, Any], query: str) -> bool:
-    fid = str(family.get("id") or "")
-    q = query or ""
-    if fid in ("fnid_season_yield",) and _YIELD_RE.search(q):
-        return True
-    if fid in ("faostat_country_year_physical", "faostat_index_gross_value") and not _YIELD_RE.search(q):
-        if "production" in q.lower() or "output" in q.lower() or "harvest" in q.lower():
-            return fid == "faostat_country_year_physical"
-    if fid == "trade_grain" and _TRADE_RE.search(q) and not _SHARE_RE.search(q):
-        return True
-    if fid == "food_losses" and _SHARE_RE.search(q):
-        return True
-    if fid == "agg_country_year" and not _YIELD_RE.search(q):
-        return True
-    if fid == "agg_production_country_year_panel":
-        return True
-    return False
+def _coarse_fvc_score(query: str) -> int:
+    if _SHARE_RE.search(query or ""):
+        return _COARSE_SHARE_SCORE
+    if _TRADE_RE.search(query or "") or _PRICE_RE.search(query or ""):
+        return _COARSE_BRANCH_SCORE
+    return 0
+
+
+def _declared_plan(
+    code: str,
+    query: str,
+    *,
+    plan: Callable[..., TablePlan | None],
+    minimum_score: int,
+) -> TablePlan | None:
+    declared = best_declared_family(code, query)
+    if declared is None or declared[1] <= minimum_score:
+        return None
+    family, _score = declared
+    return plan(str(family.get("table") or ""), family_id=str(family.get("id") or ""))
 
 
 def _bundle_required_measures(bundles: tuple[MatchedBundle, ...]) -> set[str]:
@@ -185,6 +192,16 @@ def select_table_plans(
 
     def _plan(table_id: str, *, family_id: str = "", role: str = "series") -> TablePlan | None:
         bare = _bare_table(table_id)
+        routed = choose_agg_vs_fact(
+            bare,
+            query=query,
+            multi_country=multi,
+            year_hint=str(facets.get("time_end") or facets.get("time_start") or "")[:4],
+            single_country=len(iso) == 1,
+            iso_count=len(iso),
+        )
+        if routed in known:
+            bare = routed
         if bare not in known:
             return None
         return TablePlan(table_id=bare, family_id=family_id or bare, role=role)
@@ -210,12 +227,9 @@ def select_table_plans(
             if p:
                 plans.append(p)
         if not plans:
-            for fam in families_for_class(code):
-                if _family_matches_query(fam, query):
-                    p = _plan(str(fam.get("table") or ""), family_id=str(fam.get("id") or ""))
-                    if p:
-                        plans.append(p)
-                        break
+            declared = _declared_plan(code, query, plan=_plan, minimum_score=0)
+            if declared:
+                plans.append(declared)
         if not plans:
             default = _bare_table(str(card.get("default_table") or "fct_production"))
             p = _plan(default)
@@ -256,6 +270,9 @@ def select_table_plans(
             if tr and ("trade" in measures or panel):
                 plans.append(tr)
             return plans
+        declared = _declared_plan(code, query, plan=_plan, minimum_score=_coarse_fvc_score(query))
+        if declared:
+            return _with_taxonomy_companions([declared], class_code=code, card=card, known=known)
         if _SHARE_RE.search(query):
             p = _plan("fct_food_balance", family_id="food_losses")
             if p:
@@ -268,22 +285,14 @@ def select_table_plans(
             p = _plan("fct_prices", family_id="prices")
             if p:
                 return [p]
-        for fam in families_for_class(code):
-            if _family_matches_query(fam, query):
-                p = _plan(str(fam.get("table") or ""), family_id=str(fam.get("id") or ""))
-                if p:
-                    return _with_taxonomy_companions([p], class_code=code, card=card, known=known)
         default = _bare_table(str(card.get("default_table") or "fct_food_balance"))
         p = _plan(default)
         return _with_taxonomy_companions([p] if p else [], class_code=code, card=card, known=known)
 
     if code == "FS":
-        for fam in families_for_class(code):
-            if _family_matches_query(fam, query):
-                p = _plan(str(fam.get("table") or ""), family_id=str(fam.get("id") or ""))
-                if p:
-                    plans = [p]
-                    break
+        declared = _declared_plan(code, query, plan=_plan, minimum_score=0)
+        if declared:
+            plans = [declared]
         if not plans:
             for tid in candidates:
                 p = _plan(tid)
@@ -296,12 +305,10 @@ def select_table_plans(
             plans = [p] if p else []
         return _with_taxonomy_companions(plans, class_code=code, card=card, known=known)
 
-    # Generic classes: family match then default, then taxonomy companions
-    for fam in families_for_class(code):
-        if _family_matches_query(fam, query):
-            p = _plan(str(fam.get("table") or ""), family_id=str(fam.get("id") or ""))
-            if p:
-                return _with_taxonomy_companions([p], class_code=code, card=card, known=known)
+    # Generic classes: the family's own terms, then the first card table.
+    declared = _declared_plan(code, query, plan=_plan, minimum_score=0)
+    if declared:
+        return _with_taxonomy_companions([declared], class_code=code, card=card, known=known)
     for tid in candidates:
         p = _plan(tid)
         if p:

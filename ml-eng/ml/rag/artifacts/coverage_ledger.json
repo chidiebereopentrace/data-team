@@ -1,7 +1,7 @@
 {
- "built_at": "2026-11-08T00:23:38.073684+00:00",
- "snapshot_hash": "0c0b39aca16d827b",
- "coverage_built_at": "2026-11-04T21:31:28.623549+00:00",
+ "built_at": "2026-11-12T23:33:03.416493+00:00",
+ "snapshot_hash": "be0c5bbf9de9f880",
+ "coverage_built_at": "2026-11-12T23:28:45.519083+00:00",
  "classes": {
   "AH": {
    "name": "Animal health",
@@ -20,8 +20,8 @@
     "academic_papers",
     "public_reports"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "BIO": {
    "name": "Biodiversity and protection",
@@ -40,8 +40,8 @@
     "academic_papers",
     "public_reports"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "CLIM": {
    "name": "Climate and weather",
@@ -58,48 +58,59 @@
     "public_reports",
     "academic_papers"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "EL": {
    "name": "Economic and livelihood",
    "serving_tables": [
+    "agg_economics_country_year",
+    "agg_employment_country_year",
     "fct_economics",
     "fct_employment",
-    "fct_household"
+    "fct_household",
+    "fct_population_dynamics"
    ],
    "default_table": "fct_employment",
    "card_tables": [
+    "agg_economics_country_year",
+    "agg_employment_country_year",
     "dim_geography",
     "dim_indicator",
     "fct_economics",
     "fct_employment",
-    "fct_household"
+    "fct_household",
+    "fct_population_dynamics"
    ],
    "corpora": [
     "public_reports",
     "academic_papers"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "ENV": {
    "name": "Environment and emissions",
    "serving_tables": [
     "agg_emissions_country_year",
+    "fct_air_quality",
     "fct_emissions",
-    "fct_forestry"
+    "fct_forestry",
+    "fct_land_use"
    ],
    "default_table": "fct_emissions",
    "card_tables": [
-    "fct_emissions"
+    "agg_emissions_country_year",
+    "fct_air_quality",
+    "fct_emissions",
+    "fct_land_use"
    ],
    "corpora": [
     "public_reports",
     "academic_papers"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "FS": {
    "name": "Food security and nutrition",
@@ -113,41 +124,53 @@
    ],
    "default_table": "fct_food_security",
    "card_tables": [
+    "agg_food_security_country_month",
     "agg_food_security_monthly",
-    "fct_food_security"
+    "fct_food_balance",
+    "fct_food_security",
+    "fct_household",
+    "fct_humanitarian"
    ],
    "corpora": [
     "public_reports",
     "ota",
     "news"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "FVC": {
    "name": "Food system and value chain",
    "serving_tables": [
+    "agg_food_balance_country_year",
+    "agg_forestry_country_year",
     "fct_economics",
     "fct_food_balance",
     "fct_forestry",
+    "fct_market_access",
     "fct_prices",
-    "fct_trade"
+    "fct_trade",
+    "fct_value_chain"
    ],
    "default_table": "fct_food_balance",
    "card_tables": [
+    "agg_food_balance_country_year",
+    "agg_forestry_country_year",
     "fct_economics",
     "fct_food_balance",
     "fct_forestry",
+    "fct_market_access",
     "fct_prices",
-    "fct_trade"
+    "fct_trade",
+    "fct_value_chain"
    ],
    "corpora": [
     "public_reports",
     "policies",
     "ota"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "GYI": {
    "name": "Gender, youth and inclusion",
@@ -167,8 +190,8 @@
     "public_reports",
     "academic_papers"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "HDI": {
    "name": "Human development",
@@ -187,8 +210,8 @@
     "public_reports",
     "academic_papers"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "INP": {
    "name": "Inputs",
@@ -209,8 +232,8 @@
     "public_reports",
     "academic_papers"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "PRC": {
    "name": "Prices and markets",
@@ -231,8 +254,8 @@
     "public_reports",
     "ota"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "PROD": {
    "name": "Agricultural production",
@@ -245,6 +268,7 @@
    ],
    "default_table": "agg_production_country_year",
    "card_tables": [
+    "agg_production_annual",
     "agg_production_country_season",
     "agg_production_country_year",
     "fct_production",
@@ -255,15 +279,16 @@
     "academic_papers",
     "ota"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "RES": {
    "name": "Research system",
    "serving_tables": [
     "fct_investment",
     "fct_research_expenditure",
-    "fct_researchers"
+    "fct_researchers",
+    "fct_technology"
    ],
    "default_table": "fct_investment",
    "card_tables": [
@@ -272,14 +297,15 @@
     "dim_research_project",
     "fct_investment",
     "fct_research_expenditure",
-    "fct_researchers"
+    "fct_researchers",
+    "fct_technology"
    ],
    "corpora": [
     "academic_papers",
     "public_reports"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "SOIL": {
    "name": "Soil health and land",
@@ -301,8 +327,8 @@
     "public_reports",
     "academic_papers"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   },
   "VEG": {
    "name": "Vegetation",
@@ -317,14 +343,16 @@
     "academic_papers",
     "public_reports"
    ],
-   "readiness": "fixture_verified",
-   "default_table_readiness": "fixture_verified"
+   "readiness": "integration_verified",
+   "default_table_readiness": "integration_verified"
   }
  },
  "objects": {
   "agg_economics_country_year": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "EL"
+   ],
    "lineage_parent": "fct_economics",
    "grain": "Country \u00d7 item \u00d7 measurement_form \u00d7 year \u00d7 source",
    "column_roles": {
@@ -341,8 +369,44 @@
     "row_count": "lineage",
     "loaded_at": "lineage"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "agg_economics_country_year",
+    "members": 56,
+    "min_year": 1970,
+    "max_year": 2024
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value_avg, f.row_count, f.year, f.country_name, f.measurement_form, f.unit, d0.organisation_name, d1.item_name, d2.country_name FROM (SELECT value_avg, row_count, year, country_name, measurement_form, unit, source_key, item_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_economics_country_year` WHERE country_name = 'Kenya' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d1 ON d1.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key"
+   },
+   "readiness": "integration_verified"
   },
   "agg_emissions_country_year": {
    "disposition": "serving",
@@ -392,21 +456,23 @@
     }
    },
    "coverage": {
-    "source": "fct_emissions",
-    "members": 58,
+    "source": "agg_emissions_country_year",
+    "members": 60,
     "min_year": 1961,
     "max_year": 2050
    },
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value_avg, f.row_count, f.year, f.country_name, f.unit, d0.organisation_name, d1.item_name, d2.element_name FROM (SELECT value_avg, row_count, year, country_name, unit, source_key, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.agg_emissions_country_year` WHERE country_name = 'Kenya' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d1 ON d1.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d2 ON d2.element_key = f.element_key"
+    "sql": "SELECT f.value_avg, f.row_count, f.year, f.country_name, f.unit, d0.organisation_name, d1.item_name, d2.element_name, d3.country_name FROM (SELECT value_avg, row_count, year, country_name, unit, source_key, item_key, element_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_emissions_country_year` WHERE country_name = 'Kenya' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d1 ON d1.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d2 ON d2.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geography_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "agg_employment_country_year": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "EL"
+   ],
    "lineage_parent": "fct_employment",
    "grain": "Country \u00d7 indicator \u00d7 sex \u00d7 year \u00d7 source",
    "column_roles": {
@@ -423,12 +489,50 @@
     "row_count": "lineage",
     "loaded_at": "lineage"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "agg_employment_country_year",
+    "members": 60,
+    "min_year": 1950,
+    "max_year": 2100
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value_avg, f.row_count, f.year, f.country_name, f.indicator, f.sex, f.unit, d0.organisation_name, d1.country_name FROM (SELECT value_avg, row_count, year, country_name, indicator, sex, unit, source_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_employment_country_year` WHERE country_name = 'Kenya' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d1 ON d1.geography_key = f.geography_key"
+   },
+   "readiness": "integration_verified"
   },
   "agg_food_balance_country_year": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "FVC"
+   ],
    "lineage_parent": "fct_food_balance",
    "grain": "Country \u00d7 product \u00d7 year \u00d7 source",
    "column_roles": {
@@ -436,7 +540,7 @@
     "geography_key": "geo",
     "date_key": "time",
     "country_name": "geo",
-    "product_key": "key",
+    "product_key": "excluded",
     "year": "time",
     "source_key": "lineage",
     "production_sum": "measure",
@@ -448,8 +552,44 @@
     "row_count": "lineage",
     "loaded_at": "lineage"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "agg_food_balance_country_year",
+    "members": 49,
+    "min_year": 1961,
+    "max_year": 2023
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.production_sum, f.imports_sum, f.exports_sum, f.food_sum, f.year, f.country_name, d0.product_name, d1.organisation_name, d2.country_name FROM (SELECT production_sum, imports_sum, exports_sum, food_sum, year, country_name, product_key, source_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_food_balance_country_year` WHERE country_name = 'Kenya' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key"
+   },
+   "readiness": "integration_verified"
   },
   "agg_food_security_country_month": {
    "disposition": "serving",
@@ -502,17 +642,17 @@
     }
    },
    "coverage": {
-    "source": "fct_food_security",
-    "members": 28,
-    "min_year": 2011,
+    "source": "agg_food_security_country_month",
+    "members": 24,
+    "min_year": 2016,
     "max_year": 2026
    },
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value_sum, f.pct_phase3_avg, f.pct_phase4_avg, f.pct_phase5_avg, f.year, f.month, f.country_name, f.measure_type, d0.organisation_name FROM (SELECT value_sum, pct_phase3_avg, pct_phase4_avg, pct_phase5_avg, year, month, country_name, measure_type, source_key FROM `opentrace-prod-5ga4.mart_dev.agg_food_security_country_month` WHERE country_name = 'Kenya' AND year = 2020 ORDER BY month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key ORDER BY f.month DESC"
+    "sql": "SELECT f.value_sum, f.pct_phase3_avg, f.pct_phase4_avg, f.pct_phase5_avg, f.year, f.month, f.country_name, f.measure_type, d0.organisation_name, d1.country_name FROM (SELECT value_sum, pct_phase3_avg, pct_phase4_avg, pct_phase5_avg, year, month, country_name, measure_type, source_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_food_security_country_month` WHERE country_name = 'Kenya' AND year = 2020 ORDER BY month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d1 ON d1.geography_key = f.geography_key ORDER BY f.month DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "agg_food_security_monthly": {
    "disposition": "serving",
@@ -573,13 +713,15 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT phase_number, total_population_affected, avg_population_affected, avg_pct_phase3, time_key, country_name, phase_name, scenario_name FROM `opentrace-prod-5ga4.mart_dev.agg_food_security_monthly` WHERE country_name = 'Kenya' AND time_key = 2020 LIMIT 50"
+    "sql": "SELECT f.phase_number, f.total_population_affected, f.avg_population_affected, f.avg_pct_phase3, f.time_key, f.country_name, f.phase_name, f.scenario_name, d0.country_name, d1.phase_code, d2.scenario_code FROM (SELECT phase_number, total_population_affected, avg_population_affected, avg_pct_phase3, time_key, country_name, phase_name, scenario_name, geo_key, classification_key, scenario_key FROM `opentrace-prod-5ga4.mart_dev.agg_food_security_monthly` WHERE country_name = 'Kenya' AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geo_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_classification` AS d1 ON d1.classification_key = f.classification_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_scenario` AS d2 ON d2.scenario_key = f.scenario_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "agg_forestry_country_year": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "FVC"
+   ],
    "lineage_parent": "fct_forestry",
    "grain": "Country \u00d7 item \u00d7 forestry_grain \u00d7 year \u00d7 source",
    "column_roles": {
@@ -596,8 +738,44 @@
     "row_count": "lineage",
     "loaded_at": "lineage"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "agg_forestry_country_year",
+    "members": 60,
+    "min_year": 1961,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value_avg, f.row_count, f.year, f.country_name, f.forestry_grain, f.unit, d0.organisation_name, d1.item_name, d2.country_name FROM (SELECT value_avg, row_count, year, country_name, forestry_grain, unit, source_key, item_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_forestry_country_year` WHERE country_name = 'Kenya' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d1 ON d1.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key"
+   },
+   "readiness": "integration_verified"
   },
   "agg_hdi_latest": {
    "disposition": "serving",
@@ -652,9 +830,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT latest_year, hdi_value, country_iso3 FROM `opentrace-prod-5ga4.mart_dev.agg_hdi_latest` WHERE country_iso3 = 'KEN' LIMIT 1"
+    "sql": "SELECT f.latest_year, f.hdi_value, f.country_iso3, d0.country_name FROM (SELECT latest_year, hdi_value, country_iso3, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_hdi_latest` WHERE country_iso3 = 'KEN' LIMIT 1) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "agg_prices_country_month": {
    "disposition": "serving",
@@ -714,9 +892,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.price_avg, f.common_unit_price_avg, f.market_count, f.year, f.month, f.country_name, f.price_source, d0.product_name, d1.organisation_name FROM (SELECT price_avg, common_unit_price_avg, market_count, year, month, country_name, price_source, product_key, source_key FROM `opentrace-prod-5ga4.mart_dev.agg_prices_country_month` WHERE country_name = 'Kenya' AND year = 2020 AND price_type = 'Value' ORDER BY month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.month DESC"
+    "sql": "SELECT f.price_avg, f.common_unit_price_avg, f.market_count, f.year, f.month, f.country_name, f.price_source, d0.product_name, d1.organisation_name, d2.country_name FROM (SELECT price_avg, common_unit_price_avg, market_count, year, month, country_name, price_source, product_key, source_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_prices_country_month` WHERE country_name = 'Kenya' AND year = 2020 AND price_type = 'Value' ORDER BY month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key ORDER BY f.month DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "agg_production_annual": {
    "disposition": "serving",
@@ -775,9 +953,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT total_production_qty, avg_production_qty, total_area, avg_yield, time_key, country_name, product_name, source_name FROM `opentrace-prod-5ga4.mart_dev.agg_production_annual` WHERE country_name = 'Kenya' AND time_key = 2020 LIMIT 50"
+    "sql": "SELECT f.total_production_qty, f.avg_production_qty, f.total_area, f.avg_yield, f.time_key, f.country_name, f.product_name, f.source_name, d0.product_name, d1.organisation_name FROM (SELECT total_production_qty, avg_production_qty, total_area, avg_yield, time_key, country_name, product_name, source_name, product_key, source_key FROM `opentrace-prod-5ga4.mart_dev.agg_production_annual` WHERE country_name = 'Kenya' AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "agg_production_country_season": {
    "disposition": "serving",
@@ -828,7 +1006,7 @@
     }
    },
    "coverage": {
-    "source": "fct_yield",
+    "source": "agg_production_country_season",
     "members": 33,
     "min_year": 1960,
     "max_year": 2024
@@ -836,9 +1014,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.area_harvested, f.production_qty, f.yield_recomputed, f.fnid_count, f.harvest_year, f.country_name, d0.product_name, d1.organisation_name, d2.season_name FROM (SELECT area_harvested, production_qty, yield_recomputed, fnid_count, harvest_year, country_name, product_key, source_key, season_key FROM `opentrace-prod-5ga4.mart_dev.agg_production_country_season` WHERE country_name = 'Kenya' AND harvest_year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_season` AS d2 ON d2.season_key = f.season_key"
+    "sql": "SELECT f.area_harvested, f.production_qty, f.yield_recomputed, f.fnid_count, f.harvest_year, f.country_name, d0.product_name, d1.organisation_name, d2.season_name, d3.country_name FROM (SELECT area_harvested, production_qty, yield_recomputed, fnid_count, harvest_year, country_name, product_key, source_key, season_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_production_country_season` WHERE country_name = 'Kenya' AND harvest_year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_season` AS d2 ON d2.season_key = f.season_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geography_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "agg_production_country_year": {
    "disposition": "serving",
@@ -889,17 +1067,17 @@
     }
    },
    "coverage": {
-    "source": "fct_production",
-    "members": 55,
+    "source": "agg_production_country_year",
+    "members": 54,
     "min_year": 1961,
     "max_year": 2024
    },
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.area_harvested, f.production_qty, f.yield_recomputed, f.row_count, f.year, f.country_iso3, d0.product_name, d1.organisation_name FROM (SELECT area_harvested, production_qty, yield_recomputed, row_count, year, country_iso3, product_key, source_key FROM `opentrace-prod-5ga4.mart_dev.agg_production_country_year` WHERE country_iso3 = 'KEN' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key"
+    "sql": "SELECT f.area_harvested, f.production_qty, f.yield_recomputed, f.row_count, f.year, f.country_iso3, d0.product_name, d1.organisation_name, d2.country_name FROM (SELECT area_harvested, production_qty, yield_recomputed, row_count, year, country_iso3, product_key, source_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.agg_production_country_year` WHERE country_iso3 = 'KEN' AND year = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "agg_soil_admin": {
    "disposition": "serving",
@@ -957,11 +1135,13 @@
     "error": "",
     "sql": "SELECT f.value_avg, f.point_count, f.admin_1_name, f.soil_property, f.depth, f.country_name, d0.organisation_name FROM (SELECT value_avg, point_count, admin_1_name, soil_property, depth, country_name, source_key FROM `opentrace-prod-5ga4.mart_dev.agg_soil_admin` WHERE country_name = 'Kenya' LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "bridge_geography_aez": {
    "disposition": "bridge",
-   "classes": [],
+   "classes": [
+    "SOIL"
+   ],
    "lineage_parent": null,
    "grain": "geography_key \u00d7 AEZ",
    "column_roles": {
@@ -979,18 +1159,28 @@
   },
   "bridge_household_crop": {
    "disposition": "bridge",
-   "classes": [],
+   "classes": [
+    "EL",
+    "FS",
+    "GYI",
+    "PROD"
+   ],
    "lineage_parent": null,
    "grain": "",
    "column_roles": {
     "household_key": "key",
-    "product_key": "key"
+    "product_key": "excluded"
    },
    "readiness": "discovered"
   },
   "bridge_household_disease": {
    "disposition": "bridge",
-   "classes": [],
+   "classes": [
+    "AH",
+    "EL",
+    "FS",
+    "GYI"
+   ],
    "lineage_parent": null,
    "grain": "",
    "column_roles": {
@@ -1001,7 +1191,12 @@
   },
   "bridge_household_livestock": {
    "disposition": "bridge",
-   "classes": [],
+   "classes": [
+    "AH",
+    "EL",
+    "FS",
+    "GYI"
+   ],
    "lineage_parent": null,
    "grain": "",
    "column_roles": {
@@ -1012,7 +1207,9 @@
   },
   "bridge_project_organisation": {
    "disposition": "bridge",
-   "classes": [],
+   "classes": [
+    "RES"
+   ],
    "lineage_parent": null,
    "grain": "",
    "column_roles": {
@@ -1023,7 +1220,9 @@
   },
   "bridge_research_org": {
    "disposition": "bridge",
-   "classes": [],
+   "classes": [
+    "RES"
+   ],
    "lineage_parent": null,
    "grain": "Project \u2194 organisation edge",
    "column_roles": {
@@ -1040,7 +1239,9 @@
   },
   "bridge_research_person": {
    "disposition": "bridge",
-   "classes": [],
+   "classes": [
+    "RES"
+   ],
    "lineage_parent": null,
    "grain": "Project \u2194 person edge",
    "column_roles": {
@@ -1057,7 +1258,9 @@
   },
   "bridge_season_calendar": {
    "disposition": "bridge",
-   "classes": [],
+   "classes": [
+    "PROD"
+   ],
    "lineage_parent": null,
    "grain": "",
    "column_roles": {
@@ -1168,6 +1371,26 @@
     "disease_or_hazard": "filter",
     "disease_family": "filter",
     "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_disease_ilri": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per disease_key",
+   "column_roles": {
+    "disease_key": "key",
+    "disease_natural_key": "key",
+    "disease_name": "attribute",
+    "disease_category": "attribute",
+    "pathogen_name": "attribute",
+    "species_affected": "attribute",
+    "is_zoonotic": "attribute",
+    "description": "attribute",
+    "valid_from": "attribute",
+    "valid_to": "attribute",
+    "is_current": "attribute"
    },
    "readiness": "discovered"
   },
@@ -1333,6 +1556,30 @@
    },
    "readiness": "discovered"
   },
+  "dim_market_fews": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per market_key",
+   "column_roles": {
+    "market_key": "key",
+    "market_natural_key": "key",
+    "market_name": "geo",
+    "market_type": "attribute",
+    "geo_key": "geo",
+    "has_electricity": "attribute",
+    "has_running_water": "attribute",
+    "has_handwashing": "attribute",
+    "has_waste_disposal": "attribute",
+    "has_refrigeration": "attribute",
+    "outlet_structure_type": "attribute",
+    "floor_condition": "attribute",
+    "infrastructure_adequacy": "attribute",
+    "description": "attribute",
+    "is_current": "attribute"
+   },
+   "readiness": "discovered"
+  },
   "dim_organisation": {
    "disposition": "dimension",
    "classes": [],
@@ -1366,6 +1613,29 @@
     "coauthor_count": "measure",
     "source_natural_key": "key",
     "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_person_openaire": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per person_key",
+   "column_roles": {
+    "person_key": "key",
+    "person_natural_key": "key",
+    "full_name": "attribute",
+    "gender": "attribute",
+    "age": "measure",
+    "year_of_birth": "measure",
+    "education_level": "attribute",
+    "marital_status": "attribute",
+    "years_farm_experience": "measure",
+    "role": "attribute",
+    "household_id": "attribute",
+    "valid_from": "attribute",
+    "valid_to": "attribute",
+    "is_current": "attribute"
    },
    "readiness": "discovered"
   },
@@ -1450,6 +1720,24 @@
     "funding_stream_desc": "attribute",
     "source_natural_key": "key",
     "loaded_at": "lineage"
+   },
+   "readiness": "discovered"
+  },
+  "dim_research_project_openaire": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per research_project_key",
+   "column_roles": {
+    "research_project_key": "key",
+    "project_code": "attribute",
+    "project_name": "attribute",
+    "doi": "attribute",
+    "journal_name": "attribute",
+    "keywords": "attribute",
+    "start_date": "attribute",
+    "end_date": "attribute",
+    "description": "attribute"
    },
    "readiness": "discovered"
   },
@@ -1628,8 +1916,10 @@
    "readiness": "discovered"
   },
   "fct_air_quality": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "ENV"
+   ],
    "lineage_parent": null,
    "grain": "Sensor observation timestamp",
    "column_roles": {
@@ -1659,8 +1949,44 @@
     "source_natural_key": "key",
     "loaded_at": "lineage"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": true,
+     "reason": ""
+    }
+   },
+   "coverage": {
+    "source": "fct_air_quality",
+    "members": 1,
+    "min_year": 2021,
+    "max_year": 2026
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value, f.as_of_date, f.metric, f.unit, d0.country_name, d1.organisation_name FROM (SELECT value, as_of_date, metric, unit, geography_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_air_quality` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.as_of_date DESC"
+   },
+   "readiness": "integration_verified"
   },
   "fct_animal_health": {
    "disposition": "serving",
@@ -1740,9 +2066,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, as_of_date, species, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_animal_health` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50"
+    "sql": "SELECT f.value, f.as_of_date, f.species, f.metric, f.unit, d0.country_name, d1.village_code, d2.organisation_name FROM (SELECT value, as_of_date, species, metric, unit, geography_key, household_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_animal_health` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_household` AS d1 ON d1.household_key = f.household_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d2 ON d2.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_biodiversity": {
    "disposition": "serving",
@@ -1814,9 +2140,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, year, as_of_date, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_biodiversity` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.metric, f.unit, d0.country_name FROM (SELECT value, year, as_of_date, metric, unit, geography_key FROM `opentrace-prod-5ga4.mart_dev.fct_biodiversity` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_climate": {
    "disposition": "serving",
@@ -1884,9 +2210,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.as_of_date, f.country_iso3, f.metric, f.climate_grain, f.unit, d0.indicator_name, d1.organisation_name FROM (SELECT value, as_of_date, country_iso3, metric, climate_grain, unit, indicator_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_climate` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_indicator` AS d0 ON d0.indicator_key = f.indicator_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.as_of_date, f.country_iso3, f.metric, f.climate_grain, f.unit, d0.indicator_name, d1.organisation_name, d2.country_name FROM (SELECT value, as_of_date, country_iso3, metric, climate_grain, unit, indicator_key, source_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.fct_climate` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_indicator` AS d0 ON d0.indicator_key = f.indicator_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_economics": {
    "disposition": "serving",
@@ -1956,9 +2282,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.measurement_form, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, measurement_form, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_economics` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.measurement_form, f.metric, f.unit, d0.item_name, d1.element_name, d2.country_name, d3.organisation_name FROM (SELECT value, year, as_of_date, country_iso3, measurement_form, metric, unit, item_key, element_key, geography_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_economics` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d3 ON d3.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_emissions": {
    "disposition": "serving",
@@ -2025,9 +2351,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_emissions` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.item_name, d1.element_name, d2.country_name, d3.organisation_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, item_key, element_key, geography_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_emissions` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d3 ON d3.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_employment": {
    "disposition": "serving",
@@ -2099,9 +2425,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, year, as_of_date, country_iso3, indicator, sex, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_employment` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.indicator, f.sex, f.metric, f.unit, d0.country_name, d1.item_name, d2.element_name, d3.indicator_name, d4.organisation_name FROM (SELECT value, year, as_of_date, country_iso3, indicator, sex, metric, unit, geography_key, item_key, element_key, indicator_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_employment` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d1 ON d1.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d2 ON d2.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_indicator` AS d3 ON d3.indicator_key = f.indicator_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d4 ON d4.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_fertilizer": {
    "disposition": "serving",
@@ -2155,9 +2481,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.quantity, f.time_key, d0.product_name, d1.organisation_name, d2.unit_code, d3.country_name FROM (SELECT quantity, time_key, product_key, source_key, unit_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_fertilizer` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d2 ON d2.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
+    "sql": "SELECT f.quantity, f.time_key, d0.product_name, d1.organisation_name, d2.unit_code, d3.country_name FROM (SELECT quantity, time_key, product_key, source_key, unit_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_fertilizer` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d2 ON d2.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_food_balance": {
    "disposition": "serving",
@@ -2233,9 +2559,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.element, f.metric, f.unit, d0.product_name FROM (SELECT value, year, as_of_date, country_iso3, element, metric, unit, product_key FROM `opentrace-prod-5ga4.mart_dev.fct_food_balance` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.element, f.metric, f.unit, d0.product_name, d1.country_name, d2.element_name, d3.organisation_name FROM (SELECT value, year, as_of_date, country_iso3, element, metric, unit, product_key, geography_key, element_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_food_balance` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d1 ON d1.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d2 ON d2.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d3 ON d3.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_food_hazards": {
    "disposition": "serving",
@@ -2307,9 +2633,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT tier, as_of_date, metric FROM `opentrace-prod-5ga4.mart_dev.fct_food_hazards` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+    "sql": "SELECT f.tier, f.as_of_date, f.metric, d0.country_name, d1.organisation_name FROM (SELECT tier, as_of_date, metric, geography_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_food_hazards` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_food_security": {
    "disposition": "serving",
@@ -2383,9 +2709,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, year, month, as_of_date, measure_type, metric, scenario_name, unit FROM `opentrace-prod-5ga4.mart_dev.fct_food_security` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50"
+    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.measure_type, f.metric, f.scenario_name, f.unit, d0.country_name, d1.phase_code FROM (SELECT value, year, month, as_of_date, measure_type, metric, scenario_name, unit, geography_key, classification_key FROM `opentrace-prod-5ga4.mart_dev.fct_food_security` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_classification` AS d1 ON d1.classification_key = f.classification_key ORDER BY f.as_of_date DESC, f.month DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_forestry": {
    "disposition": "serving",
@@ -2447,17 +2773,17 @@
     }
    },
    "coverage": {
-    "source": "",
-    "members": 0,
-    "min_year": null,
-    "max_year": null
+    "source": "fct_forestry",
+    "members": 59,
+    "min_year": 1961,
+    "max_year": 2026
    },
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.forestry_grain, f.metric, f.unit, d0.item_name FROM (SELECT value, year, as_of_date, country_iso3, forestry_grain, metric, unit, item_key FROM `opentrace-prod-5ga4.mart_dev.fct_forestry` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.forestry_grain, f.metric, f.unit, d0.item_name, d1.country_name, d2.element_name, d3.organisation_name FROM (SELECT value, year, as_of_date, country_iso3, forestry_grain, metric, unit, item_key, geography_key, element_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_forestry` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d1 ON d1.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d2 ON d2.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d3 ON d3.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_gender_inclusion": {
    "disposition": "serving",
@@ -2518,17 +2844,17 @@
     }
    },
    "coverage": {
-    "source": "",
-    "members": 0,
-    "min_year": null,
-    "max_year": null
+    "source": "fct_gender_inclusion",
+    "members": 59,
+    "min_year": 1930,
+    "max_year": 2025
    },
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_gender_inclusion` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.item_name, d1.element_name, d2.country_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, item_key, element_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.fct_gender_inclusion` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_germplasm": {
    "disposition": "serving",
@@ -2596,9 +2922,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, as_of_date, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_germplasm` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+    "sql": "SELECT f.value, f.as_of_date, f.metric, f.unit, d0.country_name, d1.organisation_name FROM (SELECT value, as_of_date, metric, unit, geography_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_germplasm` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_hdi": {
    "disposition": "serving",
@@ -2663,9 +2989,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, year, as_of_date, country_iso3, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_hdi` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.country_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, geography_key FROM `opentrace-prod-5ga4.mart_dev.fct_hdi` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_household": {
    "disposition": "serving",
@@ -2748,9 +3074,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, as_of_date, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_household` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+    "sql": "SELECT f.value, f.as_of_date, f.metric, f.unit, d0.country_name, d1.village_code FROM (SELECT value, as_of_date, metric, unit, geography_key, household_key FROM `opentrace-prod-5ga4.mart_dev.fct_household` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_household` AS d1 ON d1.household_key = f.household_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_humanitarian": {
    "disposition": "serving",
@@ -2817,9 +3143,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_humanitarian` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.item_name, d1.element_name, d2.country_name, d3.organisation_name FROM (SELECT value, year, as_of_date, country_iso3, metric, unit, item_key, element_key, geography_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_humanitarian` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d3 ON d3.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_insurance": {
    "disposition": "serving",
@@ -2888,9 +3214,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, as_of_date, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_insurance` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+    "sql": "SELECT f.value, f.as_of_date, f.metric, f.unit, d0.country_name, d1.village_code, d2.organisation_name FROM (SELECT value, as_of_date, metric, unit, geography_key, household_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_insurance` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_household` AS d1 ON d1.household_key = f.household_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d2 ON d2.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_investment": {
    "disposition": "serving",
@@ -2965,9 +3291,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.donor, f.indicator, f.sex, f.institution, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, donor, indicator, sex, institution, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_investment` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.donor, f.indicator, f.sex, f.institution, f.metric, f.unit, d0.item_name, d1.element_name, d2.country_name, d3.indicator_name, d4.country_name, d5.organisation_name FROM (SELECT value, year, as_of_date, country_iso3, donor, indicator, sex, institution, metric, unit, item_key, element_key, geography_key, indicator_key, organisation_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_investment` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_indicator` AS d3 ON d3.indicator_key = f.indicator_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_organisation` AS d4 ON d4.organisation_key = f.organisation_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d5 ON d5.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_land_degradation": {
    "disposition": "serving",
@@ -3022,9 +3348,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.pct_degraded, f.upper_bound, f.lower_bound, f.time_key, d0.organisation_name, d1.unit_code, d2.country_name FROM (SELECT pct_degraded, upper_bound, lower_bound, time_key, source_key, unit_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_land_degradation` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geo_key"
+    "sql": "SELECT f.pct_degraded, f.upper_bound, f.lower_bound, f.time_key, d0.organisation_name, d1.unit_code, d2.country_name FROM (SELECT pct_degraded, upper_bound, lower_bound, time_key, source_key, unit_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_land_degradation` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geo_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_land_inputs": {
    "disposition": "serving",
@@ -3095,13 +3421,15 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.input_grain, f.metric, f.unit, d0.item_name, d1.element_name FROM (SELECT value, year, as_of_date, country_iso3, input_grain, metric, unit, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_land_inputs` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.input_grain, f.metric, f.unit, d0.item_name, d1.element_name, d2.country_name, d3.organisation_name FROM (SELECT value, year, as_of_date, country_iso3, input_grain, metric, unit, item_key, element_key, geography_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_land_inputs` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d0 ON d0.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d1 ON d1.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d3 ON d3.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_land_use": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "ENV"
+   ],
    "lineage_parent": null,
    "grain": "fct land use",
    "column_roles": {
@@ -3113,8 +3441,44 @@
     "area": "measure",
     "source_record_id": "attribute"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.area, f.time_key, d0.organisation_name, d1.land_use_code, d2.country_name FROM (SELECT area, time_key, source_key, land_use_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_land_use` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_land_use` AS d1 ON d1.land_use_key = f.land_use_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geo_key"
+   },
+   "readiness": "integration_verified"
   },
   "fct_machinery": {
    "disposition": "serving",
@@ -3184,13 +3548,15 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, year, as_of_date, country_iso3, item, element, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_machinery` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50"
+    "sql": "SELECT f.value, f.year, f.as_of_date, f.country_iso3, f.item, f.element, f.metric, f.unit, d0.country_name, d1.item_name, d2.element_name, d3.organisation_name FROM (SELECT value, year, as_of_date, country_iso3, item, element, metric, unit, geography_key, item_key, element_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_machinery` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d1 ON d1.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d2 ON d2.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d3 ON d3.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_market_access": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "FVC"
+   ],
    "lineage_parent": null,
    "grain": "fct market access",
    "column_roles": {
@@ -3214,8 +3580,44 @@
     "primary_supply_source": "attribute",
     "source_record_id": "attribute"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.access_index, f.distance_to_market, f.travel_time_minutes, f.outlet_choice_cleanliness, f.time_key, d0.market_name, d1.country_name, d2.organisation_name FROM (SELECT access_index, distance_to_market, travel_time_minutes, outlet_choice_cleanliness, time_key, market_key, geo_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_market_access` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_market` AS d0 ON d0.market_key = f.market_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d1 ON d1.geography_key = f.geo_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d2 ON d2.source_key = f.source_key"
+   },
+   "readiness": "integration_verified"
   },
   "fct_pesticide": {
    "disposition": "serving",
@@ -3274,13 +3676,15 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.quantity, f.application_frequency, f.eiq_score, f.eiq_field_use, f.time_key, d0.product_name, d1.organisation_name, d2.unit_code, d3.pest_name, d4.country_name FROM (SELECT quantity, application_frequency, eiq_score, eiq_field_use, time_key, product_key, source_key, unit_key, pest_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_pesticide` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d2 ON d2.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_pest` AS d3 ON d3.pest_key = f.pest_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d4 ON d4.geography_key = f.geo_key"
+    "sql": "SELECT f.quantity, f.application_frequency, f.eiq_score, f.eiq_field_use, f.time_key, d0.product_name, d1.organisation_name, d2.unit_code, d3.pest_name, d4.country_name FROM (SELECT quantity, application_frequency, eiq_score, eiq_field_use, time_key, product_key, source_key, unit_key, pest_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_pesticide` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d2 ON d2.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_pest` AS d3 ON d3.pest_key = f.pest_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d4 ON d4.geography_key = f.geo_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_population_dynamics": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "EL"
+   ],
    "lineage_parent": null,
    "grain": "fct population dynamics",
    "column_roles": {
@@ -3291,8 +3695,44 @@
     "population_count": "measure",
     "source_record_id": "attribute"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.population_count, f.time_key, d0.organisation_name, d1.country_name FROM (SELECT population_count, time_key, source_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_population_dynamics` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d1 ON d1.geography_key = f.geo_key"
+   },
+   "readiness": "integration_verified"
   },
   "fct_prices": {
    "disposition": "serving",
@@ -3368,9 +3808,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.metric, f.price_source, f.currency, f.unit, d0.product_name, d1.organisation_name, d2.market_name, d3.unit_code FROM (SELECT value, year, month, as_of_date, metric, price_source, currency, unit, product_key, source_key, market_key, unit_key FROM `opentrace-prod-5ga4.mart_dev.fct_prices` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' AND price_type = 'Value' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_market` AS d2 ON d2.market_key = f.market_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d3 ON d3.unit_key = f.unit_key ORDER BY f.as_of_date DESC, f.month DESC"
+    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.metric, f.price_source, f.currency, f.unit, d0.product_name, d1.organisation_name, d2.market_name, d3.unit_code, d4.country_name FROM (SELECT value, year, month, as_of_date, metric, price_source, currency, unit, product_key, source_key, market_key, unit_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.fct_prices` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' AND price_type = 'Value' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_market` AS d2 ON d2.market_key = f.market_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d3 ON d3.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d4 ON d4.geography_key = f.geography_key ORDER BY f.as_of_date DESC, f.month DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_production": {
    "disposition": "serving",
@@ -3449,9 +3889,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.country_iso3, f.element, f.metric, f.production_grain, f.area_unit, f.production_unit, f.unit, f.yield_unit, d0.product_name, d1.organisation_name FROM (SELECT value, year, month, as_of_date, country_iso3, element, metric, production_grain, area_unit, production_unit, unit, yield_unit, product_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_production` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.as_of_date DESC, f.month DESC"
+    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.country_iso3, f.element, f.metric, f.production_grain, f.area_unit, f.production_unit, f.unit, f.yield_unit, d0.product_name, d1.organisation_name, d2.country_name, d3.element_name, d4.season_name FROM (SELECT value, year, month, as_of_date, country_iso3, element, metric, production_grain, area_unit, production_unit, unit, yield_unit, product_key, source_key, geography_key, element_key, season_key FROM `opentrace-prod-5ga4.mart_dev.fct_production` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d2 ON d2.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d3 ON d3.element_key = f.element_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_season` AS d4 ON d4.season_key = f.season_key ORDER BY f.as_of_date DESC, f.month DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_protected_areas": {
    "disposition": "serving",
@@ -3518,9 +3958,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT value, as_of_date, country_iso3, metric, unit FROM `opentrace-prod-5ga4.mart_dev.fct_protected_areas` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1"
+    "sql": "SELECT f.value, f.as_of_date, f.country_iso3, f.metric, f.unit, d0.country_name, d1.organisation_name FROM (SELECT value, as_of_date, country_iso3, metric, unit, geography_key, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_protected_areas` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 1) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d0 ON d0.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_research_expenditure": {
    "disposition": "serving",
@@ -3574,9 +4014,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.expenditure_amount, f.time_key, d0.organisation_name, d1.unit_code, d2.short_name, d3.country_name FROM (SELECT expenditure_amount, time_key, source_key, unit_key, organisation_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_research_expenditure` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_organisation` AS d2 ON d2.organisation_key = f.organisation_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
+    "sql": "SELECT f.expenditure_amount, f.time_key, d0.organisation_name, d1.unit_code, d2.short_name, d3.country_name FROM (SELECT expenditure_amount, time_key, source_key, unit_key, organisation_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_research_expenditure` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_organisation` AS d2 ON d2.organisation_key = f.organisation_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_researchers": {
    "disposition": "serving",
@@ -3632,9 +4072,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.researcher_count_fte, f.researcher_count_hc, f.time_key, d0.organisation_name, d1.unit_code, d2.short_name, d3.country_name FROM (SELECT researcher_count_fte, researcher_count_hc, time_key, source_key, unit_key, organisation_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_researchers` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND time_key = 2020 LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_organisation` AS d2 ON d2.organisation_key = f.organisation_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
+    "sql": "SELECT f.researcher_count_fte, f.researcher_count_hc, f.time_key, d0.organisation_name, d1.unit_code, d2.short_name, d3.country_name, d4.family_name FROM (SELECT researcher_count_fte, researcher_count_hc, time_key, source_key, unit_key, organisation_key, geo_key, person_key FROM `opentrace-prod-5ga4.mart_dev.fct_researchers` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_organisation` AS d2 ON d2.organisation_key = f.organisation_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_person` AS d4 ON d4.person_key = f.person_key"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_soil_health": {
    "disposition": "serving",
@@ -3702,13 +4142,15 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.as_of_date, f.depth, f.metric, f.unit, d0.organisation_name FROM (SELECT value, as_of_date, depth, metric, unit, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_soil_health` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.as_of_date, f.depth, f.metric, f.unit, d0.organisation_name, d1.country_name FROM (SELECT value, as_of_date, depth, metric, unit, source_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.fct_soil_health` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d1 ON d1.geography_key = f.geography_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_technology": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "RES"
+   ],
    "lineage_parent": null,
    "grain": "fct technology",
    "column_roles": {
@@ -3725,8 +4167,44 @@
     "rd_intensity": "measure",
     "source_record_id": "attribute"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.machinery_stock, f.rd_expenditure, f.rd_intensity, f.time_key, f.technology_key, d0.organisation_name, d1.unit_code, d2.short_name, d3.country_name FROM (SELECT machinery_stock, rd_expenditure, rd_intensity, time_key, technology_key, source_key, unit_key, organisation_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_technology` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d1 ON d1.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_organisation` AS d2 ON d2.organisation_key = f.organisation_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
+   },
+   "readiness": "integration_verified"
   },
   "fct_trade": {
    "disposition": "serving",
@@ -3803,13 +4281,15 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.country_iso3, f.element, f.trade_flow, f.trade_grain, f.border_point, f.product_name, f.metric, f.unit, d0.organisation_name FROM (SELECT value, year, month, as_of_date, country_iso3, element, trade_flow, trade_grain, border_point, product_name, metric, unit, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_trade` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key ORDER BY f.as_of_date DESC, f.month DESC"
+    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.country_iso3, f.element, f.trade_flow, f.trade_grain, f.border_point, f.product_name, f.metric, f.unit, d0.organisation_name, d1.country_name, d2.item_name, d3.element_name FROM (SELECT value, year, month, as_of_date, country_iso3, element, trade_flow, trade_grain, border_point, product_name, metric, unit, source_key, geography_key, item_key, element_key FROM `opentrace-prod-5ga4.mart_dev.fct_trade` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d1 ON d1.geography_key = f.geography_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_item` AS d2 ON d2.item_key = f.item_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_element` AS d3 ON d3.element_key = f.element_key ORDER BY f.as_of_date DESC, f.month DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_value_chain": {
-   "disposition": "unsupported",
-   "classes": [],
+   "disposition": "serving",
+   "classes": [
+    "FVC"
+   ],
    "lineage_parent": null,
    "grain": "fct value chain",
    "column_roles": {
@@ -3817,13 +4297,49 @@
     "geo_key": "geo",
     "time_key": "time",
     "source_key": "lineage",
-    "product_key": "key",
+    "product_key": "excluded",
     "unit_key": "key",
     "value_share": "measure",
     "source_record_id": "attribute"
    },
-   "reason": "no indicator class lists or labels this table",
-   "readiness": "discovered"
+   "operations": {
+    "lookup": {
+     "supported": true,
+     "reason": ""
+    },
+    "latest": {
+     "supported": true,
+     "reason": ""
+    },
+    "series": {
+     "supported": true,
+     "reason": ""
+    },
+    "compare": {
+     "supported": true,
+     "reason": ""
+    },
+    "rank": {
+     "supported": true,
+     "reason": ""
+    },
+    "categorical": {
+     "supported": false,
+     "reason": "no categorical discriminator"
+    }
+   },
+   "coverage": {
+    "source": "",
+    "members": 0,
+    "min_year": null,
+    "max_year": null
+   },
+   "probe": {
+    "ok": true,
+    "error": "",
+    "sql": "SELECT f.value_share, f.time_key, d0.product_name, d1.organisation_name, d2.unit_code, d3.country_name FROM (SELECT value_share, time_key, product_key, source_key, unit_key, geo_key FROM `opentrace-prod-5ga4.mart_dev.fct_value_chain` WHERE geo_key IN (SELECT geography_key FROM `opentrace-prod-5ga4.mart_dev.dim_geography` WHERE country_iso3 = 'KEN') AND (time_key = 2020 OR time_key IN (SELECT time_key FROM `opentrace-prod-5ga4.mart_dev.dim_time` WHERE year = 2020)) LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_unit` AS d2 ON d2.unit_key = f.unit_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geo_key"
+   },
+   "readiness": "integration_verified"
   },
   "fct_vegetation": {
    "disposition": "serving",
@@ -3898,9 +4414,9 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.as_of_date, f.country_iso3, f.metric, f.vegetation_grain, f.grid_id, f.unit, d0.organisation_name FROM (SELECT value, as_of_date, country_iso3, metric, vegetation_grain, grid_id, unit, source_key FROM `opentrace-prod-5ga4.mart_dev.fct_vegetation` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key ORDER BY f.as_of_date DESC"
+    "sql": "SELECT f.value, f.as_of_date, f.country_iso3, f.metric, f.vegetation_grain, f.grid_id, f.unit, d0.organisation_name, d1.country_name FROM (SELECT value, as_of_date, country_iso3, metric, vegetation_grain, grid_id, unit, source_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.fct_vegetation` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d0 ON d0.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d1 ON d1.geography_key = f.geography_key ORDER BY f.as_of_date DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
   },
   "fct_yield": {
    "disposition": "serving",
@@ -3975,28 +4491,124 @@
    "probe": {
     "ok": true,
     "error": "",
-    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.country_iso3, f.metric, f.area_unit, f.production_unit, f.yield_unit, d0.product_name, d1.organisation_name, d2.season_name FROM (SELECT value, year, month, as_of_date, country_iso3, metric, area_unit, production_unit, yield_unit, product_key, source_key, season_key FROM `opentrace-prod-5ga4.mart_dev.fct_yield` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_season` AS d2 ON d2.season_key = f.season_key ORDER BY f.as_of_date DESC, f.month DESC"
+    "sql": "SELECT f.value, f.year, f.month, f.as_of_date, f.country_iso3, f.metric, f.area_unit, f.production_unit, f.yield_unit, d0.product_name, d1.organisation_name, d2.season_name, d3.country_name FROM (SELECT value, year, month, as_of_date, country_iso3, metric, area_unit, production_unit, yield_unit, product_key, source_key, season_key, geography_key FROM `opentrace-prod-5ga4.mart_dev.fct_yield` WHERE country_iso3 = 'KEN' AND as_of_date BETWEEN DATE '2020-01-01' AND DATE '2020-12-31' ORDER BY as_of_date DESC, month DESC LIMIT 50) AS f LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_product` AS d0 ON d0.product_key = f.product_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_source` AS d1 ON d1.source_key = f.source_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_season` AS d2 ON d2.season_key = f.season_key LEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS d3 ON d3.geography_key = f.geography_key ORDER BY f.as_of_date DESC, f.month DESC"
    },
-   "readiness": "fixture_verified"
+   "readiness": "integration_verified"
+  },
+  "gold_dim_geography": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per geography_key",
+   "column_roles": {
+    "geography_key": "geo",
+    "geo_natural_key": "key",
+    "country_code": "attribute",
+    "country_name": "geo",
+    "admin_0": "attribute",
+    "admin_1": "attribute",
+    "admin_2": "attribute",
+    "admin_3": "attribute",
+    "admin_4": "attribute",
+    "fnid": "attribute",
+    "geographic_unit": "attribute",
+    "geographic_unit_name": "attribute",
+    "geographic_group": "attribute",
+    "fewsnet_region": "attribute",
+    "latitude": "attribute",
+    "longitude": "attribute",
+    "elevation_meters": "measure",
+    "market_name": "geo",
+    "border_point": "attribute",
+    "aez_code": "attribute",
+    "aez_name": "attribute",
+    "aez_version": "attribute",
+    "aez_source": "attribute",
+    "valid_from": "attribute",
+    "valid_to": "attribute",
+    "is_current": "attribute",
+    "created_at": "attribute",
+    "updated_at": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "gold_dim_indicator": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per indicator_key",
+   "column_roles": {
+    "indicator_key": "key",
+    "indicator_code": "attribute",
+    "indicator_name": "attribute",
+    "indicator_category": "attribute",
+    "description": "attribute",
+    "valid_from": "attribute",
+    "valid_to": "attribute",
+    "is_current": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "gold_dim_season": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per season_key",
+   "column_roles": {
+    "season_key": "key",
+    "season_natural_key": "key",
+    "season_name": "attribute",
+    "season_name_std": "attribute",
+    "season_type": "attribute",
+    "typical_start_month": "measure",
+    "typical_end_month": "measure",
+    "applies_to_region": "attribute",
+    "source_system": "attribute",
+    "description": "attribute",
+    "valid_from": "attribute",
+    "valid_to": "attribute",
+    "is_current": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "gold_dim_source": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per source_key",
+   "column_roles": {
+    "source_key": "lineage",
+    "source_natural_key": "key",
+    "source_name": "attribute",
+    "organisation_key": "key",
+    "tier": "measure",
+    "data_level": "attribute",
+    "reliability_score": "measure",
+    "data_usage_policy": "attribute",
+    "valid_from": "attribute",
+    "valid_to": "attribute",
+    "is_current": "attribute"
+   },
+   "readiness": "discovered"
+  },
+  "gold_dim_unit": {
+   "disposition": "dimension",
+   "classes": [],
+   "lineage_parent": null,
+   "grain": "One row per unit_key",
+   "column_roles": {
+    "unit_key": "key",
+    "unit_code": "attribute",
+    "unit_name": "attribute",
+    "unit_type": "attribute",
+    "common_unit": "attribute",
+    "currency_code": "attribute",
+    "description": "attribute"
+   },
+   "readiness": "discovered"
   }
  },
  "disagreements": [
-  {
-   "table": "agg_emissions_country_year",
-   "kind": "class_membership",
-   "taxonomy": [],
-   "table_yaml": [
-    "ENV"
-   ]
-  },
-  {
-   "table": "agg_food_security_country_month",
-   "kind": "class_membership",
-   "taxonomy": [],
-   "table_yaml": [
-    "FS"
-   ]
-  },
   {
    "table": "agg_production_country_season",
    "kind": "class_membership",

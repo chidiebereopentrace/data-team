@@ -27,6 +27,7 @@ import yaml
 
 from ml.rag.chatbot.agri_measure_ontology import entity_is_measure_noise
 from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, pack_lines, reasoner_index_max_bytes, truncate_utf8, utf8_len
+from ml.rag.chatbot.bq_mart_sql import mart_dataset
 from ml.rag.chatbot.mart_indicator_classes import (
     families_for_fact,
     indicator_classes_for_table,
@@ -725,6 +726,67 @@ def measure_columns_mart(table_id: str) -> list[str]:
     return out[:6]
 
 
+_NUMERIC_MATCH_SKIP = frozenset({"value", "total", "count", "data", "measure", "number", "index", "average"})
+
+
+def matched_numeric_column(table_id: str, blob: str) -> str | None:
+    """The one numeric column whose name or description the question names."""
+    schema = load_mart_table_schema(table_id) or {}
+    if not schema:
+        return None
+    blob_tokens = set(_alnum_tokens(expand_speech_text(blob or "")))
+    compact_blob = re.sub(r"[^a-z0-9]", "", (blob or "").lower())
+    hits: list[tuple[int, int, str]] = []
+    for col in _schema_columns(schema):
+        name = str(col.get("name") or "").strip()
+        low = name.lower()
+        typ = str(col.get("type") or "").upper()
+        if not name or typ not in _NUMERIC_COLUMN_TYPES:
+            continue
+        if low in _MEASURE_SKIP_COLUMNS or low.endswith("_key") or low in _MEASURE_DISCRIMINATOR_COLS:
+            continue
+        if low == "value":
+            continue
+        name_tokens = [t for t in low.split("_") if len(t) >= 4 and t not in _NUMERIC_MATCH_SKIP]
+        desc = " ".join(str(col.get("description") or "").split())
+        desc_tokens = [
+            t
+            for t in _alnum_tokens(desc)
+            if len(t) >= 4 and t not in _GENERIC_SAMPLE_TOKENS and t not in _NUMERIC_MATCH_SKIP
+        ]
+        name_hits = [t for t in name_tokens if t in blob_tokens]
+        desc_hits = [t for t in desc_tokens if t in blob_tokens]
+        compact = re.sub(r"[^a-z0-9]", "", low)
+        compact_hit = len(compact) >= 4 and compact in compact_blob
+        named = bool(name_tokens) and len(name_hits) == len(name_tokens)
+        described = bool(desc_tokens) and len(desc_hits) == len(desc_tokens)
+        if not named and not described and not compact_hit:
+            continue
+        score = max(len(name_hits), len(desc_hits), 1 if compact_hit else 0)
+        hits.append((score, len(low), name))
+    if not hits:
+        return None
+    hits.sort(key=lambda item: (-item[0], -item[1]))
+    if len(hits) > 1 and hits[0][0] == hits[1][0]:
+        return None
+    return hits[0][2]
+
+
+def national_geo_level(table_id: str) -> str | None:
+    """The national geo_level this fact stores, when it stores one."""
+    schema = load_mart_table_schema(table_id) or {}
+    levels = [str(s).strip() for s in (schema.get("geo_level_value_samples") or []) if str(s).strip()]
+    stats = schema.get("geo_level_value_stats")
+    if not levels and isinstance(stats, dict) and stats.get("distinct_count") == 1:
+        held = str(stats.get("min_value") or "").strip()
+        if held:
+            levels = [held]
+    for level in levels:
+        if level.lower() in {"country", "national"}:
+            return level
+    return None
+
+
 _GEO_COLUMN_CANDIDATES = ("country_name", "country")
 _MART_GEO_COLUMN_CANDIDATES = ("country_iso3", "country_name", "country")
 _YEAR_COLUMN_CANDIDATES = ("year", "time_key", "harvest_year", "observation_year", "mp_year")
@@ -851,7 +913,8 @@ _GENERIC_SAMPLE_TOKENS = frozenset(
         "nec",
     }
 )
-_AUTO_DEFAULT_DISCRIMINATOR_COLS = frozenset({"element", "price_type", "measure_type"})
+# Speech that names the price or IPC slot, without pinning a sample the question never implied.
+_IMPLIED_DISCRIMINATOR_COLS = frozenset({"price_type", "measure_type"})
 _WORD_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _YIELD_QUERY_RE = re.compile(r"\byields?\b", re.IGNORECASE)
@@ -864,18 +927,25 @@ _WHOLESALE_QUERY_RE = re.compile(r"\bwholesale\b", re.IGNORECASE)
 _RETAIL_QUERY_RE = re.compile(r"\bretail\b", re.IGNORECASE)
 _POPULATION_QUERY_RE = re.compile(r"\b(population|people|ipc)\b", re.IGNORECASE)
 _CLASSIFICATION_QUERY_RE = re.compile(r"\b(classification|phase)\b", re.IGNORECASE)
-_MEASURE_DISCRIMINATOR_COLS = frozenset(
+MEASURE_NAME_COLUMNS = frozenset(
     {
-        "element",
-        "metric",
-        "production_grain",
-        "price_type",
-        "measure_type",
         "indicator",
-        "trade_grain",
+        "metric",
+        "element",
+        "measure_type",
+        "price_type",
         "price_source",
+        "production_grain",
+        "trade_grain",
+        "climate_grain",
+        "input_grain",
+        "vegetation_grain",
+        "forestry_grain",
+        "classification_scale",
+        "scenario_name",
     }
 )
+_MEASURE_DISCRIMINATOR_COLS = MEASURE_NAME_COLUMNS
 
 
 def _column_names(table_id: str) -> set[str]:
@@ -1777,6 +1847,32 @@ def _every_token_said(sample: str, blob: str) -> bool:
     return bool(tokens) and all(_SPEECH_SYNONYMS.get(t, t) in blob_tokens or t in blob_tokens for t in tokens)
 
 
+def _stored_name_list(table_id: str, column: str) -> list[str]:
+    """Every stored name for one column. The value index wins when that key exists.
+
+    ``value_index`` imports this module, so the import stays inside the function.
+    """
+    from ml.rag.chatbot.value_index import complete_enum
+
+    return list(complete_enum(table_id, column))
+
+
+def _content_words_said(sample: str, blob: str) -> bool:
+    """A stored name is implied when its content words appear, not from a single shared head token."""
+    blob_tokens = set(_alnum_tokens(expand_speech_text(blob or "")))
+    tokens = [t for t in _alnum_tokens(sample) if t not in _GENERIC_SAMPLE_TOKENS and len(t) >= 3]
+    if not tokens:
+        return False
+    said = [
+        t
+        for t in tokens
+        if t in blob_tokens or _SPEECH_SYNONYMS.get(t, t) in blob_tokens
+    ]
+    if len(tokens) == 1:
+        return bool(said)
+    return len(said) >= 2
+
+
 def compile_measure_filters(
     table_id: str,
     *,
@@ -1785,16 +1881,22 @@ def compile_measure_filters(
 ) -> list[tuple[str, str]]:
     """Compile equality filters for measure discriminators bound to primary_measures."""
     bare = _strip_fqn(table_id).lower()
-    samples_map = value_samples_for_table(bare)
-    if not samples_map:
-        return []
-
+    samples_map = dict(value_samples_for_table(bare))
     schema = (_schema_loader_for(bare))(bare) or {}
     col_names = {
         str(c.get("name") or "").strip().lower()
         for c in (schema.get("columns") or [])
         if str(c.get("name") or "").strip()
     }
+    for col in MEASURE_NAME_COLUMNS:
+        if col not in col_names:
+            continue
+        stored = _stored_name_list(bare, col)
+        if stored:
+            samples_map[col] = stored
+    if not samples_map:
+        return []
+
     pm = _primary_measure_ids(primary_measures)
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
@@ -1876,13 +1978,17 @@ def compile_measure_filters(
         col_l = col.lower()
         if col_l in skip or col_l not in _MEASURE_DISCRIMINATOR_COLS:
             continue
-        matched = match_value_samples(measure_blob_text, samples)
+        matched = [
+            m
+            for m in match_value_samples(measure_blob_text, samples)
+            if _content_words_said(m, measure_blob_text)
+        ]
         if col_l == "metric":
             matched = [m for m in matched if _every_token_said(m, measure_blob_text)]
         if matched:
             _add(col, matched[0])
             continue
-        if col_l not in _AUTO_DEFAULT_DISCRIMINATOR_COLS:
+        if col_l not in _IMPLIED_DISCRIMINATOR_COLS:
             continue
         default = default_discriminator_value(
             col,
@@ -1913,14 +2019,75 @@ def compile_measure_filter_sql(
     return "".join(parts)
 
 
+def _time_key_predicate(column: str, predicate: str, *, project_id: str, dataset: str) -> str:
+    """A time_key matches the calendar year stored in the key or the dim_time key for that year."""
+    dim = f"`{project_id}.{dataset}.dim_time`"
+    return (
+        f"AND ({column} {predicate} "
+        f"OR {column} IN (SELECT time_key FROM {dim} WHERE year {predicate})) "
+    )
+
+
+_MONTH_NAMES = (
+    ("january", 1),
+    ("february", 2),
+    ("march", 3),
+    ("april", 4),
+    ("june", 6),
+    ("july", 7),
+    ("august", 8),
+    ("september", 9),
+    ("october", 10),
+    ("november", 11),
+    ("december", 12),
+    ("jan", 1),
+    ("feb", 2),
+    ("mar", 3),
+    ("apr", 4),
+    ("may", 5),
+    ("jun", 6),
+    ("jul", 7),
+    ("aug", 8),
+    ("sep", 9),
+    ("oct", 10),
+    ("nov", 11),
+    ("dec", 12),
+)
+_BARE_SEASON_WORDS = frozenset({"main", "annual", "first", "dry"})
+
+
+def named_month(query: str) -> int | None:
+    text = query or ""
+    for name, number in _MONTH_NAMES:
+        if re.search(rf"\b{name}\b", text, re.IGNORECASE):
+            return number
+    return None
+
+
+def named_season(query: str) -> str | None:
+    """A dim_season name the question actually uses."""
+    text = query or ""
+    says_season = bool(re.search(r"\bseasons?\b", text, re.IGNORECASE))
+    for sample in match_value_samples(text, column_samples_for_table("dim_season", "season_name")):
+        tokens = [t for t in _alnum_tokens(sample) if t not in _GENERIC_SAMPLE_TOKENS and len(t) >= 3]
+        if len(tokens) == 1 and tokens[0] in _BARE_SEASON_WORDS and not says_season:
+            continue
+        if _content_words_said(sample, text):
+            return sample
+    return None
+
+
 def compile_time_filter_sql(
     table_id: str,
     *,
     year: int | None = None,
     time_start: str | None = None,
     time_end: str | None = None,
+    project_id: str | None = None,
+    dataset: str | None = None,
+    query: str = "",
 ) -> str:
-    """Time predicate for one table. A passed year is an equality. A start and end in different years is BETWEEN on as_of_date when that column exists, otherwise on the table year column."""
+    """Time predicate for one table. A passed year is an equality. A start and end in different years is BETWEEN on as_of_date when that column exists, otherwise on the table year column. A named month or season is added when the fact stores that grain."""
     bare = _strip_fqn(table_id).lower()
     schema = (_schema_loader_for(bare))(bare) or {}
     col_names = {
@@ -1930,16 +2097,35 @@ def compile_time_filter_sql(
     }
     ts = (time_start or "")[:10]
     te = (time_end or "")[:10]
+    proj = (project_id or os.environ.get("BQ_PROJECT", "opentrace-prod-5ga4")).strip()
+    ds = (dataset or mart_dataset()).strip()
+    parts: list[str] = []
     if "as_of_date" in col_names and ts and te:
-        return f"AND as_of_date BETWEEN DATE '{ts}' AND DATE '{te}' "
-    ycol = year_column(bare)
-    if not ycol:
-        return ""
-    if year is not None:
-        return f"AND {ycol} = {int(year)} "
-    if ts[:4].isdigit() and te[:4].isdigit():
-        return f"AND {ycol} BETWEEN {int(ts[:4])} AND {int(te[:4])} "
-    return ""
+        parts.append(f"AND as_of_date BETWEEN DATE '{ts}' AND DATE '{te}' ")
+    else:
+        ycol = year_column(bare)
+        predicate = ""
+        if ycol:
+            if year is not None:
+                predicate = f"= {int(year)}"
+            elif ts[:4].isdigit() and te[:4].isdigit():
+                predicate = f"BETWEEN {int(ts[:4])} AND {int(te[:4])}"
+        if ycol and predicate:
+            if ycol == "time_key":
+                parts.append(_time_key_predicate(ycol, predicate, project_id=proj, dataset=ds))
+            else:
+                parts.append(f"AND {ycol} {predicate} ")
+    month = named_month(query) if "month" in col_names else None
+    if month is not None:
+        parts.append(f"AND month = {int(month)} ")
+    holds_season = "season_key" in col_names or "season_key" in bind_spine_map(bare)
+    season = named_season(query) if holds_season else None
+    if season:
+        parts.append(
+            "AND season_key IN (SELECT season_key FROM "
+            f"`{proj}.{ds}.dim_season` WHERE season_name = {_sql_literal(season)}) "
+        )
+    return "".join(parts)
 
 
 def compile_semantic_filter(
@@ -2015,7 +2201,8 @@ def compile_semantic_filter(
         extra: list[tuple[str, str]] = list(subnational)
         if geo_level:
             extra.append(("geo_level", geo_level))
-        if not resolved and not extra:
+        national = national_geo_level(table_id) if resolved and not subnational and not geo_level else None
+        if not resolved and not extra and not national:
             return None
 
         col = geo_column(table_id) or "country_name"
@@ -2053,6 +2240,8 @@ def compile_semantic_filter(
             else:
                 lits = ", ".join(_sql_literal(v) for v in resolved[:32])
                 sql_parts.append(f"AND {col} IN ({lits})")
+        if national and "geo_level" in col_names:
+            sql_parts.append(f"AND geo_level = {_sql_literal(national)}")
 
         need_dim_subq = bool(fk_for_dim and spine_ref) and (
             col in ("geo_key", "geography_key") or bool(extra)
@@ -2085,6 +2274,9 @@ def compile_semantic_filter(
             year=year,
             time_start=time_start,
             time_end=time_end,
+            project_id=project_id,
+            dataset=dataset,
+            query=blob,
         )
         if not sql:
             return None
@@ -2410,7 +2602,8 @@ def compile_table_bind_contract(
         provenance["spine_entities"] = "question"
 
     required_sql = " ".join(parts)
-    measure_cols = measure_columns_mart(bare) or measure_columns(bare)
+    chosen_number = matched_numeric_column(bare, mb or query)
+    measure_cols = [chosen_number] if chosen_number else (measure_columns_mart(bare) or measure_columns(bare))
     anti = _bind_anti_patterns(bare, geo_column=gcol, time_column=tcol)
     if card:
         for rule in card.get("hard_rules") or []:
@@ -3304,11 +3497,11 @@ def pack_selected_table_hints(
     return hints, truncated or len(hints) < known_count
 
 
-_MART_INDEX_PREFIXES = ("fct_", "agg_", "dim_")
+_MART_INDEX_PREFIXES = ("fct_", "agg_", "dim_", "bridge_")
 
 
 def list_mart_table_index() -> list[dict[str, Any]]:
-    """Compact catalog for the mart SQL reasoner (fct/agg/dim YAMLs)."""
+    """Compact catalog for the mart SQL reasoner (fct/agg/dim YAMLs plus bridge join companions)."""
     index = _build_mart_index()
     seen: set[str] = set()
     rows: list[dict[str, Any]] = []

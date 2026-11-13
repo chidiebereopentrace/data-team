@@ -86,7 +86,7 @@ def _lineage_parents() -> dict[str, str]:
 
 
 def _disposition(table: str, classes: list[str]) -> tuple[str, str]:
-    if table.startswith("dim_"):
+    if table.startswith("dim_") or table.startswith("gold_dim_"):
         return "dimension", ""
     if table.startswith("bridge_"):
         return "bridge", ""

@@ -1,0 +1,41 @@
+table_name: opentrace-prod-5ga4.mart_dev.dim_disease_ilri
+description: ILRI disease labels for animal health.
+source:
+  layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
+grain: One row per disease_key
+entity_type: animal_health
+columns:
+- name: disease_key
+  type: STRING
+  description: Disease key
+- name: disease_natural_key
+  type: STRING
+  description: Disease natural key
+- name: disease_name
+  type: STRING
+  description: Disease name
+- name: disease_category
+  type: STRING
+  description: Disease category
+- name: pathogen_name
+  type: STRING
+  description: Pathogen name
+- name: species_affected
+  type: STRING
+  description: Species affected
+- name: is_zoonotic
+  type: BOOL
+  description: Is zoonotic
+- name: description
+  type: STRING
+  description: Description
+- name: valid_from
+  type: DATE
+  description: Valid from
+- name: valid_to
+  type: DATE
+  description: Valid to
+- name: is_current
+  type: BOOL
+  description: Is current

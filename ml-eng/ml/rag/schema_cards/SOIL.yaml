@@ -8,6 +8,20 @@ tables:
 - fct_land_degradation
 - agg_soil_admin
 - bridge_geography_aez
+joins_when_needed:
+- dim_geography
+- dim_source
+- dim_date
+- dim_soil
+- dim_soil_property
+- dim_aez
+- dim_item
+- dim_element
+- dim_unit
+- gold_dim_geography
+- gold_dim_source
+- gold_dim_unit
+- bridge_geography_aez
 columns: {}
 hard_rules:
 - Prefer fct_soil_health / agg_soil_admin for soil property questions; use fct_land_inputs only for fertilizer/pesticide land-input measures.
