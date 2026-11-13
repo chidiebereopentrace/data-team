@@ -2,6 +2,7 @@ table_name: opentrace-prod-5ga4.mart_dev.dim_research_project_openaire
 description: OpenAIRE research project labels.
 source:
   layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
 grain: One row per research_project_key
 entity_type: research
 columns:

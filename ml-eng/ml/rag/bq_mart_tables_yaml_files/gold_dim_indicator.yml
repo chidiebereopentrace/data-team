@@ -2,6 +2,7 @@ table_name: opentrace-prod-5ga4.mart_dev.gold_dim_indicator
 description: Gold indicator dimension extended from dim_indicator.
 source:
   layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
 grain: One row per indicator_key
 entity_type: indicator
 columns:

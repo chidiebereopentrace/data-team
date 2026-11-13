@@ -120,7 +120,7 @@ def main() -> int:
             )
     T: collections.Counter = collections.Counter()
     for s in stats.values():
-        T.update(s)
+        T.update({k: v for k, v in s.items() if isinstance(v, int)})
     byc: collections.defaultdict = collections.defaultdict(collections.Counter)
     for s in stats.values():
         byc[s["class"]].update({k: v for k, v in s.items() if k != "class"})

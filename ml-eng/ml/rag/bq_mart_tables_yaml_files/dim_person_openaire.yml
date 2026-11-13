@@ -2,6 +2,7 @@ table_name: opentrace-prod-5ga4.mart_dev.dim_person_openaire
 description: OpenAIRE person labels.
 source:
   layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
 grain: One row per person_key
 entity_type: research
 columns:

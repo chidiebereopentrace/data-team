@@ -2,6 +2,7 @@ table_name: opentrace-prod-5ga4.mart_dev.dim_market_fews
 description: FEWS market labels.
 source:
   layer: mart_dev
+profiled_at: '2026-11-13T00:00:00+00:00'
 grain: One row per market_key
 entity_type: market
 columns:
