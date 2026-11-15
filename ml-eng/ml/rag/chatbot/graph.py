@@ -847,19 +847,25 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         persisted=state.get("active_request") if isinstance(state.get("active_request"), dict) else None,
         recent_turns=state.get("recent_turns") if isinstance(state.get("recent_turns"), list) else None,
     )
+
+    # Detect language and capture confidence value for enrichment decisions
+    lang_result = detect_language_with_confidence(raw_q)
+    answer_lang_user = str(lang_result[0])  # language tag (e.g., "ig", "sw")
+    confidence = float(lang_result[1]) if len(lang_result) > 1 else None
+
     # Apply bilingual translation for full RAG pipeline (BQ needs English, vectors use multi-lingual embeddings)
     from ml.rag.chatbot.hybrid_translation import translate_to_english
-    answer_lang_user = answer_lang or detect_language_with_confidence(raw_q)[0]
-    if answer_lang_user and answer_lang_user.strip().lower() not in ("en", "unknown", "mixed"):
+
+    if answer_lang_user.strip().lower() and answer_lang_user.strip().lower() not in ("en", "unknown", "mixed"):
         english_query = translate_to_english(raw_q, answer_lang_user)
-        answer_lang_user = str(answer_lang_user)  # Keep the detected language tag
         state["english_query_for_retrieval"] = english_query
     else:
         state["english_query_for_retrieval"] = None
+
     lang_enr = enrich_query_to_english(
         raw_q,
         answer_lang=answer_lang_user,
-        confidence=answer_lang_conf,
+        confidence=confidence,
     )
     # Prefer model-detected lang from enrich when present (same detection).
     if lang_enr.answer_lang:
