@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 from ml.rag.chatbot.agri_entities import CROP_COMMODITY_TERMS
 
@@ -43,6 +44,25 @@ def _edit_distance(left: str, right: str) -> int:
     return prev[-1]
 
 
+@lru_cache(maxsize=1)
+def _country_aliases() -> tuple[tuple[str, str], ...]:
+    """Folded alias → display country name. Single-word aliases only for token repair."""
+    from ml.rag.chatbot.bq_table_schema_yaml import _AFRICA_COUNTRY_ISO3
+
+    out: list[tuple[str, str]] = []
+    for name in _AFRICA_COUNTRY_ISO3:
+        folded = name.casefold()
+        if " " in folded or "-" in folded or "'" in folded:
+            continue
+        out.append((folded, name))
+    return tuple(out)
+
+
+@lru_cache(maxsize=1)
+def _known_country_tokens() -> frozenset[str]:
+    return frozenset(alias for alias, _ in _country_aliases())
+
+
 def _fuzzy_crop(token: str) -> str | None:
     """One crop within a small edit distance, and only when the prefix agrees.
 
@@ -72,9 +92,35 @@ def _fuzzy_crop(token: str) -> str | None:
     return None
 
 
-def _apply_fuzzy_crops(query: str) -> str:
+def _fuzzy_country(token: str) -> str | None:
+    """One-edit country repair. A token that is already a country stays that country."""
+    folded = token.casefold()
+    if len(folded) < 5 or folded in _known_country_tokens():
+        return None
+    prefix = folded[:3]
+    hits: list[str] = []
+    for alias, display in _country_aliases():
+        if len(alias) < 5 or not alias.startswith(prefix):
+            continue
+        distance = _edit_distance(folded, alias)
+        if distance != 1:
+            continue
+        hits.append(display)
+        if len(hits) > 1:
+            return None
+    if len(hits) == 1:
+        return hits[0]
+    return None
+
+
+def _apply_fuzzy_tokens(query: str) -> str:
     def _replace(match: re.Match[str]) -> str:
         word = match.group(0)
+        country = _fuzzy_country(word)
+        if country:
+            if word[0].isupper():
+                return country
+            return country.casefold()
         crop = _fuzzy_crop(word)
         return crop if crop else word
 
@@ -91,7 +137,7 @@ def normalize_query_text(query: str) -> str:
     for wrong, right in _WORD_TYPO_MAP.items():
         q = re.sub(rf"\b{re.escape(wrong)}\b", right, q, flags=re.I)
     q = re.sub(r"\bod\b", "of", q, flags=re.I)
-    q = _apply_fuzzy_crops(q)
+    q = _apply_fuzzy_tokens(q)
     return q.strip()
 
 

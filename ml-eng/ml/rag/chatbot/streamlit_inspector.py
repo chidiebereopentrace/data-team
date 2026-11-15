@@ -891,17 +891,24 @@ def render_pipeline_inspector(
 
         dec = result.get("decomposition") or {}
         st.subheader("Query views")
+        lang_en = str(result.get("language_enrich") or "").strip()
         st.json(
             {
                 "user_query": result.get("user_query") or query,
+                "language_enrich": lang_en or None,
+                "language_enrich_applied": bool(result.get("language_enrich_applied")),
+                "answer_lang": result.get("answer_lang"),
                 "context_rewrite": result.get("context_rewrite"),
                 "detail_rewrite": result.get("detail_rewrite"),
                 "context_applied": result.get("context_applied"),
                 "user_query_dropped": result.get("user_query_dropped"),
                 "vector_cache_hit": result.get("vector_cache_hit"),
                 "coverage_retry": result.get("coverage_retry"),
+                "query_views": result.get("query_views"),
             }
         )
+        if lang_en:
+            st.caption(f"EN enrich (bind/retrieve): {lang_en[:300]}")
         st.subheader("Query decomposition")
         st.json(dec if isinstance(dec, dict) else {})
 

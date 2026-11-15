@@ -40,7 +40,7 @@ def test_price_sql_is_keyed_and_labelled_from_vocab(query: str, country: str, ye
     sql = hit["sql"]
     assert hit["template"] == "mart_price"
     assert "product_key IN (" in sql
-    assert "price_source = " in sql
+    assert "price_source =" in sql or "price_source IN (" in sql
     assert "b.unit, b.currency" in sql
     assert "d.product_name" in sql
     assert price_sql_vocab_errors(sql) == []
@@ -127,17 +127,22 @@ def test_multi_country_question_has_no_place_split() -> None:
     assert hit["places"] == []
 
 
-@pytest.mark.parametrize(
-    ("query", "country", "year"),
-    [
-        ("Average maize price in Tanzania in 2023", "Tanzania", "2023"),
-        ("What was the mean onion price in Senegal in 2022?", "Senegal", "2022"),
-    ],
-)
-def test_price_type_is_always_pinned(query: str, country: str, year: str) -> None:
-    hit = _plan(query, [country], year)
-    assert hit["price_type"]
-    assert f"price_type = '{hit['price_type']}'" in hit["sql"]
+def test_named_price_type_is_pinned() -> None:
+    hit = _plan("What was the average retail maize price in Nigeria in 2024?", ["Nigeria"], "2024")
+    assert hit["price_type"] == "Retail"
+    assert "price_type = 'Retail'" in hit["sql"]
+
+
+def test_unnamed_price_source_keeps_every_held_source() -> None:
+    hit = _plan("Average maize price in Nigeria in 2023", ["Nigeria"], "2023")
+    sql = hit["sql"]
+    sources = hit["price_source"]
+    if isinstance(sources, list) and len(sources) > 1:
+        assert "price_source IN (" in sql
+        for src in sources:
+            assert f"'{src}'" in sql
+    else:
+        assert "price_source =" in sql
 
 
 def test_multi_currency_comparison_carries_no_ranking_note() -> None:

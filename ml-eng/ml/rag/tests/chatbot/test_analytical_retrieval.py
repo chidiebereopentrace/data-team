@@ -35,6 +35,8 @@ from ml.rag.retrievers.bq_retriever import _shift_time_to_latest, retry_empty_sq
         ("maize production in Kenya in 2020", "lookup"),
         ("latest maize production in Kenya", "latest"),
         ("maize production trend in Kenya since 2015", "series"),
+        ("cassava production in Ghana from 2015 till date", "series"),
+        ("rice production in Nigeria since 2015", "series"),
         ("compare maize production in Kenya and Ghana", "compare"),
         ("which country has the highest maize production", "rank"),
         ("maize production by crop in Kenya", "categorical"),
@@ -250,3 +252,63 @@ def test_measure_label_uses_the_bound_name_or_the_column_description() -> None:
 
 def test_empty_result_stays_out_of_evidence() -> None:
     assert is_sentinel_row({"metadata": {"status": "empty_result"}, "content": "[BQ empty_result]"})
+
+
+def test_open_span_compiles_between_start_and_coverage() -> None:
+    from ml.rag.chatbot.active_request import extract_turn_slots
+
+    slots = extract_turn_slots("cassava production in Ghana from 2015 till date")
+    assert "2015" in str(slots.get("time_phrase"))
+    assert "till date" in str(slots.get("time_phrase"))
+    contract = compile_table_bind_contract(
+        "agg_production_country_year",
+        facets={
+            "geography": ["Ghana"],
+            "entities": ["cassava"],
+            "time_start": "2015-01-01",
+            "time_end": "2026-12-31",
+            "primary_measures": ["production"],
+        },
+        query="what is the production trend of cassava in ghana from 2015 till date",
+        country_labels=["GHA"],
+        project_id="p",
+        dataset="mart_dev",
+    )
+    assert "BETWEEN 2015 AND 2024" in contract.required_filters_sql or "BETWEEN 2015 AND 2024" in (
+        contract.time_sql or ""
+    )
+    assert "year = 2015" not in contract.required_filters_sql
+    assert "Cassava, fresh" in contract.required_filters_sql
+
+
+def test_west_africa_does_not_bind_admin_2() -> None:
+    from ml.rag.chatbot.bq_table_schema_yaml import match_subnational_geo_labels
+    from ml.rag.chatbot.geo_regions import detect_regions_in_text, expand_regions_in_decomposition
+
+    assert match_subnational_geo_labels("rice production for all west african countries") == []
+    assert "west africa" in detect_regions_in_text("list rice for west african countries")
+    out = expand_regions_in_decomposition({"geography": []}, "rice for west african countries")
+    assert "Ghana" in out.get("geography", [])
+    assert "Nigeria" in out.get("geography", [])
+
+
+def test_african_countries_panel_expands() -> None:
+    from ml.rag.chatbot.continental_scope import wants_africa_panel_scope
+    from ml.rag.chatbot.geo_regions import expand_regions_in_decomposition
+
+    assert wants_africa_panel_scope("food price in Nigeria compared with other african countries")
+    out = expand_regions_in_decomposition(
+        {"geography": ["Nigeria"]},
+        "food price in Nigeria compared with other african countries since 2023",
+    )
+    assert len(out.get("geography") or []) > 10
+
+
+def test_gdp_and_food_security_are_two_series() -> None:
+    plan = compile_supervisor_plan(
+        "how does the gdp of nigeria affect the food security from 2020 till date"
+    )
+    codes = set(plan.classes) | set(plan.secondary)
+    assert "EL" in codes
+    assert "FS" in codes
+    assert "HDI" not in codes

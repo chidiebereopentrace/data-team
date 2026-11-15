@@ -1,7 +1,9 @@
 """
 Detect user query language and produce generation instructions that mirror it.
 
-Language affects answer prompts only — never translate the query before E5 retrieve.
+Language affects answer prompts only — never replace the user question for generation.
+An optional English enrich shadow (see language_enrich.py) may run for bind/retrieve
+when RAG_LANG_ENRICH is on; answer_lang and chat still mirror the original.
 Named tags: en | sw | fr | pcm | ar | am | ig | yo | ha | pt | tw | efi | zu | xh | so | wo | rw | mixed | unknown.
 """
 from __future__ import annotations

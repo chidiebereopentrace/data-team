@@ -271,10 +271,8 @@ MEASURES: dict[str, MeasureSpec] = {
     "socio_economic": MeasureSpec(
         id="socio_economic",
         aliases=(
-            "gdp",
             "economy",
             "economies",
-            "hdi",
             "development",
             "population",
         ),
@@ -644,6 +642,9 @@ _PRIORITY_IDS: tuple[str, ...] = (
     "market_price",
     "spatial_vegetation",
     "research_meta",
+    "gdp",
+    "hdi",
+    "employment_share",
     "socio_economic",
     "land_inputs",
     "emissions",
@@ -682,7 +683,9 @@ _COPY_PANEL_RE = re.compile(
 
 def wants_africa_panel(query: str) -> bool:
     """Full ~54-country panel (values per country), not which-country ranking."""
-    return bool(_PANEL_RE.search(query or ""))
+    from ml.rag.chatbot.continental_scope import mentions_african_countries_panel
+
+    return bool(_PANEL_RE.search(query or "")) or mentions_african_countries_panel(query)
 
 
 def wants_data_export_panel(query: str) -> bool:

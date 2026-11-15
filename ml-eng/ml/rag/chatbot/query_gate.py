@@ -31,6 +31,28 @@ _EMOJI_RE = re.compile(
     flags=re.UNICODE,
 )
 
+# Ambiguous openers / politeness stems that also start real questions.
+# Match only when the whole normalized message equals the phrase.
+_EXACT_ONLY_SOCIAL_RAW: frozenset[str] = frozenset(
+    {
+        "kedu",
+        "biko",
+        "habari",
+        "habari yako",
+        "bawo",
+        "how far",
+        "abeg",
+        "olá",
+        "ola",
+        "salut",
+        "mbok",
+        "mbọk",
+    }
+)
+
+# Long or interrogative messages are never treated as social via prefix match.
+_SOCIAL_PREFIX_MAX_TOKENS = 4
+
 # Per-language whole-message social phrases (greetings, thanks, bye).
 _SOCIAL_PHRASES: dict[str, tuple[tuple[str, SocialSubKind], ...]] = {
     "en": (
@@ -439,12 +461,20 @@ def _normalize_social_text(text: str) -> str:
     return text
 
 
-def _matches_phrase(normalized: str, phrase: str) -> bool:
+# Normalized forms for exact-only membership checks.
+_EXACT_ONLY_SOCIAL: frozenset[str] = frozenset(
+    _normalize_social_text(p) for p in _EXACT_ONLY_SOCIAL_RAW if _normalize_social_text(p)
+)
+
+
+def _matches_phrase(normalized: str, phrase: str, *, exact_only: bool = False) -> bool:
     target = _normalize_social_text(phrase)
     if not target or not normalized:
         return False
     if normalized == target:
         return True
+    if exact_only:
+        return False
     if normalized.startswith(target + " "):
         return True
     # Mild elongation for Latin greetings: hiii → hi, mercii → merci
@@ -459,15 +489,23 @@ def _matches_phrase(normalized: str, phrase: str) -> bool:
     return False
 
 
+def _raw_has_question_mark(query: str) -> bool:
+    return bool(re.search(r"[?？]", query or ""))
+
+
 def classify_social_subkind(query: str) -> SocialSubKind | None:
     """Return greeting/thanks/bye when query is a pure social courtesy message."""
     q = (query or "").strip()
     if not q or _AG_SUBSTANCE_RE.search(q):
         return None
+    # Long or interrogative messages are real asks, not social courtesy.
+    if _raw_has_question_mark(q) or _token_count(q) > _SOCIAL_PREFIX_MAX_TOKENS:
+        return None
     normalized = _normalize_social_text(q)
     for phrases in _SOCIAL_PHRASES.values():
         for phrase, subkind in phrases:
-            if _matches_phrase(normalized, phrase):
+            exact_only = _normalize_social_text(phrase) in _EXACT_ONLY_SOCIAL
+            if _matches_phrase(normalized, phrase, exact_only=exact_only):
                 return subkind
     return None
 

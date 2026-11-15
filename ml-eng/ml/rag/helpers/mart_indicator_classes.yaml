@@ -13,6 +13,7 @@ classes:
       - farm income
       - off-farm income
       - value added
+      - gdp
       - gdp share
       - livelihood
       - economics
@@ -43,6 +44,10 @@ classes:
       - tables: [fct_employment, fct_household]
         reason: Do not union employment % shares with household income sample rows without grain caveat
     families:
+      - id: gdp
+        table: fct_economics
+        filters: "measurement_form for share vs current USD; country_iso3 + year"
+        example_claim: GDP from the economics rollup
       - id: ag_employment_share
         table: fct_employment
         filters: "Join dim_indicator; filter unit='%' and sex when question specifies; use indicator_key"
@@ -521,7 +526,6 @@ classes:
     aliases:
       - hdi
       - human development
-      - gdp
       - development index
     primary_facts:
       - fct_hdi

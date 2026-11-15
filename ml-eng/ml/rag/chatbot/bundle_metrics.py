@@ -32,6 +32,8 @@ _AGRI_PANEL_RE = re.compile(
     r"\b(agricultural\s+activities|agri\s+activities|agri\s+report|country\s+by\s+country)\b",
     re.I,
 )
+_FOOD_PRICE_RE = re.compile(r"\bfood\s+prices?\b", re.I)
+_FOOD_COMPARE_RE = re.compile(r"\b(compar\w*|versus|vs\.?|other)\b", re.I)
 
 _UNSUPPORTED_PANEL_FACTS = frozenset(
     {
@@ -66,6 +68,15 @@ def default_fvc_trade_metrics_for_panel() -> list[str]:
     return list(FVC_TRADE_PANEL_METRICS)
 
 
+def food_price_basket(query: str) -> bool:
+    """A price comparison whose only commodity word is food uses the staple basket."""
+    text = query or ""
+    if not (_FOOD_PRICE_RE.search(text) and _FOOD_COMPARE_RE.search(text)):
+        return False
+    found = match_product_samples("fct_production", text)
+    return not found
+
+
 def resolve_staple_products(
     query: str,
     facets: dict[str, Any],
@@ -80,7 +91,7 @@ def resolve_staple_products(
     found = match_product_samples("fct_production", " ".join(blob_parts))
     if found:
         return found[:6]
-    if is_agri_activities_panel(query, facets, bundles=bundles):
+    if food_price_basket(query) or is_agri_activities_panel(query, facets, bundles=bundles):
         return list(AGRI_ACTIVITIES_STAPLES)
     return []
 
@@ -102,6 +113,7 @@ __all__ = [
     "is_multi_country_panel",
     "default_fvc_metrics_for_panel",
     "default_fvc_trade_metrics_for_panel",
+    "food_price_basket",
     "resolve_staple_products",
     "unsupported_grain_for_panel",
 ]

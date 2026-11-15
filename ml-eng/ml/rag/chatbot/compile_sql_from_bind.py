@@ -423,7 +423,10 @@ _CATEGORY_RE = re.compile(
     re.IGNORECASE,
 )
 _SERIES_RE = re.compile(
-    r"\b(trends?|over\s+time|time\s+series|since\s+(?:19|20)\d{2}|from\s+(?:19|20)\d{2}\s+to|year[-\s]by[-\s]year|changed|change\s+over)\b",
+    r"\b(trends?|over\s+time|time\s+series|since\s+(?:19|20)\d{2}|"
+    r"from\s+(?:19|20)\d{2}\s+to|"
+    r"from\s+(?:19|20)\d{2}\s+(?:till|until|through)\s+(?:date|now|today|present)|"
+    r"year[-\s]by[-\s]year|changed|change\s+over)\b",
     re.IGNORECASE,
 )
 _LATEST_RE = re.compile(

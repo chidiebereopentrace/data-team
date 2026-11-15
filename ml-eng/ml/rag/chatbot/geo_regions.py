@@ -30,6 +30,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "aliases": (
             "west africa",
             "western africa",
+            "west african",
             "afrique de l'ouest",
             "afrique de louest",
             "afrique occidentale",
@@ -58,6 +59,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "aliases": (
             "east africa",
             "eastern africa",
+            "east african",
             "afrique de l'est",
             "afrique de lest",
             "afrique orientale",
@@ -87,6 +89,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "category": "un_band",
         "aliases": (
             "southern africa",
+            "southern african",
             "south africa region",
             "afrique australe",
             "afrique du sud region",
@@ -109,6 +112,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "aliases": (
             "north africa",
             "northern africa",
+            "north african",
             "afrique du nord",
             "afrique septentrionale",
         ),
@@ -125,6 +129,7 @@ ZONE_SPEC: dict[str, ZoneSpec] = {
         "category": "un_band",
         "aliases": (
             "central africa",
+            "central african",
             "middle africa",
             "afrique centrale",
             "afrique du centre",
@@ -1083,11 +1088,16 @@ def detect_regions_in_text(text: str) -> list[str]:
     found: list[str] = []
     seen: set[str] = set()
     for alias, key in _REGION_ALIASES:
-        if re.search(rf"\b{re.escape(alias)}\b", q):
-            out_key = _legacy_key(key)
-            if out_key not in seen:
-                seen.add(out_key)
-                found.append(out_key)
+        match = re.search(rf"\b{re.escape(alias)}\b", q)
+        if not match:
+            continue
+        # "Central African Republic" is the country, not the central-africa region.
+        if alias.endswith("african") and re.match(r"\s+republic\b", q[match.end() :]):
+            continue
+        out_key = _legacy_key(key)
+        if out_key not in seen:
+            seen.add(out_key)
+            found.append(out_key)
     return found
 
 
@@ -1135,10 +1145,19 @@ def expand_regions_in_decomposition(
 
     blob = " ".join(texts)
     regions = detect_regions_in_text(blob)
-    if not regions:
+    from ml.rag.chatbot.continental_scope import mentions_african_countries_panel
+
+    panel = mentions_african_countries_panel(blob)
+    if not regions and not panel:
         return decomposition
 
     countries = countries_for_regions(regions, max_countries=max_countries)
+    if panel:
+        from ml.rag.chatbot.bq_table_schema_yaml import _AFRICA_COUNTRY_ISO3
+
+        countries = list(dict.fromkeys([*countries, *_AFRICA_COUNTRY_ISO3]))
+        if "africa" not in regions:
+            regions = [*regions, "africa"]
     out = dict(decomposition)
     existing = out.get("geography")
     existing_list = [str(g).strip() for g in existing] if isinstance(existing, list) else []

@@ -60,6 +60,18 @@ _TIME_RE = re.compile(
     r"last\s+(?:year|month|season)|(?:19|20)\d{2}(?:\s*[-–]\s*(?:19|20)\d{2})?)\b",
     re.I,
 )
+# A closed pair wins over an open start. An open start keeps the phrase the
+# resolver already opens ("from 2015", "from 2015 till date"), so a follow-up
+# does not collapse the window to that one year.
+_CLOSED_TIME_RE = re.compile(
+    r"\b((?:from\s+)?(?:19|20)\d{2}\s*(?:to|until|till|through|[-–])\s*(?:the\s+)?(?:year\s+)?(?:19|20)\d{2})\b",
+    re.I,
+)
+_OPEN_TIME_RE = re.compile(
+    r"\b((?:from|since|starting)\s+(?:the\s+)?(?:year\s+)?(?:19|20)\d{2}"
+    r"(?:\s+(?:till|until|to|through)\s+(?:date|now|today|present|current))?)\b",
+    re.I,
+)
 _OPERATION_RE = re.compile(r"\b(compare|comparison|versus|vs\.?|trend|over\s+time|rank|ranking|highest|lowest|top)\b", re.I)
 _OPERATION_CANON = {
     "comparison": "compare",
@@ -132,7 +144,10 @@ class ActiveRequest:
         slots: dict[str, Slot] = {}
         for name, spec in (raw.get("slots") or {}).items():
             if name in SLOT_NAMES and isinstance(spec, dict) and spec.get("value") not in (None, "", []):
-                source = spec.get("source") if spec.get("source") in ("question", "carried", "correction") else "carried"
+                candidate = spec.get("source")
+                source: SlotSource = "carried"
+                if candidate == "question" or candidate == "carried" or candidate == "correction":
+                    source = candidate
                 slots[name] = Slot(spec["value"], int(spec.get("turn") or 0), source)
         return cls(
             slots=slots,
@@ -164,7 +179,11 @@ def extract_turn_slots(text: str) -> dict[str, Any]:
     if m := _PRICE_TYPE_RE.search(q):
         out["price_type"] = _canon(m.group(1), _PRICE_TYPE_CANON)
         out.setdefault("indicator", "price")
-    if m := _TIME_RE.search(q):
+    if m := _CLOSED_TIME_RE.search(q):
+        out["time_phrase"] = re.sub(r"\s+", " ", m.group(1).lower())
+    elif m := _OPEN_TIME_RE.search(q):
+        out["time_phrase"] = re.sub(r"\s+", " ", m.group(1).lower())
+    elif m := _TIME_RE.search(q):
         out["time_phrase"] = m.group(1).lower()
     if m := _OPERATION_RE.search(q):
         out["operation"] = _canon(m.group(1), _OPERATION_CANON)

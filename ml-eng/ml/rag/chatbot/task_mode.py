@@ -120,6 +120,14 @@ def _has_crop_or_commodity(query: str, decomposition: dict[str, Any] | None) -> 
     return query_has_crop_or_commodity(query, decomposition) or names_price_product(query)
 
 
+def _crop_slot_filled(query: str, decomposition: dict[str, Any] | None) -> bool:
+    if _has_crop_or_commodity(query, decomposition):
+        return True
+    from ml.rag.chatbot.bundle_metrics import food_price_basket
+
+    return food_price_basket(query)
+
+
 def _has_year(decomposition: dict[str, Any] | None, query: str) -> bool:
     if isinstance(decomposition, dict):
         if str(decomposition.get("time_start") or "").strip() or str(decomposition.get("time_end") or "").strip():
@@ -192,7 +200,7 @@ def needs_clarify(
         or bool(hit and hit.measure.country_is_answer)
         or (hit is not None and not hit.measure.geography_required)
     )
-    has_crop = _has_crop_or_commodity(q, decomposition)
+    has_crop = _crop_slot_filled(q, decomposition)
     # Crop is required only when the measure says so, or for numeric/ranking asks
     # with no measure hit — not for soft opinion / agribusiness / food-security.
     if hit is not None:
@@ -362,7 +370,7 @@ def clarify_answer(
         or decomposition_has_africa_scope(decomposition)
         or detect_regions_in_text(q)
     )
-    has_crop = _has_crop_or_commodity(q, decomposition) if q else False
+    has_crop = _crop_slot_filled(q, decomposition) if q else False
     crop_req = effective_crop_required(hit) if hit else True
     geo_req = True if hit is None else hit.measure.geography_required
     if hit and hit.measure.country_is_answer:

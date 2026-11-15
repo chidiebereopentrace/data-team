@@ -194,6 +194,27 @@ def test_market_price_metadata_preserves_exact_as_of_date() -> None:
     assert out[0]["metadata"]["as_of_date"] == "2026-01-15"
 
 
+def test_fifty_kg_bag_converts_to_per_kg() -> None:
+    from ml.rag.chatbot.price_unit_convert import convert_price_row
+
+    row = convert_price_row(
+        {
+            "product_name": "Rice (local)",
+            "avg_price": 50000.0,
+            "min_price": 45000.0,
+            "max_price": 55000.0,
+            "unit": "50 kg",
+            "currency": "NGN",
+        },
+        query="what is the rice price per kg in Lagos",
+    )
+    assert row["unit"] == "kg"
+    assert row["avg_price"] == 1000.0
+    assert row["min_price"] == 900.0
+    assert row["max_price"] == 1100.0
+    assert "50 kg" in str(row.get("converted_from") or row.get("unit_note"))
+
+
 def test_gdp_ppp_semantics() -> None:
     row = {
         "country_name": "Nigeria",

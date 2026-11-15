@@ -40,6 +40,49 @@ def test_is_greeting_not_agronomy() -> None:
     assert not is_greeting_query("who are you")
 
 
+def test_exact_only_openers_alone_are_greeting() -> None:
+    assert is_greeting_query("kedu")
+    assert is_greeting_query("habari")
+    assert is_greeting_query("bawo")
+    assert is_greeting_query("biko")
+    assert is_greeting_query("olá")
+    assert is_greeting_query("ola")
+    assert is_greeting_query("how far")
+    assert is_greeting_query("abeg")
+    assert is_greeting_query("salut")
+
+
+def test_ambiguous_opener_full_questions_not_greeting() -> None:
+    # Igbo — "kedu" / "biko" start real warehouse asks
+    assert not is_greeting_query(
+        "kedu ihe mere ka mmeputa akpu n'obodo niajiria gbawe kemgbe afo ise ugbua?"
+    )
+    assert not is_greeting_query("biko gwa m banyere ọnụahịa ọka na Naịjirịa")
+    # Swahili
+    assert not is_greeting_query("habari ya bei za mahindi Kenya mwaka huu")
+    # Yoruba
+    assert not is_greeting_query("bawo ni owo agbado se ye ni Naijiria")
+    # French / Portuguese / Pidgin
+    assert not is_greeting_query("salut, quel est le prix du maïs au Kenya en 2024?")
+    assert not is_greeting_query("olá qual o preço do milho na Nigéria?")
+    assert not is_greeting_query("how far wetin be maize price for Lagos")
+    assert not is_greeting_query("abeg wetin cause cassava production change for Nigeria")
+
+
+def test_prefix_ok_greetings_still_match_short_courtesy() -> None:
+    assert is_greeting_query("bonjour")
+    assert is_greeting_query("ndewo")
+    assert is_greeting_query("jambo")
+    assert is_greeting_query("sannu")
+    assert is_greeting_query("sawubona")
+    assert is_greeting_query("muraho")
+
+
+def test_long_or_question_never_social_via_prefix() -> None:
+    assert not is_greeting_query("bonjour quels sont les rendements de maïs au Kenya?")
+    assert not is_greeting_query("ndewo kedu ihe mere ka mmeputa akpu gbawe")
+
+
 def test_early_non_rag_route_priority() -> None:
     assert early_non_rag_route("Who are you?") == "meta"
     assert early_non_rag_route("What is OpenTrace?") == "product"

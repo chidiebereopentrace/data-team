@@ -21,6 +21,7 @@ from ml.rag.chatbot.generator import (
     is_ranking_numeric_query,
     is_usable_context_item,
 )
+from ml.rag.chatbot.price_unit_convert import convert_price_row
 
 _YEAR_SQL_RE = re.compile(r"\byear\s*=\s*(\d{4})\b", re.IGNORECASE)
 _ELEMENT_SQL_RE = re.compile(r"\belement\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
@@ -403,7 +404,8 @@ def _resolve_measure_label(
     bare = table_id.lower()
     bound = _bound_measure_name(sql)
     if bound:
-        if _BOUND_NAME_RE.search(sql or "").group(1).lower() == "element":
+        match = _BOUND_NAME_RE.search(sql or "")
+        if match and match.group(1).lower() == "element":
             return _element_measure_label(bound)
         return bound
     source = _value_source_column(sql)
@@ -1146,6 +1148,34 @@ def _enrich_single_item(
     return {**item, "content": content, "metadata": meta}
 
 
+def _apply_price_unit_convert(item: dict[str, Any], *, query: str) -> dict[str, Any]:
+    """Rewrite known weight units on warehouse price rows before generation packing."""
+    raw_meta = item.get("metadata")
+    meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
+    table = _s(meta.get("table_id") or meta.get("table") or "").split(".")[-1].lower()
+    sql = _s(meta.get("sql"))
+    if "fct_prices" not in table and "agg_prices" not in table and "fct_prices" not in sql:
+        return item
+    raw = _raw_row_from_item(item)
+    if not any(k in raw for k in ("avg_price", "min_price", "max_price", "unit")):
+        return item
+    converted = convert_price_row(raw, query=query)
+    if converted is raw or converted == raw:
+        return item
+    out = dict(item)
+    out_meta = dict(meta)
+    out_meta["raw_row"] = converted
+    if converted.get("unit_note"):
+        out_meta["unit_note"] = converted["unit_note"]
+    if converted.get("converted_from"):
+        out_meta["converted_from"] = converted["converted_from"]
+    out["metadata"] = out_meta
+    content = item.get("content")
+    if isinstance(content, str) and content.strip().startswith("{"):
+        out["content"] = str(converted)
+    return out
+
+
 def enrich_bq_results(
     items: list[dict[str, Any]],
     *,
@@ -1162,7 +1192,7 @@ def enrich_bq_results(
     diagnostics: list[dict[str, Any]] = []
     for item in items or []:
         if is_usable_context_item(item):
-            usable.append(item)
+            usable.append(_apply_price_unit_convert(item, query=query))
         else:
             diagnostics.append(item)
 

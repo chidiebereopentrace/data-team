@@ -77,6 +77,18 @@ def test_non_numeric_jobs_do_not_enter_the_clarify_gate() -> None:
         assert needs_clarify(question, {"geography": ["Kenya"], "entities": ["maize"]}) is False, question
 
 
+def test_food_price_comparison_does_not_ask_for_a_crop() -> None:
+    question = "Food price in Nigeria compared with other African countries since 2023"
+    dec = {
+        "geography": ["Nigeria"],
+        "entities": [],
+        "primary_measures": ["market_price"],
+        "time_start": "2023-01-01",
+        "time_end": "2026-12-31",
+    }
+    assert needs_clarify(question, dec) is False
+
+
 def test_family_terms_select_the_declared_table() -> None:
     facets = {
         "geography": ["Kenya"],

@@ -120,7 +120,7 @@ def test_generate_opens_llm_for_mergeable_bq_without_semantics() -> None:
     assert "rice" in result.answer.lower()
 
 
-def test_generate_answers_from_a_report_when_the_warehouse_misses() -> None:
+def test_generate_keeps_empty_numeric_warehouse_as_a_miss() -> None:
     decomposition = {
         "geography": ["Kenya"],
         "entities": ["rice"],
@@ -133,19 +133,16 @@ def test_generate_answers_from_a_report_when_the_warehouse_misses() -> None:
         "metadata": {"title": "Kenya rice note"},
     }
     with mock.patch("ml.rag.chatbot.generator._call_llama") as mock_llm:
-        mock_llm.return_value = "Reports discuss rice production in Kenya, without a warehouse figure."
         result = generate(
             "what is the production of rice in kenya in 2016",
             [item],
             task_mode="fact_lookup",
             decomposition=decomposition,
-            structured_bq_validation_failed=True,
+            structured_bq_empty=True,
             warehouse_was_attempted=True,
         )
-    mock_llm.assert_called_once()
-    prompt = mock_llm.call_args.args[0][0]["content"]
-    assert "Do not invent totals, yields, prices, or a time series." in prompt
-    assert "rice" in result.answer.lower()
+    mock_llm.assert_not_called()
+    assert "no" in result.answer.lower()
 
 
 def test_generate_typed_gap_when_warehouse_empty_flag() -> None:
