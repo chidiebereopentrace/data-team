@@ -1,9 +1,10 @@
 """
 Detect user query language and produce generation instructions that mirror it.
 
+Language ID is CommonLingua-first (commonlid); markers only for ultra-short text.
 Language affects answer prompts only — never replace the user question for generation.
-An optional English enrich shadow (see language_enrich.py) may run for bind/retrieve
-when RAG_LANG_ENRICH is on; answer_lang and chat still mirror the original.
+An English enrich shadow (see language_enrich.py) runs by default for non-English /
+uncertain detection; answer_lang and chat still mirror the original.
 Named tags: en | sw | fr | pcm | ar | am | ig | yo | ha | pt | tw | efi | zu | xh | so | wo | rw | mixed | unknown.
 """
 from __future__ import annotations
@@ -354,31 +355,65 @@ _COMMONLINGUA_CONFIDENCE_THRESHOLD: Final[float] = 0.6
 _COMMONLINGUA_MIN_CHARS: Final[int] = 12
 
 
+# commonlid.predict returns ISO 639-3 codes without scores; treat a resolved
+# label as above the ADZA confidence threshold so routing stays model-first.
+_COMMONLINGUA_RESOLVED_CONFIDENCE: Final[float] = 0.85
+
+
 @lru_cache(maxsize=1)
 def _load_commonlingua():
-    from commonlid import classify
-    classify("warmup")
-    return classify
+    """Lazy-load PleIAs CommonLingua via commonlid (optional extra)."""
+    # Optional dependency: keep import inside loader so missing commonlid
+    # soft-fails to marker/heuristic detection at call sites.
+    # Not always present in the pyright venv (ml-eng/venv); runtime install is
+    # commonlid[commonlingua] from ml/rag/requirements.txt.
+    from commonlid import get_model  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]
+
+    model = get_model("commonlingua")
+    model.load()
+    return model
 
 
-def _commonlingua_detect(text: str) -> str | None:
+def _commonlingua_detect_with_confidence(text: str) -> tuple[str, float] | None:
+    """
+    Run CommonLingua and return (adza_lang, confidence).
+
+    Includes English as ``en`` (unlike the legacy helper that swallowed eng).
+    Returns None when the model cannot run or the text is too short.
+    Low-confidence hits return ``(\"unknown\", confidence)``.
+    """
     if len(text) < _COMMONLINGUA_MIN_CHARS:
         return None
     try:
-        classify = _load_commonlingua()
-        result = classify(text, model_id="commonlingua")
-        if not result:
+        model = _load_commonlingua()
+        codes = model.predict([text])
+        if not codes:
             return None
-        code, confidence = result[0]
-        if confidence < _COMMONLINGUA_CONFIDENCE_THRESHOLD:
+        code = codes[0]
+        if not code:
             return None
-        adza = _COMMONLINGUA_TO_ADZA.get(code)
-        if adza == "en":
+        conf = _COMMONLINGUA_RESOLVED_CONFIDENCE
+        if conf < _COMMONLINGUA_CONFIDENCE_THRESHOLD:
+            return ("unknown", conf)
+        adza = _COMMONLINGUA_TO_ADZA.get(str(code).strip().lower())
+        if adza is None:
+            # Code outside Ask ADZA's named set — let marker/heuristic fallback run.
             return None
-        return adza
+        return (adza, conf)
     except Exception:
         _log.debug("CommonLingua unavailable, falling back to regex-only", exc_info=True)
         return None
+
+
+def _commonlingua_detect(text: str) -> str | None:
+    """Legacy helper: non-English ADZA code or None (English / failure → None)."""
+    hit = _commonlingua_detect_with_confidence(text)
+    if hit is None:
+        return None
+    lang, _conf = hit
+    if lang in ("en", "unknown"):
+        return None
+    return lang
 
 
 def _tokenize(text: str) -> list[str]:
@@ -442,21 +477,8 @@ def _marker_lang_votes(tokens: list[str]) -> dict[str, int]:
     return votes
 
 
-def detect_answer_language(query: str) -> AnswerLang:
-    """
-    Named language tag for routing and generation.
-
-    Returns one of: en, sw, fr, pcm, ar, am, ig, yo, ha, pt, tw, efi, zu, xh, so, wo, rw, mixed, unknown.
-    """
-    text = (query or "").strip()
-    if not text:
-        return "en"
-
-    if _AMHARIC_RE.search(text):
-        return "am"
-    if _ARABIC_RE.search(text):
-        return "ar"
-
+def _marker_fallback_lang(text: str) -> tuple[str, float]:
+    """Phrase/marker path for ultra-short text or when the model is unavailable."""
     phrase = _phrase_lang(text)
     tokens = _tokenize(text)
     votes = _marker_lang_votes(tokens)
@@ -469,22 +491,80 @@ def detect_answer_language(query: str) -> AnswerLang:
         top_code = max(votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
         if named is None or votes.get(named, 0) < votes[top_code]:
             named = top_code
-        elif named in votes and votes[named] == votes[top_code]:
-            named = named  # phrase wins ties
-
-    non_en_signal = named is not None or hit_count >= 2 or accents >= 0.08
-
-    if not non_en_signal:
-        return _commonlingua_detect(text) or "en"
 
     if en_hits >= 2 and (hit_count >= 1 or phrase is not None):
-        return "mixed"
-
+        return ("mixed", 0.0)
     if named:
-        return named
+        return (named, 0.0)
+    if accents >= 0.08:
+        return ("unknown", 0.0)
+    return ("en", 0.0)
 
-    return _commonlingua_detect(text) or "unknown"
 
+_AFRICAN_NAMED_LANGS: Final[frozenset[str]] = frozenset(
+    {
+        "sw",
+        "fr",
+        "pcm",
+        "ig",
+        "yo",
+        "ha",
+        "pt",
+        "tw",
+        "efi",
+        "zu",
+        "xh",
+        "so",
+        "wo",
+        "rw",
+    }
+)
+
+
+def detect_language_with_confidence(query: str) -> tuple[str, float]:
+    """
+    Model-first language ID for answer_lang and enrich gating.
+
+    Returns ``(adza_lang, confidence)``. Confidence is 0.0 for script/marker
+    fallbacks or when the model does not run. Low-confidence model hits use
+    ``unknown`` so enrich still fires.
+    """
+    text = (query or "").strip()
+    if not text:
+        return ("en", 1.0)
+
+    if _AMHARIC_RE.search(text):
+        return ("am", 1.0)
+    if _ARABIC_RE.search(text):
+        return ("ar", 1.0)
+
+    model_hit = _commonlingua_detect_with_confidence(text)
+    if model_hit is not None:
+        mlang, mconf = model_hit
+        # Short African lines are easy to confuse (e.g. Igbo→Swahili). When
+        # markers name a different African language, prefer the marker vote.
+        if mlang in _AFRICAN_NAMED_LANGS:
+            marker_lang, _marker_conf = _marker_fallback_lang(text)
+            if (
+                marker_lang in _AFRICAN_NAMED_LANGS
+                and marker_lang != mlang
+            ):
+                return (marker_lang, 0.0)
+        return (mlang, mconf)
+
+    # Too short for the model, or CommonLingua unavailable.
+    return _marker_fallback_lang(text)
+
+
+def detect_answer_language(query: str) -> AnswerLang:
+    """
+    Named language tag for routing and generation.
+
+    Returns one of: en, sw, fr, pcm, ar, am, ig, yo, ha, pt, tw, efi, zu, xh, so, wo, rw, mixed, unknown.
+    Prefer CommonLingua; markers only when the model cannot run (short text / unavailable).
+    """
+    lang, _conf = detect_language_with_confidence(query)
+    return lang
 
 def detect_canned_insufficient_lang(query: str) -> str:
     """
@@ -616,6 +696,7 @@ def insufficient_context_answer(lang: str = "", *, query: str | None = None) -> 
 __all__ = [
     "SUPPORTED_ANSWER_LANGUAGES",
     "detect_answer_language",
+    "detect_language_with_confidence",
     "looks_like_degenerate_repetition",
     "language_not_yet_supported_answer",
     "detect_canned_insufficient_lang",

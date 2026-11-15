@@ -13,6 +13,7 @@ from typing import Any, TypedDict, cast
 from ml.rag.chatbot.acf_scoring import acf_result_to_state, curated_product_acf, no_evidence_acf
 from ml.rag.chatbot.answer_language import (
     detect_answer_language,
+    detect_language_with_confidence,
     language_unclear_answer,
 )
 from ml.rag.chatbot.language_enrich import enrich_query_to_english
@@ -93,6 +94,21 @@ from ml.rag.chatbot.composer import (
     composer_context_block,
     partition_bq_by_subquestion,
 )
+from ml.rag.chatbot.metacog import (
+    MetacogPlan,
+    MetacogVerify,
+    apply_metacog_to_turn,
+    apply_revise_decision,
+    build_metacog_plan,
+    complete_self_check,
+    corpora_for_evidence_needs,
+    evidence_sample,
+    metacog_diagnosis_addendum,
+    metacog_enabled,
+    metacog_verify_enabled,
+    propose_metacog_revise,
+    verify_metacog_evidence,
+)
 from ml.rag.chatbot.reasoner_plan import ReasonerPlan
 from ml.rag.chatbot.qdrant_planner import plan_vector_corpora_for_reasoner
 from ml.rag.chatbot.generator import (
@@ -121,7 +137,7 @@ from ml.rag.chatbot.query_decomposer import (
 )
 from ml.rag.chatbot.time_resolver import parse_iso_date, resolve_relative_time, utc_today
 from ml.rag.chatbot.query_normalize import normalize_query_text
-from ml.rag.chatbot.routing_plan import build_routing_plan
+from ml.rag.chatbot.routing_plan import RoutingPlan, build_routing_plan
 from ml.rag.chatbot.reranker import last_rerank_mode, rerank
 from ml.rag.retrievers.bq_retriever import BQRetriever
 from ml.rag.retrievers.vector_retriever import VectorRetriever
@@ -679,6 +695,11 @@ class RAGGraphState(TypedDict, total=False):
     export_enabled: bool | None
     export_intent: str | None
     artifacts: list[dict[str, Any]]
+    # Internal SQL planner/debug fields for class-engine and NL2SQL paths
+    bq_table_candidates_inspector: list[dict[str, Any]] | None
+    value_hits: dict[str, int] | None
+    # Observability: stage-level counts for candidate/structured/retrieved (debugging)
+    retrieval_stage_counts: dict[str, int] | None
     # Task specialization for full_rag (clarify / analytical / fact / briefing / export-only / chat)
     task_mode: str | None
     # analytical_mode is True when task_mode == "analytical"
@@ -706,6 +727,13 @@ class RAGGraphState(TypedDict, total=False):
     supervisor_plan: dict[str, Any] | None
     generation_plan: dict[str, Any] | None
     reasoner_plan: dict[str, Any] | None
+    metacog_plan: dict[str, Any] | None
+    metacog_verify: dict[str, Any] | None
+    metacog_revise: int | None
+    metacog_revise_action: str | None
+    metacog_next: str | None
+    metacog_self_check: dict[str, Any] | None
+    metacog_self_check_verdict: str | None
     rows_by_subquestion: dict[str, Any] | None
     passages: list[dict[str, Any]] | None
     heavy_path: bool | None
@@ -716,6 +744,7 @@ class RAGGraphState(TypedDict, total=False):
     skipped_decompose_llm: bool | None
     skipped_retrieval: bool | None
     decompose_llm_ms: float | None
+    metacog_llm_ms: float | None
     vector_ms: float | None
     corpus_count: int | None
     cascade_level: int | None
@@ -746,7 +775,7 @@ def _slot_path_active(state: RAGGraphState) -> bool:
     return rp is not None and bool(rp.bq_subquestions())
 
 
-def _early_route_decompose_state(raw_q: str, route: str) -> dict[str, Any]:
+def _early_route_decompose_state(raw_q: str, route: str) -> RAGGraphState:
     """Build decompose output for early non-RAG short-circuit on raw user text."""
     answer_lang = detect_answer_language(raw_q)
     export_intent = detect_export_intent(raw_q)
@@ -769,7 +798,7 @@ def _early_route_decompose_state(raw_q: str, route: str) -> dict[str, Any]:
         "decompose_llm_ms": 0.0,
         "query_ir": compile_early_query_ir(raw_q, route).to_dict(),
     }
-    return base
+    return RAGGraphState(**base)
 
 
 def node_decompose(state: RAGGraphState) -> RAGGraphState:
@@ -812,10 +841,17 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         persisted=state.get("active_request") if isinstance(state.get("active_request"), dict) else None,
         recent_turns=state.get("recent_turns") if isinstance(state.get("recent_turns"), list) else None,
     )
-    answer_lang_user = detect_answer_language(raw_q)
-    lang_enr = enrich_query_to_english(raw_q, answer_lang=answer_lang_user)
+    answer_lang_user, answer_lang_conf = detect_language_with_confidence(raw_q)
+    lang_enr = enrich_query_to_english(
+        raw_q,
+        answer_lang=answer_lang_user,
+        confidence=answer_lang_conf,
+    )
+    # Prefer model-detected lang from enrich when present (same detection).
+    if lang_enr.answer_lang:
+        answer_lang_user = lang_enr.answer_lang
     language_enrich = (lang_enr.english_query or "").strip()
-    language_enrich_applied = bool(language_enrich)
+    language_enrich_applied = bool(lang_enr.needs_enrich and language_enrich)
     views0 = build_query_views(
         raw_q,
         active=active_turn,
@@ -1010,7 +1046,35 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             "skipped_decompose_llm": skipped_decompose_llm,
             "skipped_retrieval": not turn.should_retrieve_vector(),
             "decompose_llm_ms": decompose_llm_ms,
+            "metacog_llm_ms": 0.0,
+            "metacog_plan": None,
+            "metacog_verify": None,
         }
+        # Advisory metacog before supervisor/reasoner so diagnose pins flow into job.
+        if metacog_enabled() and route_candidate == "full_rag":
+            metacog_t0 = time.perf_counter()
+            mp = build_metacog_plan(
+                q,
+                turn=turn,
+                decomposition=dec,
+                language_enrich=language_enrich,
+            )
+            turn = apply_metacog_to_turn(turn, mp)
+            out["metacog_plan"] = mp.to_dict()
+            out["metacog_llm_ms"] = round((time.perf_counter() - metacog_t0) * 1000.0, 2)
+            out["turn_contract"] = turn.to_dict()
+            dec["metacog_mode"] = mp.advisory_mode
+            dec["metacog_evidence_needs"] = list(mp.evidence_needs)
+            out["decomposition"] = dec
+            update_current_span_metadata(
+                {
+                    "metacog_mode": mp.advisory_mode,
+                    "metacog_confidence": mp.confidence,
+                    "metacog_source": mp.source,
+                    "metacog_llm_ms": out["metacog_llm_ms"],
+                    "turn_job": turn.job,
+                }
+            )
         sp = compile_supervisor_plan(
             q,
             decomposition=dec,
@@ -1084,6 +1148,23 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
                 else None
             ),
         )
+        # Metacog evidence_needs can widen corpus_allow without replacing class routing.
+        mp_raw = out.get("metacog_plan")
+        if isinstance(mp_raw, dict):
+            mp_obj = MetacogPlan.from_dict(mp_raw)
+            extra = corpora_for_evidence_needs(mp_obj.evidence_needs if mp_obj else ())
+            if extra:
+                merged_corpus = tuple(
+                    dict.fromkeys([*list(routing_obj.corpus_allow), *extra])
+                )
+                routing_obj = RoutingPlan(
+                    primary_measure_id=routing_obj.primary_measure_id,
+                    indicator_classes=routing_obj.indicator_classes,
+                    matched_bundles=routing_obj.matched_bundles,
+                    job=str(final_turn.job or routing_obj.job),
+                    corpus_allow=merged_corpus,
+                    supervisor_rationale=routing_obj.supervisor_rationale,
+                )
         out["routing_plan"] = routing_obj.to_dict()
         reasoner_obj = ReasonerPlan.from_dict(
             out.get("reasoner_plan") if isinstance(out.get("reasoner_plan"), dict) else None
@@ -1100,7 +1181,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             route_candidate=str(out.get("route_candidate") or route_candidate),
             analytical_mode=bool(out.get("analytical_mode")),
         ).to_dict()
-        return out
+        return RAGGraphState(**out)
 
 
 def _apply_ui_scope_overrides(
@@ -1559,6 +1640,20 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
                     boosts=selection.boosts,
                     rationale=f"{selection.rationale}|class_supervisor",
                 )
+    mp_raw = state.get("metacog_plan")
+    if isinstance(mp_raw, dict):
+        mp_obj = MetacogPlan.from_dict(mp_raw)
+        extra = [
+            c
+            for c in corpora_for_evidence_needs(mp_obj.evidence_needs if mp_obj else ())
+            if c in CORPUS_CATALOG
+        ]
+        if extra:
+            selection = CorpusSelection(
+                active=list(dict.fromkeys([*selection.active, *extra])),
+                boosts=selection.boosts,
+                rationale=f"{selection.rationale}|metacog_evidence",
+            )
     active = set(selection.active)
     boosts = selection.boosts
 
@@ -2424,7 +2519,7 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
         prior = [e for e in prior if isinstance(e, dict) and not _fp_equal(e.get("fingerprint"), fp)]
         prior.insert(0, fact_entry)
         out["last_bq_facts"] = prior[:8]
-    return out
+    return RAGGraphState(**out)
 
 
 def node_merge(state: RAGGraphState) -> RAGGraphState:
@@ -2535,13 +2630,13 @@ def node_merge(state: RAGGraphState) -> RAGGraphState:
             assert rp is not None
             rows_by = partition_bq_by_subquestion(list(state.get("bq_results") or []), rp)
             serializable = {k: v for k, v in rows_by.items()}
-            return {
-                "merged_context": other_merged,
-                "passages": other_merged,
-                "rows_by_subquestion": serializable,
-            }
+            return RAGGraphState(
+                merged_context=other_merged,
+                passages=other_merged,
+                rows_by_subquestion=serializable,
+            )
 
-        return {"merged_context": merged}
+        return RAGGraphState(merged_context=merged)
 
 
 def _pack_fields(pack: PackResult | list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
@@ -2594,7 +2689,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
             [*structured, *packed], contract, top_k=top_k if top_k > 0 else None
         )
         items, dropped = _pack_fields(pack)
-        return {
+        return RAGGraphState(**{
             "reranked_context": items,
             "evidence_drops": _with_place_drops(dropped, place_dropped),
             "rerank_mode": "skipped_trivial",
@@ -2606,7 +2701,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
                 "reranked": 0,
                 "packed": len(items),
             },
-        }
+        })
 
     try:
         pool = int(
@@ -2630,7 +2725,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
         [*structured, *packed], contract, top_k=top_k if top_k > 0 else None
     )
     items, dropped = _pack_fields(pack)
-    return {
+    return RAGGraphState(**{
         "reranked_context": items,
         "evidence_drops": _with_place_drops(dropped, place_dropped),
         "rerank_mode": last_rerank_mode(),
@@ -2642,7 +2737,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
             "reranked": len(scored),
             "packed": len(items),
         },
-    }
+    })
 
 
 
@@ -2682,12 +2777,14 @@ def node_web_fallback(state: RAGGraphState) -> RAGGraphState:
             heavy_path=bool(state.get("heavy_path")),
         ):
             update_current_span_metadata({"web_fallback_status": "skipped"})
-            return {}
+            out = {"merged_context": merged}
+            return RAGGraphState(**out)
 
         _pt = str(state.get("plan_type") or "").strip()
         if _pt.lower() == "free":
             update_current_span_metadata({"web_fallback_status": "disabled"})
-            return {"web_fallback_status": "disabled", "web_fallback_reason": "Free plan - web fallback not available"}
+            out = {"web_fallback_status": "disabled", "web_fallback_reason": "Free plan - web fallback not available"}
+            return RAGGraphState(**out)
 
         # Prefer English enrich for wiki/Tavily; fall back to original user text.
         q = (
@@ -2725,7 +2822,7 @@ def node_web_fallback(state: RAGGraphState) -> RAGGraphState:
                     "insufficient_context": bool(out.get("insufficient_context")),
                 }
             )
-            return out
+            return RAGGraphState(**out)
 
         out["web_fallback_status"] = result.status
         out["web_fallback_reason"] = result.reason
@@ -2740,7 +2837,7 @@ def node_web_fallback(state: RAGGraphState) -> RAGGraphState:
                     "web_result_count": len(web_chunks),
                 }
             )
-            return out
+            return RAGGraphState(**out)
 
         if decide_outcome(filter_context_items(reranked)).is_gap:
             logger.info(
@@ -2756,7 +2853,7 @@ def node_web_fallback(state: RAGGraphState) -> RAGGraphState:
                 "insufficient_context": bool(out.get("insufficient_context")),
             }
         )
-        return out
+        return RAGGraphState(**out)
 
 
 def node_insufficient_context(state: RAGGraphState) -> RAGGraphState:
@@ -2781,14 +2878,14 @@ def node_insufficient_context(state: RAGGraphState) -> RAGGraphState:
                 "warehouse_attempted": warehouse_was_attempted(cast(dict[str, Any], state)),
             }
         )
-    return {
+    return RAGGraphState(**{
         "answer": answer,
         "citations": [],
         "insufficient_context": True,
         "answer_outcome": "gap",
         "answer_lang": answer_lang,
         **acf_result_to_state(no_evidence_acf()),
-    }
+    })  
 
 
 def _route_after_web_fallback(state: RAGGraphState) -> str:
@@ -2805,13 +2902,13 @@ def node_generate_language_help(state: RAGGraphState) -> RAGGraphState:
     with observed_span("generate_language_help", input_data={"query": str(query)[:200]}):
         update_current_span_metadata({"answer_lang": answer_lang, "route": "language_unknown"})
         answer = language_unclear_answer()
-    return {
+    return RAGGraphState(**{
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
         "is_language_unknown": True,
         **acf_result_to_state(curated_product_acf()),
-    }
+    })
 
 
 def node_generate(state: RAGGraphState) -> RAGGraphState:
@@ -2984,6 +3081,23 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
             *passages,
         ]
         gkw["composer_addendum"] = composer_addendum(reasoner, rows_by)
+
+    # Advisory metacog: diagnosis addendum. Verify already ran in metacog_revise.
+    mp_state = MetacogPlan.from_dict(
+        state.get("metacog_plan") if isinstance(state.get("metacog_plan"), dict) else None
+    )
+    verified = MetacogVerify.from_dict(
+        state.get("metacog_verify") if isinstance(state.get("metacog_verify"), dict) else None
+    )
+    if mp_state is not None and metacog_enabled():
+        diag = metacog_diagnosis_addendum(mp_state)
+        if diag:
+            existing = str(gkw.get("composer_addendum") or "")
+            gkw["composer_addendum"] = (existing + "\n\n" + diag).strip()[:1800]
+        if verified is not None and verified.addendum:
+            existing = str(gkw.get("composer_addendum") or "")
+            gkw["composer_addendum"] = (existing + "\n\n" + verified.addendum).strip()[:2000]
+
     tc_raw = state.get("turn_contract")
     if isinstance(tc_raw, dict):
         gkw["turn_contract"] = tc_raw
@@ -2991,21 +3105,61 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         gkw["category"] = gen_plan.effective_category
     gen_t0 = time.perf_counter()
     gen_result = generate(query, context, **gkw)
+    draft_answer = str(gen_result.answer or "")
+    job = ""
+    if isinstance(tc_raw, dict):
+        job = str(tc_raw.get("job") or "")
+    elif mp_state is not None:
+        job = mp_state.advisory_mode
+
+    revised_result = gen_result
+
+    def _regenerate(addendum: str) -> str:
+        nonlocal revised_result
+        extra = str(gkw.get("composer_addendum") or "")
+        gkw["composer_addendum"] = (extra + "\n\n" + addendum).strip()[:2000]
+        revised_result = generate(query, context, **gkw)
+        return str(revised_result.answer or "")
+
+    final_answer, self_check = complete_self_check(
+        draft_answer,
+        plan=mp_state,
+        verified=verified,
+        query=str(query),
+        job=job,
+        evidence=evidence_sample(
+            bq_results=list(bq_results) if isinstance(bq_results, list) else None,
+            reranked_context=list(reranked) if isinstance(reranked, list) else None,
+        ),
+        regenerate=_regenerate,
+    )
     gen_max = _generate_max_tokens(task_mode)
+    if self_check.verdict != "skip":
+        update_current_span_metadata(
+            {
+                "metacog_self_check_verdict": self_check.verdict,
+                "metacog_self_check": self_check.to_dict(),
+            }
+        )
 
     # ACF Path B is computed post-cite inside generate/_finalize_generation_result.
-    acf = gen_result.acf or no_evidence_acf()
+    acf = revised_result.acf or no_evidence_acf()
     answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
 
-    return {
-        "answer": gen_result.answer,
-        "citations": gen_result.citations,
+    out_gen: RAGGraphState = {
+        "query": query,
+        "decomposition": dec,
+        "bq_sql_plan": {},
+        "merged_context": list(reranked) if isinstance(reranked, list) else [],
+        "reranked_context": list(reranked) if isinstance(reranked, list) else [],
+        "answer": final_answer,
+        "citations": revised_result.citations,
         "answer_lang": answer_lang,
         "answer_outcome": decide_outcome(filter_context_items(context)).kind,
         "generation_plan": gen_plan.to_dict(),
         "generate_ms": trace_elapsed_ms(gen_t0),
         "generate_max_tokens": gen_max,
-        "generate_input_chars": getattr(gen_result, "generate_input_chars", None),
+        "generate_input_chars": getattr(revised_result, "generate_input_chars", None),
         # ML-054: how many LLM calls this request stopped on the max_tokens
         # ceiling. Surfaced to Langfuse so truncation frequency is measurable
         # instead of invisible; tune RAG_GENERATE_MAX_TOKENS from real data.
@@ -3013,6 +3167,10 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         **acf_result_to_state(acf),
         **{k: True for k in exec_flags if exec_flags.get(k)},
     }
+    if self_check.verdict != "skip":
+        out_gen["metacog_self_check"] = self_check.to_dict()
+        out_gen["metacog_self_check_verdict"] = self_check.verdict
+    return out_gen
 
 
 def node_export(state: RAGGraphState) -> RAGGraphState:
@@ -3073,7 +3231,7 @@ def node_generate_clarify(state: RAGGraphState) -> RAGGraphState:
             }
         )
         answer = clarify_answer(str(query), decomposition=dec)
-    return {
+    return RAGGraphState(**{
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
@@ -3083,7 +3241,7 @@ def node_generate_clarify(state: RAGGraphState) -> RAGGraphState:
                 explanation="Clarification requested — missing slot(s) before federated retrieval."
             )
         ),
-    }
+    })
 
 
 def node_generate_meta(state: RAGGraphState) -> RAGGraphState:
@@ -3109,12 +3267,12 @@ def node_generate_meta(state: RAGGraphState) -> RAGGraphState:
         update_current_span_metadata({"answer_lang": answer_lang, "route": "meta"})
         answer = generate_meta_answer(query, **gkw)
 
-    return {
+    return RAGGraphState(**{
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
         **acf_result_to_state(curated_product_acf()),
-    }
+    })
 
 
 def node_generate_social(state: RAGGraphState) -> RAGGraphState:
@@ -3148,14 +3306,14 @@ def node_generate_social(state: RAGGraphState) -> RAGGraphState:
             )
         )
 
-    return {
+    return RAGGraphState(**{
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
         "is_greeting_query": kind == "greeting",
         "is_out_of_scope_query": kind == "out_of_scope",
         **acf_result_to_state(social_acf),
-    }
+    })
 
 
 def node_generate_product(state: RAGGraphState) -> RAGGraphState:
@@ -3184,7 +3342,7 @@ def node_generate_product(state: RAGGraphState) -> RAGGraphState:
         answer = generate_product_answer(query, **gkw)
         generate_ms = trace_elapsed_ms(gen_t0)
 
-    return {
+    return RAGGraphState(**{
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
@@ -3192,7 +3350,7 @@ def node_generate_product(state: RAGGraphState) -> RAGGraphState:
         "generate_max_tokens": 0 if state.get("is_help_query") else _generate_max_tokens("chat"),
         "generate_input_chars": len(answer),
         **acf_result_to_state(curated_product_acf()),
-    }
+    })
 
 
 def node_retrieve_legs(state: RAGGraphState) -> RAGGraphState:
@@ -3209,7 +3367,7 @@ def node_retrieve_legs(state: RAGGraphState) -> RAGGraphState:
         fut_bq = pool.submit(_bq_leg)
         vec_out = fut_vec.result()
         bq_out = fut_bq.result()
-    return {**vec_out, **bq_out}
+    return RAGGraphState(**{**vec_out, **bq_out})
 
 
 def _evidence_empty(state: RAGGraphState) -> bool:
@@ -3275,7 +3433,7 @@ def _rerun_retrieve_merge_rerank(state: RAGGraphState) -> RAGGraphState:
     state = cast(RAGGraphState, {**dict(state), **merge_out})
     rerank_out = node_rerank(state)
     updates.update(rerank_out)
-    return updates
+    return RAGGraphState(**{**updates, **state})
 
 
 def node_coverage_retry(state: RAGGraphState) -> RAGGraphState:
@@ -3307,17 +3465,110 @@ def node_coverage_retry(state: RAGGraphState) -> RAGGraphState:
         with observed_span("profile_scope_retry", input_data={"attempt": 1}):
             updates.update(_rerun_retrieve_merge_rerank(widened))
             update_current_span_metadata({"profile_scope_retry": 1})
-        return updates
+        return RAGGraphState(**{**updates, **state})
 
     if not should_coverage_retry(cast(dict[str, Any], state)):
-        return {"coverage_retry": int(state.get("coverage_retry") or 0)}
+        out = {"coverage_retry": int(state.get("coverage_retry") or 0)}
+        return RAGGraphState(**out)
 
     updates = {"coverage_retry": 1}
     merged_state = cast(RAGGraphState, {**dict(state), **updates})
     with observed_span("coverage_retry", input_data={"attempt": 1}):
         updates.update(_rerun_retrieve_merge_rerank(merged_state))
         update_current_span_metadata({"coverage_retry": 1})
-    return updates
+    return RAGGraphState(**{**updates, **state})
+
+
+def node_metacog_revise(state: RAGGraphState) -> RAGGraphState:
+    """Verify evidence, then at most one reasoning replan back into retrieve."""
+    plan = MetacogPlan.from_dict(
+        state.get("metacog_plan") if isinstance(state.get("metacog_plan"), dict) else None
+    )
+    already = int(state.get("metacog_revise") or 0)
+    updates: dict[str, Any] = {
+        "metacog_next": "generate",
+        "metacog_revise": already,
+        "metacog_revise_action": "skip",
+    }
+    if plan is None or not metacog_enabled():
+        return RAGGraphState(**{**updates, **state})
+
+    with observed_span(
+        "metacog_revise",
+        input_data={"already_revised": already, "query": str(state.get("query") or "")[:200]},
+    ):
+        dec_raw = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
+        return RAGGraphState(**_metacog_revise_body(state, plan, dec_raw, already, updates))
+
+
+def _metacog_revise_body(
+    state: RAGGraphState,
+    plan: MetacogPlan,
+    dec_raw: Any,
+    already: int,
+    updates: dict[str, Any],
+):
+    dec = dec_raw if isinstance(dec_raw, dict) else {}
+    bq_results = state.get("bq_results") if isinstance(state.get("bq_results"), list) else []
+    reranked = state.get("reranked_context") if isinstance(state.get("reranked_context"), list) else []
+    if metacog_verify_enabled() and not plan.skip_verify:
+        verified = verify_metacog_evidence(
+            plan,
+            query=str(state.get("query") or ""),
+            decomposition=dec,
+            bq_results=bq_results,
+            reranked_context=reranked,
+        )
+    else:
+        verified = MetacogVerify(status="ok", evidence_tier_hint="strong")
+    updates["metacog_verify"] = verified.to_dict()
+    update_current_span_metadata(
+        {
+            "metacog_verify_status": verified.status,
+            "metacog_verify_tier": verified.evidence_tier_hint,
+            "metacog_failed_checks": list(verified.failed_checks)[:8],
+        }
+    )
+
+    decision = propose_metacog_revise(
+        plan,
+        verified,
+        query=str(state.get("query") or ""),
+        decomposition=dec,
+        already_revised=already,
+        bq_results=bq_results,
+        reranked_context=reranked,
+    )
+    updates["metacog_revise_action"] = decision.action
+    if decision.action != "replan":
+        return RAGGraphState(**{**updates, **state})
+
+    turn = TurnContract.from_dict(
+        state.get("turn_contract") if isinstance(state.get("turn_contract"), dict) else None
+    )
+    updated_turn, revised_plan, counter = apply_revise_decision(turn, plan, decision)
+    updates["turn_contract"] = updated_turn.to_dict()
+    updates["metacog_plan"] = revised_plan.to_dict()
+    updates["metacog_revise"] = counter
+    if decision.geography:
+        next_dec = dict(dec)
+        next_dec["geography"] = list(decision.geography)
+        updates["decomposition"] = next_dec
+    updates["metacog_next"] = "retrieve_legs"
+    update_current_span_metadata(
+        {
+            "metacog_revise": counter,
+            "metacog_revise_action": decision.action,
+            "metacog_mode": revised_plan.advisory_mode,
+        }
+    )
+    return RAGGraphState(**{**updates, **state})
+
+
+def _route_after_metacog_revise(state: RAGGraphState) -> str:
+    if str(state.get("metacog_next") or "") == "retrieve_legs":
+        return "retrieve_legs"
+    return "generate"
 
 
 def build_graph():
@@ -3334,6 +3585,7 @@ def build_graph():
     graph.add_node("merge", node_merge)
     graph.add_node("rerank", node_rerank)
     graph.add_node("coverage_retry", node_coverage_retry)
+    graph.add_node("metacog_revise", node_metacog_revise)
     graph.add_node("web_fallback", node_web_fallback)
     graph.add_node("insufficient_context", node_insufficient_context)
     graph.add_node("generate", node_generate)
@@ -3387,15 +3639,23 @@ def build_graph():
         route_after_rerank,
         {
             "web_fallback": "web_fallback",
-            "generate": "generate",
+            "generate": "metacog_revise",
         },
     )
     graph.add_conditional_edges(
         "web_fallback",
         _route_after_web_fallback,
         {
-            "generate": "generate",
+            "generate": "metacog_revise",
             "insufficient_context": "insufficient_context",
+        },
+    )
+    graph.add_conditional_edges(
+        "metacog_revise",
+        _route_after_metacog_revise,
+        {
+            "retrieve_legs": "retrieve_legs",
+            "generate": "generate",
         },
     )
 
@@ -3417,7 +3677,7 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
     reset_llm_usage()
     reset_llm_truncation()  # ML-054
     graph = _get_compiled_graph()
-    initial: RAGGraphState = {"query": query}
+    initial: RAGGraphState = RAGGraphState(**{"query": query})
     raw_profile = kwargs.get("user_profile") if isinstance(kwargs.get("user_profile"), dict) else None
     user_profile = dict(raw_profile) if raw_profile is not None else None
     if user_profile is not None:

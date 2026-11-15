@@ -60,11 +60,31 @@ RAG_BQ_REASONER_MODEL_ID=deepseek/deepseek-v4-flash-0731
 RAG_BQ_NL2SQL_MODEL_ID=deepseek/deepseek-v4-flash-0731
 
 # African / local-language English enrich (decompose + BQ + dual vector probe).
-# Default off. Generation and answer_lang stay on the original user text.
-# RAG_LANG_ENRICH=1
+# On by default (CommonLingua language ID). Set =0 to disable.
+# Generation and answer_lang stay on the original user text.
+# RAG_LANG_ENRICH=0
 # RAG_LANG_ENRICH_MODEL_ID=qwen/qwen3-30b-a3b-instruct-2507
 # Optional chat A/B for local-language prose (does not change BQ reasoner):
 # RAG_LLM_MODEL_ID=anthropic/claude-haiku-5.5
+
+# Advisory metacognition (plan + verify; not an agent loop). Off by default.
+# RAG_METACOG=1
+# RAG_METACOG_VERIFY=1
+# RAG_METACOG_MODEL_ID=qwen/qwen3-30b-a3b-instruct-2507
+# RAG_METACOG_MAX_TOKENS=400
+
+# Revise once after verify: one reasoning replan when post-retrieve evidence is gap.
+# Off by default. Only run when `RAG_METACOG=1`. Do not enable without verifying
+# your LLM endpoint accepts the JSON contract and does not spend excessive tokens on thinking.
+# RAG_METACOG_REVISE=0
+# RAG_METACOG_REVISE_MODEL_ID=deepseek/deepseek-r1
+# RAG_METACOG_REVISE_MAX_TOKENS=4000
+
+# Self-check once after generation: one reasoning look at the draft answer before returning.
+# Off by default. Run when `RAG_METACOG=1`. Only runs for diagnosis/report/outlook or partial verify.
+# RAG_METACOG_SELF_CHECK=0
+# RAG_METACOG_SELF_CHECK_MODEL_ID=deepseek/deepseek-r1
+# RAG_METACOG_SELF_CHECK_MAX_TOKENS=4000
 ```
 
 Unset or align per-plan vars so they do not override chat to a larger model:

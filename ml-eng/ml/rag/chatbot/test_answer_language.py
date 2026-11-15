@@ -8,6 +8,7 @@ from ml.rag.chatbot.answer_language import (
     _COMMONLINGUA_TO_ADZA,
     _commonlingua_detect,
     detect_answer_language,
+    detect_language_with_confidence,
     insufficient_context_answer,
     is_english_answer_lang,
     language_instruction,
@@ -88,7 +89,6 @@ def test_build_prompt_mirrors_swahili() -> None:
     system = messages[0]["content"]
     assert "business English" not in system
     assert "Swahili" in system
-    assert "Never refer" in system
 
 
 def test_build_prompt_english_keeps_business_english() -> None:
@@ -139,22 +139,46 @@ def test_insufficient_fr_sw() -> None:
     assert fr != insufficient_context_answer("en")
 
 
-def test_commonlingua_fallback_triggers_on_en() -> None:
-    """When regex returns 'en' but CommonLingua detects an African language, use the model."""
+def test_model_first_ibo_for_osikapa_query() -> None:
+    """CommonLingua ibo → ig for Igbo rice price ask (no kedu marker required)."""
+    q = "ego ole ka ana-ele osikapa na kenya"
     with mock.patch(
-        "ml.rag.chatbot.answer_language._commonlingua_detect",
-        return_value="ha",
+        "ml.rag.chatbot.answer_language._commonlingua_detect_with_confidence",
+        return_value=("ig", 0.91),
     ):
-        assert detect_answer_language("Ina so in san farashin hatsi") == "ha"
+        lang, conf = detect_language_with_confidence(q)
+        assert detect_answer_language(q) == "ig"
+    assert lang == "ig"
+    assert conf >= 0.9
 
 
-def test_commonlingua_fallback_triggers_on_unknown() -> None:
-    """When regex returns 'unknown' but CommonLingua identifies a language, use it."""
+def test_model_first_english_high_confidence() -> None:
+    q = "What are maize yields in Kenya in 2020?"
     with mock.patch(
-        "ml.rag.chatbot.answer_language._commonlingua_detect",
-        return_value="yo",
+        "ml.rag.chatbot.answer_language._commonlingua_detect_with_confidence",
+        return_value=("en", 0.97),
     ):
-        assert detect_answer_language("\xff\xf8\xfc \xff\xf8\xfc \xff\xf8\xfc") == "yo"
+        lang, conf = detect_language_with_confidence(q)
+    assert lang == "en"
+    assert conf >= 0.9
+
+
+def test_model_first_low_confidence_unknown() -> None:
+    q = "ego ole ka ana-ele osikapa na kenya"
+    with mock.patch(
+        "ml.rag.chatbot.answer_language._commonlingua_detect_with_confidence",
+        return_value=("unknown", 0.2),
+    ):
+        assert detect_answer_language(q) == "unknown"
+
+
+def test_short_text_uses_marker_fallback() -> None:
+    """Ultra-short greetings skip the model and use markers."""
+    with mock.patch(
+        "ml.rag.chatbot.answer_language._commonlingua_detect_with_confidence",
+        return_value=None,
+    ):
+        assert detect_answer_language("kedu") == "ig"
 
 
 def test_commonlingua_graceful_import_error() -> None:

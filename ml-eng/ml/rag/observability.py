@@ -443,9 +443,25 @@ def summarize_rag_result_for_trace(result: dict[str, Any]) -> dict[str, Any]:
         "bq_cache_hit",
         "user_query_dropped",
         "coverage_retry",
+        "metacog_llm_ms",
     ):
         if result.get(key) is not None:
             summary[key] = result.get(key)
+    mp = result.get("metacog_plan")
+    if isinstance(mp, dict):
+        summary["metacog_mode"] = str(mp.get("advisory_mode") or "")
+        summary["metacog_confidence"] = mp.get("confidence")
+        summary["metacog_source"] = str(mp.get("source") or "")
+        needs = mp.get("evidence_needs")
+        if isinstance(needs, list):
+            summary["metacog_evidence_needs"] = [str(n) for n in needs[:8]]
+    mv = result.get("metacog_verify")
+    if isinstance(mv, dict):
+        summary["metacog_verify_status"] = str(mv.get("status") or "")
+        summary["metacog_verify_tier"] = str(mv.get("evidence_tier_hint") or "")
+        failed = mv.get("failed_checks")
+        if isinstance(failed, list) and failed:
+            summary["metacog_failed_checks"] = [str(c) for c in failed[:8]]
     summary.update(_planned_path_trace_fields(result))
     corpus_sel = result.get("corpus_selection")
     if isinstance(corpus_sel, dict) and corpus_sel.get("active"):
