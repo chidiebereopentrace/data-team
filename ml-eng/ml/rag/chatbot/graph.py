@@ -3146,7 +3146,12 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
     acf = revised_result.acf or no_evidence_acf()
     answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
 
-    out_gen: dict[str, Any] = {
+    out_gen: RAGGraphState = {
+        "query": query,
+        "decomposition": dec,
+        "bq_sql_plan": {},
+        "merged_context": list(reranked) if isinstance(reranked, list) else [],
+        "reranked_context": list(reranked) if isinstance(reranked, list) else [],
         "answer": final_answer,
         "citations": revised_result.citations,
         "answer_lang": answer_lang,
@@ -3492,7 +3497,8 @@ def node_metacog_revise(state: RAGGraphState) -> RAGGraphState:
         "metacog_revise",
         input_data={"already_revised": already, "query": str(state.get("query") or "")[:200]},
     ):
-        return RAGGraphState(**_metacog_revise_body(state, plan, already, updates))
+        dec_raw = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
+        return RAGGraphState(**_metacog_revise_body(state, plan, dec_raw, already, updates))
 
 
 def _metacog_revise_body(
