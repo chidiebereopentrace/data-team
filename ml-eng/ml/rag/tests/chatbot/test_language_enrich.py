@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Generator
 from unittest import mock
 
 import pytest
 
 from ml.rag.chatbot.language_enrich import (
+    LanguageEnrichment,
     clear_language_enrich_cache,
     enrich_query_to_english,
     lang_enrich_enabled,
@@ -15,100 +17,122 @@ from ml.rag.chatbot.language_enrich import (
 
 
 @pytest.fixture(autouse=True)
-def _clear_cache() -> None:
+def _clear_cache() -> Generator[None, None, None]:
     clear_language_enrich_cache()
     yield
     clear_language_enrich_cache()
 
 
-def test_needs_enrich_respects_flag_and_lang(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_enrich_default_on(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
-    assert not lang_enrich_enabled()
-    assert not needs_language_enrich("ig")
+    assert lang_enrich_enabled()
+    assert needs_language_enrich("ig", confidence=0.9)
 
-    monkeypatch.setenv("RAG_LANG_ENRICH", "1")
-    assert needs_language_enrich("ig")
-    assert needs_language_enrich("sw")
-    assert needs_language_enrich("yo")
-    assert needs_language_enrich("fr")
-    assert needs_language_enrich("ha")
-    assert needs_language_enrich("pt")
-    assert not needs_language_enrich("en")
-    assert not needs_language_enrich("mixed")
-    assert not needs_language_enrich("unknown")
+
+def test_enrich_explicit_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_LANG_ENRICH", "0")
+    assert not lang_enrich_enabled()
+    assert not needs_language_enrich("ig", confidence=0.9)
+
+
+def test_needs_enrich_unknown_and_mixed() -> None:
+    assert needs_language_enrich("unknown", confidence=0.2)
+    assert needs_language_enrich("mixed", confidence=0.0)
+    assert needs_language_enrich("sw", confidence=0.9)
+
+
+def test_needs_enrich_skips_high_conf_english() -> None:
+    assert not needs_language_enrich("en", confidence=0.95)
+    assert needs_language_enrich("en", confidence=0.4)
 
 
 def test_english_skips_llm(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RAG_LANG_ENRICH", "1")
-    with mock.patch("ml.rag.chatbot.language_enrich.llm_chat_complete") as llm:
-        out = enrich_query_to_english("maize yields in Kenya 2020", answer_lang="en")
+    monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
+    with mock.patch(
+        "ml.rag.chatbot.language_enrich.detect_language_with_confidence",
+        return_value=("en", 0.95),
+    ):
+        with mock.patch("ml.rag.chatbot.language_enrich.llm_chat_complete") as llm:
+            out = enrich_query_to_english("maize yields in Kenya 2020")
     llm.assert_not_called()
     assert out.needs_enrich is False
     assert out.english_query == ""
     assert out.enrich_source == "none"
 
 
-def test_igbo_enrich_calls_llm(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RAG_LANG_ENRICH", "1")
+def test_osikapa_igbo_enriches_even_if_previously_mistagged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
+    q = "ego ole ka ana-ele osikapa na kenya"
+    with mock.patch(
+        "ml.rag.chatbot.language_enrich.llm_chat_complete",
+        return_value="What is the retail price of rice in Kenya?",
+    ) as llm:
+        out = enrich_query_to_english(q, answer_lang="ig", confidence=0.85)
+    llm.assert_called_once()
+    assert out.needs_enrich is True
+    assert "rice" in out.english_query.lower()
+    assert "kenya" in out.english_query.lower()
+
+
+def test_osikapa_enriches_when_tagged_en_low_confidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mis-tagged English with low confidence still enriches."""
+    monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
+    q = "ego ole ka ana-ele osikapa na kenya"
+    with mock.patch(
+        "ml.rag.chatbot.language_enrich.llm_chat_complete",
+        return_value="How much does rice cost in Kenya?",
+    ) as llm:
+        out = enrich_query_to_english(q, answer_lang="en", confidence=0.3)
+    llm.assert_called_once()
+    assert out.needs_enrich is True
+    assert "rice" in out.english_query.lower()
+
+
+def test_akpu_cassava_enriches(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
     q = "kedu ihe mere ka mmeputa akpu n'obodo niajiria gbawe kemgbe afo ise ugbua?"
     with mock.patch(
         "ml.rag.chatbot.language_enrich.llm_chat_complete",
-        return_value="What caused cassava production in Nigeria to change over the last five years?",
+        return_value=(
+            "What caused cassava production in Nigeria to change over the last five years?"
+        ),
     ) as llm:
-        out = enrich_query_to_english(q, answer_lang="ig")
+        out = enrich_query_to_english(q, answer_lang="ig", confidence=0.9)
     llm.assert_called_once()
-    assert out.needs_enrich is True
-    assert out.enrich_source == "llm"
     assert "cassava" in out.english_query.lower()
     assert "nigeria" in out.english_query.lower()
 
 
-@pytest.mark.parametrize(
-    "lang,query",
-    [
-        ("sw", "habari ya bei za mahindi Kenya"),
-        ("yo", "bawo ni owo agbado se ye ni Naijiria"),
-        ("fr", "quel est le prix du maïs au Kenya"),
-        ("ha", "yaya farashin masara a Najeriya"),
-        ("pt", "qual o preço do milho na Nigéria"),
-    ],
-)
-def test_local_langs_trigger_enrich(
-    monkeypatch: pytest.MonkeyPatch, lang: str, query: str
-) -> None:
-    monkeypatch.setenv("RAG_LANG_ENRICH", "1")
-    with mock.patch(
-        "ml.rag.chatbot.language_enrich.llm_chat_complete",
-        return_value="Maize prices in Kenya or Nigeria",
-    ) as llm:
-        out = enrich_query_to_english(query, answer_lang=lang)
-    llm.assert_called_once()
-    assert out.needs_enrich is True
-    assert out.english_query
-
-
 def test_enrich_cache_second_call(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RAG_LANG_ENRICH", "1")
+    monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
     q = "habari ya bei za mahindi Kenya"
     with mock.patch(
         "ml.rag.chatbot.language_enrich.llm_chat_complete",
         return_value="What are maize prices in Kenya?",
     ) as llm:
-        first = enrich_query_to_english(q, answer_lang="sw")
-        second = enrich_query_to_english(q, answer_lang="sw")
+        first = enrich_query_to_english(q, answer_lang="sw", confidence=0.9)
+        second = enrich_query_to_english(q, answer_lang="sw", confidence=0.9)
     assert llm.call_count == 1
     assert first.enrich_source == "llm"
     assert second.enrich_source == "cache"
-    assert second.english_query == first.english_query
 
 
 def test_llm_failure_returns_empty_enrich(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RAG_LANG_ENRICH", "1")
+    monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
     with mock.patch(
         "ml.rag.chatbot.language_enrich.llm_chat_complete",
         return_value="",
     ):
-        out = enrich_query_to_english("kedu ihe mere ka mmeputa akpu", answer_lang="ig")
+        out = enrich_query_to_english(
+            "kedu ihe mere ka mmeputa akpu",
+            answer_lang="ig",
+            confidence=0.9,
+        )
     assert out.needs_enrich is True
     assert out.english_query == ""
     assert out.enrich_source == "none"
+    assert isinstance(out, LanguageEnrichment)

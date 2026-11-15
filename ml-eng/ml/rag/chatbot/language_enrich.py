@@ -2,6 +2,9 @@
 
 Used for decompose, BQ bind, and a second vector retrieve probe.
 Generation and answer_lang always stay on the original user text.
+
+Enrich is on by default; set RAG_LANG_ENRICH=0 to disable.
+Trigger uses model-first language detection (CommonLingua).
 """
 
 from __future__ import annotations
@@ -15,12 +18,12 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Final
 
-from ml.rag.chatbot.answer_language import detect_answer_language, is_english_answer_lang
+from ml.rag.chatbot.answer_language import detect_language_with_confidence
 from ml.rag.llm_chat import llm_chat_complete, llm_model_id
 
 logger = logging.getLogger(__name__)
 
-# Named local languages that get an English enrich shadow when the flag is on.
+# Named local languages that normally get an English enrich shadow.
 ENRICHABLE_LANGS: Final[frozenset[str]] = frozenset(
     {
         "ig",
@@ -42,6 +45,9 @@ ENRICHABLE_LANGS: Final[frozenset[str]] = frozenset(
     }
 )
 
+# Skip enrich only when English is detected at least this confidently.
+ENRICH_EN_CONFIDENCE_MIN: Final[float] = 0.6
+
 _CACHE_TTL_S = 3600.0
 _CACHE_MAX = 256
 _enrich_cache: dict[str, tuple[float, str]] = {}
@@ -51,7 +57,7 @@ _SYSTEM = (
     "for warehouse lookup and document retrieval. "
     "Preserve crop, country/place, years/time span, and measure intent. "
     "Expand well-known local crop names only when confident "
-    "(e.g. akpu → cassava, mahindi → maize). "
+    "(e.g. akpu → cassava, mahindi → maize, osikapa → rice). "
     "Do not invent years, places, or crops that are not in the input. "
     "Output only the English sentence — no quotes, no preamble, no JSON."
 )
@@ -63,19 +69,38 @@ class LanguageEnrichment:
     needs_enrich: bool
     english_query: str
     enrich_source: str  # none | llm | cache
+    confidence: float = 0.0
 
 
 def lang_enrich_enabled() -> bool:
-    return os.environ.get("RAG_LANG_ENRICH", "").strip().lower() in ("1", "true", "yes", "on")
+    """Enrich on by default; only explicit off disables."""
+    raw = os.environ.get("RAG_LANG_ENRICH", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
 
 
-def needs_language_enrich(answer_lang: str) -> bool:
+def needs_language_enrich(
+    answer_lang: str,
+    query: str = "",
+    *,
+    confidence: float | None = None,
+) -> bool:
+    """
+    True when an English enrich shadow should run.
+
+    Non-English, mixed, and unknown always enrich (when enabled).
+    English skips only at high model confidence.
+    """
+    del query  # reserved for future; detection already happened upstream
     if not lang_enrich_enabled():
         return False
     tag = (answer_lang or "").strip().lower()
-    if is_english_answer_lang(tag) or tag in ("mixed", "unknown", ""):
+    if tag in ("", "unknown", "mixed"):
+        return True
+    if tag != "en":
+        return True
+    if confidence is None:
         return False
-    return tag in ENRICHABLE_LANGS
+    return float(confidence) < ENRICH_EN_CONFIDENCE_MIN
 
 
 def _enrich_model_id() -> str:
@@ -105,7 +130,6 @@ def _cache_get(key: str) -> str | None:
 
 def _cache_set(key: str, value: str) -> None:
     if len(_enrich_cache) >= _CACHE_MAX:
-        # Drop oldest ~25% by timestamp.
         ordered = sorted(_enrich_cache.items(), key=lambda kv: kv[1][0])
         for old_key, _ in ordered[: max(1, _CACHE_MAX // 4)]:
             _enrich_cache.pop(old_key, None)
@@ -120,11 +144,9 @@ def _clean_english(raw: str) -> str:
     text = (raw or "").strip()
     if not text:
         return ""
-    # Drop common wrapper noise.
     text = re.sub(r"^```(?:\w+)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
     text = text.strip().strip('"').strip("'").strip()
-    # Single line / first paragraph only.
     text = re.split(r"[\r\n]+", text, maxsplit=1)[0].strip()
     return text[:800]
 
@@ -133,6 +155,7 @@ def enrich_query_to_english(
     query: str,
     *,
     answer_lang: str | None = None,
+    confidence: float | None = None,
 ) -> LanguageEnrichment:
     """
     Build an English analytical paraphrase for bind/retrieve.
@@ -140,13 +163,28 @@ def enrich_query_to_english(
     Never replaces the original for answer_lang or generation.
     """
     q = (query or "").strip()
-    lang = (answer_lang or "").strip().lower() or detect_answer_language(q)
-    if not q or not needs_language_enrich(lang):
+    if not q:
+        return LanguageEnrichment(
+            answer_lang="en",
+            needs_enrich=False,
+            english_query="",
+            enrich_source="none",
+            confidence=1.0,
+        )
+
+    if answer_lang is not None and confidence is not None:
+        lang = (answer_lang or "").strip().lower() or "en"
+        conf = float(confidence)
+    else:
+        lang, conf = detect_language_with_confidence(q)
+
+    if not needs_language_enrich(lang, q, confidence=conf):
         return LanguageEnrichment(
             answer_lang=lang or "en",
             needs_enrich=False,
             english_query="",
             enrich_source="none",
+            confidence=conf,
         )
 
     cache_key = _normalize_cache_key(q, lang)
@@ -157,6 +195,7 @@ def enrich_query_to_english(
             needs_enrich=True,
             english_query=cached,
             enrich_source="cache",
+            confidence=conf,
         )
 
     messages = [
@@ -189,6 +228,7 @@ def enrich_query_to_english(
             needs_enrich=True,
             english_query="",
             enrich_source="none",
+            confidence=conf,
         )
 
     _cache_set(cache_key, english)
@@ -197,11 +237,13 @@ def enrich_query_to_english(
         needs_enrich=True,
         english_query=english,
         enrich_source="llm",
+        confidence=conf,
     )
 
 
 __all__ = [
     "ENRICHABLE_LANGS",
+    "ENRICH_EN_CONFIDENCE_MIN",
     "LanguageEnrichment",
     "clear_language_enrich_cache",
     "enrich_query_to_english",

@@ -24,7 +24,7 @@ def test_node_decompose_greeting_skips_memory_and_decompose() -> None:
                                 ],
                             }
                         )
-    assert out["is_greeting_query"] is True
+    assert out.get("is_greeting_query") is True
     assert out.get("task_mode") == "chat"
     assert out.get("early_short_circuit") is True
     assert out.get("skipped_retrieval") is True
@@ -41,37 +41,44 @@ def test_node_decompose_greeting_skips_memory_and_decompose() -> None:
 
 
 def test_node_decompose_igbo_question_not_greeting_and_enriches(monkeypatch) -> None:
-    monkeypatch.setenv("RAG_LANG_ENRICH", "1")
+    monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
     q = "kedu ihe mere ka mmeputa akpu n'obodo niajiria gbawe kemgbe afo ise ugbua?"
     from ml.rag.chatbot.language_enrich import LanguageEnrichment
 
     with mock.patch(
-        "ml.rag.chatbot.graph.enrich_query_to_english",
-        return_value=LanguageEnrichment(
-            answer_lang="ig",
-            needs_enrich=True,
-            english_query="What caused cassava production in Nigeria to change over the last five years?",
-            enrich_source="llm",
-        ),
-    ) as enrich:
-        with mock.patch("ml.rag.chatbot.graph.decompose_query") as decompose:
-            decompose.return_value = {
-                "intent": "analytical",
-                "entities": ["cassava"],
-                "geography": ["Nigeria"],
-                "domains": ["production"],
-                "time_start": "2020-01-01",
-                "time_end": "2025-12-31",
-                "_decompose_llm_ms": 0.0,
-                "_skipped_decompose_llm": True,
-            }
-            with mock.patch("ml.rag.chatbot.graph.observed_span") as span:
-                span.return_value.__enter__ = mock.Mock(return_value=None)
-                span.return_value.__exit__ = mock.Mock(return_value=False)
-                out = node_decompose({"query": q})
+        "ml.rag.chatbot.graph.detect_language_with_confidence",
+        return_value=("ig", 0.92),
+    ):
+        with mock.patch(
+            "ml.rag.chatbot.graph.enrich_query_to_english",
+            return_value=LanguageEnrichment(
+                answer_lang="ig",
+                needs_enrich=True,
+                english_query=(
+                    "What caused cassava production in Nigeria to change "
+                    "over the last five years?"
+                ),
+                enrich_source="llm",
+                confidence=0.92,
+            ),
+        ) as enrich:
+            with mock.patch("ml.rag.chatbot.graph.decompose_query") as decompose:
+                decompose.return_value = {
+                    "intent": "analytical",
+                    "entities": ["cassava"],
+                    "geography": ["Nigeria"],
+                    "domains": ["production"],
+                    "time_start": "2020-01-01",
+                    "time_end": "2025-12-31",
+                    "_decompose_llm_ms": 0.0,
+                    "_skipped_decompose_llm": True,
+                }
+                with mock.patch("ml.rag.chatbot.graph.observed_span") as span:
+                    span.return_value.__enter__ = mock.Mock(return_value=None)
+                    span.return_value.__exit__ = mock.Mock(return_value=False)
+                    out = node_decompose({"query": q})
     enrich.assert_called_once()
     decompose.assert_called_once()
-    # Decompose planning text should be the English enrich.
     assert "cassava" in decompose.call_args[0][0].lower()
     assert out.get("is_greeting_query") is not True
     assert out.get("answer_lang") == "ig"
@@ -79,6 +86,47 @@ def test_node_decompose_igbo_question_not_greeting_and_enriches(monkeypatch) -> 
     assert "cassava" in str(out.get("language_enrich") or "").lower()
     assert out.get("query") == out.get("user_query")
     assert "kedu" in str(out.get("user_query") or "").lower()
+
+
+def test_node_decompose_osikapa_enriches_without_flag(monkeypatch) -> None:
+    monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
+    q = "ego ole ka ana-ele osikapa na kenya"
+    from ml.rag.chatbot.language_enrich import LanguageEnrichment
+
+    with mock.patch(
+        "ml.rag.chatbot.graph.detect_language_with_confidence",
+        return_value=("ig", 0.88),
+    ):
+        with mock.patch(
+            "ml.rag.chatbot.graph.enrich_query_to_english",
+            return_value=LanguageEnrichment(
+                answer_lang="ig",
+                needs_enrich=True,
+                english_query="What is the price of rice in Kenya?",
+                enrich_source="llm",
+                confidence=0.88,
+            ),
+        ) as enrich:
+            with mock.patch("ml.rag.chatbot.graph.decompose_query") as decompose:
+                decompose.return_value = {
+                    "intent": "descriptive",
+                    "entities": ["rice"],
+                    "geography": ["Kenya"],
+                    "domains": ["market"],
+                    "primary_measures": ["market_price"],
+                    "_decompose_llm_ms": 0.0,
+                    "_skipped_decompose_llm": True,
+                }
+                with mock.patch("ml.rag.chatbot.graph.observed_span") as span:
+                    span.return_value.__enter__ = mock.Mock(return_value=None)
+                    span.return_value.__exit__ = mock.Mock(return_value=False)
+                    out = node_decompose({"query": q})
+    enrich.assert_called_once()
+    assert "rice" in decompose.call_args[0][0].lower()
+    assert out.get("answer_lang") == "ig"
+    assert out.get("language_enrich_applied") is True
+    assert out.get("user_query") == q or "osikapa" in str(out.get("user_query") or "")
+    assert out.get("is_greeting_query") is not True
 
 
 def test_node_decompose_meta_skips_decompose() -> None:

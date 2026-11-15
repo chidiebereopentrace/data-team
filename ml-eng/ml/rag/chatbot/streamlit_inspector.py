@@ -912,6 +912,26 @@ def render_pipeline_inspector(
         st.subheader("Query decomposition")
         st.json(dec if isinstance(dec, dict) else {})
 
+        mp = result.get("metacog_plan")
+        mv = result.get("metacog_verify")
+        mr = result.get("metacog_revise")
+        mrc = result.get("metacog_revise_action")
+        mc = result.get("metacog_self_check")
+        mcc = result.get("metacog_self_check_verdict")
+        if isinstance(mp, dict) or isinstance(mv, dict) or mr is not None or mc is not None:
+            st.subheader("Metacognition")
+            st.json(
+                {
+                    "metacog_plan": mp if isinstance(mp, dict) else None,
+                    "metacog_verify": mv if isinstance(mv, dict) else None,
+                    "metacog_revise": mr,
+                    "metacog_revise_action": mrc,
+                    "metacog_self_check": mc if isinstance(mc, dict) else None,
+                    "metacog_self_check_verdict": mcc,
+                    "metacog_llm_ms": result.get("metacog_llm_ms"),
+                }
+            )
+
         st.subheader("Retrieval metrics")
         render_metrics_row(result, latency_ms=latency_ms)
 

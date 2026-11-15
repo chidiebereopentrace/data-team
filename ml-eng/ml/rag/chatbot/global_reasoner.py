@@ -73,6 +73,9 @@ def _pin_job(query: str, contract: TurnContract, task_mode: str) -> str:
     job = (contract.job or "fact").strip().lower()
     if job in ("help", "social", "clarify"):
         return job
+    # Metacog / decompose diagnosis must not be rewritten into trend/compare/list.
+    if job == "diagnose":
+        return "diagnose"
     q = query or ""
     if contract.breakdown and job == "fact":
         return "breakdown"
