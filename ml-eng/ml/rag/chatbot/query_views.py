@@ -32,29 +32,11 @@ _VECTOR_TEXT_MAX = 4
 class QueryViews:
     user_query: str
     english_query: str = ""  # BQ retrieval variant (English for multi-lingual vector embeddings)
-    context_rewrite: str
-    detail_rewrite: str
-    context_applied: bool
+    context_rewrite: str = ""
+    detail_rewrite: str = ""
+    context_applied: bool = False
     carried_slots: dict[str, Any] = field(default_factory=dict)
     language_enrich: str = ""
-
-    def __init__(
-        self,
-        user_query: str,
-        english_query: str = "",
-        context_rewrite: str = "",
-        detail_rewrite: str = "",
-        context_applied: bool = False,
-        carried_slots: dict[str, Any] | None = None,
-        language_enrich: str = "",
-    ):
-        object.__setattr__(self, "user_query", user_query)
-        object.__setattr__(self, "english_query", english_query)
-        object.__setattr__(self, "context_rewrite", context_rewrite)
-        object.__setattr__(self, "detail_rewrite", detail_rewrite)
-        object.__setattr__(self, "context_applied", context_applied)
-        object.__setattr__(self, "carried_slots", carried_slots or {})
-        object.__setattr__(self, "language_enrich", language_enrich)
 
     def vector_texts(self) -> list[str]:
         """Distinct non-empty texts for vector retrieve; user_query always first.
@@ -285,7 +267,6 @@ def build_query_views(
     category: str | None = None,
     decomposition: dict[str, Any] | None = None,
     language_enrich: str | None = None,
-    english_query: str | None = None,  # NEW: English query variant for bilingual retrieval
 ) -> QueryViews:
     user_query = normalize_query_text(raw_query)
     ctx = build_context_rewrite(
@@ -300,7 +281,6 @@ def build_query_views(
     detail = build_detail_rewrite(user_query, decomposition)
     return QueryViews(
         user_query=user_query,
-        english_query=str(english_query or ""),
         context_rewrite=str(ctx.get("context_rewrite") or ""),
         detail_rewrite=detail,
         context_applied=bool(ctx.get("context_applied")),
