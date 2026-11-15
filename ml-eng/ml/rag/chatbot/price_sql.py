@@ -15,8 +15,8 @@ from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
 from ml.rag.chatbot.price_vocab import (
     PricePlace,
     PriceSeries,
-    choose_price_source,
     choose_price_type,
+    held_price_sources,
     region_place,
     resolve_price_place,
     resolve_price_products,
@@ -88,7 +88,7 @@ def build_price_sql(
     dataset: str,
     iso3s: list[str],
     series: list[PriceSeries],
-    price_source: str,
+    price_source: str | list[str],
     price_type: str | None,
     window: PriceWindow,
     places: list[PricePlace] | None = None,
@@ -99,12 +99,20 @@ def build_price_sql(
     are then split by place tier (market, region, rest of the country) so the
     answer gets the local figure when it exists and the national context always.
     """
+    sources = [price_source] if isinstance(price_source, str) else list(price_source)
+    sources = [s for s in sources if str(s).strip()]
     keys = sorted({s.product_key for s in series})
-    metrics = sorted({m for s in series if price_source in s.price_sources for m in s.metrics})
+    metrics = sorted(
+        {m for s in series if any(src in s.price_sources for src in sources) for m in s.metrics}
+    )
+    if len(sources) == 1:
+        source_pred = f"price_source = {_lit(sources[0])}"
+    else:
+        source_pred = f"price_source IN ({_in(sources)})"
     filters = [
         f"country_iso3 IN ({_in(iso3s)})",
         f"product_key IN ({_in(keys)})",
-        f"price_source = {_lit(price_source)}",
+        source_pred,
     ]
     scope_inner = scope_outer = scope_group = scope_order = ""
     scope_partition = ""
@@ -130,7 +138,7 @@ def build_price_sql(
         filters.append(f"year >= {floor}")
         qualify = (
             "QUALIFY DATE_TRUNC(as_of_date, MONTH) = MAX(DATE_TRUNC(as_of_date, MONTH)) OVER "
-            f"(PARTITION BY country_iso3, product_key, price_type, unit, currency{scope_partition}) "
+            f"(PARTITION BY country_iso3, product_key, price_source, price_type, unit, currency{scope_partition}) "
         )
     elif window.multi_year:
         filters.append(f"year BETWEEN {window.year_start} AND {window.year_end}")
@@ -199,6 +207,19 @@ def plan_price_template(
         series.extend(res.series)
         closest.extend(n for n in res.closest if n not in closest)
     if not series:
+        from ml.rag.chatbot.bundle_metrics import AGRI_ACTIVITIES_STAPLES, food_price_basket
+        from ml.rag.chatbot.price_vocab import load_price_vocab
+
+        if food_price_basket(blob):
+            staples = {n.casefold() for n in AGRI_ACTIVITIES_STAPLES}
+            for code in iso3s:
+                series.extend(
+                    s
+                    for s in load_price_vocab().for_country(code)
+                    if any(tok in s.product_name.casefold() for tok in staples)
+                )
+            named = True
+    if not series:
         if not named:
             return None
         return {
@@ -220,14 +241,20 @@ def plan_price_template(
             latest_year = max(s.last_date[:4] for s in series)
             notes.append(f"No price rows for {span}; latest available month shown (data runs to {latest_year}).")
             window = PriceWindow(None, None)
-    source = choose_price_source(blob, series)
-    if not source:
+    sources = held_price_sources(blob, series)
+    if not sources:
         return None
-    scoped = [s for s in series if source in s.price_sources]
-    price_type = choose_price_type(blob, scoped, source)
-    if price_type is None:
-        price_type = choose_price_type("", scoped, source)
-        notes.append(f"The requested price type is not held for this product; {price_type} prices shown.")
+    scoped = [s for s in series if any(src in s.price_sources for src in sources)]
+    named_type = bool(re.search(r"\b(retail|wholesale|producer|farm[- ]?gate)\b", blob or "", re.I))
+    price_type: str | None = None
+    if named_type:
+        price_type = choose_price_type(blob, scoped, sources[0] if len(sources) == 1 else None)
+        if price_type is None:
+            price_type = choose_price_type("", scoped, sources[0] if len(sources) == 1 else None)
+            if price_type:
+                notes.append(
+                    f"The requested price type is not held for this product; {price_type} prices shown."
+                )
     if window.latest:
         freshest = max(s.last_date for s in scoped)
         cutoff = f"{int(freshest[:4]) - 1}{freshest[4:]}"
@@ -243,7 +270,7 @@ def plan_price_template(
             dataset=dataset,
             iso3s=sorted({s.country_iso3 for s in scoped}),
             series=scoped,
-            price_source=source,
+            price_source=sources if len(sources) > 1 else sources[0],
             price_type=price_type,
             window=window,
             places=places,
@@ -252,7 +279,7 @@ def plan_price_template(
         "countries": iso3s,
         "places": [f"{p.level}:{p.name}" for p in places],
         "product_names": sorted({s.product_name for s in scoped})[:12],
-        "price_source": source,
+        "price_source": sources[0] if len(sources) == 1 else sources,
         "price_type": price_type,
         "widened": " ".join(notes),
         "table_id": "fct_prices",

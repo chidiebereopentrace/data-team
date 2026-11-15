@@ -92,3 +92,30 @@ def test_vector_texts_dedupe() -> None:
     texts = views.vector_texts()
     assert texts[0] == "maize Kenya"
     assert len(texts) <= 2
+
+
+def test_vector_texts_includes_language_enrich_after_user() -> None:
+    original = "kedu ihe mere ka mmeputa akpu n'obodo niajiria gbawe"
+    enrich = "What caused cassava production in Nigeria to change"
+    views = QueryViews(
+        user_query=original,
+        context_rewrite="Focus country: Nigeria",
+        detail_rewrite="cassava | Geography: Nigeria",
+        context_applied=True,
+        language_enrich=enrich,
+    )
+    texts = views.vector_texts()
+    assert texts[0] == original
+    assert enrich in texts
+    assert texts.index(enrich) == 1
+    assert len(texts) <= 4
+
+
+def test_build_query_views_accepts_language_enrich() -> None:
+    views = build_query_views(
+        "habari ya bei za mahindi Kenya",
+        language_enrich="What are maize prices in Kenya?",
+    )
+    assert views.language_enrich.startswith("What are maize")
+    assert "What are maize" in " ".join(views.vector_texts())
+    assert views.to_dict()["language_enrich_len"] > 0

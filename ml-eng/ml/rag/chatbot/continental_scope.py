@@ -59,9 +59,27 @@ def is_continental_rank_query(query: str) -> bool:
     return bool(CONTINENTAL_RANK_RE.search(query or ""))
 
 
+_DIRECTIONAL_AFRICAN_RE = re.compile(
+    r"\b(?:west|western|east|eastern|north|northern|south|southern|central)\s+african\b",
+    re.IGNORECASE,
+)
+_AFRICAN_COUNTRIES_RE = re.compile(r"\bafrican\s+countr(?:y|ies)\b", re.IGNORECASE)
+
+
+def mentions_african_countries_panel(text: str) -> bool:
+    """'African countries' is the continental panel. 'West African countries' is not.
+
+    'South African' is the country and does not match this phrase.
+    """
+    raw = text or ""
+    if not _AFRICAN_COUNTRIES_RE.search(raw):
+        return False
+    return bool(_AFRICAN_COUNTRIES_RE.search(_DIRECTIONAL_AFRICAN_RE.sub(" ", raw)))
+
+
 def wants_africa_panel_scope(query: str) -> bool:
     """True when the user wants values for every African country (~54-country panel)."""
-    return bool(CONTINENTAL_PANEL_RE.search(query or ""))
+    return bool(CONTINENTAL_PANEL_RE.search(query or "")) or mentions_african_countries_panel(query)
 
 
 def wants_africa_default_scope(query: str, *, extract_countries: bool) -> bool:
@@ -104,5 +122,6 @@ __all__ = [
     "is_continental_count_query",
     "is_continental_rank_query",
     "wants_africa_default_scope",
+    "mentions_african_countries_panel",
     "wants_africa_panel_scope",
 ]

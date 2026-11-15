@@ -265,8 +265,8 @@ def region_place(iso3: str, admin_1: str) -> PricePlace | None:
     )
 
 
-def choose_price_source(text: str, series: list[PriceSeries]) -> str | None:
-    """One price_source per answer, from the sources the matched series actually hold."""
+def named_price_source(text: str, series: list[PriceSeries]) -> str | None:
+    """The one source the question names, when the matched series hold it."""
     held = {src for s in series for src in s.price_sources}
     if not held:
         return None
@@ -275,10 +275,30 @@ def choose_price_source(text: str, series: list[PriceSeries]) -> str | None:
             return src
     if re.search(r"\b(producer|farm[- ]?gate)\b", text or "", re.IGNORECASE) and "faostat" in held:
         return "faostat"
+    return None
+
+
+def choose_price_source(text: str, series: list[PriceSeries]) -> str | None:
+    """Named source when asked; otherwise one held source (legacy single-source callers)."""
+    named = named_price_source(text, series)
+    if named:
+        return named
+    held = {src for s in series for src in s.price_sources}
+    if not held:
+        return None
     for src in ("wfp", "fews", "faostat"):
         if src in held:
             return src
     return sorted(held)[0]
+
+
+def held_price_sources(text: str, series: list[PriceSeries]) -> list[str]:
+    """Every source the series hold, or the one the question names."""
+    named = named_price_source(text, series)
+    if named:
+        return [named]
+    held = sorted({src for s in series for src in s.price_sources})
+    return held
 
 
 _DEFAULT_TYPES = ("Retail", "Wholesale", "Producer Price (USD/tonne)", "Producer Price (LCU/tonne)", "Producer")
@@ -481,7 +501,9 @@ __all__ = [
     "build_price_vocab",
     "choose_price_source",
     "choose_price_type",
+    "held_price_sources",
     "load_price_vocab",
+    "named_price_source",
     "price_sql_vocab_errors",
     "price_vocab_values",
     "region_place",

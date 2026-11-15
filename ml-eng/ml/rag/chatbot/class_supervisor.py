@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit
+from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_measures
 from ml.rag.chatbot.class_corpus_policy import corpora_for_classes
 from ml.rag.chatbot.intent_bundles import (
     MatchedBundle,
@@ -62,6 +62,28 @@ def _classes_from_measure_hit(measure_hit: MeasureHit | None) -> tuple[str | Non
     primary = iclasses[0]
     secondary = [c for c in iclasses[1:] if c != primary]
     return primary, secondary, f"measure={measure_hit.measure.id}→{primary}"
+
+
+def _classes_from_named_measures(
+    query: str,
+    decomposition: dict[str, Any] | None,
+    measure_hit: MeasureHit | None,
+) -> tuple[str | None, list[str], str]:
+    """Every named measure is its own class/series on the same place and years."""
+    hits = resolve_measures(query, decomposition, top_k=4)
+    if measure_hit is not None and all(h.measure.id != measure_hit.measure.id for h in hits):
+        hits = [measure_hit, *hits]
+    ordered: list[str] = []
+    names: list[str] = []
+    for hit in hits:
+        for code in hit.measure.indicator_classes:
+            upper = str(code).strip().upper()
+            if upper and upper not in ordered:
+                ordered.append(upper)
+        names.append(hit.measure.id)
+    if not ordered:
+        return _classes_from_measure_hit(measure_hit)
+    return ordered[0], ordered[1:], f"measures={','.join(names)}→{','.join(ordered)}"
 
 
 def _classes_from_primary_measures(primary_measures: list[str] | None) -> tuple[str | None, list[str], str]:
@@ -161,7 +183,7 @@ def compile_supervisor_plan(
         primary = "FS"
         rationale_parts.append("outlook→FS")
     else:
-        m_primary, m_secondary, m_rationale = _classes_from_measure_hit(measure_hit)
+        m_primary, m_secondary, m_rationale = _classes_from_named_measures(q, dec, measure_hit)
         if m_primary:
             primary = m_primary
             secondary = list(m_secondary)
@@ -174,6 +196,9 @@ def compile_supervisor_plan(
                 rationale_parts.append(p_rationale)
 
     scored = class_for_query(q)
+    # HDI only when the question asks for HDI / human development.
+    if not re.search(r"\b(hdi|human\s+development)\b", q, re.I):
+        scored = [c for c in scored if c != "HDI"]
     if not primary and scored:
         primary = scored[0]
         rationale_parts.append(f"class_for_query={','.join(scored)}")

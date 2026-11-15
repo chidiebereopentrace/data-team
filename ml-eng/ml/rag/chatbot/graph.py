@@ -15,6 +15,7 @@ from ml.rag.chatbot.answer_language import (
     detect_answer_language,
     language_unclear_answer,
 )
+from ml.rag.chatbot.language_enrich import enrich_query_to_english
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.ofia import infer_source_tier
@@ -456,6 +457,9 @@ def _vector_texts_from_state(state: RAGGraphState) -> list[str]:
             context_rewrite=str(qv.get("context_rewrite") or ""),
             detail_rewrite=str(qv.get("detail_rewrite") or state.get("detail_rewrite") or ""),
             context_applied=bool(qv.get("context_applied")),
+            language_enrich=str(
+                qv.get("language_enrich") or state.get("language_enrich") or ""
+            ),
         )
         texts = views.vector_texts()
         if texts:
@@ -463,12 +467,16 @@ def _vector_texts_from_state(state: RAGGraphState) -> list[str]:
     uq = str(state.get("user_query") or state.get("query") or "").strip()
     ctx = str(state.get("context_rewrite") or "").strip()
     detail = str(state.get("detail_rewrite") or "").strip()
+    lang_en = str(state.get("language_enrich") or "").strip()
     if uq:
-        return build_query_views(uq).vector_texts() if not (ctx or detail) else QueryViews(
+        if not (ctx or detail or lang_en):
+            return build_query_views(uq).vector_texts()
+        return QueryViews(
             user_query=uq,
             context_rewrite=ctx,
             detail_rewrite=detail,
             context_applied=bool(state.get("context_applied")),
+            language_enrich=lang_en,
         ).vector_texts()
     return [str(state.get("query") or "").strip()] if str(state.get("query") or "").strip() else []
 
@@ -662,6 +670,9 @@ class RAGGraphState(TypedDict, total=False):
     acf_question_type: str | None
     # Named answer-language tag (en|sw|fr|pcm|ar|am|ig|…|mixed|unknown)
     answer_lang: str | None
+    # English enrich shadow for bind/retrieve (original stays in query/user_query)
+    language_enrich: str | None
+    language_enrich_applied: bool | None
     # Session context — Sprint 1, Week 2 (session isolation)
     session_id: str | None
     # Export / enriched outputs (Agribusinesses + Integrated routes only)
@@ -791,13 +802,20 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             "context_rewrite": "",
             "detail_rewrite": "",
             "context_applied": False,
+            "language_enrich": "",
         }
+        early["language_enrich"] = ""
+        early["language_enrich_applied"] = False
         return early
     active_turn, active_state = resolve_turn(
         raw_q,
         persisted=state.get("active_request") if isinstance(state.get("active_request"), dict) else None,
         recent_turns=state.get("recent_turns") if isinstance(state.get("recent_turns"), list) else None,
     )
+    answer_lang_user = detect_answer_language(raw_q)
+    lang_enr = enrich_query_to_english(raw_q, answer_lang=answer_lang_user)
+    language_enrich = (lang_enr.english_query or "").strip()
+    language_enrich_applied = bool(language_enrich)
     views0 = build_query_views(
         raw_q,
         active=active_turn,
@@ -806,19 +824,28 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         else None,
         plan_type=str(state.get("plan_type") or "") or None,
         category=str(state.get("category") or "") or None,
+        language_enrich=language_enrich or None,
     )
     user_q = views0.user_query
     enrich = {
         "user_query": user_q,
         "original_query": user_q,
+        "language_enrich": language_enrich,
         "context_rewrite": views0.context_rewrite,
         "context_applied": views0.context_applied,
     }
-    # Planning and grounding read the resolved request: the question plus its carried slots.
+    # Planning prefers English enrich; carried slots still applied via ActiveRequest.
     resolved_request = resolved_request_text(user_q, active_turn)
-    q = resolved_request or user_q
+    q = language_enrich or resolved_request or user_q
     ctx = DecomposeContext.from_graph_state(state, enrich)
-    with observed_span("decompose", input_data={"query": q[:200], "carried": bool(resolved_request)}):
+    with observed_span(
+        "decompose",
+        input_data={
+            "query": q[:200],
+            "carried": bool(resolved_request),
+            "language_enrich_applied": language_enrich_applied,
+        },
+    ):
         dec_raw = decompose_query(q, context=ctx)
         decompose_llm_ms = float(dec_raw.pop("_decompose_llm_ms", 0.0) or 0.0)
         skipped_decompose_llm = bool(dec_raw.pop("_skipped_decompose_llm", False))
@@ -867,7 +894,8 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         task_mode = resolve_task_mode(q, dec, profile_country=country)
         analytical = task_mode == "analytical"
         recency = resolve_recency_tier(q, measure_hit)
-        answer_lang = detect_answer_language(q)
+        # answer_lang always from original user text — never from English enrich.
+        answer_lang = answer_lang_user or detect_answer_language(user_q)
         turn = compile_turn_contract(
             q,
             dec,
@@ -879,14 +907,17 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         turn = resolve_capability(turn)
         if turn.is_fail_closed() and turn.job == "clarify":
             task_mode = "clarify"
-        meta = is_meta_query(q)
-        help_q = (not meta) and is_help_query(q, dec)
-        product = (not meta) and (help_q or is_product_query(q, dec))
-        greeting = (not meta) and (not product) and is_greeting_query(q)
+        # Social / meta / product gates stay on the original — never re-run on enrich.
+        meta = is_meta_query(user_q)
+        help_q = (not meta) and is_help_query(user_q, dec)
+        product = (not meta) and (help_q or is_product_query(user_q, dec))
+        greeting = (not meta) and (not product) and is_greeting_query(user_q)
         out_of_scope = (
-            (not meta) and (not product) and (not greeting) and is_out_of_scope_query(q, dec)
+            (not meta)
+            and (not product)
+            and (not greeting)
+            and is_out_of_scope_query(user_q, dec)
         )
-        answer_lang = detect_answer_language(q)
         lang_unknown = (
             (not meta)
             and (not product)
@@ -924,11 +955,13 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
                 "recency_tier": recency,
                 "carried_slots": sorted(active_turn.carried()),
                 "context_applied": bool(views0.context_applied),
+                "language_enrich_applied": language_enrich_applied,
+                "language_enrich": language_enrich[:240] if language_enrich else "",
                 "decompose_llm_ms": decompose_llm_ms,
                 "skipped_decompose_llm": skipped_decompose_llm,
             }
         )
-        detail = build_detail_rewrite(user_q, dec)
+        detail = build_detail_rewrite(q, dec)
         views = build_query_views(
             user_q,
             active=active_turn,
@@ -936,6 +969,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             plan_type=str(state.get("plan_type") or "") or None,
             category=category,
             decomposition=dec,
+            language_enrich=language_enrich or None,
         )
         # Prefer freshly built detail from facets
         detail_final = detail or views.detail_rewrite
@@ -948,6 +982,8 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             "is_out_of_scope_query": out_of_scope,
             "is_language_unknown": lang_unknown,
             "answer_lang": answer_lang,
+            "language_enrich": language_enrich or None,
+            "language_enrich_applied": language_enrich_applied,
             "export_intent": export_intent,
             "task_mode": task_mode,
             "analytical_mode": analytical,
@@ -957,9 +993,11 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             "detail_rewrite": detail_final,
             "context_applied": views0.context_applied,
             "query_views": {
-                **views0.to_dict(),
+                **views.to_dict(),
                 "detail_rewrite": detail_final,
                 "detail_rewrite_len": len(detail_final or ""),
+                "language_enrich": language_enrich,
+                "language_enrich_len": len(language_enrich or ""),
             },
             "enriched_query": views0.context_rewrite if views0.context_applied else None,
             "resolved_request": resolved_request,
@@ -1006,7 +1044,11 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
                 # the raw current-turn query text so a stale/unrelated
                 # geography can never silently overwrite a correctly grounded
                 # one (see Sprint 2 "Geography: France" routing bug).
-                grounded_geos = [g for g in rp.geos if facet_grounded_in_query(g, q)]
+                grounded_geos = [
+                    g
+                    for g in rp.geos
+                    if facet_grounded_in_query(g, user_q, language_enrich, q)
+                ]
                 if grounded_geos:
                     dec["geography"] = grounded_geos
             if rp.time_start:
@@ -1214,7 +1256,10 @@ def _retrieve_dense_corpus(
 
 def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
     dec = state.get("decomposition") or {}
-    q = (state.get("query") or "").strip()
+    texts = _vector_texts_from_state(state)
+    if not texts:
+        fallback = (state.get("query") or "").strip()
+        texts = [fallback] if fallback else []
     countries = resolve_retrieval_geographies(
         geo_override=str(state.get("geo_override") or ""),
         geography=dec.get("geography") if isinstance(dec.get("geography"), list) else None,
@@ -1227,77 +1272,87 @@ def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
     strict_compare = _strict_compare_filters(dec)
     allow_geo_fb = not strict_compare
 
-    def _run_for_countries(target_countries: list[str], *, allow_geo_fb: bool) -> list[dict[str, Any]]:
-        if len(target_countries) >= 2:
-            per_k = max(3, (top_k + len(target_countries) - 1) // len(target_countries))
-            batches: list[list[dict[str, Any]]] = []
-            for country in target_countries:
-                kw = _news_kwargs(state, dec)
-                kw["top_k"] = per_k
-                kw["geo_country"] = country
-                kw["time_filter_at_qdrant"] = _news_time_filter_at_qdrant()
-                if not kw["time_filter_at_qdrant"]:
-                    kw["overfetch_multiplier"] = 12
-                if ts:
-                    kw["published_at_from"] = ts
-                if te:
-                    kw["published_at_to"] = te
-                batch = _retrieve_vector_cascade(
-                    vr,
-                    q,
-                    base_kwargs=kw,
-                    countries=[country],
-                    has_time=bool(ts or te),
-                    geo_fallback_env="RAG_NEWS_GEO_FALLBACK",
-                    time_fallback_env="RAG_NEWS_TIME_FALLBACK",
-                    allow_geo_fallback=allow_geo_fb,
-                )
-                batches.append(batch)
-            merged = _merge_dedupe_vector_hits(batches, top_k)
-            return _post_filter_geography(merged, target_countries)
-
-        kw = _news_kwargs(state, dec)
-        _apply_geo_to_kwargs(kw, target_countries)
-        kw["time_filter_at_qdrant"] = _news_time_filter_at_qdrant()
-        if not kw["time_filter_at_qdrant"]:
-            kw["overfetch_multiplier"] = 12
-        if ts:
-            kw["published_at_from"] = ts
-        if te:
-            kw["published_at_to"] = te
-        raw = _retrieve_vector_cascade(
+    def _cascade_for_text(
+        text: str,
+        target_countries: list[str],
+        *,
+        allow_geo_fb: bool,
+        base_kw: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        kw = dict(base_kw) if base_kw is not None else _news_kwargs(state, dec)
+        if len(target_countries) == 1:
+            kw["geo_country"] = target_countries[0]
+        elif target_countries:
+            _apply_geo_to_kwargs(kw, target_countries)
+        return _retrieve_vector_cascade(
             vr,
-            q,
+            text,
             base_kwargs=kw,
-            countries=target_countries,
+            countries=target_countries if len(target_countries) <= 1 else target_countries,
             has_time=bool(ts or te),
             geo_fallback_env="RAG_NEWS_GEO_FALLBACK",
             time_fallback_env="RAG_NEWS_TIME_FALLBACK",
             allow_geo_fallback=allow_geo_fb,
         )
+
+    def _run_for_countries(target_countries: list[str], *, allow_geo_fb: bool) -> list[dict[str, Any]]:
+        if len(target_countries) >= 2:
+            per_k = max(3, (top_k + len(target_countries) - 1) // len(target_countries))
+            batches: list[list[dict[str, Any]]] = []
+            for country in target_countries:
+                per_text_batches: list[list[dict[str, Any]]] = []
+                for text in texts:
+                    kw = _news_kwargs(state, dec)
+                    kw["top_k"] = per_k
+                    kw["geo_country"] = country
+                    kw["time_filter_at_qdrant"] = _news_time_filter_at_qdrant()
+                    if not kw["time_filter_at_qdrant"]:
+                        kw["overfetch_multiplier"] = 12
+                    if ts:
+                        kw["published_at_from"] = ts
+                    if te:
+                        kw["published_at_to"] = te
+                    per_text_batches.append(
+                        _cascade_for_text(text, [country], allow_geo_fb=allow_geo_fb, base_kw=kw)
+                    )
+                batches.append(_merge_vector_context_dicts(per_text_batches, limit=per_k * 2))
+            merged = _merge_dedupe_vector_hits(batches, top_k)
+            return _post_filter_geography(merged, target_countries)
+
+        per_text: list[list[dict[str, Any]]] = []
+        for text in texts:
+            kw = _news_kwargs(state, dec)
+            _apply_geo_to_kwargs(kw, target_countries)
+            kw["time_filter_at_qdrant"] = _news_time_filter_at_qdrant()
+            if not kw["time_filter_at_qdrant"]:
+                kw["overfetch_multiplier"] = 12
+            if ts:
+                kw["published_at_from"] = ts
+            if te:
+                kw["published_at_to"] = te
+            per_text.append(
+                _cascade_for_text(text, target_countries, allow_geo_fb=allow_geo_fb, base_kw=kw)
+            )
+        raw = _merge_vector_context_dicts(per_text, limit=max(top_k * 2, 20))
         return _post_filter_geography(raw, target_countries)
 
     raw = _run_for_countries(countries, allow_geo_fb=allow_geo_fb)
 
     # Compare: keep geo strict at Qdrant but allow semantic recall + post-filter by country name in text.
     if not raw and countries and strict_compare and _env_on("RAG_NEWS_COMPARE_SEMANTIC_FALLBACK", default=True):
-        kw = _news_kwargs(state, dec)
-        kw["time_filter_at_qdrant"] = False
-        kw["overfetch_multiplier"] = 20
-        if ts:
-            kw["published_at_from"] = ts
-        if te:
-            kw["published_at_to"] = te
-        semantic = _retrieve_vector_cascade(
-            vr,
-            q,
-            base_kwargs=kw,
-            countries=[],
-            has_time=bool(ts or te),
-            geo_fallback_env="RAG_NEWS_GEO_FALLBACK",
-            time_fallback_env="RAG_NEWS_TIME_FALLBACK",
-            allow_geo_fallback=False,
-        )
+        per_text: list[list[dict[str, Any]]] = []
+        for text in texts:
+            kw = _news_kwargs(state, dec)
+            kw["time_filter_at_qdrant"] = False
+            kw["overfetch_multiplier"] = 20
+            if ts:
+                kw["published_at_from"] = ts
+            if te:
+                kw["published_at_to"] = te
+            per_text.append(
+                _cascade_for_text(text, [], allow_geo_fb=False, base_kw=kw)
+            )
+        semantic = _merge_vector_context_dicts(per_text, limit=max(top_k * 2, 20))
         raw = _post_filter_geography(semantic, countries)[:top_k]
         if raw:
             logger.debug("News compare semantic fallback: %d chunks after geo post-filter", len(raw))
@@ -1776,7 +1831,10 @@ def _build_bq_sql_plan(
 
 
 def _bq_planning_query(state: RAGGraphState) -> str:
-    """The resolved request (question plus carried slots) for warehouse planning and execution."""
+    """NL question for warehouse planning: English enrich when present, else resolved request."""
+    lang_en = str(state.get("language_enrich") or "").strip()
+    if lang_en:
+        return lang_en
     resolved = str(state.get("resolved_request") or "").strip()
     return resolved or str(state.get("user_query") or state.get("query") or "").strip()
 
@@ -2631,7 +2689,11 @@ def node_web_fallback(state: RAGGraphState) -> RAGGraphState:
             update_current_span_metadata({"web_fallback_status": "disabled"})
             return {"web_fallback_status": "disabled", "web_fallback_reason": "Free plan - web fallback not available"}
 
-        q = (state.get("query") or "").strip()
+        # Prefer English enrich for wiki/Tavily; fall back to original user text.
+        q = (
+            str(state.get("language_enrich") or "").strip()
+            or (state.get("query") or "").strip()
+        )
         dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else None
         ts = str((dec or {}).get("time_start") or "").strip()[:10]
         te = str((dec or {}).get("time_end") or "").strip()[:10]

@@ -316,6 +316,11 @@ def _acf_and_language_for_trace(result: dict[str, Any]) -> dict[str, Any]:
                 lang = None
     if lang is not None and str(lang).strip():
         out["answer_lang"] = str(lang).strip()
+    if result.get("language_enrich_applied"):
+        out["language_enrich_applied"] = True
+        enrich = str(result.get("language_enrich") or "").strip()
+        if enrich:
+            out["language_enrich"] = enrich[:240]
     return out
 
 

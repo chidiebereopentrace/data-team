@@ -73,6 +73,14 @@ def test_named_country_skips_africa_default() -> None:
     assert wants_africa_default_scope(q) is False
 
 
+def test_facet_grounded_via_language_enrich_alt() -> None:
+    """English enrich can evidence a country missing from the local-language surface form."""
+    original = "kedu ihe mere ka mmeputa akpu gbawe kemgbe afo ise"
+    enrich = "What caused cassava production in Nigeria to change over five years"
+    assert facet_grounded_in_query("Nigeria", original) is False
+    assert facet_grounded_in_query("Nigeria", original, enrich) is True
+
+
 def test_facet_grounded_in_query_public_wrapper_rejects_unrelated_country() -> None:
     """Regression: Sprint 2 'Geography: France'/'Geography: Netherlands' routing bug.
 

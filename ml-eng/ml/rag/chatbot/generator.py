@@ -1849,6 +1849,58 @@ def _call_llama(
     )
 
 
+def _has_usable_warehouse_row(items: list[dict[str, Any]]) -> bool:
+    for item in items or []:
+        source = str(item.get("source") or "").strip().lower()
+        kind = str(item.get("_context_kind") or "").strip().lower()
+        if source == "bigquery" or kind == "bigquery":
+            if is_usable_context_item(item):
+                return True
+    return False
+
+
+def _numeric_warehouse_miss(
+    query: str,
+    decomposition: dict[str, Any] | None,
+    *,
+    usable_context: list[dict[str, Any]],
+    task_mode: str,
+    measure_id: str | None,
+    usable_bq: bool,
+    structured_bq_numeric_available: bool,
+    kwargs: dict[str, Any],
+) -> bool:
+    """True when a numeric warehouse leg returned no rows and papers must not invent the figure."""
+    if usable_bq or structured_bq_numeric_available or _has_usable_warehouse_row(usable_context):
+        return False
+    emptyish = bool(
+        kwargs.get("structured_bq_empty")
+        or kwargs.get("structured_bq_validation_failed")
+        or kwargs.get("structured_bq_result_too_large")
+    )
+    if not emptyish:
+        statuses = {
+            str((item.get("metadata") or {}).get("status") or "").strip().lower()
+            for item in (kwargs.get("bq_sql_debug") or [])
+            if isinstance(item, dict)
+        }
+        emptyish = bool(statuses & {"empty_result", "validation_failed", "result_too_large"})
+    if not emptyish:
+        return False
+    if not bool(kwargs.get("warehouse_was_attempted")):
+        return False
+    if task_mode in ("fact_lookup", "data_export_only"):
+        return True
+    if measure_id:
+        return True
+    dec = decomposition if isinstance(decomposition, dict) else {}
+    if dec.get("primary_measures"):
+        return True
+    from ml.rag.chatbot.task_mode import is_numeric_warehouse_job
+
+    return is_numeric_warehouse_job(query, decomposition)
+
+
 def generate(
     query: str,
     context_items: list[dict[str, Any]],
@@ -1922,6 +1974,29 @@ def generate(
         "on",
         "yes",
     )
+    warehouse_miss = _numeric_warehouse_miss(
+        query,
+        decomposition,
+        usable_context=usable_context,
+        task_mode=task_mode,
+        measure_id=measure_id,
+        usable_bq=usable_bq,
+        structured_bq_numeric_available=structured_bq_numeric_available,
+        kwargs=kwargs,
+    )
+    if warehouse_miss and not ungrounded:
+        contract_raw = kwargs.get("turn_contract")
+        return GenerationResult(
+            answer=gap_answer(
+                query,
+                decomposition,
+                TurnContract.from_dict(contract_raw if isinstance(contract_raw, dict) else None),
+            ),
+            citations=[],
+            acf=no_evidence_acf(
+                explanation="The warehouse filter returned no rows for this numeric question."
+            ),
+        )
     if outcome.is_gap and not ungrounded and not (task_mode == "data_export_only" and export_intent_s):
         contract_raw = kwargs.get("turn_contract")
         return GenerationResult(

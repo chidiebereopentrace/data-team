@@ -127,12 +127,17 @@ class DecomposeContext:
         enrich = enrich if isinstance(enrich, dict) else {}
         state = state if isinstance(state, dict) else {}
         raw_q = str(
-            enrich.get("user_query")
-            or enrich.get("original_query")
+            enrich.get("original_query")
+            or enrich.get("user_query")
             or state.get("user_query")
             or state.get("query")
             or ""
         ).strip()
+        language_enrich = str(
+            enrich.get("language_enrich") or state.get("language_enrich") or ""
+        ).strip()
+        # Prefer English enrich for decompose LLM; keep original for provenance.
+        planning_q = language_enrich or raw_q
         context_rewrite = str(
             enrich.get("context_rewrite") or state.get("context_rewrite") or ""
         ).strip()
@@ -146,7 +151,7 @@ class DecomposeContext:
         ref_raw = str(state.get("reference_date") or "").strip()[:10]
         today_iso = ref_raw if parse_iso_date(ref_raw) else utc_today().isoformat()
         return cls(
-            query=raw_q,
+            query=planning_q,
             original_query=raw_q,
             context_rewrite=context_rewrite if context_applied else "",
             context_applied=context_applied,

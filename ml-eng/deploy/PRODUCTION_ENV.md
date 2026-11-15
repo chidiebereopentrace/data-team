@@ -58,6 +58,13 @@ RAG_LLM_TIMEOUT_S=300
 # BQ table planner + SQL generation (dedicated; keep chat on Qwen)
 RAG_BQ_REASONER_MODEL_ID=deepseek/deepseek-v4-flash-0731
 RAG_BQ_NL2SQL_MODEL_ID=deepseek/deepseek-v4-flash-0731
+
+# African / local-language English enrich (decompose + BQ + dual vector probe).
+# Default off. Generation and answer_lang stay on the original user text.
+# RAG_LANG_ENRICH=1
+# RAG_LANG_ENRICH_MODEL_ID=qwen/qwen3-30b-a3b-instruct-2507
+# Optional chat A/B for local-language prose (does not change BQ reasoner):
+# RAG_LLM_MODEL_ID=anthropic/claude-haiku-5.5
 ```
 
 Unset or align per-plan vars so they do not override chat to a larger model:

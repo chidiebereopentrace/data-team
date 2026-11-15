@@ -291,6 +291,23 @@ _GEO_SUBNATIONAL_SAMPLE_COLS: tuple[str, ...] = (
     "admin_2_name",
     "city_name",
 )
+# Compass words name a region, not an admin unit. "West" does not select West Wellega.
+_COMPASS_PLACE_WORDS = frozenset(
+    {
+        "east",
+        "eastern",
+        "west",
+        "western",
+        "north",
+        "northern",
+        "south",
+        "southern",
+        "central",
+        "africa",
+        "african",
+        "region",
+    }
+)
 
 
 def _compile_fk_spine_filter_sql(
@@ -327,6 +344,17 @@ def _compile_fk_spine_filter_sql(
     return f"AND {fk} IN (SELECT {select_col} FROM {dim_fqn} WHERE {where_sql}) "
 
 
+def _subnational_place_said(text: str, label: str) -> bool:
+    """Every content word of the admin name was said, and one of them is not a compass word."""
+    blob = set(_alnum_tokens(expand_speech_text(text or "")))
+    tokens = [t for t in _alnum_tokens(label) if t not in _GENERIC_SAMPLE_TOKENS and len(t) >= 3]
+    if not tokens:
+        return False
+    if not all(t in blob or _SPEECH_SYNONYMS.get(t, t) in blob for t in tokens):
+        return False
+    return any(t not in _COMPASS_PLACE_WORDS for t in tokens)
+
+
 def match_subnational_geo_labels(blob: str) -> list[tuple[str, str]]:
     """Speech-match admin1/admin2/city samples on dim_geography (never invent)."""
     text = (blob or "").strip()
@@ -341,16 +369,8 @@ def match_subnational_geo_labels(blob: str) -> list[tuple[str, str]]:
         matched = match_value_samples(text, samples)
         for cand in matched:
             cand_s = str(cand).strip()
-            if not cand_s:
+            if not cand_s or not _subnational_place_said(text, cand_s):
                 continue
-            # Skip ultra-short single-token place names (Northern/Eastern noise).
-            toks = _alnum_tokens(cand_s)
-            if len(toks) < 2 and len(cand_s) <= 8:
-                blob_tokens = set(_alnum_tokens(expand_speech_text(text)))
-                if not toks or toks[0] not in blob_tokens:
-                    continue
-                if len(toks[0]) < 4:
-                    continue
             out.append((col, cand_s))
             seen_cols.add(col)
             break
@@ -1628,6 +1648,59 @@ def _filter_measure_tokens_from_labels(
     ]
 
 
+_FORM_QUALIFIERS = frozenset({"fresh", "dry", "paddy", "green", "raw", "seed", "husked"})
+_PRODUCT_FAMILY_STAGING = (
+    ("production", "stg_faostat_production"),
+    ("trade", "stg_faostat_trade"),
+    ("price", "stg_faostat_prices"),
+    ("food_balance", "stg_faostat_food_balances"),
+)
+
+
+def _product_labels_on_table(table_id: str) -> list[str]:
+    """Names stored on the table being scanned.
+
+    A denormalized product_name column uses that column. A product_key fact uses
+    the nomenclature stored with that fact (the FAOSTAT item list for physical
+    production), not another aggregate's short names.
+    """
+    bare = _strip_fqn(table_id).lower()
+    if _fact_has_denormalized_product_name(bare):
+        return column_samples_for_table(bare, _PRODUCT_LABEL_COL)
+    for token, staging in _PRODUCT_FAMILY_STAGING:
+        if token in bare:
+            staged = column_samples_for_table(staging, _PRODUCT_LABEL_COL)
+            if staged:
+                return staged
+    return column_samples_for_table(_PRODUCT_JOIN_DIM, _PRODUCT_LABEL_COL)
+
+
+def _label_belongs_on_table(label: str, blob: str, pool: list[str]) -> bool:
+    """Keep a label whose extra words were said, or the one form this table stores.
+
+    Several labels that share a first word and were not fully said select none.
+    A unique stored form such as ``Cassava, fresh`` stays. ``Cereals n.e.c.`` does not.
+    """
+    blob_tokens = set(_alnum_tokens(expand_speech_text(blob or "")))
+    tokens = [t for t in _alnum_tokens(label) if t not in _GENERIC_SAMPLE_TOKENS]
+    if not tokens:
+        return False
+    extra = [
+        t
+        for t in tokens
+        if t not in blob_tokens and _SPEECH_SYNONYMS.get(t, t) not in blob_tokens
+    ]
+    if not extra:
+        return True
+    head = _canon_token(tokens[0])
+    siblings = 0
+    for sample in pool:
+        sample_tokens = [t for t in _alnum_tokens(sample) if t not in _GENERIC_SAMPLE_TOKENS]
+        if sample_tokens and _canon_token(sample_tokens[0]) == head:
+            siblings += 1
+    return siblings == 1 and all(t in _FORM_QUALIFIERS for t in extra)
+
+
 def _resolve_product_labels_for_table(
     table_id: str,
     *,
@@ -1635,22 +1708,19 @@ def _resolve_product_labels_for_table(
     labels: list[str] | None = None,
     primary_measures: list[str] | None = None,
 ) -> list[str]:
-    """Resolve speech or hints to dictionary labels for one table's filter column."""
+    """Resolve speech or hints to labels stored on this table."""
     bare = _strip_fqn(table_id).lower()
     hinted = _filter_measure_tokens_from_labels(
         [str(x).strip() for x in (labels or []) if str(x).strip()],
         primary_measures=primary_measures,
     )
-    table_samples = column_samples_for_table(bare, _PRODUCT_LABEL_COL)
-    dictionary = dictionary_samples_for_column(
-        _PRODUCT_LABEL_COL, prefer_tables=[bare, *_PRODUCT_PREFER_TABLES]
-    )
-    pool = table_samples or dictionary
+    pool = _product_labels_on_table(bare)
     if hinted:
         resolved = _resolve_hints_against(hinted, pool, pool)
-        if resolved:
-            return resolved[:6]
-    return match_value_samples(blob, pool)[:6]
+    else:
+        resolved = match_value_samples(blob, pool)
+    kept = [label for label in resolved if _label_belongs_on_table(label, blob or " ".join(hinted), pool)]
+    return kept[:6]
 
 
 def _resolve_hints_against(hints: list[str], exact_pool: list[str], fuzzy_pool: list[str]) -> list[str]:
@@ -2446,6 +2516,45 @@ def _bind_anti_patterns(table_id: str, *, geo_column: str | None, time_column: s
     return anti
 
 
+_OPEN_SPAN_RE = re.compile(
+    r"\b(?:since|from|starting)\s+(?:the\s+)?(?:year\s+)?(?:19|20)\d{2}\b",
+    re.IGNORECASE,
+)
+_CLOSED_END_RE = re.compile(
+    r"\b(?:to|until|till|through)\s+(?:the\s+)?(?:year\s+)?(?:19|20)\d{2}\b",
+    re.IGNORECASE,
+)
+_YEAR_PAIR_RE = re.compile(r"\b(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}\b")
+
+
+def _open_year_span(query: str) -> bool:
+    """True when the question opens a year and does not name the closing year."""
+    text = query or ""
+    if _YEAR_PAIR_RE.search(text) or _CLOSED_END_RE.search(text):
+        return False
+    return bool(_OPEN_SPAN_RE.search(text))
+
+
+def _latest_covered_year(table_id: str, labels: list[str]) -> int | None:
+    """Latest year the coverage snapshot holds for any of these countries."""
+    from ml.rag.chatbot.geo_iso3 import name_to_iso3
+    from ml.rag.chatbot.time_policy import member_coverage
+
+    iso3s: list[str] = []
+    for label in labels:
+        text = str(label or "").strip()
+        if not text:
+            continue
+        code = text.upper() if re.fullmatch(r"[A-Za-z]{3}", text) else (name_to_iso3(text) or "")
+        if code and code not in iso3s:
+            iso3s.append(code)
+    if not iso3s:
+        return None
+    members, _source = member_coverage(table_id, iso3s)
+    known = [span[1] for span in members.values() if span]
+    return max(known) if known else None
+
+
 def compile_table_bind_contract(
     table_id: str,
     *,
@@ -2484,6 +2593,18 @@ def compile_table_bind_contract(
     te = str(dec.get("time_end") or "")[:10]
     start_year = int(ts[:4]) if ts[:4].isdigit() else None
     end_year = int(te[:4]) if te[:4].isdigit() else None
+    # An open series ("from 2015 till date") runs through the latest year this
+    # table holds for the requested countries, not the calendar year.
+    if (
+        _open_year_span(query)
+        and start_year is not None
+        and end_year is not None
+        and end_year >= start_year
+    ):
+        covered = _latest_covered_year(bare, geo_labels)
+        if covered is not None and start_year <= covered < end_year:
+            end_year = covered
+            te = f"{covered}-12-31"
     # A year equality is only a point. A span stays a span so the time filter
     # can emit BETWEEN on whatever time column the table has.
     year_hint: int | None = None

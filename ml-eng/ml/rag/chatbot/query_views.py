@@ -25,6 +25,9 @@ _CROP_FAMILY_RE = re.compile(
 )
 
 
+_VECTOR_TEXT_MAX = 4
+
+
 @dataclass(frozen=True)
 class QueryViews:
     user_query: str
@@ -32,12 +35,21 @@ class QueryViews:
     detail_rewrite: str
     context_applied: bool
     carried_slots: dict[str, Any] = field(default_factory=dict)
+    language_enrich: str = ""
 
     def vector_texts(self) -> list[str]:
-        """Distinct non-empty texts for vector retrieve; user_query always first."""
+        """Distinct non-empty texts for vector retrieve; user_query always first.
+
+        Priority (max 4): user_query > language_enrich > context_rewrite > detail_rewrite.
+        """
         out: list[str] = []
         seen: set[str] = set()
-        for text in (self.user_query, self.context_rewrite, self.detail_rewrite):
+        for text in (
+            self.user_query,
+            self.language_enrich,
+            self.context_rewrite,
+            self.detail_rewrite,
+        ):
             t = (text or "").strip()
             if not t:
                 continue
@@ -51,9 +63,12 @@ class QueryViews:
                 continue
             seen.add(key)
             out.append(t)
+            if len(out) >= _VECTOR_TEXT_MAX:
+                break
         uq = self.user_query.strip()
         if uq and not any(t.casefold() == uq.casefold() for t in out):
             out.insert(0, uq)
+            out = out[:_VECTOR_TEXT_MAX]
         return out
 
     def to_dict(self) -> dict[str, Any]:
@@ -62,10 +77,12 @@ class QueryViews:
             "context_rewrite": self.context_rewrite,
             "detail_rewrite": self.detail_rewrite,
             "context_applied": self.context_applied,
+            "language_enrich": self.language_enrich,
             "carried_slots": dict(self.carried_slots),
             "user_query_len": len(self.user_query or ""),
             "context_rewrite_len": len(self.context_rewrite or ""),
             "detail_rewrite_len": len(self.detail_rewrite or ""),
+            "language_enrich_len": len(self.language_enrich or ""),
         }
 
 
@@ -248,6 +265,7 @@ def build_query_views(
     plan_type: str | None = None,
     category: str | None = None,
     decomposition: dict[str, Any] | None = None,
+    language_enrich: str | None = None,
 ) -> QueryViews:
     user_query = normalize_query_text(raw_query)
     ctx = build_context_rewrite(
@@ -266,6 +284,7 @@ def build_query_views(
         detail_rewrite=detail,
         context_applied=bool(ctx.get("context_applied")),
         carried_slots=active.carried() if active else {},
+        language_enrich=str(language_enrich or "").strip(),
     )
 
 
