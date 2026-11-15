@@ -700,6 +700,8 @@ class RAGGraphState(TypedDict, total=False):
     value_hits: dict[str, int] | None
     # Observability: stage-level counts for candidate/structured/retrieved (debugging)
     retrieval_stage_counts: dict[str, int] | None
+    # Bilingual translation: English query variant for BQ retrieval (multi-lingual vectors use original lang)
+    english_query_for_retrieval: str | None
     # Task specialization for full_rag (clarify / analytical / fact / briefing / export-only / chat)
     task_mode: str | None
     # analytical_mode is True when task_mode == "analytical"
@@ -803,10 +805,12 @@ def _early_route_decompose_state(raw_q: str, route: str) -> RAGGraphState:
 
 def node_decompose(state: RAGGraphState) -> RAGGraphState:
     raw_q = normalize_query_text((state.get("query") or "").strip())
+    
+    # Detect language BEFORE early route check (needed for bilingual state)
+    answer_lang = detect_answer_language(raw_q)
+    
     route = early_non_rag_route(raw_q)
     if route:
-        answer_lang = detect_answer_language(raw_q)
-        export_intent = detect_export_intent(raw_q)
         with observed_span(
             "decompose",
             input_data={"query": raw_q[:200], "enriched": False, "early_short_circuit": True},
@@ -815,7 +819,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
                 {
                     "route_candidate": route,
                     "answer_lang": answer_lang,
-                    "export_intent": export_intent,
+                    "export_intent": detect_export_intent(raw_q),
                     "early_short_circuit": True,
                     "skipped_decompose_llm": True,
                     "skipped_retrieval": True,
@@ -826,6 +830,8 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         early["context_rewrite"] = ""
         early["detail_rewrite"] = ""
         early["context_applied"] = False
+        # Early exit: use original query only (skip translation to save tokens)
+        early["english_query_for_retrieval"] = None
         early["query_views"] = {
             "user_query": raw_q,
             "context_rewrite": "",
@@ -841,7 +847,15 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         persisted=state.get("active_request") if isinstance(state.get("active_request"), dict) else None,
         recent_turns=state.get("recent_turns") if isinstance(state.get("recent_turns"), list) else None,
     )
-    answer_lang_user, answer_lang_conf = detect_language_with_confidence(raw_q)
+    # Apply bilingual translation for full RAG pipeline (BQ needs English, vectors use multi-lingual embeddings)
+    from ml.rag.chatbot.hybrid_translation import translate_to_english
+    answer_lang_user = answer_lang or detect_language_with_confidence(raw_q)[0]
+    if answer_lang_user and answer_lang_user.strip().lower() not in ("en", "unknown", "mixed"):
+        english_query = translate_to_english(raw_q, answer_lang_user)
+        answer_lang_user = str(answer_lang_user)  # Keep the detected language tag
+        state["english_query_for_retrieval"] = english_query
+    else:
+        state["english_query_for_retrieval"] = None
     lang_enr = enrich_query_to_english(
         raw_q,
         answer_lang=answer_lang_user,
@@ -855,12 +869,11 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
     views0 = build_query_views(
         raw_q,
         active=active_turn,
-        user_profile=state.get("user_profile")
-        if isinstance(state.get("user_profile"), dict)
-        else None,
+        user_profile=state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None,
         plan_type=str(state.get("plan_type") or "") or None,
         category=str(state.get("category") or "") or None,
         language_enrich=language_enrich or None,
+        english_query=state.get("english_query_for_retrieval"),  # NEW: English query variant for bilingual retrieval
     )
     user_q = views0.user_query
     enrich = {
@@ -3170,6 +3183,14 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
     if self_check.verdict != "skip":
         out_gen["metacog_self_check"] = self_check.to_dict()
         out_gen["metacog_self_check_verdict"] = self_check.verdict
+    
+    # Back-translate answer to user's language for multi-lingual vector embeddings
+    from ml.rag.chatbot.hybrid_translation import translate_to_user_language
+    if state.get("answer_lang") and str(state.get("answer_lang")).strip().lower() not in ("en", "unknown", "mixed"):
+        english_answer = final_answer or ""
+        back_translated = translate_to_user_language(english_answer, str(state.get("answer_lang"))[:2])
+        out_gen["answer"] = back_translated
+    
     return out_gen
 
 
@@ -3354,7 +3375,15 @@ def node_generate_product(state: RAGGraphState) -> RAGGraphState:
 
 
 def node_retrieve_legs(state: RAGGraphState) -> RAGGraphState:
-    """Run Qdrant and BQ reason+retrieve at the same time, then join."""
+    """Run Qdrant and BQ reason+retrieve at the same time, then join.
+    
+    For multi-lingual vector embeddings (bge-m3):
+    - bq_query = English translation for SQL warehouse
+    - vector_query = Original African language (semantic alignment preserved)
+    """
+    
+    # Get bilingual query variants from state
+    bq_query = state.get("english_query_for_retrieval") or str(state.get("query") or "")
 
     def _bq_leg() -> dict[str, Any]:
         reason = node_bq_reason(state)
@@ -3362,11 +3391,15 @@ def node_retrieve_legs(state: RAGGraphState) -> RAGGraphState:
         retrieve = node_bq_retrieve(merged)
         return {**reason, **retrieve}
 
+    # For multi-lingual embeddings, use original query for vectors (preserve semantic alignment)
+    vec_query = state.get("query") or ""
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         fut_vec = pool.submit(node_parallel_retrieve, state)
         fut_bq = pool.submit(_bq_leg)
         vec_out = fut_vec.result()
         bq_out = fut_bq.result()
+    
     return RAGGraphState(**{**vec_out, **bq_out})
 
 
