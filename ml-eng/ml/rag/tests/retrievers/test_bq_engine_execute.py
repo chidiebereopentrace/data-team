@@ -1,12 +1,13 @@
 """Engine execute-only BQ path, job telemetry, and debug reconciliation."""
 from __future__ import annotations
 
+from threading import Event
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ml.rag.chatbot.bq_execute_state import bq_execute_flags
-from ml.rag.chatbot.graph import reconcile_engine_bq_debug
+from ml.rag.chatbot.graph import node_bq_retrieve, reconcile_engine_bq_debug
 from ml.rag.retrievers.bq_retriever import BQRetriever
 
 _PRODUCTION_WHERE = (
@@ -97,6 +98,29 @@ def test_engine_execute_records_job_id(monkeypatch: pytest.MonkeyPatch) -> None:
     assert meta.get("sql_source") == "engine"
 
 
+def test_node_returns_when_warehouse_worker_exceeds_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    release = Event()
+    finished = Event()
+
+    def slow(_self, *args, **kwargs):
+        release.wait(0.75)
+        finished.set()
+        return []
+
+    monkeypatch.setenv("RAG_BQ_RETRIEVE_TIMEOUT_S", "0.15")
+    monkeypatch.setenv("RAG_BQ_FACT_CACHE", "0")
+    monkeypatch.setattr(BQRetriever, "retrieve", slow)
+    try:
+        out = node_bq_retrieve({
+            "query": "maize production in Senegal in 2022",
+            "bq_sql_plan": {"selected_tables": ["fct_production"]},
+        })
+        assert not finished.is_set()
+        assert any(row["status"] == "bq_timeout" for row in out["bq_sql_debug"])
+    finally:
+        release.set()
+
+
 def test_node_timeout_no_fourth_empty_row() -> None:
     sqls = [_engine_sql("a"), _engine_sql("b"), _engine_sql("c")]
     pre_debug = [{"sql": s, "status": "ready", "sql_source": "engine"} for s in sqls]
@@ -148,12 +172,20 @@ def test_no_planned_in_final_debug() -> None:
 
 def test_bq_execute_flags_never_executed() -> None:
     flags = bq_execute_flags(
-        [{"sql": "SELECT 1", "status": "timeout", "sql_source": "engine"}],
+        [{"sql": "SELECT 1", "status": "planned", "sql_source": "engine"}],
         pre_queries=["SELECT 1"],
         usable_bq=False,
     )
     assert flags["structured_bq_never_executed"] is True
     assert flags["structured_bq_timed_out"] is False
+
+
+def test_bq_execute_flags_timed_out_before_submission() -> None:
+    flags = bq_execute_flags(
+        [{"status": "bq_timeout"}], pre_queries=[], usable_bq=False, warehouse_attempted=True,
+    )
+    assert flags["structured_bq_timed_out"] is True
+    assert flags["structured_bq_empty"] is False
 
 
 def test_bq_execute_flags_validation_failed() -> None:

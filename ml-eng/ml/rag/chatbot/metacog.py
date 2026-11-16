@@ -358,6 +358,20 @@ def build_metacog_plan(
     if not q:
         return MetacogPlan(source="none", rationale="empty_query", skip_verify=True)
 
+    # The compiled contract already describes a fully specified fact lookup.
+    if (
+        turn is not None
+        and turn.job == "fact"
+        and turn.needs_numeric_pack()
+        and turn.measure_id
+        and len(turn.geo) == len(turn.entities) == 1
+        and turn.time_spec.start
+        and turn.time_spec.end
+        and not turn.breakdown
+        and not _DIAGNOSE_CUE_RE.search(q)
+    ):
+        return heuristic_metacog_plan(q, current_job=job)
+
     cache_key = _normalize_cache_key(q, job, language_enrich or "")
     cached = _cache_get(cache_key)
     if cached is not None:

@@ -1,12 +1,15 @@
 """Price template SQL uses only mart vocabulary: product keys, sources, types, metrics."""
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from ml.rag.chatbot.capability_registry import resolve_capability
 from ml.rag.chatbot.price_sql import plan_price_template
 from ml.rag.chatbot.price_vocab import names_price_product, price_sql_vocab_errors
 from ml.rag.chatbot.turn_contract import TimeSpec, TurnContract
+from ml.rag.retrievers.bq_retriever import BQRetriever
 
 
 def _plan(query: str, countries: list[str], year: str | None = None) -> dict:
@@ -131,6 +134,40 @@ def test_named_price_type_is_pinned() -> None:
     hit = _plan("What was the average retail maize price in Nigeria in 2024?", ["Nigeria"], "2024")
     assert hit["price_type"] == "Retail"
     assert "price_type = 'Retail'" in hit["sql"]
+
+
+@pytest.mark.parametrize("question,country,year,price_predicate", [
+    ("whats the price of maize in kenya this year", "Kenya", "2026", "price_type IN ('Retail', 'Wholesale')"),
+    ("Average retail maize price in Nigeria in 2024", "Nigeria", "2024", "price_type = 'Retail'"),
+    ("Mean wholesale rice price for Kenya in 2023", "Kenya", "2023", "price_type = 'Wholesale'"),
+])
+def test_price_template_passes_warehouse_validation_in_one_call(
+    monkeypatch: pytest.MonkeyPatch, question: str, country: str, year: str, price_predicate: str,
+) -> None:
+    monkeypatch.setenv("RAG_BQ_SQL_DRY_RUN", "on")
+    sql = _plan(question, [country], year)["sql"]
+    client = Mock()
+    client.query.return_value.total_bytes_processed = 0
+    validated, error = BQRetriever(project_id="proj", nl2sql_enabled=False)._prepare_sql(
+        sql,
+        question=question,
+        table_hints=[],
+        selected_tables={"fct_prices"},
+        allowed_datasets={"mart_dev"},
+        limit=60,
+        client=client,
+        sql_source="template",
+        time_start=f"{year}-01-01",
+        time_end=f"{year}-12-31",
+        primary_measures=["market_price"],
+        geography=[country],
+    )
+
+    assert error is None, error
+    assert validated is not None
+    assert price_predicate in validated
+    assert "GROUP BY b.country_iso3, d.product_name, b.price_type, b.price_source, b.unit, b.currency" in validated
+    client.query.assert_called_once()
 
 
 def test_unnamed_price_source_keeps_every_held_source() -> None:

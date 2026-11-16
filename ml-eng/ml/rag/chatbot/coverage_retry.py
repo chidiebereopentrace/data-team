@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from ml.rag.chatbot.bq_execute_state import execution_status
 from ml.rag.chatbot.facet_coverage import missing_required_facets
+from ml.rag.chatbot.generator import is_usable_context_item
 from ml.rag.chatbot.schema_card import load_schema_card
 from ml.rag.chatbot.web_policy import primary_class_from_state
 
@@ -55,14 +57,12 @@ def _blob_text(state: dict[str, Any]) -> str:
     for key in (
         "bq_results",
         "reranked_context",
-        "merged_context",
-        "vector_results",
     ):
         raw = state.get(key)
         if not isinstance(raw, list):
             continue
         for item in raw:
-            if isinstance(item, dict):
+            if isinstance(item, dict) and is_usable_context_item(item):
                 parts.append(str(item.get("content") or ""))
     return "\n".join(parts).casefold()
 
@@ -77,7 +77,7 @@ def slots_missing_from_evidence(state: dict[str, Any]) -> bool:
 def should_coverage_retry(state: dict[str, Any]) -> bool:
     if int(state.get("coverage_retry") or 0) >= 1:
         return False
-    if state.get("early_short_circuit") or state.get("skipped_retrieval"):
+    if state.get("early_short_circuit") or state.get("skipped_retrieval") or state.get("retrieval_partial"):
         return False
     route = str(state.get("route_candidate") or "")
     if route and route != "full_rag":
@@ -86,7 +86,7 @@ def should_coverage_retry(state: dict[str, Any]) -> bool:
 
 
 def should_retry_bq(state: dict[str, Any]) -> bool:
-    """Second BQ only when measurable path and first job empty/timeout."""
+    """Revisit an eligible warehouse plan only if no outcome was recorded."""
     plan = _as_dict(state.get("bq_sql_plan"))
     if plan.get("skip_bq"):
         return False
@@ -94,6 +94,13 @@ def should_retry_bq(state: dict[str, Any]) -> bool:
     if isinstance(rows, list) and rows:
         return False
     debug = state.get("bq_sql_debug")
+    if isinstance(debug, list):
+        for row in debug:
+            if not isinstance(row, dict):
+                continue
+            status = str(row.get("status") or "").strip().lower()
+            if row.get("job_id") or status == "price_gap" or execution_status(status) != "ok":
+                return False
     if (
         not (isinstance(debug, list) and debug)
         and not plan.get("selected_tables")

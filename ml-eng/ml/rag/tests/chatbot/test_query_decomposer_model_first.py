@@ -4,11 +4,23 @@ from __future__ import annotations
 from datetime import date
 from unittest import mock
 
+from ml.rag.chatbot.decompose_context import DecomposeContext
 from ml.rag.chatbot.query_decomposer import (
     _call_llama_decompose,
     decompose_query,
     should_use_llm_decompose,
 )
+
+
+def test_price_question_preserves_original_this_year_over_english_rewrite() -> None:
+    context = DecomposeContext(
+        query="What is the current year's price of maize in Kenya?",
+        original_query="whats the price of maize in kenya this year",
+    )
+    out = decompose_query(context.query, context=context, use_llm=False, reference_date=date(2026, 11, 16))
+    assert out["time_start"] == "2026-01-01"
+    assert out["time_end"] == "2026-11-16"
+    assert out["time_phrase"] == "this year"
 
 
 def test_should_skip_llm_legacy_gate_unchanged() -> None:

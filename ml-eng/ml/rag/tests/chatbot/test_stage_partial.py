@@ -4,14 +4,24 @@ from __future__ import annotations
 from unittest import mock
 
 from ml.rag.chatbot.generator import generate
-from ml.rag.chatbot.stage_budget import stage_over_budget
+from ml.rag.chatbot.stage_budget import stage_budget_seconds
 from ml.rag.rerank_client import DEFAULT_RERANK_MODEL_ID, rerank_model_id
 
 
-def test_stage_budget_flags_overrun(monkeypatch) -> None:
+def test_stage_budget_uses_configured_seconds(monkeypatch) -> None:
     monkeypatch.setenv("RAG_STAGE_RETRIEVE_BUDGET_S", "2")
-    assert stage_over_budget(3.0, env_var="RAG_STAGE_RETRIEVE_BUDGET_S", default_s=12.0)
-    assert not stage_over_budget(1.0, env_var="RAG_STAGE_RETRIEVE_BUDGET_S", default_s=12.0)
+    assert stage_budget_seconds("RAG_STAGE_RETRIEVE_BUDGET_S", default_s=12.0) == 2.0
+
+
+def test_generate_distinguishes_incomplete_document_search_from_empty_results(monkeypatch) -> None:
+    monkeypatch.delenv("RAG_ALLOW_UNGROUNDED", raising=False)
+    result = generate(
+        "Which reports cover irrigation in Senegal?", [],
+        decomposition={"geography": ["Senegal"]}, retrieval_partial=True,
+    )
+    assert "document search did not complete" in result.answer
+    assert "Senegal" in result.answer
+    assert result.citations == []
 
 
 def test_openrouter_rerank_default_is_multilingual(monkeypatch) -> None:

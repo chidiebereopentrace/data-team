@@ -91,7 +91,7 @@ def test_prepare_sql_dry_run_retry() -> None:
     )
     client = MagicMock()
 
-    def dry_side_effect(_client, sql):
+    def dry_side_effect(_client, sql, **_kwargs):
         if "country FROM" in sql and "country_name" not in sql:
             return "Unrecognized name: country"
         return None
@@ -478,29 +478,19 @@ def test_retrieve_broadens_empty_year_once() -> None:
     with patch.object(retriever, "_nl_to_sql_queries", return_value=[nl_sql]):
         with patch.object(retriever, "_get_client", return_value=client):
             with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
-                with patch(
-                    "ml.rag.retrievers.bq_retriever.validate_dry_run_bytes",
-                    return_value=None,
+                with (
+                    patch("ml.rag.retrievers.bq_retriever.try_sql_template", return_value=None),
+                    patch("ml.rag.retrievers.bq_retriever.try_sql_patterns", return_value=[]),
                 ):
-                    with patch(
-                        "ml.rag.retrievers.bq_retriever.try_sql_template",
-                        return_value=None,
-                    ):
-                        with patch(
-                            "ml.rag.retrievers.bq_retriever.try_sql_patterns",
-                            return_value=[],
-                        ):
-                            items = retriever.retrieve(
-                                "maize production 2022",
-                                selected_tables=["fct_production"],
-                                time_start="2022-01-01",
-                                query_intents=[
-                                    {"pattern": "custom", "tables": ["fct_production"]},
-                                ],
-                                task_mode="analytical",
-                                crop_required=False,
-                                geography_required=False,
-                            )
+                    items = retriever.retrieve(
+                        "maize production 2022",
+                        selected_tables=["fct_production"],
+                        time_start="2022-01-01",
+                        query_intents=[{"pattern": "custom", "tables": ["fct_production"]}],
+                        task_mode="analytical",
+                        crop_required=False,
+                        geography_required=False,
+                    )
     assert any("NGA" in str(it.get("content")) for it in items)
     execute_calls = [
         c.args[0]
@@ -738,7 +728,6 @@ def _prepare_with_column_gate(sql_source: str) -> tuple[dict[str, int], str | No
         patch("ml.rag.retrievers.bq_retriever.validate_sql_value_samples", return_value=None),
         patch("ml.rag.retrievers.bq_retriever.validate_sql_complete_index_literals", return_value=None),
         patch("ml.rag.retrievers.bq_retriever.validate_semantic_coherence", return_value=None),
-        patch("ml.rag.retrievers.bq_retriever.validate_dry_run_bytes", return_value=None),
         patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None),
         patch("ml.rag.retrievers.bq_retriever.max_bytes_billed_for_source", return_value=10**12),
         patch("ml.rag.retrievers.bq_retriever.sql_retry_enabled", return_value=False),

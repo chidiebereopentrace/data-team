@@ -27,7 +27,6 @@ from ml.rag.chatbot.bq_sql_validate import (
     max_bytes_billed_for_source,
     referenced_mart_tables,
     sql_retry_enabled,
-    validate_dry_run_bytes,
     validate_literals_against_value_map,
     validate_required_metric_filters,
     validate_semantic_coherence,
@@ -1014,15 +1013,12 @@ class BQRetriever(BaseRetriever):
             if coherence_err:
                 return coherence_err
             bytes_cap = max_bytes_billed_for_source(sql_source)
-            bytes_err = validate_dry_run_bytes(
+            dry_err = dry_run_sql(
                 client,
                 sql,
                 max_bytes=bytes_cap,
                 sql_source=sql_source,
             )
-            if bytes_err:
-                return bytes_err
-            dry_err = dry_run_sql(client, sql)
             if dry_err:
                 return f"dry_run_failed: {dry_err[:300]}"
             return None
@@ -1148,6 +1144,7 @@ class BQRetriever(BaseRetriever):
         query_intents: list[Any] | None = None,
         primary_measures: list[str] | None = None,
         task_mode: str = "",
+        max_queries: int | None = None,
     ) -> list[str]:
         """
         Generate up to RAG_BQ_MAX_SQL_QUERIES (default 10) SELECT statements via NL-to-SQL.
@@ -1156,7 +1153,8 @@ class BQRetriever(BaseRetriever):
         - per_hint (default): one LLM call per vector-matched table hint (up to max queries).
         - batch: one LLM call returning multiple queries separated by ---QUERY---.
         """
-        max_queries = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
+        if max_queries is None:
+            max_queries = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
         cleaned_hints = [str(h).strip() for h in (table_hints or []) if str(h).strip()]
         default_mode = "batch" if len(cleaned_hints) > 1 else "per_hint"
         mode = os.environ.get("RAG_BQ_NL2SQL_MODE", default_mode).strip().lower()
@@ -1329,6 +1327,7 @@ class BQRetriever(BaseRetriever):
         ``bq_sql_queries`` / ``bq_sql_debug``.
         """
         t0 = time.perf_counter()
+        max_queries = max(1, int(kwargs.get("max_sql_queries") or os.environ.get("RAG_BQ_MAX_SQL_QUERIES") or 10))
         self.last_sql_source = None
         self.last_bq_execute_ms = None
         self.last_bq_nl2sql_ms = None
@@ -1608,32 +1607,23 @@ class BQRetriever(BaseRetriever):
                     need_nl2sql = self.nl2sql_enabled and not contract_sql_only and not bind_refusals
                     if need_nl2sql:
                         nl_tables = sorted(selected_tables) if selected_tables else None
-                        prev_max = os.environ.get("RAG_BQ_MAX_SQL_QUERIES")
-                        if fast_fact:
-                            os.environ["RAG_BQ_MAX_SQL_QUERIES"] = "1"
-                        try:
-                            nl2sql_sqls = self._nl_to_sql_queries(
-                                query,
-                                table_hints=hint_list[:1] if fast_fact and hint_list else hint_list,
-                                geo_country=geo_country,
-                                geo_countries=geo_countries,
-                                time_start=time_start,
-                                time_end=time_end,
-                                entities=entities,
-                                domains=domains,
-                                selected_tables=nl_tables,
-                                query=query,
-                                bind_contracts=bind_contracts,
-                                query_intents=query_intents,
-                                primary_measures=primary_measures,
-                                task_mode=task_mode,
-                            )
-                        finally:
-                            if fast_fact:
-                                if prev_max is None:
-                                    os.environ.pop("RAG_BQ_MAX_SQL_QUERIES", None)
-                                else:
-                                    os.environ["RAG_BQ_MAX_SQL_QUERIES"] = prev_max
+                        nl2sql_sqls = self._nl_to_sql_queries(
+                            query,
+                            table_hints=hint_list[:1] if fast_fact and hint_list else hint_list,
+                            geo_country=geo_country,
+                            geo_countries=geo_countries,
+                            time_start=time_start,
+                            time_end=time_end,
+                            entities=entities,
+                            domains=domains,
+                            selected_tables=nl_tables,
+                            query=query,
+                            bind_contracts=bind_contracts,
+                            query_intents=query_intents,
+                            primary_measures=primary_measures,
+                            task_mode=task_mode,
+                            max_queries=1 if fast_fact else max_queries,
+                        )
                     sql_queries = list(nl2sql_sqls)
             else:
                 template_sqls = _try_template_sql()
@@ -1723,32 +1713,23 @@ class BQRetriever(BaseRetriever):
                         nl_tables = leftover_tables or (
                             sorted(selected_tables) if selected_tables else None
                         )
-                        prev_max = os.environ.get("RAG_BQ_MAX_SQL_QUERIES")
-                        if fast_fact:
-                            os.environ["RAG_BQ_MAX_SQL_QUERIES"] = "1"
-                        try:
-                            nl2sql_sqls = self._nl_to_sql_queries(
-                                query,
-                                table_hints=hint_list[:1] if fast_fact and hint_list else hint_list,
-                                geo_country=geo_country,
-                                geo_countries=geo_countries,
-                                time_start=time_start,
-                                time_end=time_end,
-                                entities=entities,
-                                domains=domains,
-                                selected_tables=nl_tables,
-                                query=query,
-                                bind_contracts=bind_contracts,
-                                query_intents=query_intents,
-                                primary_measures=primary_measures,
-                                task_mode=task_mode,
-                            )
-                        finally:
-                            if fast_fact:
-                                if prev_max is None:
-                                    os.environ.pop("RAG_BQ_MAX_SQL_QUERIES", None)
-                                else:
-                                    os.environ["RAG_BQ_MAX_SQL_QUERIES"] = prev_max
+                        nl2sql_sqls = self._nl_to_sql_queries(
+                            query,
+                            table_hints=hint_list[:1] if fast_fact and hint_list else hint_list,
+                            geo_country=geo_country,
+                            geo_countries=geo_countries,
+                            time_start=time_start,
+                            time_end=time_end,
+                            entities=entities,
+                            domains=domains,
+                            selected_tables=nl_tables,
+                            query=query,
+                            bind_contracts=bind_contracts,
+                            query_intents=query_intents,
+                            primary_measures=primary_measures,
+                            task_mode=task_mode,
+                            max_queries=1 if fast_fact else max_queries,
+                        )
                         if nl2sql_sqls and not pattern_sqls:
                             sql_source = "nl2sql"
                     if not sql_queries:
@@ -1827,7 +1808,6 @@ class BQRetriever(BaseRetriever):
                 )
             ]
 
-        max_queries = max(1, int(os.environ.get("RAG_BQ_MAX_SQL_QUERIES", "10") or 10))
         allowed = set(self.datasets_config.values())
         budget = top_k or self.max_rows
         items: list[dict[str, Any]] = list(bind_refusals)
@@ -1885,6 +1865,8 @@ class BQRetriever(BaseRetriever):
 
                     _max_b = max_bytes_billed_for_source(source)
                     _jcfg = _QJC(maximum_bytes_billed=_max_b) if _max_b > 0 else None
+                    if deadline is not None and time.perf_counter() >= deadline:
+                        raise TimeoutError("Warehouse deadline reached before job submission")
                     job = client.query(validated, job_config=_jcfg)
                     submitted_at_ms = int((time.perf_counter() - exec_t0) * 1000)
                     job_cap = _bq_job_timeout_s(validated)
