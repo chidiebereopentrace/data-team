@@ -879,7 +879,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         plan_type=str(state.get("plan_type") or "") or None,
         category=str(state.get("category") or "") or None,
         language_enrich=language_enrich or None,
-        english_query=state.get("english_query_for_retrieval"),  # NEW: English query variant for bilingual retrieval
+        english_query=(state.get("english_query_for_retrieval") or "").strip() if state.get("english_query_for_retrieval") is not None else "",  # NEW: English query variant for bilingual retrieval
     )
     user_q = views0.user_query
     enrich = {
@@ -1640,8 +1640,8 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
             decomposition=decomposition,
         )
         selection = CorpusSelection(
-            active=list(planner.get("active_corpora") or selection.active),
-            boosts=selection.boosts,
+            list(planner.get("active_corpora") or selection.active),
+            boosts=dict(selection.boosts),
             rationale=f"{selection.rationale}|reasoner_planner",
         )
         planner_meta = {
@@ -1655,9 +1655,9 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
             filtered = [c for c in class_corpora if c in CORPUS_CATALOG]
             if filtered:
                 selection = CorpusSelection(
-                    active=filtered,
-                    boosts=selection.boosts,
-                    rationale=f"{selection.rationale}|class_supervisor",
+                    filtered,
+                    dict(selection.boosts),
+                    f"{selection.rationale}|class_supervisor",
                 )
     mp_raw = state.get("metacog_plan")
     if isinstance(mp_raw, dict):
@@ -2788,6 +2788,7 @@ def node_web_fallback(state: RAGGraphState) -> RAGGraphState:
         has_bq = any(
             is_usable_structured_bq_row(r) for r in bq_results if isinstance(r, dict)
         )
+        merged: list[dict[str, Any]] = []
         if not needs_web_fallback(
             reranked,
             task_mode=str(state.get("task_mode") or ""),
@@ -3164,10 +3165,11 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
     # ACF Path B is computed post-cite inside generate/_finalize_generation_result.
     acf = revised_result.acf or no_evidence_acf()
     answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
+    dec_dict = dec if isinstance(dec, dict) else {}
 
-    out_gen: RAGGraphState = {
-        "query": query,
-        "decomposition": dec,
+    out_gen: dict[str, Any] = {
+        "query": str(query),
+        "decomposition": dec_dict,
         "bq_sql_plan": {},
         "merged_context": list(reranked) if isinstance(reranked, list) else [],
         "reranked_context": list(reranked) if isinstance(reranked, list) else [],
@@ -3197,7 +3199,7 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         back_translated = translate_to_user_language(english_answer, str(state.get("answer_lang"))[:2])
         out_gen["answer"] = back_translated
     
-    return out_gen
+    return RAGGraphState(**out_gen)
 
 
 def node_export(state: RAGGraphState) -> RAGGraphState:
@@ -3207,14 +3209,14 @@ def node_export(state: RAGGraphState) -> RAGGraphState:
     out: dict[str, Any] = {"artifacts": []}
 
     if not export_intent:
-        return out
+        return RAGGraphState(**out)
 
     answer = str(state.get("answer") or "")
 
     if not export_enabled:
         if EXPORT_UPGRADE_MESSAGE not in answer:
             out["answer"] = f"{answer}\n\n{EXPORT_UPGRADE_MESSAGE}".strip()
-        return out
+        return RAGGraphState(**out)
 
     try:
         artifacts = run_exports(
@@ -3240,7 +3242,7 @@ def node_export(state: RAGGraphState) -> RAGGraphState:
             "Try asking again once structured data is available in the answer."
         ).strip()
 
-    return out
+    return RAGGraphState(**out)
 
 
 def node_generate_clarify(state: RAGGraphState) -> RAGGraphState:
@@ -3507,10 +3509,22 @@ def node_coverage_retry(state: RAGGraphState) -> RAGGraphState:
         return RAGGraphState(**{**updates, **state})
 
     if not should_coverage_retry(cast(dict[str, Any], state)):
-        out = {"coverage_retry": int(state.get("coverage_retry") or 0)}
+        out = {
+            "query": str(state.get("query") or ""),
+            "decomposition": {} if not isinstance(state.get("decomposition"), dict) else state.get("decomposition"),
+            "bq_sql_plan": {},
+            "merged_context": [],
+            "reranked_context": [],
+            "answer_outcome": "unknown",
+            "coverage_retry": int(state.get("coverage_retry") or 0),
+        }
         return RAGGraphState(**out)
 
-    updates = {"coverage_retry": 1}
+    updates = {
+        "query": str(state.get("query") or ""),
+        "decomposition": {} if not isinstance(state.get("decomposition"), dict) else state.get("decomposition"),
+        "coverage_retry": 1,
+    }
     merged_state = cast(RAGGraphState, {**dict(state), **updates})
     with observed_span("coverage_retry", input_data={"attempt": 1}):
         updates.update(_rerun_retrieve_merge_rerank(merged_state))
@@ -3716,7 +3730,15 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
     reset_llm_usage()
     reset_llm_truncation()  # ML-054
     graph = _get_compiled_graph()
-    initial: RAGGraphState = RAGGraphState(**{"query": query})
+    initial: RAGGraphState = {
+        "query": query,
+        "decomposition": {},
+        "bq_table_candidates": [],
+        "bq_sql_plan": {},
+        "merged_context": [],
+        "reranked_context": [],
+        "answer_outcome": "",
+    }
     raw_profile = kwargs.get("user_profile") if isinstance(kwargs.get("user_profile"), dict) else None
     user_profile = dict(raw_profile) if raw_profile is not None else None
     if user_profile is not None:

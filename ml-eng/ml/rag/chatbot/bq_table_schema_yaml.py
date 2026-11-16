@@ -1221,10 +1221,9 @@ def intent_grain_for_table(
 def _table_filter_prefix(table_id: str, measure_id: str = "") -> str:
     if table_id == "fct_production" or "agg_production" in table_id:
         return "production_grain='physical'"
-    if table_id == "fct_prices":
-        return "price_source from question"
-    if table_id == "fct_trade":
-        return "trade_grain from question"
+    # fct_prices and fct_trade don't have static discriminator filters; let YAML-driven logic handle this
+    if table_id in ("fct_prices", "fct_trade"):
+        return ""  # Empty prefix — discriminators handled dynamically by compile_measure_filter_sql()
     if table_id == "fct_food_security":
         return "measure_type from question (population vs classification)"
     if table_id == "fct_yield":
@@ -1255,8 +1254,18 @@ def compile_intent_for_table(
         time_end=time_end,
         year_hint=year_hint,
     )
-    prefix = extra_filters or _table_filter_prefix(table_id, measure_id)
-    filters = f"{prefix}; {geo_filter}; {time_filter}" if prefix else f"{geo_filter}; {time_filter}"
+    # Build filters: extra_filters -> discriminator equality filters -> geo filter -> time filter
+    prefix_parts = [extra_filters] if extra_filters else []
+    # Add discriminator equality filters from YAML samples for tables that need them
+    # Pass measure_id to get discriminator samples (price_type, metric, etc.)
+    measure_discriminator_filters = compile_measure_filter_sql(
+        table_id,
+        measure_blob_text=str(measure_id),
+        primary_measures=None,  # Will be passed by caller when known
+    )
+    prefix_parts.append(measure_discriminator_filters) if measure_discriminator_filters else None
+    filter_prefix = "; ".join(p for p in prefix_parts if p)
+    filters = f"{filter_prefix}; {geo_filter}; {time_filter}" if filter_prefix else f"{geo_filter}; {time_filter}"
     pattern = intent_pattern_for_query(
         query,
         table_id,

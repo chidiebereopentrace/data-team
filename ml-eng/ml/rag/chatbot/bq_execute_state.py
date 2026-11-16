@@ -100,7 +100,10 @@ def execution_results_from_items(items: list[dict[str, Any]]) -> list[ExecutionR
     for item in items or []:
         if not isinstance(item, dict) or str(item.get("source") or "") != "bigquery":
             continue
-        meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        meta_raw = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        if meta_raw is None:
+            meta_raw = {}
+        meta: dict[str, Any] = meta_raw
         sql = str(meta.get("sql") or "").strip()
         if sql:
             grouped.setdefault(sql, []).append(meta)
