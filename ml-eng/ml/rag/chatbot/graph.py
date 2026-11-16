@@ -497,6 +497,19 @@ def _vector_texts_from_state(state: RAGGraphState) -> list[str]:
     return [str(state.get("query") or "").strip()] if str(state.get("query") or "").strip() else []
 
 
+def _document_search_texts(state: RAGGraphState) -> list[str]:
+    texts = _vector_texts_from_state(state)
+    dec = state.get("decomposition") or {}
+    topics = dec.get("evidence_topics")
+    if not isinstance(topics, list) or not topics:
+        return texts
+    # Keep the whole question and necessary language/context views. Replace the
+    # generic detail rewrite with focused searches for the requested evidence.
+    detail = state.get("detail_rewrite")
+    focused = [topic for topic in topics if isinstance(topic, str) and topic.strip()]
+    return list(dict.fromkeys([*(text for text in texts if text != detail), *focused]))
+
+
 def _vector_retrieve_for_corpus(
     state: RAGGraphState,
     *,
@@ -514,7 +527,7 @@ def _vector_retrieve_for_corpus(
         set_cached_hits,
     )
 
-    texts = _vector_texts_from_state(state)
+    texts = _document_search_texts(state)
     if not texts:
         return []
     dec_raw = state.get("decomposition") or {}
@@ -794,11 +807,9 @@ def _early_route_decompose_state(raw_q: str, route: str) -> RAGGraphState:
 def node_decompose(state: RAGGraphState) -> RAGGraphState:
     raw_q = normalize_query_text((state.get("query") or "").strip())
     
-    # Detect language BEFORE early route check (needed for bilingual state)
-    answer_lang = detect_answer_language(raw_q)
-    
     route = early_non_rag_route(raw_q)
     if route:
+        early = _early_route_decompose_state(raw_q, route)
         with observed_span(
             "decompose",
             input_data={"query": raw_q[:200], "enriched": False, "early_short_circuit": True},
@@ -806,14 +817,13 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             update_current_span_metadata(
                 {
                     "route_candidate": route,
-                    "answer_lang": answer_lang,
+                    "answer_lang": early.get("answer_lang"),
                     "export_intent": detect_export_intent(raw_q),
                     "early_short_circuit": True,
                     "skipped_decompose_llm": True,
                     "skipped_retrieval": True,
                 }
             )
-        early = _early_route_decompose_state(raw_q, route)
         early["user_query"] = raw_q
         early["context_rewrite"] = ""
         early["detail_rewrite"] = ""
@@ -835,9 +845,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
     )
 
     # Detect language and capture confidence value for enrichment decisions
-    lang_result = detect_language_with_confidence(raw_q)
-    answer_lang_user = str(lang_result[0])  # language tag (e.g., "ig", "sw")
-    confidence = float(lang_result[1]) if len(lang_result) > 1 else None
+    answer_lang_user, confidence = detect_language_with_confidence(raw_q)
 
     lang_enr = enrich_query_to_english(
         raw_q,
@@ -910,10 +918,9 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         if contract.corpus_domain_tags:
             dec["corpus_domain_tags"] = list(contract.corpus_domain_tags)
         bundle_pm = list(bundle_primary_measures(matched_bundles, q) or bundle_required_measures(matched_bundles))
-        if bundle_pm:
-            dec["primary_measures"] = bundle_pm
-        elif contract.primary_measures:
-            dec["primary_measures"] = list(contract.primary_measures)
+        primary_measures = list(dict.fromkeys([*bundle_pm, *contract.primary_measures]))
+        if primary_measures:
+            dec["primary_measures"] = primary_measures
         dec = sanitize_decomposition_for_bq(
             dec, primary_measures=dec.get("primary_measures"), query=q
         )
@@ -1115,11 +1122,9 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             if rp.time_end:
                 dec["time_end"] = rp.time_end
             if rp.primary_measure:
-                dec["primary_measures"] = list(
-                    bundle_primary_measures(matched_bundles, q)
-                    or bundle_required_measures(matched_bundles)
-                    or [rp.primary_measure]
-                )
+                dec["primary_measures"] = list(dict.fromkeys([
+                    *(dec.get("primary_measures") or []), rp.primary_measure,
+                ]))
             out["decomposition"] = dec
             out["turn_contract"] = turn.to_dict()
             out["measure_id"] = turn.measure_id or rp.primary_measure
@@ -1628,6 +1633,8 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
         if class_corpora:
             filtered = [c for c in class_corpora if c in CORPUS_CATALOG]
             if filtered:
+                if decomposition.get("evidence_topics") or len(decomposition.get("primary_measures") or []) > 1:
+                    filtered = list(dict.fromkeys([*filtered, *selection.active]))
                 selection = CorpusSelection(
                     filtered,
                     dict(selection.boosts),
@@ -1772,7 +1779,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
     )
     from ml.rag.chatbot.query_views import user_query_dropped as _uq_dropped
 
-    texts_used = _vector_texts_from_state(state_for_retrieve)
+    texts_used = _document_search_texts(state_for_retrieve)
     return {
         "vector_news_results": news_out,
         "vector_academic_papers_results": academic_papers_out,
@@ -3047,6 +3054,13 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         rows_by_subquestion=rows_by if slot_active else None,
     )
     gkw["generation_plan"] = gen_plan.to_dict()
+    raw_topics = (dec_dict or {}).get("evidence_topics")
+    topics = [topic for topic in raw_topics if isinstance(topic, str)] if isinstance(raw_topics, list) else []
+    if topics:
+        gkw["composer_addendum"] = (
+            "Address each requested aspect separately and state any evidence gap for that aspect. "
+            "Requested aspects: " + "; ".join(topics)
+        )
     onto_for_gen = state.get("ontology_plan")
     if isinstance(onto_for_gen, dict):
         gkw["ontology_plan"] = onto_for_gen
@@ -3069,7 +3083,9 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
             },
             *passages,
         ]
-        gkw["composer_addendum"] = composer_addendum(reasoner, rows_by)
+        gkw["composer_addendum"] = "\n\n".join(filter(None, (
+            gkw.get("composer_addendum"), composer_addendum(reasoner, rows_by),
+        )))
 
     # Advisory metacog: diagnosis addendum. Verify already ran in metacog_revise.
     mp_state = MetacogPlan.from_dict(
@@ -3477,7 +3493,7 @@ def node_metacog_revise(state: RAGGraphState) -> RAGGraphState:
         "metacog_revise_action": "skip",
     }
     if plan is None or not metacog_enabled():
-        return {**updates, **state}
+        return updates
 
     with observed_span(
         "metacog_revise",
@@ -3527,7 +3543,7 @@ def _metacog_revise_body(
     )
     updates["metacog_revise_action"] = decision.action
     if decision.action != "replan":
-        return {**updates, **state}
+        return updates
 
     turn = TurnContract.from_dict(
         state.get("turn_contract") if isinstance(state.get("turn_contract"), dict) else None
@@ -3548,7 +3564,7 @@ def _metacog_revise_body(
             "metacog_mode": revised_plan.advisory_mode,
         }
     )
-    return {**updates, **state}
+    return updates
 
 
 def _route_after_metacog_revise(state: RAGGraphState) -> str:

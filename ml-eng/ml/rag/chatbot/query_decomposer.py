@@ -709,6 +709,7 @@ def _call_llama_decompose(
 def _merge_llm_decompose(
     out: dict[str, Any],
     llm: dict[str, Any],
+    query: str,
 ) -> None:
     if isinstance(llm.get("intent"), str) and llm["intent"].strip():
         out["intent"] = llm["intent"].strip()
@@ -721,6 +722,17 @@ def _merge_llm_decompose(
     measure_hints = _normalize_measure_hints(llm.get("primary_measure_hints"))
     if measure_hints:
         out["primary_measure_hints"] = measure_hints
+    topics = llm.get("evidence_topics")
+    if isinstance(topics, list):
+        phrases = [
+            phrase
+            for topic in topics[:6]
+            if isinstance(topic, str)
+            and 3 <= len(phrase := topic.strip()) <= 160
+            and re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", query, re.I)
+        ]
+        if phrases:
+            out["evidence_topics"] = list(dict.fromkeys(phrases))
     if isinstance(llm.get("entities"), list):
         out["entities"] = [str(x) for x in llm["entities"][:20]]
     if isinstance(llm.get("geography"), list) and llm["geography"]:
@@ -829,7 +841,7 @@ def decompose_query(
         out["time_source"] = "query"
 
     if llm_used and llm is not None:
-        _merge_llm_decompose(out, llm)
+        _merge_llm_decompose(out, llm, q)
 
     if not windows:
         screen_start = parse_iso_date(ctx.time_start_override)

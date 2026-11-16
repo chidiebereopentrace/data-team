@@ -37,6 +37,7 @@ from ml.rag.chatbot.acf_scoring import (
     score_cited_evidence,
 )
 from ml.rag.chatbot.ontology_routing import acf_band_ceiling
+from ml.rag.chatbot.analytical_intent import asks_about_causal_effect
 from ml.rag.chatbot.continental_scope import RANKING_QUERY_RE as _RANKING_QUERY_RE
 from ml.rag.chatbot.answer_language import (
     detect_answer_language,
@@ -672,7 +673,7 @@ def _narrative_overlaps_query(
     countries = _query_target_countries(decomposition)
     if countries and not any(c.lower() in blob for c in countries):
         return False
-    if _asks_market_price(decomposition):
+    if _asks_market_price(decomposition) and not asks_about_causal_effect(query):
         return _names_product_and_price(blob, query, decomposition)
     topics = _query_topic_tokens(query, decomposition)
     if topics:
@@ -1628,10 +1629,10 @@ def drop_price_off_topic(
 ) -> list[dict[str, Any]]:
     """Drop narrative chunks that are not about the asked product's price.
 
-    Warehouse rows stay. A production question is unchanged. A market-price
-    question keeps a chunk only when the text names the product and a price.
+    A price lookup keeps documents that name the product and a price.
+    Causal questions also use documents that describe policies and outcomes.
     """
-    if not _asks_market_price(decomposition):
+    if not _asks_market_price(decomposition) or asks_about_causal_effect(query):
         return items
     kept: list[dict[str, Any]] = []
     for item in items:
@@ -1872,6 +1873,8 @@ def _numeric_warehouse_miss(
 ) -> bool:
     """True when a numeric warehouse leg returned no rows and papers must not invent the figure."""
     if usable_bq or structured_bq_numeric_available or _has_usable_warehouse_row(usable_context):
+        return False
+    if asks_about_causal_effect(query) and any(is_document_item(item) for item in usable_context):
         return False
     emptyish = bool(
         kwargs.get("structured_bq_empty")

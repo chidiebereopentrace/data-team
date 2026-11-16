@@ -8,6 +8,7 @@ from unittest import mock
 import pytest
 
 from ml.rag.chatbot.global_reasoner import _pin_job
+from ml.rag.chatbot.graph import node_metacog_revise
 from ml.rag.chatbot.metacog import (
     MetacogPlan,
     MetacogReviseDecision,
@@ -121,6 +122,35 @@ def test_diagnosis_addendum() -> None:
     assert "diagnosis" in text.lower()
     assert "causal_careful" in text
     assert "Separate levels" in text
+
+
+def test_metacog_plan_rejects_strings_in_place_of_lists() -> None:
+    plan = MetacogPlan.from_dict({
+        "advisory_mode": "diagnose",
+        "evidence_needs": "research",
+        "verify_checks": "geo_match;year_match;measure_match",
+        "composer_hints": "Separate prices and livelihood impacts.",
+    })
+    assert plan is not None
+    assert {"geo_match", "year_match", "measure_match"}.issubset(plan.verify_checks)
+    assert plan.evidence_needs == ()
+    assert plan.composer_hints == ()
+
+
+def test_graph_keeps_new_verification_over_initial_empty_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RAG_METACOG", "1")
+    monkeypatch.setenv("RAG_METACOG_VERIFY", "1")
+    monkeypatch.setenv("RAG_METACOG_REVISE", "0")
+    out = node_metacog_revise({
+        "query": "How did policy affect food prices in Ghana?",
+        "metacog_plan": MetacogPlan(advisory_mode="diagnose").to_dict(),
+        "metacog_verify": None,
+    })
+    verification = out.get("metacog_verify")
+    assert verification and verification["status"] == "gap"
+    assert out["metacog_next"] == "generate"
 
 
 def test_verify_gap_when_empty_evidence() -> None:

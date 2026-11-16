@@ -241,7 +241,7 @@ def _resolve_measure_ids(
                 if str(h).strip().lower() in MEASURES
             ]
             if validated:
-                primary_ids = validated[:3]
+                primary_ids = validated
     if not primary_ids:
         if matched_bundle_ids:
             bundles = bundles_from_ids(matched_bundle_ids)

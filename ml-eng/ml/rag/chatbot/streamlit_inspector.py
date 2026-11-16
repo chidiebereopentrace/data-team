@@ -147,6 +147,8 @@ def infer_pipeline_route(result: dict[str, Any]) -> str:
         return "out_of_scope"
     if result.get("is_language_unknown"):
         return "language_unknown"
+    if result.get("task_mode") == "clarify":
+        return "clarify"
     if result.get("insufficient_context"):
         return "insufficient"
     if result.get("web_results"):
@@ -165,6 +167,8 @@ def _flow_narrative(route: str) -> str:
         return "decompose → generate_social → END"
     if route == "language_unknown":
         return "decompose → generate_language_help → END"
+    if route == "clarify":
+        return "decompose → generate_clarify → END"
     if route == "insufficient":
         return (
             "decompose → retrieve_legs → merge → rerank "

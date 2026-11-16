@@ -556,6 +556,22 @@ def test_drop_price_off_topic_keeps_price_text_and_warehouse_rows() -> None:
     assert production == [report]
 
 
+def test_policy_and_price_question_preserves_policy_evidence() -> None:
+    query = "How did agricultural policies affect farmer livelihoods and food prices in West Africa since 2015?"
+    dec = {
+        "geography": ["Ghana", "Liberia", "Mali"],
+        "entities": ["policy", "livelihoods"],
+        "primary_measures": ["market_price"],
+        "time_start": "2015-01-01",
+        "time_end": "2026-11-16",
+    }
+    policy = {
+        "content": "Ghana's fertilizer subsidy expanded access to inputs for smallholders.",
+        "_context_kind": "policy",
+    }
+    assert drop_price_off_topic([policy], query, dec) == [policy]
+
+
 def test_market_price_crop_mention_is_not_strong_evidence() -> None:
     chunks = [
         {

@@ -310,6 +310,19 @@ def enrich_subquestions(
                 known=known,
             )
 
+    # Independently requested measures must survive bundle and primary-slot selection.
+    requested = dec.get("primary_measures")
+    if isinstance(requested, list) and len(requested) > 1:
+        planned_measures = {slot.measure for slot in slots}
+        for mid in requested:
+            if not isinstance(mid, str) or mid in planned_measures or not _tables_for_measure(mid, known):
+                continue
+            _add_measure_slot(
+                slots, seen_ids, slot_id=f"{mid}_requested",
+                nl=f"{mid.replace('_', ' ').title()} for {geo_label}, {time_label}",
+                measure=mid, required=True, library="bq", known=known,
+            )
+
     if not slots:
         pm = dec.get("primary_measures")
         measure = ""

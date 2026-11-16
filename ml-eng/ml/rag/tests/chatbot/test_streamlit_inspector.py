@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ml.rag.chatbot.streamlit_inspector import (
+    _flow_narrative,
     infer_pipeline_route,
     normalize_query_response,
 )
@@ -29,6 +30,12 @@ def test_infer_pipeline_route_out_of_scope() -> None:
 
 def test_infer_pipeline_route_language_unknown() -> None:
     assert infer_pipeline_route({"is_language_unknown": True}) == "language_unknown"
+
+
+def test_clarification_route_skipped_retrieval() -> None:
+    route = infer_pipeline_route({"task_mode": "clarify"})
+    assert route == "clarify"
+    assert _flow_narrative(route) == "decompose → generate_clarify → END"
 
 
 def test_infer_pipeline_route_insufficient() -> None:

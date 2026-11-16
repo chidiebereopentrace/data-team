@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from unittest import mock
 
-from ml.rag.chatbot.graph import node_decompose
+import pytest
+
+from ml.rag.chatbot.graph import _document_search_texts, node_decompose
 from ml.rag.chatbot.active_request import resolve_turn
 
 
@@ -38,6 +40,115 @@ def test_node_decompose_greeting_skips_memory_and_decompose() -> None:
     assert flags.get("early_short_circuit") is True
     assert flags.get("skipped_decompose_llm") is True
     assert flags.get("skipped_retrieval") is True
+
+
+@pytest.mark.parametrize(
+    ("query", "lang", "commodity"),
+    [
+        ("ego ole ka ha na-ele osikapa na rwanda n'afo 2025", "ig", "rice"),
+        ("bei ya mahindi nchini Rwanda mwaka 2025", "sw", "maize"),
+        ("menene farashin shinkafa a Rwanda a shekarar 2025", "ha", "rice"),
+    ],
+)
+def test_local_price_query_recovers_from_english_language_label(
+    monkeypatch: pytest.MonkeyPatch, query: str, lang: str, commodity: str
+) -> None:
+    monkeypatch.setenv("RAG_LANG_ENRICH", "1")
+    english = f"What was the price of {commodity} in Rwanda in 2025?"
+    with (
+        mock.patch(
+            "ml.rag.chatbot.answer_language._commonlingua_detect_with_confidence",
+            return_value=("en", 0.85),
+        ),
+        mock.patch(
+            "ml.rag.chatbot.language_enrich.llm_chat_complete", return_value=english
+        ) as translate,
+        mock.patch(
+            "ml.rag.chatbot.query_decomposer._decompose_backend_configured", return_value=False
+        ),
+    ):
+        out = node_decompose({"query": query})
+
+    assert out.get("answer_lang") == lang
+    translate.assert_called_once()
+    assert out.get("route_candidate") == "full_rag"
+    decomposition = out["decomposition"]
+    assert commodity in decomposition["entities"]
+    assert decomposition["geography"] == ["Rwanda"]
+    assert decomposition["time_start"] == "2025-01-01"
+    assert out["user_query"] == query
+
+
+def test_clear_english_price_query_skips_translation_when_lid_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RAG_LANG_ENRICH", "1")
+    with (
+        mock.patch(
+            "ml.rag.chatbot.answer_language._commonlingua_detect_with_confidence", return_value=None
+        ),
+        mock.patch("ml.rag.chatbot.language_enrich.llm_chat_complete", return_value="") as translate,
+        mock.patch(
+            "ml.rag.chatbot.query_decomposer._decompose_backend_configured", return_value=False
+        ),
+    ):
+        out = node_decompose({"query": "whats the price of maize in kenya this year"})
+
+    assert out.get("answer_lang") == "en"
+    translate.assert_not_called()
+
+
+def test_policy_impact_plans_diagnosis_without_second_planner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RAG_METACOG", "1")
+    query = "How did agricultural policies affect farmer livelihoods and the price of food in West Africa since 2015?"
+    with (
+        mock.patch(
+            "ml.rag.chatbot.answer_language._commonlingua_detect_with_confidence",
+            return_value=("en", 0.85),
+        ),
+        mock.patch(
+            "ml.rag.chatbot.query_decomposer._decompose_backend_configured", return_value=False
+        ),
+        mock.patch("ml.rag.chatbot.metacog.llm_chat_complete", return_value="") as advisory_llm,
+    ):
+        out = node_decompose({"query": query})
+
+    assert out.get("task_mode") == "analytical"
+    assert out["turn_contract"]["job"] == "diagnose"
+    plan = out.get("metacog_plan")
+    assert plan and "research" in plan["evidence_needs"]
+    advisory_llm.assert_not_called()
+
+
+def test_multipart_question_retains_distinct_search_topics_and_measures() -> None:
+    query = "How did fertilizer subsidies affect farm incomes, maize prices and rice production in Ghana?"
+    with (
+        mock.patch(
+            "ml.rag.chatbot.answer_language._commonlingua_detect_with_confidence",
+            return_value=("en", 0.85),
+        ),
+        mock.patch(
+            "ml.rag.chatbot.query_decomposer._decompose_backend_configured", return_value=True
+        ),
+        mock.patch(
+            "ml.rag.chatbot.query_decomposer._call_llama_decompose",
+            return_value={
+                "job": "fact",
+                "geography": ["Ghana"],
+                "entities": ["maize", "rice"],
+                "primary_measure_hints": ["market_price", "production"],
+                "evidence_topics": ["fertilizer subsidies", "farm incomes", "invented policy"],
+            },
+        ),
+    ):
+        state = node_decompose({"query": query})
+
+    decomposition = state["decomposition"]
+    assert {"market_price", "production"}.issubset(decomposition["primary_measures"])
+    assert state["turn_contract"]["job"] == "diagnose"
+    assert _document_search_texts(state) == [query, "fertilizer subsidies", "farm incomes"]
 
 
 def test_node_decompose_igbo_question_not_greeting_and_enriches(monkeypatch) -> None:

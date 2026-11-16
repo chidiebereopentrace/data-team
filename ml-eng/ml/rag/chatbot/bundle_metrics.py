@@ -32,8 +32,10 @@ _AGRI_PANEL_RE = re.compile(
     r"\b(agricultural\s+activities|agri\s+activities|agri\s+report|country\s+by\s+country)\b",
     re.I,
 )
-_FOOD_PRICE_RE = re.compile(r"\bfood\s+prices?\b", re.I)
-_FOOD_COMPARE_RE = re.compile(r"\b(compar\w*|versus|vs\.?|other)\b", re.I)
+_FOOD_PRICE_RE = re.compile(
+    r"\b(?:food\s+prices?|prices?\s+of\s+(?:staple\s+)?food(?!\s+(?:aid|safety|security)\b))\b",
+    re.I,
+)
 
 _UNSUPPORTED_PANEL_FACTS = frozenset(
     {
@@ -69,9 +71,9 @@ def default_fvc_trade_metrics_for_panel() -> list[str]:
 
 
 def food_price_basket(query: str) -> bool:
-    """A price comparison whose only commodity word is food uses the staple basket."""
+    """Use the staple basket for food prices without a named crop."""
     text = query or ""
-    if not (_FOOD_PRICE_RE.search(text) and _FOOD_COMPARE_RE.search(text)):
+    if not _FOOD_PRICE_RE.search(text):
         return False
     found = match_product_samples("fct_production", text)
     return not found

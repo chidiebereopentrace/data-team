@@ -1,7 +1,7 @@
 """
 Detect user query language and produce generation instructions that mirror it.
 
-Language ID is CommonLingua-first (commonlid); markers only for ultra-short text.
+Language ID uses CommonLingua (commonlid) and local language cues.
 Language affects answer prompts only — never replace the user question for generation.
 An English enrich shadow (see language_enrich.py) runs by default for non-English /
 uncertain detection; answer_lang and chat still mirror the original.
@@ -119,6 +119,7 @@ _MARKER_LANG: Final[dict[str, str]] = {
     "dalu": "ig",
     "ịmeela": "ig",
     "imeela": "ig",
+    "osikapa": "ig",
     "obodo": "ig",
     "ako": "ig",
     # Yoruba
@@ -178,12 +179,12 @@ _FR_PHRASE_RE = re.compile(
 )
 _SW_PHRASE_RE = re.compile(
     r"\b(?:wewe\s+ni\s+nani|jina\s+lako\s+nani|una[- ]?fanya\s+nini|"
-    r"wewe\s+unafanya\s+nini|habari\s+yako|kilimo|mazao|asante)\b",
+    r"wewe\s+unafanya\s+nini|habari\s+yako|bei\s+ya|kilimo|mazao|asante)\b",
     re.IGNORECASE,
 )
 _IG_PHRASE_RE = re.compile(
     r"\b(?:kedu|biko|ndewo|onye\s+ị\s+bụ|onye\s+i\s+bu|gịnị\s+ka|gini\s+ka|"
-    r"obodo|kacha)\b",
+    r"ego\s+ole|obodo|kacha)\b",
     re.IGNORECASE,
 )
 _YO_PHRASE_RE = re.compile(
@@ -229,6 +230,8 @@ _EN_FUNCTION: Final[frozenset[str]] = frozenset(
         "is",
         "are",
         "what",
+        "what's",
+        "whats",
         "how",
         "why",
         "show",
@@ -478,13 +481,13 @@ def _marker_lang_votes(tokens: list[str]) -> dict[str, int]:
 
 
 def _marker_fallback_lang(text: str) -> tuple[str, float]:
-    """Phrase/marker path for ultra-short text or when the model is unavailable."""
+    """Classify from local phrases, marker words, and English function words."""
     phrase = _phrase_lang(text)
     tokens = _tokenize(text)
     votes = _marker_lang_votes(tokens)
     hit_count = sum(votes.values())
     accents = _accent_density(text)
-    en_hits = sum(1 for t in tokens if t in _EN_FUNCTION)
+    en_hits = len(set(tokens) & _EN_FUNCTION)
 
     named: str | None = phrase
     if votes:
@@ -498,7 +501,7 @@ def _marker_fallback_lang(text: str) -> tuple[str, float]:
         return (named, 0.0)
     if accents >= 0.08:
         return ("unknown", 0.0)
-    return ("en", 0.0)
+    return ("en", 0.65 if en_hits >= 2 else 0.0)
 
 
 _AFRICAN_NAMED_LANGS: Final[frozenset[str]] = frozenset(
@@ -525,9 +528,8 @@ def detect_language_with_confidence(query: str) -> tuple[str, float]:
     """
     Model-first language ID for answer_lang and enrich gating.
 
-    Returns ``(adza_lang, confidence)``. Confidence is 0.0 for script/marker
-    fallbacks or when the model does not run. Low-confidence model hits use
-    ``unknown`` so enrich still fires.
+    Returns ``(adza_lang, confidence)``. Distinctive local phrases or multiple
+    local markers can override a model English label so translation still runs.
     """
     text = (query or "").strip()
     if not text:
@@ -541,6 +543,11 @@ def detect_language_with_confidence(query: str) -> tuple[str, float]:
     model_hit = _commonlingua_detect_with_confidence(text)
     if model_hit is not None:
         mlang, mconf = model_hit
+        if mlang == "en":
+            votes = _marker_lang_votes(_tokenize(text))
+            if _phrase_lang(text) or max(votes.values(), default=0) >= 2:
+                marker_lang, marker_conf = _marker_fallback_lang(text)
+                return (marker_lang, marker_conf)
         # Short African lines are easy to confuse (e.g. Igbo→Swahili). When
         # markers name a different African language, prefer the marker vote.
         if mlang in _AFRICAN_NAMED_LANGS:
@@ -561,7 +568,7 @@ def detect_answer_language(query: str) -> AnswerLang:
     Named language tag for routing and generation.
 
     Returns one of: en, sw, fr, pcm, ar, am, ig, yo, ha, pt, tw, efi, zu, xh, so, wo, rw, mixed, unknown.
-    Prefer CommonLingua; markers only when the model cannot run (short text / unavailable).
+    Use CommonLingua and local language cues.
     """
     lang, _conf = detect_language_with_confidence(query)
     return lang

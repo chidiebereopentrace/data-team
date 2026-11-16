@@ -176,6 +176,12 @@ def typed_context_pack(
     budget_docs = scored_docs[:DOCUMENT_BUDGET]
     dropped["document_budget"] += len(scored_docs) - len(budget_docs)
 
+    if contract.job == "diagnose" and top_k and budget_docs:
+        # Leave room for documents that support an explanation alongside the figures.
+        row_budget = top_k - min(len(budget_docs), max(1, top_k // 2))
+        dropped["over_top_k"] += max(0, len(shaped_rows) - row_budget)
+        shaped_rows = shaped_rows[:row_budget]
+
     if contract.job in NUMERIC_JOBS:
         packed = [*shaped_rows, *budget_docs]
         dropped["non_evidence_kind"] += len(other)
