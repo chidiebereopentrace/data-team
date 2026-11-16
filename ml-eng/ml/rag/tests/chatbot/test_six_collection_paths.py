@@ -1,6 +1,7 @@
 """Six first-class Qdrant corpus paths: retrieve wiring, soft-fail, merge kinds."""
 from __future__ import annotations
 
+from threading import Event
 from typing import Any
 from unittest import mock
 
@@ -153,6 +154,32 @@ def test_one_failing_corpus_does_not_wipe_others() -> None:
     assert out["vector_academic_papers_results"] == []
     assert len(out["vector_policies_results"]) == 1
     assert len(out["vector_ota_results"]) == 1
+
+
+def test_slow_corpus_does_not_hold_ready_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    release = Event()
+    finished = Event()
+
+    def slow(_state):
+        release.wait(0.75)
+        finished.set()
+        return [_hit("academic_article")]
+
+    monkeypatch.setenv("RAG_CORPUS_RETRIEVE_TIMEOUT_S", "0.15")
+    monkeypatch.setattr(graph_mod, "_retrieve_academic_papers", slow)
+    monkeypatch.setattr(graph_mod, "_retrieve_news", lambda state: [_hit("news_article")])
+    monkeypatch.setattr(graph_mod, "_use_legacy_research_collection", lambda: False)
+    for name in ("policies", "public_reports", "formation", "ota"):
+        monkeypatch.setattr(graph_mod, f"_retrieve_{name}", lambda state: [])
+
+    try:
+        out = graph_mod.node_parallel_retrieve({"query": "maize Kenya"})
+        assert not finished.is_set()
+        assert out["retrieval_partial"] is True
+        assert len(out["vector_news_results"]) == 1
+        assert out["vector_academic_papers_results"] == []
+    finally:
+        release.set()
 
 
 def test_merge_emits_distinct_context_kinds() -> None:

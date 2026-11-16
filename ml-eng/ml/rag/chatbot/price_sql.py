@@ -130,6 +130,11 @@ def build_price_sql(
         scope_partition = f", {scope_expr}"
     if price_type:
         filters.append(f"price_type = {_lit(price_type)}")
+    else:
+        # An unspecified type includes every held type, grouped separately below.
+        held_types = [kind for row in series for kind in row.price_types if kind]
+        if held_types:
+            filters.append(f"price_type IN ({_in(held_types)})")
     if metrics:
         filters.append(f"metric IN ({_in(metrics)})")
     qualify = ""

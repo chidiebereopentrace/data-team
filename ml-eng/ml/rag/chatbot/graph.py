@@ -7,10 +7,10 @@ import json
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, wait
 from typing import Any, TypedDict, cast
 
-from ml.rag.chatbot.acf_scoring import acf_result_to_state, curated_product_acf, no_evidence_acf
+from ml.rag.chatbot.acf_scoring import ACFState, acf_result_to_state, curated_product_acf, no_evidence_acf
 from ml.rag.chatbot.answer_language import (
     detect_answer_language,
     detect_language_with_confidence,
@@ -20,7 +20,7 @@ from ml.rag.chatbot.language_enrich import enrich_query_to_english
 from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.ofia import infer_source_tier
-from ml.rag.chatbot.export_intent import EXPORT_UPGRADE_MESSAGE, detect_export_intent
+from ml.rag.chatbot.export_intent import EXPORT_UPGRADE_MESSAGE, ExportKind, detect_export_intent
 from ml.rag.chatbot.geo_regions import expand_regions_in_decomposition
 from ml.rag.chatbot.export_runner import run_exports
 from ml.rag.chatbot.geo_policy import (
@@ -86,7 +86,7 @@ from ml.rag.chatbot.time_retrieval import sync_decomposition_time, time_fallback
 from ml.rag.chatbot.turn_contract import TurnContract
 from ml.rag.chatbot.typed_pack import PackResult, typed_context_pack
 from ml.rag.chatbot.answer_outcome import decide_outcome, gap_answer
-from ml.rag.chatbot.stage_budget import stage_over_budget
+from ml.rag.chatbot.stage_budget import RetrievalWorkers, stage_budget_seconds
 from ml.rag.chatbot.generation_plan import build_generation_plan
 from ml.rag.chatbot.global_reasoner import compile_reasoner_plan, reasoner_plan_to_bq_plan
 from ml.rag.chatbot.composer import (
@@ -617,7 +617,7 @@ def _vector_retrieve_for_corpus(
     return _merge_vector_context_dicts(per_text, limit=max(top_k * 2, 20))
 
 
-class RAGGraphState(TypedDict, total=False):
+class RAGGraphState(ACFState, total=False):
     query: str
     decomposition: dict[str, Any]
     bq_table_candidates: list[dict[str, Any]]
@@ -673,17 +673,6 @@ class RAGGraphState(TypedDict, total=False):
     category: str | None
     user_profile: dict[str, Any] | None
     corpus_selection: dict[str, Any] | None
-    # ACF Path B (ADZA Confidence Framework) — cited evidence scoring
-    acf_band: str | None
-    acf_band_label: str | None
-    acf_score: int | float | None
-    acf_note: str | None
-    acf_explanation: str | None
-    acf_components: dict[str, Any] | None
-    acf_applied_ceiling: str | None
-    acf_config_version: str | None
-    acf_claim_level: str | None
-    acf_question_type: str | None
     # Named answer-language tag (en|sw|fr|pcm|ar|am|ig|…|mixed|unknown)
     answer_lang: str | None
     # English enrich shadow for bind/retrieve (original stays in query/user_query)
@@ -693,7 +682,7 @@ class RAGGraphState(TypedDict, total=False):
     session_id: str | None
     # Export / enriched outputs (Agribusinesses + Integrated routes only)
     export_enabled: bool | None
-    export_intent: str | None
+    export_intent: ExportKind | None
     artifacts: list[dict[str, Any]]
     # Internal SQL planner/debug fields for class-engine and NL2SQL paths
     bq_table_candidates_inspector: list[dict[str, Any]] | None
@@ -701,7 +690,6 @@ class RAGGraphState(TypedDict, total=False):
     # Observability: stage-level counts for candidate/structured/retrieved (debugging)
     retrieval_stage_counts: dict[str, int] | None
     # Bilingual translation: English query variant for BQ retrieval (multi-lingual vectors use original lang)
-    english_query_for_retrieval: str | None
     # Task specialization for full_rag (clarify / analytical / fact / briefing / export-only / chat)
     task_mode: str | None
     # analytical_mode is True when task_mode == "analytical"
@@ -830,8 +818,6 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         early["context_rewrite"] = ""
         early["detail_rewrite"] = ""
         early["context_applied"] = False
-        # Early exit: use original query only (skip translation to save tokens)
-        early["english_query_for_retrieval"] = None
         early["query_views"] = {
             "user_query": raw_q,
             "context_rewrite": "",
@@ -853,15 +839,6 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
     answer_lang_user = str(lang_result[0])  # language tag (e.g., "ig", "sw")
     confidence = float(lang_result[1]) if len(lang_result) > 1 else None
 
-    # Apply bilingual translation for full RAG pipeline (BQ needs English, vectors use multi-lingual embeddings)
-    from ml.rag.chatbot.hybrid_translation import translate_to_english
-
-    if answer_lang_user.strip().lower() and answer_lang_user.strip().lower() not in ("en", "unknown", "mixed"):
-        english_query = translate_to_english(raw_q, answer_lang_user)
-        state["english_query_for_retrieval"] = english_query
-    else:
-        state["english_query_for_retrieval"] = None
-
     lang_enr = enrich_query_to_english(
         raw_q,
         answer_lang=answer_lang_user,
@@ -879,7 +856,6 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         plan_type=str(state.get("plan_type") or "") or None,
         category=str(state.get("category") or "") or None,
         language_enrich=language_enrich or None,
-        english_query=(state.get("english_query_for_retrieval") or "").strip() if state.get("english_query_for_retrieval") is not None else "",  # NEW: English query variant for bilingual retrieval
     )
     user_q = views0.user_query
     enrich = {
@@ -1220,11 +1196,11 @@ def _apply_ui_scope_overrides(
     te = str(state.get("time_end_override") or "").strip()
     applied_time = False
     if not named and not str(out.get("time_start") or "").strip() and not str(out.get("time_end") or "").strip():
-        start = parse_iso_date(ts)
         end = parse_iso_date(te)
-        if start or end:
-            out["time_start"] = (start or end).isoformat()  # type: ignore[union-attr]
-            out["time_end"] = (end or start).isoformat()  # type: ignore[union-attr]
+        start = parse_iso_date(ts) or end
+        if start is not None:
+            out["time_start"] = start.isoformat()
+            out["time_end"] = (end or start).isoformat()
             applied_time = True
     if applied_time:
         out["time_source"] = "ui"
@@ -1582,6 +1558,10 @@ def _title_merge_label(prefix: str, meta: dict[str, Any]) -> str:
     return f"[{prefix} | {title}]" if title else f"[{prefix}]"
 
 
+_VECTOR_WORKERS = RetrievalWorkers("rag-vector", workers=12)
+_WAREHOUSE_WORKERS = RetrievalWorkers("rag-warehouse", workers=4)
+
+
 def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
     """Run selected corpus retrieves (+ optional legacy research) in parallel."""
     decomposition_raw = state.get("decomposition")
@@ -1618,15 +1598,9 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
         task_mode=task_mode,
         corpus_domain_tags=list(domain_tags) if isinstance(domain_tags, list) else None,
         contract_job=contract_job,
-        **(
-            {
-                "vector_allow": contract.vector_allow,
-                "vector_block": contract.vector_block,
-                "vector_policy": contract.vector_policy,
-            }
-            if contract.measure_id
-            else {}
-        ),
+        vector_allow=contract.vector_allow if contract.measure_id else None,
+        vector_block=contract.vector_block if contract.measure_id else None,
+        vector_policy=contract.vector_policy if contract.measure_id else None,
     )
     heavy = bool(state.get("heavy_path"))
     rp = _reasoner_from_state(state)
@@ -1701,7 +1675,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
     ):
         ota_k = _DECISION_SUPPORT_OTA_TOP_K
 
-    state_for_retrieve = cast(RAGGraphState, dict(state))
+    state_for_retrieve = state.copy()
     if news_k is not None:
         state_for_retrieve["news_top_k"] = int(news_k)
     if ota_k is not None:
@@ -1730,34 +1704,35 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
     }
 
     jobs: dict[Any, str] = {}
-    workers = max(1, min(6, len(active) + (1 if _use_legacy_research_collection() else 0)))
-    try:
-        corpus_timeout = float(os.environ.get("RAG_CORPUS_RETRIEVE_TIMEOUT_S", "4") or 4)
-    except ValueError:
-        corpus_timeout = 8.0
+    corpus_timeout = min(
+        stage_budget_seconds("RAG_CORPUS_RETRIEVE_TIMEOUT_S", default_s=4.0),
+        stage_budget_seconds("RAG_STAGE_RETRIEVE_BUDGET_S", default_s=12.0),
+    )
     vector_t0 = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        for key, fn in retrievers.items():
-            if key in active:
-                jobs[ex.submit(run_with_tracing_context(fn, state_for_retrieve))] = key
-        if _use_legacy_research_collection():
-            jobs[ex.submit(run_with_tracing_context(_retrieve_legacy_research, state_for_retrieve))] = (
-                "legacy_research"
-            )
+    retrievers = {key: fn for key, fn in retrievers.items() if key in active}
+    if _use_legacy_research_collection():
+        retrievers["legacy_research"] = _retrieve_legacy_research
+    for key, fn in retrievers.items():
+        future = _VECTOR_WORKERS.try_submit(run_with_tracing_context(fn, state_for_retrieve))
+        if future is None:
+            corpus_errors.append(f"{key}:busy")
+        else:
+            jobs[future] = key
 
-        for fut in as_completed(jobs):
-            kind = jobs[fut]
-            try:
-                res = fut.result(timeout=corpus_timeout)
-            except FuturesTimeoutError:
-                logger.warning("Parallel retrieval timed out for %s after %.1fs", kind, corpus_timeout)
-                corpus_errors.append(f"{kind}:timeout")
-                res = []
-            except Exception as exc:
-                logger.exception("Parallel retrieval failed for %s; returning empty list", kind)
-                corpus_errors.append(f"{kind}:{type(exc).__name__}")
-                res = []
-            buckets[kind] = res if isinstance(res, list) else []
+    remaining = max(0.0, corpus_timeout - (time.perf_counter() - vector_t0))
+    done, pending = wait(jobs, timeout=remaining)
+    for future in pending:
+        future.cancel()
+        corpus_errors.append(f"{jobs[future]}:timeout")
+    for future in done:
+        kind = jobs[future]
+        try:
+            result = future.result()
+        except Exception as exc:
+            logger.exception("Parallel retrieval failed for %s; returning empty list", kind)
+            corpus_errors.append(f"{kind}:{type(exc).__name__}")
+            continue
+        buckets[kind] = result if isinstance(result, list) else []
 
     def _with_boost(items: list[dict[str, Any]], corpus_key: str) -> list[dict[str, Any]]:
         boost = float(boosts.get(corpus_key, 0.0))
@@ -1819,12 +1794,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
         "vector_texts_used": texts_used,
         "user_query_dropped": _uq_dropped(state_for_retrieve.get("query_views"), texts_used),
         "vector_cache_hit": bool(state_for_retrieve.get("vector_cache_hit")),
-        "retrieval_partial": stage_over_budget(
-            time.perf_counter() - vector_t0,
-            env_var="RAG_STAGE_RETRIEVE_BUDGET_S",
-            default_s=12.0,
-        )
-        or any(str(err).endswith(":timeout") for err in corpus_errors),
+        "retrieval_partial": bool(corpus_errors),
     }
 
 
@@ -1988,7 +1958,7 @@ def node_bq_reason(state: RAGGraphState) -> RAGGraphState:
         state=state,
         analytical=analytical,
         task_mode=task_mode,
-    )
+    ).copy()
     tc_raw = state.get("turn_contract")
     contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
     if (
@@ -1997,10 +1967,10 @@ def node_bq_reason(state: RAGGraphState) -> RAGGraphState:
         and not plan.get("slot_path")
         and not plan.get("bq_sql_queries")
     ):
-        plan = {**plan, "skip_bq": True}
+        plan["skip_bq"] = True
     template_key = str((contract.sql_plan or {}).get("template") or "").strip()
     if template_key:
-        plan = {**plan, "template_key": template_key}
+        plan["template_key"] = template_key
     hints = list(plan.get("table_hints") or [])
     cands = [
         {
@@ -2313,26 +2283,18 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
     elif len(countries) == 1:
         bq_geo["geo_country"] = countries[0]
 
-    prev_max_sql: str | None = None
-    env_bumped = False
+    max_sql_queries: int | None = None
     if bool(state.get("analytical_mode")) or plan.get("analytical_mode"):
         from ml.rag.chatbot.analytical_bq_plan import analytical_sql_query_floor
 
-        floor = int(plan.get("max_sql_queries") or analytical_sql_query_floor())
-        prev_max_sql = os.environ.get("RAG_BQ_MAX_SQL_QUERIES")
-        os.environ["RAG_BQ_MAX_SQL_QUERIES"] = str(floor)
-        env_bumped = True
+        max_sql_queries = int(plan.get("max_sql_queries") or analytical_sql_query_floor())
     task_mode = str(state.get("task_mode") or "chat").strip().lower()
     pre_debug = list(plan.get("bq_sql_debug") or [])
     pre_queries = list(plan.get("bq_sql_queries") or [])
     engine_execute_only = plan.get("sql_source") == "engine" and bool(pre_queries)
     if engine_execute_only:
         intents = []
-    default_bq_timeout = 25.0
-    try:
-        bq_timeout = float(os.environ.get("RAG_BQ_RETRIEVE_TIMEOUT_S", str(default_bq_timeout)) or default_bq_timeout)
-    except ValueError:
-        bq_timeout = default_bq_timeout
+    bq_timeout = stage_budget_seconds("RAG_BQ_RETRIEVE_TIMEOUT_S", default_s=25.0)
     tc_raw = state.get("turn_contract")
     contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
     contract_kwargs: dict[str, Any] = {}
@@ -2362,6 +2324,8 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
         retrieve_kwargs["engine_execute_only"] = True
     if plan.get("nl2sql_fallback"):
         retrieve_kwargs["nl2sql_fallback"] = True
+    if max_sql_queries is not None:
+        retrieve_kwargs["max_sql_queries"] = max_sql_queries
     plan_source = str(plan.get("plan_source") or "").strip()
     if plan_source:
         retrieve_kwargs["plan_source"] = plan_source
@@ -2382,9 +2346,10 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
         ovf = bq_value_filters(onto_plan)
         if ovf:
             retrieve_kwargs["ontology_value_filters"] = ovf
+    future = None
     try:
-        with ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(
+        future = _WAREHOUSE_WORKERS.try_submit(
+            run_with_tracing_context(
                 retriever.retrieve,
                 q,
                 top_k=top_k,
@@ -2402,8 +2367,13 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
                 **contract_kwargs,
                 **retrieve_kwargs,
             )
-            results = fut.result(timeout=bq_timeout)
-    except FuturesTimeoutError:
+        )
+        if future is None:
+            raise FuturesTimeoutError("Warehouse retrieval workers are busy")
+        results = future.result(timeout=max(0.0, retrieve_deadline - time.perf_counter()))
+    except FuturesTimeoutError as exc:
+        if future is not None:
+            future.cancel()
         update_current_span_metadata({"bq_timeout": True, "status": "timeout"})
         node_timed_out = True
         results = []
@@ -2411,7 +2381,7 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
             bq_failure_row = bq_failure_debug_row(
                 retriever,
                 status="bq_timeout",
-                prep_error=f"BQ retrieve exceeded {bq_timeout:.0f}s timeout",
+                prep_error=str(exc) or f"BQ retrieve exceeded {bq_timeout:g}s timeout",
             )
     except Exception as exc:
         logger.exception("BQ retrieve failed")
@@ -2421,12 +2391,6 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
             status="bq_error",
             prep_error=str(exc)[:500],
         )
-    finally:
-        if env_bumped:
-            if prev_max_sql is None:
-                os.environ.pop("RAG_BQ_MAX_SQL_QUERIES", None)
-            else:
-                os.environ["RAG_BQ_MAX_SQL_QUERIES"] = prev_max_sql
     bq_sql_queries, bq_sql_debug = aggregate_bq_sql_debug(results)
     results = enrich_bq_results(
         results,
@@ -2708,7 +2672,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
             [*structured, *packed], contract, top_k=top_k if top_k > 0 else None
         )
         items, dropped = _pack_fields(pack)
-        return RAGGraphState(**{
+        return {
             "reranked_context": items,
             "evidence_drops": _with_place_drops(dropped, place_dropped),
             "rerank_mode": "skipped_trivial",
@@ -2720,7 +2684,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
                 "reranked": 0,
                 "packed": len(items),
             },
-        })
+        }
 
     try:
         pool = int(
@@ -2744,7 +2708,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
         [*structured, *packed], contract, top_k=top_k if top_k > 0 else None
     )
     items, dropped = _pack_fields(pack)
-    return RAGGraphState(**{
+    return {
         "reranked_context": items,
         "evidence_drops": _with_place_drops(dropped, place_dropped),
         "rerank_mode": last_rerank_mode(),
@@ -2756,7 +2720,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
             "reranked": len(scored),
             "packed": len(items),
         },
-    })
+    }
 
 
 
@@ -2793,7 +2757,7 @@ def node_web_fallback(state: RAGGraphState) -> RAGGraphState:
             reranked,
             task_mode=str(state.get("task_mode") or ""),
             has_usable_bq=has_bq,
-            bq_warehouse_attempted=warehouse_blocks_web(cast(dict[str, Any], state)),
+            bq_warehouse_attempted=warehouse_blocks_web(dict(state)),
             heavy_path=bool(state.get("heavy_path")),
         ):
             update_current_span_metadata({"web_fallback_status": "skipped"})
@@ -2886,6 +2850,7 @@ def node_insufficient_context(state: RAGGraphState) -> RAGGraphState:
         query,
         dec if isinstance(dec, dict) else None,
         TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None),
+        incomplete_source="documents" if state.get("retrieval_partial") else None,
     )
     with observed_span(
         "insufficient_context",
@@ -2895,17 +2860,17 @@ def node_insufficient_context(state: RAGGraphState) -> RAGGraphState:
             {
                 "web_fallback_status": str(state.get("web_fallback_status") or ""),
                 "answer_lang": answer_lang,
-                "warehouse_attempted": warehouse_was_attempted(cast(dict[str, Any], state)),
+                "warehouse_attempted": warehouse_was_attempted(dict(state)),
             }
         )
-    return RAGGraphState(**{
+    return {
         "answer": answer,
         "citations": [],
         "insufficient_context": True,
         "answer_outcome": "gap",
         "answer_lang": answer_lang,
         **acf_result_to_state(no_evidence_acf()),
-    })  
+    }
 
 
 def _route_after_web_fallback(state: RAGGraphState) -> str:
@@ -2922,13 +2887,13 @@ def node_generate_language_help(state: RAGGraphState) -> RAGGraphState:
     with observed_span("generate_language_help", input_data={"query": str(query)[:200]}):
         update_current_span_metadata({"answer_lang": answer_lang, "route": "language_unknown"})
         answer = language_unclear_answer()
-    return RAGGraphState(**{
+    return {
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
         "is_language_unknown": True,
         **acf_result_to_state(curated_product_acf()),
-    })
+    }
 
 
 def node_generate(state: RAGGraphState) -> RAGGraphState:
@@ -2950,7 +2915,11 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         or should_elevate_bq_context(str(query), dec_dict, usable_bq=bool(usable_bq))
     ):
         context = pin_bq_context_first(context)
-    gkw: dict[str, Any] = {"decomposition": dec_dict, "task_mode": task_mode}
+    gkw: dict[str, Any] = {
+        "decomposition": dec_dict,
+        "task_mode": task_mode,
+        "retrieval_partial": bool(state.get("retrieval_partial")),
+    }
     if analytical:
         gkw["analytical_mode"] = True
     cs = state.get("conversation_summary")
@@ -3217,7 +3186,7 @@ def node_export(state: RAGGraphState) -> RAGGraphState:
 
     try:
         artifacts = run_exports(
-            export_kind=export_intent,  # type: ignore[arg-type]
+            export_kind=export_intent,
             query=str(state.get("query") or ""),
             answer=answer,
             bq_results=state.get("bq_results"),
@@ -3257,7 +3226,7 @@ def node_generate_clarify(state: RAGGraphState) -> RAGGraphState:
             }
         )
         answer = clarify_answer(str(query), decomposition=dec)
-    return RAGGraphState(**{
+    return {
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
@@ -3267,7 +3236,7 @@ def node_generate_clarify(state: RAGGraphState) -> RAGGraphState:
                 explanation="Clarification requested — missing slot(s) before federated retrieval."
             )
         ),
-    })
+    }
 
 
 def node_generate_meta(state: RAGGraphState) -> RAGGraphState:
@@ -3293,12 +3262,12 @@ def node_generate_meta(state: RAGGraphState) -> RAGGraphState:
         update_current_span_metadata({"answer_lang": answer_lang, "route": "meta"})
         answer = generate_meta_answer(query, **gkw)
 
-    return RAGGraphState(**{
+    return {
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
         **acf_result_to_state(curated_product_acf()),
-    })
+    }
 
 
 def node_generate_social(state: RAGGraphState) -> RAGGraphState:
@@ -3332,14 +3301,14 @@ def node_generate_social(state: RAGGraphState) -> RAGGraphState:
             )
         )
 
-    return RAGGraphState(**{
+    return {
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
         "is_greeting_query": kind == "greeting",
         "is_out_of_scope_query": kind == "out_of_scope",
         **acf_result_to_state(social_acf),
-    })
+    }
 
 
 def node_generate_product(state: RAGGraphState) -> RAGGraphState:
@@ -3368,7 +3337,7 @@ def node_generate_product(state: RAGGraphState) -> RAGGraphState:
         answer = generate_product_answer(query, **gkw)
         generate_ms = trace_elapsed_ms(gen_t0)
 
-    return RAGGraphState(**{
+    return {
         "answer": answer,
         "citations": [],
         "answer_lang": answer_lang,
@@ -3376,28 +3345,16 @@ def node_generate_product(state: RAGGraphState) -> RAGGraphState:
         "generate_max_tokens": 0 if state.get("is_help_query") else _generate_max_tokens("chat"),
         "generate_input_chars": len(answer),
         **acf_result_to_state(curated_product_acf()),
-    })
+    }
 
 
 def node_retrieve_legs(state: RAGGraphState) -> RAGGraphState:
-    """Run Qdrant and BQ reason+retrieve at the same time, then join.
-    
-    For multi-lingual vector embeddings (bge-m3):
-    - bq_query = English translation for SQL warehouse
-    - vector_query = Original African language (semantic alignment preserved)
-    """
-    
-    # Get bilingual query variants from state
-    bq_query = state.get("english_query_for_retrieval") or str(state.get("query") or "")
+    """Run document retrieval and the full warehouse leg in parallel."""
 
-    def _bq_leg() -> dict[str, Any]:
+    def _bq_leg() -> RAGGraphState:
         reason = node_bq_reason(state)
-        merged = cast(RAGGraphState, {**dict(state), **reason})
-        retrieve = node_bq_retrieve(merged)
+        retrieve = node_bq_retrieve({**state, **reason})
         return {**reason, **retrieve}
-
-    # For multi-lingual embeddings, use original query for vectors (preserve semantic alignment)
-    vec_query = state.get("query") or ""
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         fut_vec = pool.submit(node_parallel_retrieve, state)
@@ -3405,7 +3362,7 @@ def node_retrieve_legs(state: RAGGraphState) -> RAGGraphState:
         vec_out = fut_vec.result()
         bq_out = fut_bq.result()
     
-    return RAGGraphState(**{**vec_out, **bq_out})
+    return {**vec_out, **bq_out}
 
 
 def _evidence_empty(state: RAGGraphState) -> bool:
@@ -3451,7 +3408,7 @@ def _profile_ui_scope_updates(state: RAGGraphState) -> RAGGraphState:
 
 
 def _rerun_retrieve_merge_rerank(state: RAGGraphState) -> RAGGraphState:
-    retry_bq = should_retry_bq(cast(dict[str, Any], state))
+    retry_bq = should_retry_bq(dict(state))
     if retry_bq:
         with ThreadPoolExecutor(max_workers=2) as pool:
             fut_vec = pool.submit(node_parallel_retrieve, state)
@@ -3462,8 +3419,8 @@ def _rerun_retrieve_merge_rerank(state: RAGGraphState) -> RAGGraphState:
         updates.update(bq_out)
     else:
         updates = node_parallel_retrieve(state)
-    updates.update(node_merge(RAGGraphState(**{**state, **updates})))
-    updates.update(node_rerank(RAGGraphState(**{**state, **updates})))
+    updates.update(node_merge({**state, **updates}))
+    updates.update(node_rerank({**state, **updates}))
     return updates
 
 
@@ -3477,21 +3434,22 @@ def node_coverage_retry(state: RAGGraphState) -> RAGGraphState:
     dec: dict[str, Any] = dec_raw if isinstance(dec_raw, dict) else {}
     if (
         int(state.get("profile_scope_retry") or 0) < 1
+        and not state.get("retrieval_partial")
         and _evidence_empty(state)
         and _profile_ui_scope_active(dec)
     ):
         updates = _profile_ui_scope_updates(state)
         with observed_span("profile_scope_retry", input_data={"attempt": 1}):
-            updates.update(_rerun_retrieve_merge_rerank(RAGGraphState(**{**state, **updates})))
+            updates.update(_rerun_retrieve_merge_rerank({**state, **updates}))
             update_current_span_metadata({"profile_scope_retry": 1})
         return updates
 
-    if not should_coverage_retry(cast(dict[str, Any], state)):
+    if not should_coverage_retry(dict(state)):
         return {}
 
     updates: RAGGraphState = {"coverage_retry": 1}
     with observed_span("coverage_retry", input_data={"attempt": 1}):
-        retried = _rerun_retrieve_merge_rerank(RAGGraphState(**{**state, **updates}))
+        retried = _rerun_retrieve_merge_rerank({**state, **updates})
         new_ranked = retried.get("reranked_context") or []
         if "bq_results" not in retried:
             # Rows carried over from the first pass do not make the retry successful.
@@ -3513,20 +3471,20 @@ def node_metacog_revise(state: RAGGraphState) -> RAGGraphState:
         state.get("metacog_plan") if isinstance(state.get("metacog_plan"), dict) else None
     )
     already = int(state.get("metacog_revise") or 0)
-    updates: dict[str, Any] = {
+    updates: RAGGraphState = {
         "metacog_next": "generate",
         "metacog_revise": already,
         "metacog_revise_action": "skip",
     }
     if plan is None or not metacog_enabled():
-        return RAGGraphState(**{**updates, **state})
+        return {**updates, **state}
 
     with observed_span(
         "metacog_revise",
         input_data={"already_revised": already, "query": str(state.get("query") or "")[:200]},
     ):
         dec_raw = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
-        return RAGGraphState(**_metacog_revise_body(state, plan, dec_raw, already, updates))
+        return _metacog_revise_body(state, plan, dec_raw, already, updates)
 
 
 def _metacog_revise_body(
@@ -3534,8 +3492,8 @@ def _metacog_revise_body(
     plan: MetacogPlan,
     dec_raw: Any,
     already: int,
-    updates: dict[str, Any],
-):
+    updates: RAGGraphState,
+) -> RAGGraphState:
     dec = dec_raw if isinstance(dec_raw, dict) else {}
     bq_results = state.get("bq_results") if isinstance(state.get("bq_results"), list) else []
     reranked = state.get("reranked_context") if isinstance(state.get("reranked_context"), list) else []
@@ -3569,7 +3527,7 @@ def _metacog_revise_body(
     )
     updates["metacog_revise_action"] = decision.action
     if decision.action != "replan":
-        return RAGGraphState(**{**updates, **state})
+        return {**updates, **state}
 
     turn = TurnContract.from_dict(
         state.get("turn_contract") if isinstance(state.get("turn_contract"), dict) else None
@@ -3590,7 +3548,7 @@ def _metacog_revise_body(
             "metacog_mode": revised_plan.advisory_mode,
         }
     )
-    return RAGGraphState(**{**updates, **state})
+    return {**updates, **state}
 
 
 def _route_after_metacog_revise(state: RAGGraphState) -> str:
@@ -3690,14 +3648,14 @@ def build_graph():
     return graph.compile()
 
 
-# Compiled once at import time (cheap and safe for the production container).
-_COMPILED_GRAPH = None
+# Compile on first use in each process.
+_compiled_graph = None
 
 def _get_compiled_graph():
-    global _COMPILED_GRAPH
-    if _COMPILED_GRAPH is None:
-        _COMPILED_GRAPH = build_graph()
-    return _COMPILED_GRAPH
+    global _compiled_graph
+    if _compiled_graph is None:
+        _compiled_graph = build_graph()
+    return _compiled_graph
 
 
 def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:

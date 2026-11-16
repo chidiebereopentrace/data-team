@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, TypedDict
 
 from acf import from_payload, from_row, score_evidence
 from acf.aggregate.evidence import ExtractedClaim
@@ -394,7 +394,20 @@ def score_cited_evidence(
     )
 
 
-def acf_result_to_state(result: ACFResult) -> dict[str, Any]:
+class ACFState(TypedDict, total=False):
+    acf_band: str | None
+    acf_band_label: str | None
+    acf_score: int | float | None
+    acf_note: str | None
+    acf_explanation: str | None
+    acf_components: dict[str, Any] | None
+    acf_applied_ceiling: str | None
+    acf_config_version: str | None
+    acf_claim_level: str | None
+    acf_question_type: str | None
+
+
+def acf_result_to_state(result: ACFResult) -> ACFState:
     """Flatten ACFResult into graph state keys."""
     return {
         "acf_band": result.band,

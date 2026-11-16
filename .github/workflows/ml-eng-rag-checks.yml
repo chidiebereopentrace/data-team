@@ -41,6 +41,7 @@ jobs:
           PYTHONPATH=ml-eng pytest \
             ml-eng/ml/rag/tests/chatbot/test_mart_*.py \
             ml-eng/ml/rag/tests/chatbot/test_kenya_rice_planned_path.py \
+            ml-eng/ml/rag/tests/chatbot/test_price_template_vocab.py \
             ml-eng/ml/rag/tests/chatbot/test_facet_compiler.py \
             ml-eng/ml/rag/tests/chatbot/test_query_decomposer_model_first.py \
             ml-eng/ml/rag/tests/chatbot/test_generator_evidence_law.py \
@@ -55,8 +56,12 @@ jobs:
             ml-eng/ml/rag/tests/chatbot/test_retrieval_cache.py \
             ml-eng/ml/rag/tests/chatbot/test_bq_fact_cache.py \
             ml-eng/ml/rag/tests/chatbot/test_coverage_retry.py \
+            ml-eng/ml/rag/tests/chatbot/test_six_collection_paths.py \
+            ml-eng/ml/rag/tests/chatbot/test_stage_partial.py \
+            ml-eng/ml/rag/tests/chatbot/test_metacog.py::test_resolved_warehouse_fact_keeps_checks_without_advisory_llm \
             ml-eng/ml/rag/tests/chatbot/test_decompose_context.py \
             ml-eng/ml/rag/tests/retrievers/test_bq_retriever_planned_path.py \
+            ml-eng/ml/rag/tests/retrievers/test_bq_engine_execute.py \
             ml-eng/ml/rag/tests/test_api_auth.py \
             ml-eng/ml/rag/tests/test_api_error_detail.py \
             ml-eng/ml/serving \

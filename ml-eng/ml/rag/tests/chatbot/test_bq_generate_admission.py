@@ -173,6 +173,32 @@ def test_generate_typed_gap_when_warehouse_empty_flag() -> None:
     assert "no rows" in result.answer.lower() or "warehouse" in result.answer.lower()
 
 
+def test_generate_reports_rejected_warehouse_query_without_claiming_no_data() -> None:
+    debug = [{"status": "validation_failed", "sql": "SELECT avg_price FROM fct_prices"}]
+    flags = bq_execute_flags(debug, pre_queries=[], usable_bq=False, warehouse_attempted=True)
+    with mock.patch.dict(os.environ, {"RAG_ALLOW_UNGROUNDED": "0"}):
+        result = generate(
+            "whats the price of maize in kenya this year",
+            [],
+            task_mode="fact_lookup",
+            decomposition={
+                "geography": ["Kenya"],
+                "primary_measures": ["market_price"],
+                "time_start": "2026-01-01",
+                "time_end": "2026-11-16",
+            },
+            bq_sql_debug=debug,
+            warehouse_was_attempted=True,
+            **flags,
+        )
+
+    assert "could not verify" in result.answer
+    assert "Kenya in 2026" in result.answer
+    assert "Ask for a year" not in result.answer
+    assert result.acf is not None
+    assert "returned no rows" not in result.acf.explanation
+
+
 def test_generate_typed_gap_when_warehouse_attempted_without_job() -> None:
     decomposition = {
         "geography": ["Kenya"],

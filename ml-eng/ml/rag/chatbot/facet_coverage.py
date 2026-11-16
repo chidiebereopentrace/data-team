@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ml.rag.chatbot.generator import is_usable_context_item
+
 FacetStatus = str  # supported | partial | absent | unknown | incompatible
 
 
@@ -15,7 +17,7 @@ def _blob(items: Any) -> str:
     parts: list[str] = []
     if isinstance(items, list):
         for item in items:
-            if isinstance(item, dict):
+            if isinstance(item, dict) and is_usable_context_item(item):
                 parts.append(str(item.get("content") or ""))
     return "\n".join(parts).casefold()
 
@@ -38,7 +40,7 @@ def build_facet_matrix(state: dict[str, Any]) -> list[dict[str, str]]:
     """One cell per requested geography and entity."""
     dec = state.get("decomposition") if isinstance(state.get("decomposition"), dict) else {}
     warehouse = _blob(state.get("bq_results"))
-    documents = _blob(state.get("reranked_context")) + "\n" + _blob(state.get("merged_context"))
+    documents = _blob(state.get("reranked_context"))
     debug = state.get("bq_sql_debug")
     warehouse_failed = isinstance(debug, list) and bool(debug) and not warehouse.strip()
     cells: list[dict[str, str]] = []
@@ -62,12 +64,12 @@ def build_facet_matrix(state: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def missing_required_facets(state: dict[str, Any]) -> list[dict[str, str]]:
-    """Geographies must all be present. Entities are missing only when none of several appear."""
+    """Geographies must all be present. At least one requested entity must be supported."""
     cells = build_facet_matrix(state)
     geos = [cell for cell in cells if cell["facet"] == "geography" and cell["status"] != "supported"]
     entities = [cell for cell in cells if cell["facet"] == "entity"]
     missing = list(geos)
-    if len(entities) >= 2 and entities and all(cell["status"] != "supported" for cell in entities):
+    if entities and all(cell["status"] != "supported" for cell in entities):
         missing.extend(entities)
     return missing
 

@@ -1005,22 +1005,10 @@ def validate_sql_value_samples(sql: str, table_ids: set[str] | None = None) -> s
     )
 
 
-def dry_run_sql(client: Any, sql: str) -> str | None:
-    """Run BigQuery dry-run; return error message or None on success."""
-    if not sql or not dry_run_enabled():
-        return None
-    try:
-        from google.cloud import bigquery
-
-        job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
-        client.query(sql, job_config=job_config)
-        return None
-    except Exception as exc:
-        return str(exc)[:500]
-
-
-def dry_run_bytes_processed(client: Any, sql: str) -> int | None:
-    """Return dry-run totalBytesProcessed or None when unavailable."""
+def dry_run_sql(
+    client: Any, sql: str, *, max_bytes: int | None = None, sql_source: str = ""
+) -> str | None:
+    """Check syntax and scan size with one BigQuery dry run."""
     if not sql or not dry_run_enabled():
         return None
     try:
@@ -1028,9 +1016,17 @@ def dry_run_bytes_processed(client: Any, sql: str) -> int | None:
 
         job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
         job = client.query(sql, job_config=job_config)
-        return int(getattr(job, "total_bytes_processed", 0) or 0)
-    except Exception:
-        return None
+    except Exception as exc:
+        return str(exc)[:500]
+    processed = getattr(job, "total_bytes_processed", None)
+    if max_bytes and max_bytes > 0 and isinstance(processed, int) and processed > max_bytes:
+        mb = processed / (1024 * 1024)
+        cap = max_bytes / (1024 * 1024)
+        return (
+            f"SQL dry-run would scan {mb:.0f}MB (cap {cap:.0f}MB for {sql_source or 'query'}). "
+            "Add partition/time bounds or route to an agg table."
+        )
+    return None
 
 
 def _eq_literals_for_column(sql: str, column: str) -> list[str]:
@@ -1201,29 +1197,6 @@ def validate_semantic_coherence(
                 "pruning on large mart facts."
             )
 
-    return None
-
-
-def validate_dry_run_bytes(
-    client: Any,
-    sql: str,
-    *,
-    max_bytes: int | None = None,
-    sql_source: str = "",
-) -> str | None:
-    """Optional dry-run bytes ceiling (template vs nl2sql defaults)."""
-    if not max_bytes or max_bytes <= 0:
-        return None
-    processed = dry_run_bytes_processed(client, sql)
-    if processed is None:
-        return None
-    if processed > max_bytes:
-        mb = processed / (1024 * 1024)
-        cap = max_bytes / (1024 * 1024)
-        return (
-            f"SQL dry-run would scan {mb:.0f}MB (cap {cap:.0f}MB for {sql_source or 'query'}). "
-            "Add partition/time bounds or route to an agg table."
-        )
     return None
 
 

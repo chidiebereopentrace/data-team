@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from ml.rag.chatbot.coverage_retry import should_coverage_retry, slots_missing_from_evidence
+from ml.rag.chatbot.coverage_retry import should_coverage_retry, should_retry_bq, slots_missing_from_evidence
 
 _SKIPPED_WAREHOUSE_PLAN = {"skip_bq": True, "reason": "fixture"}
 
@@ -39,6 +39,23 @@ def test_retry_only_once() -> None:
         "route_candidate": "full_rag",
     }
     assert should_coverage_retry(state) is False
+
+
+def test_discarded_candidates_and_failed_jobs_do_not_cover_facets() -> None:
+    state = {
+        "decomposition": {"geography": ["Senegal"], "entities": ["millet"]},
+        "bq_results": [{"content": "Senegal millet failed", "metadata": {"status": "validation_failed"}}],
+        "merged_context": [{"content": "Senegal millet report rejected by reranking"}],
+        "reranked_context": [{"content": "Senegal rice prices"}],
+    }
+    assert slots_missing_from_evidence(state)
+
+
+def test_identical_warehouse_retry_cannot_repair_invalid_sql() -> None:
+    assert not should_retry_bq({
+        "bq_sql_plan": {"selected_tables": ["fct_prices"]},
+        "bq_sql_debug": [{"status": "validation_failed"}],
+    })
 
 
 @pytest.fixture

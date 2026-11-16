@@ -117,6 +117,8 @@ def gap_answer(
     query: str,
     decomposition: dict[str, Any] | None,
     contract: TurnContract | None,
+    *,
+    incomplete_source: Literal["warehouse", "documents"] | None = None,
 ) -> str:
     dec = decomposition if isinstance(decomposition, dict) else {}
     measure_id = (contract.measure_id if contract else None) or next(
@@ -127,7 +129,7 @@ def gap_answer(
     lead = ""
     if detect_answer_language(query) not in ("en", ""):
         lead = insufficient_context_answer(query=query) + "\n\n"
-    if not measure_id and not iso3s:
+    if not measure_id and not iso3s and incomplete_source is None:
         return insufficient_context_answer(query=query)
 
     indicator = _indicator_label(measure_id)
@@ -136,6 +138,11 @@ def gap_answer(
         place = f"{place} (set by {place_setter})"
     period = _requested_period(dec)
     scope = " ".join(part for part in (f"for {place}" if place else "", period) if part)
+    if incomplete_source:
+        figures = f"{indicator} figures" if measure_id else "the requested figures"
+        detail = f"{figures} {scope}".strip()
+        check = "warehouse query" if incomplete_source == "warehouse" else "document search"
+        return lead + f"OpenTrace could not verify {detail} because the {check} did not complete."
     lines = [f"OpenTrace has no {indicator} figures {scope}, and no report in the library covers it.".replace("  ", " ")]
     held = [(code, span) for code in iso3s[:3] if (span := _held_span(measure_id, code))]
     for code, (y0, y1) in held:

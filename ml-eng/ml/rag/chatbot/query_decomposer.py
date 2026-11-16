@@ -709,9 +709,6 @@ def _call_llama_decompose(
 def _merge_llm_decompose(
     out: dict[str, Any],
     llm: dict[str, Any],
-    query: str,
-    *,
-    ref_date: date,
 ) -> None:
     if isinstance(llm.get("intent"), str) and llm["intent"].strip():
         out["intent"] = llm["intent"].strip()
@@ -737,7 +734,7 @@ def _merge_llm_decompose(
             if ds and ds not in out["domains"]:
                 out["domains"].append(ds)
     # A window resolved from the question is exact. The model must not replace it.
-    if not resolve_relative_time(query, ref_date):
+    if not out.get("time_windows"):
         t0 = llm.get("time_start") or ""
         t1 = llm.get("time_end") or ""
         if isinstance(t0, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", t0.strip()):
@@ -783,10 +780,19 @@ def decompose_query(
         }
 
     llm_attempted = bool(use_llm and _decompose_backend_configured())
-    windows = resolve_relative_time(q, ref, infer_country_iso3_from_query(q))
+    # An English rewrite can make a calendar phrase sound like generic recency.
+    original = normalize_query_text(ctx.original_query) if ctx.original_query else q
+    country = infer_country_iso3_from_query(original) or infer_country_iso3_from_query(q)
+    windows = resolve_relative_time(original, ref, country)
+    if not windows and original != q:
+        windows = resolve_relative_time(q, ref, country)
+    envelope = retrieval_envelope(windows)
     if windows:
         ctx.time_resolution_note = _resolution_note(windows)
     provisional = build_provisional_decompose_hints(q, ref)
+    if envelope:
+        provisional["time_start"] = envelope[0].isoformat()
+        provisional["time_end"] = envelope[1].isoformat()
     llm: dict[str, Any] | None = None
     llm_t0 = time.perf_counter()
     if llm_attempted:
@@ -800,7 +806,6 @@ def decompose_query(
     if len(windows) >= 2 and intent == "descriptive":
         intent = "compare"
     single = windows[0] if len(windows) == 1 else None
-    envelope = retrieval_envelope(windows)
     out: dict[str, Any] = {
         "intent": intent,
         "entities": [],
@@ -824,7 +829,7 @@ def decompose_query(
         out["time_source"] = "query"
 
     if llm_used and llm is not None:
-        _merge_llm_decompose(out, llm, q, ref_date=ref)
+        _merge_llm_decompose(out, llm)
 
     if not windows:
         screen_start = parse_iso_date(ctx.time_start_override)

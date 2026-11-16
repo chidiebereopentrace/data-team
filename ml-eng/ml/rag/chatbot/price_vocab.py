@@ -305,7 +305,7 @@ _DEFAULT_TYPES = ("Retail", "Wholesale", "Producer Price (USD/tonne)", "Producer
 
 
 def choose_price_type(text: str, series: list[PriceSeries], source: str | None) -> str | None:
-    """Exact price_type literal the series hold. Price SQL always pins one.
+    """Choose one price_type literal from the held series.
 
     An explicit retail/wholesale/producer mention wins (None when not held);
     otherwise Retail, then Wholesale, then producer prices in USD.

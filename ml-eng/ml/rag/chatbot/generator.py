@@ -1984,29 +1984,38 @@ def generate(
         structured_bq_numeric_available=structured_bq_numeric_available,
         kwargs=kwargs,
     )
-    if warehouse_miss and not ungrounded:
+    if not ungrounded and (
+        warehouse_miss or (outcome.is_gap and not (task_mode == "data_export_only" and export_intent_s))
+    ):
         contract_raw = kwargs.get("turn_contract")
-        return GenerationResult(
-            answer=gap_answer(
-                query,
-                decomposition,
-                TurnContract.from_dict(contract_raw if isinstance(contract_raw, dict) else None),
-            ),
-            citations=[],
-            acf=no_evidence_acf(
-                explanation="The warehouse filter returned no rows for this numeric question."
-            ),
+        warehouse_check_failed = any(
+            bq_exec_flags.get(flag)
+            for flag in (
+                "structured_bq_validation_failed",
+                "structured_bq_compile_error",
+                "structured_bq_never_executed",
+                "structured_bq_timed_out",
+            )
         )
-    if outcome.is_gap and not ungrounded and not (task_mode == "data_export_only" and export_intent_s):
-        contract_raw = kwargs.get("turn_contract")
+        explanation = "No warehouse rows or documents matched this question."
+        incomplete_source: Literal["warehouse", "documents"] | None = None
+        if warehouse_check_failed:
+            incomplete_source = "warehouse"
+            explanation = "The warehouse query did not complete, so availability could not be verified."
+        elif kwargs.get("retrieval_partial"):
+            incomplete_source = "documents"
+            explanation = "Document retrieval was incomplete, so availability could not be verified."
+        elif warehouse_miss:
+            explanation = "The warehouse filter returned no rows for this numeric question."
         return GenerationResult(
             answer=gap_answer(
                 query,
                 decomposition,
                 TurnContract.from_dict(contract_raw if isinstance(contract_raw, dict) else None),
+                incomplete_source=incomplete_source,
             ),
             citations=[],
-            acf=no_evidence_acf(explanation="No warehouse rows or documents matched this question."),
+            acf=no_evidence_acf(explanation=explanation),
         )
 
     plan_tier = str((generation_plan or {}).get("evidence_tier") or "").strip()

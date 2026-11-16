@@ -29,7 +29,7 @@ from ml.rag.chatbot.metacog import (
     self_check_applies,
     verify_metacog_evidence,
 )
-from ml.rag.chatbot.turn_contract import TurnContract
+from ml.rag.chatbot.turn_contract import TimeSpec, TurnContract
 
 
 @pytest.fixture(autouse=True)
@@ -199,6 +199,23 @@ def test_build_metacog_plan_uses_llm_when_enabled(
     assert plan.advisory_mode == "diagnose"
     assert plan.source == "llm"
     assert plan.confidence == 0.88
+
+
+@pytest.mark.parametrize("measure,commodity,place", [
+    ("market_price", "maize", "Kenya"),
+    ("production", "rice", "Senegal"),
+])
+def test_resolved_warehouse_fact_keeps_checks_without_advisory_llm(monkeypatch, measure, commodity, place) -> None:
+    monkeypatch.setenv("RAG_METACOG", "1")
+    turn = TurnContract(
+        job="fact", measure_id=measure, geo=[place], entities=[commodity],
+        time_spec=TimeSpec(start="2024-01-01", end="2024-12-31"),
+    )
+    with mock.patch("ml.rag.chatbot.metacog.llm_chat_complete") as llm:
+        plan = build_metacog_plan(f"{commodity} {measure} in {place} in 2024", turn=turn)
+    llm.assert_not_called()
+    assert plan.must_ground_in == "bigquery"
+    assert "geo_match" in plan.verify_checks
 
 
 def test_build_metacog_disabled_skips_llm(monkeypatch: pytest.MonkeyPatch) -> None:

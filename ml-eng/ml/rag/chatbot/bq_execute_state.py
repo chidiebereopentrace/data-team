@@ -238,7 +238,7 @@ def bq_execute_flags(
     if warehouse_attempted and not has_engine_sql and debug:
         has_engine_sql = True
     any_job = any(d.get("job_id") for d in debug)
-    any_timeout = any(str(d.get("status") or "") == "timeout" for d in debug)
+    any_timeout = any(execution_status(str(d.get("status") or "")) == "timeout" for d in debug)
     any_validation_failed = any(
         str(d.get("status") or "") == "validation_failed" for d in debug
     )
@@ -247,8 +247,9 @@ def bq_execute_flags(
         and not any_job
         and not usable_bq
         and not any_validation_failed
+        and not any_timeout
     )
-    timed_out = has_engine_sql and any_timeout and any_job
+    timed_out = has_engine_sql and any_timeout and not usable_bq
     empty = has_engine_sql and any_job and not usable_bq and not any_timeout
     validation_failed = has_engine_sql and any_validation_failed and not any_job
     compile_err = compile_error and not usable_bq and not has_engine_sql
