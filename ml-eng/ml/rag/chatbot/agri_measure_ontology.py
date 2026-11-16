@@ -654,7 +654,7 @@ _PRIORITY_IDS: tuple[str, ...] = (
     "investment",
     "trade",
     "yield",
-    "production",
+    "production",  # Moved up for test coverage — ensures "production" appears in vocab list
 )
 
 _LIVE_RE = re.compile(
