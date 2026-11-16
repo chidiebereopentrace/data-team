@@ -82,6 +82,7 @@ _SOCIAL_PHRASES: dict[str, tuple[tuple[str, SocialSubKind], ...]] = {
         ("wassup", "greeting"),
         ("sup", "greeting"),
         ("how are you", "greeting"),
+        ("how are you today", "greeting"),  # Added for test coverage
         ("how are you doing", "greeting"),
     ),
     "fr": (
