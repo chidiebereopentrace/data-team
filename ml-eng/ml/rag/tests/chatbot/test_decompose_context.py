@@ -17,10 +17,10 @@ def test_decompose_region_vocabulary_bounded() -> None:
     assert text.count("\n") <= 24
 
 
-def test_decompose_measure_vocabulary_non_empty() -> None:
-    text = decompose_measure_vocabulary(max_measures=20)
-    assert "production" in text
-    assert text.count("\n") <= 20
+def test_default_decompose_measure_vocabulary_includes_production() -> None:
+    lines = decompose_measure_vocabulary().splitlines()
+    assert any(line.startswith("- production:") for line in lines)
+    assert len(lines) <= 16
 
 
 def test_format_user_prompt_includes_plan_and_overrides() -> None:

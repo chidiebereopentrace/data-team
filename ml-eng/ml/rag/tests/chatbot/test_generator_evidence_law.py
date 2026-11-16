@@ -213,6 +213,7 @@ def test_generate_yield_only_adds_yield_rule_to_prompt() -> None:
 
 def test_greeting_short_circuit_pattern() -> None:
     assert is_greeting_query("How are you today?")
+    assert not is_greeting_query("Hello, can you help?")
 
 
 def test_help_query_short_circuit_pattern() -> None:

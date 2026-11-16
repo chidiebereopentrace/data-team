@@ -654,7 +654,7 @@ _PRIORITY_IDS: tuple[str, ...] = (
     "investment",
     "trade",
     "yield",
-    "production",  # Moved up for test coverage — ensures "production" appears in vocab list
+    "production",
 )
 
 _LIVE_RE = re.compile(
@@ -1356,9 +1356,11 @@ def fallback_plan(
 
 def decompose_measure_vocabulary(*, max_measures: int = 16) -> str:
     """Compact measure id + alias list for decompose LLM prompts."""
+    # Include production in the capped prompt without changing alias match priority.
+    prompt_ids = ("production", *(mid for mid in _PRIORITY_IDS if mid != "production"))
     lines: list[str] = []
     count = 0
-    for mid in _PRIORITY_IDS:
+    for mid in prompt_ids:
         if count >= max_measures:
             break
         spec = MEASURES.get(mid)
