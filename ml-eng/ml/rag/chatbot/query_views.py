@@ -267,6 +267,7 @@ def build_query_views(
     category: str | None = None,
     decomposition: dict[str, Any] | None = None,
     language_enrich: str | None = None,
+    english_query: str = "",  # NEW: BQ retrieval variant for bilingual pipeline
 ) -> QueryViews:
     user_query = normalize_query_text(raw_query)
     ctx = build_context_rewrite(
@@ -281,6 +282,7 @@ def build_query_views(
     detail = build_detail_rewrite(user_query, decomposition)
     return QueryViews(
         user_query=user_query,
+        english_query=english_query,  # NEW: BQ retrieval variant for bilingual pipeline
         context_rewrite=str(ctx.get("context_rewrite") or ""),
         detail_rewrite=detail,
         context_applied=bool(ctx.get("context_applied")),
