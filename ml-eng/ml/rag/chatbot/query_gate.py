@@ -82,7 +82,7 @@ _SOCIAL_PHRASES: dict[str, tuple[tuple[str, SocialSubKind], ...]] = {
         ("wassup", "greeting"),
         ("sup", "greeting"),
         ("how are you", "greeting"),
-        ("how are you today", "greeting"),  # Added for test coverage
+        ("how are you today", "greeting"),
         ("how are you doing", "greeting"),
     ),
     "fr": (
@@ -499,13 +499,14 @@ def classify_social_subkind(query: str) -> SocialSubKind | None:
     q = (query or "").strip()
     if not q or _AG_SUBSTANCE_RE.search(q):
         return None
-    # Long or interrogative messages are real asks, not social courtesy.
-    if _raw_has_question_mark(q) or _token_count(q) > _SOCIAL_PREFIX_MAX_TOKENS:
+    if _token_count(q) > _SOCIAL_PREFIX_MAX_TOKENS:
         return None
     normalized = _normalize_social_text(q)
+    # A question mark is allowed only when the entire message is a known courtesy phrase.
+    has_question_mark = _raw_has_question_mark(q)
     for phrases in _SOCIAL_PHRASES.values():
         for phrase, subkind in phrases:
-            exact_only = _normalize_social_text(phrase) in _EXACT_ONLY_SOCIAL
+            exact_only = has_question_mark or _normalize_social_text(phrase) in _EXACT_ONLY_SOCIAL
             if _matches_phrase(normalized, phrase, exact_only=exact_only):
                 return subkind
     return None

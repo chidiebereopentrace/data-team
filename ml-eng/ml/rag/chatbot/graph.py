@@ -3170,9 +3170,6 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
     out_gen: dict[str, Any] = {
         "query": str(query),
         "decomposition": dec_dict,
-        "bq_sql_plan": {},
-        "merged_context": list(reranked) if isinstance(reranked, list) else [],
-        "reranked_context": list(reranked) if isinstance(reranked, list) else [],
         "answer": final_answer,
         "citations": revised_result.citations,
         "answer_lang": answer_lang,
@@ -3425,14 +3422,14 @@ def _profile_ui_scope_active(decomposition: dict[str, Any]) -> bool:
     return geo_source in {"profile", "ui"} or time_source == "ui"
 
 
-def _state_without_profile_ui_scope(state: RAGGraphState) -> RAGGraphState:
-    """Clear profile/UI retrieval filters. Query-derived countries and dates stay."""
+def _profile_ui_scope_updates(state: RAGGraphState) -> RAGGraphState:
+    """Return updates that clear profile/UI filters and keep query-derived scope."""
     dec_raw = state.get("decomposition")
     dec: dict[str, Any] = dec_raw if isinstance(dec_raw, dict) else {}
     geo_source = str(dec.get("geography_source") or "")
     time_source = str(dec.get("time_source") or "")
     cleared = clear_profile_ui_retrieval_scope(dec)
-    updates: dict[str, Any] = {
+    updates: RAGGraphState = {
         "decomposition": cleared,
         "profile_scope_retry": 1,
     }
@@ -3450,11 +3447,10 @@ def _state_without_profile_ui_scope(state: RAGGraphState) -> RAGGraphState:
             spec["hard_filter"] = False
             rewritten["time_spec"] = spec
             updates["turn_contract"] = rewritten
-    return cast(RAGGraphState, {**dict(state), **updates})
+    return updates
 
 
 def _rerun_retrieve_merge_rerank(state: RAGGraphState) -> RAGGraphState:
-    updates: dict[str, Any] = {}
     retry_bq = should_retry_bq(cast(dict[str, Any], state))
     if retry_bq:
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -3462,19 +3458,13 @@ def _rerun_retrieve_merge_rerank(state: RAGGraphState) -> RAGGraphState:
             fut_bq = pool.submit(node_bq_retrieve, state)
             vec_out = fut_vec.result()
             bq_out = fut_bq.result()
-        updates.update(vec_out)
+        updates = vec_out
         updates.update(bq_out)
-        state = cast(RAGGraphState, {**dict(state), **vec_out, **bq_out})
     else:
-        vec_out = node_parallel_retrieve(state)
-        updates.update(vec_out)
-        state = cast(RAGGraphState, {**dict(state), **vec_out})
-    merge_out = node_merge(state)
-    updates.update(merge_out)
-    state = cast(RAGGraphState, {**dict(state), **merge_out})
-    rerank_out = node_rerank(state)
-    updates.update(rerank_out)
-    return RAGGraphState(**{**updates, **state})
+        updates = node_parallel_retrieve(state)
+    updates.update(node_merge(RAGGraphState(**{**state, **updates})))
+    updates.update(node_rerank(RAGGraphState(**{**state, **updates})))
+    return updates
 
 
 def node_coverage_retry(state: RAGGraphState) -> RAGGraphState:
@@ -3490,46 +3480,31 @@ def node_coverage_retry(state: RAGGraphState) -> RAGGraphState:
         and _evidence_empty(state)
         and _profile_ui_scope_active(dec)
     ):
-        widened = _state_without_profile_ui_scope(state)
-        updates: dict[str, Any] = {
-            "profile_scope_retry": 1,
-            "decomposition": widened.get("decomposition"),
-        }
-        if str(dec.get("geography_source") or "") in {"profile", "ui"}:
-            updates["geo_override"] = ""
-        if str(dec.get("time_source") or "") == "ui":
-            updates["time_start_override"] = ""
-            updates["time_end_override"] = ""
-            turn_contract = widened.get("turn_contract")
-            if isinstance(turn_contract, dict):
-                updates["turn_contract"] = turn_contract
+        updates = _profile_ui_scope_updates(state)
         with observed_span("profile_scope_retry", input_data={"attempt": 1}):
-            updates.update(_rerun_retrieve_merge_rerank(widened))
+            updates.update(_rerun_retrieve_merge_rerank(RAGGraphState(**{**state, **updates})))
             update_current_span_metadata({"profile_scope_retry": 1})
-        return RAGGraphState(**{**updates, **state})
+        return updates
 
     if not should_coverage_retry(cast(dict[str, Any], state)):
-        out = {
-            "query": str(state.get("query") or ""),
-            "decomposition": {} if not isinstance(state.get("decomposition"), dict) else state.get("decomposition"),
-            "bq_sql_plan": {},
-            "merged_context": [],
-            "reranked_context": [],
-            "answer_outcome": "unknown",
-            "coverage_retry": int(state.get("coverage_retry") or 0),
-        }
-        return RAGGraphState(**out)
+        return {}
 
-    updates = {
-        "query": str(state.get("query") or ""),
-        "decomposition": {} if not isinstance(state.get("decomposition"), dict) else state.get("decomposition"),
-        "coverage_retry": 1,
-    }
-    merged_state = cast(RAGGraphState, {**dict(state), **updates})
+    updates: RAGGraphState = {"coverage_retry": 1}
     with observed_span("coverage_retry", input_data={"attempt": 1}):
-        updates.update(_rerun_retrieve_merge_rerank(merged_state))
-        update_current_span_metadata({"coverage_retry": 1})
-    return RAGGraphState(**{**updates, **state})
+        retried = _rerun_retrieve_merge_rerank(RAGGraphState(**{**state, **updates}))
+        new_ranked = retried.get("reranked_context") or []
+        if "bq_results" not in retried:
+            # Rows carried over from the first pass do not make the retry successful.
+            new_ranked = [item for item in new_ranked if not is_warehouse_item(item)]
+        new_evidence: RAGGraphState = {
+            "reranked_context": new_ranked,
+            "bq_results": retried.get("bq_results") or [],
+        }
+        keep_first_pass = not _evidence_empty(state) and _evidence_empty(new_evidence)
+        if not keep_first_pass:
+            updates.update(retried)
+        update_current_span_metadata({"coverage_retry": 1, "kept_first_pass": keep_first_pass})
+    return updates
 
 
 def node_metacog_revise(state: RAGGraphState) -> RAGGraphState:
