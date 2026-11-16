@@ -28,6 +28,7 @@ def test_fact_lookup_prompt_excludes_analytical_skeleton() -> None:
     assert "REPORT OUTLINE" not in system
     assert "ANALYTICAL VOICE RULES" not in system
     assert "FACT LOOKUP" in system
+    assert "Stop after answering the question" in system
 
 
 def test_prompt_distinguishes_policy_programme_gedsi_and_source_quality() -> None:

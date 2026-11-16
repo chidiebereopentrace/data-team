@@ -205,6 +205,14 @@ def compile_supervisor_plan(
     for code in scored:
         if code != primary and code not in secondary:
             secondary.append(code)
+    if pm_list and len(pm_list) > 1:
+        for mid in pm_list:
+            spec = MEASURES.get(mid)
+            if spec is None:
+                continue
+            for code in spec.indicator_classes:
+                if code != primary and code not in secondary:
+                    secondary.append(code)
 
     if not primary:
         pm = bundle_primary_measure(bundles, q)
@@ -236,7 +244,7 @@ def compile_supervisor_plan(
     classes = (primary,)
     sec = tuple(dict.fromkeys(s for s in secondary if s != primary))
 
-    if primary == "FVC" and _FOOD_BALANCE_SHARE_RE.search(q):
+    if primary == "FVC" and _FOOD_BALANCE_SHARE_RE.search(q) and len(pm_list or []) <= 1:
         sec = ()
 
     return SupervisorPlan(

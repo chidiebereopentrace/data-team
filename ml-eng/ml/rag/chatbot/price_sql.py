@@ -11,12 +11,14 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from ml.rag.chatbot.bundle_metrics import AGRI_ACTIVITIES_STAPLES, food_price_basket
 from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
 from ml.rag.chatbot.price_vocab import (
     PricePlace,
     PriceSeries,
     choose_price_type,
     held_price_sources,
+    load_price_vocab,
     region_place,
     resolve_price_place,
     resolve_price_products,
@@ -205,25 +207,17 @@ def plan_price_template(
         return None
     series: list[PriceSeries] = []
     closest: list[str] = []
-    named = False
-    for code in iso3s:
-        res = resolve_price_products(blob, code)
-        named = named or res.named
-        series.extend(res.series)
-        closest.extend(n for n in res.closest if n not in closest)
-    if not series:
-        from ml.rag.chatbot.bundle_metrics import AGRI_ACTIVITIES_STAPLES, food_price_basket
-        from ml.rag.chatbot.price_vocab import load_price_vocab
-
-        if food_price_basket(blob):
-            staples = {n.casefold() for n in AGRI_ACTIVITIES_STAPLES}
-            for code in iso3s:
-                series.extend(
-                    s
-                    for s in load_price_vocab().for_country(code)
-                    if any(tok in s.product_name.casefold() for tok in staples)
-                )
-            named = True
+    named = food_price_basket(query)
+    if named:
+        staples = re.compile(r"\b(?:" + "|".join(AGRI_ACTIVITIES_STAPLES) + r")\b", re.I)
+        vocab = load_price_vocab()
+        series = [s for code in iso3s for s in vocab.for_country(code) if staples.search(s.product_name)]
+    else:
+        for code in iso3s:
+            res = resolve_price_products(blob, code)
+            named = named or res.named
+            series.extend(res.series)
+            closest.extend(n for n in res.closest if n not in closest)
     if not series:
         if not named:
             return None

@@ -56,9 +56,15 @@ jobs:
             ml-eng/ml/rag/tests/chatbot/test_retrieval_cache.py \
             ml-eng/ml/rag/tests/chatbot/test_bq_fact_cache.py \
             ml-eng/ml/rag/tests/chatbot/test_coverage_retry.py \
+            ml-eng/ml/rag/tests/chatbot/test_graph_greeting.py \
+            ml-eng/ml/rag/tests/chatbot/test_streamlit_inspector.py::test_clarification_route_skipped_retrieval \
+            ml-eng/ml/rag/tests/chatbot/test_generator_context.py::test_policy_and_price_question_preserves_policy_evidence \
+            ml-eng/ml/rag/tests/chatbot/test_turn_contract_properties.py::test_diagnosis_pack_keeps_documents_when_price_rows_fill_the_limit \
             ml-eng/ml/rag/tests/chatbot/test_six_collection_paths.py \
             ml-eng/ml/rag/tests/chatbot/test_stage_partial.py \
             ml-eng/ml/rag/tests/chatbot/test_metacog.py::test_resolved_warehouse_fact_keeps_checks_without_advisory_llm \
+            ml-eng/ml/rag/tests/chatbot/test_metacog.py::test_metacog_plan_rejects_strings_in_place_of_lists \
+            ml-eng/ml/rag/tests/chatbot/test_metacog.py::test_graph_keeps_new_verification_over_initial_empty_state \
             ml-eng/ml/rag/tests/chatbot/test_decompose_context.py \
             ml-eng/ml/rag/tests/retrievers/test_bq_retriever_planned_path.py \
             ml-eng/ml/rag/tests/retrievers/test_bq_engine_execute.py \

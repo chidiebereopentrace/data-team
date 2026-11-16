@@ -1494,6 +1494,7 @@ class BQRetriever(BaseRetriever):
         pattern_sqls: list[str] = []
         nl2sql_sqls: list[str] = []
         template_sqls: list[str] = []
+        bind_sqls: list[str] = []
         leftover_intents: list[Any] = []
         pattern_slot_ids: list[str] = []
         intent_slot_by_index: dict[int, str] = {}
@@ -1504,14 +1505,14 @@ class BQRetriever(BaseRetriever):
                     if sid:
                         intent_slot_by_index[idx] = sid
 
-        def _try_template_sql() -> list[str]:
+        def _try_template_sql(tables: set[str] | None = None) -> list[str]:
             nonlocal template_meta, sql_source
             template_limit = 1 if fast_fact else rows_per_query
             hit = try_sql_template(
                 query=query,
                 project_id=self.project_id,
                 dataset=ds_name,
-                selected_tables=selected_tables,
+                selected_tables=tables if tables is not None else selected_tables,
                 entities=entities,
                 time_start=time_start,
                 time_end=time_end,
@@ -1536,15 +1537,15 @@ class BQRetriever(BaseRetriever):
             or str(kwargs.get("plan_source") or "").strip() == "class_engine"
         )
 
-        price_turn = bool(selected_tables and set(selected_tables) & {"fct_prices", "agg_prices_country_month"})
+        price_tables = {"fct_prices", "agg_prices_country_month"}
+        price_turn = bool(selected_tables and set(selected_tables) & price_tables)
         if not engine_execute_only and not sql_queries and not explicit_sql:
-            price_sqls = _try_template_sql() if planned_path and price_turn else []
-            if price_sqls or (template_meta or {}).get("template") == "price_gap":
-                sql_queries = price_sqls
-            elif planned_path:
-                template_meta = None
-                sql_source = "none"
-                bind_sqls: list[str] = []
+            if planned_path:
+                template_sqls = _try_template_sql(selected_tables & price_tables) if price_turn else []
+                covered_price = bool(template_sqls or (template_meta or {}).get("template") == "price_gap")
+                remaining_tables = set(selected_tables)
+                if covered_price:
+                    remaining_tables -= price_tables
                 if bind_contracts:
                     shape_job = str(kwargs.get("contract_job") or "")
                     shape_pattern = ""
@@ -1566,7 +1567,7 @@ class BQRetriever(BaseRetriever):
                             if not shape_job and intent.get("shape"):
                                 shape_job = str(intent.get("shape") or "")
                     asked = requested_operation(query or "")
-                    for tid in sorted(selected_tables):
+                    for tid in sorted(remaining_tables):
                         raw_bind = bind_contract_for_table(bind_contracts, tid)
                         if raw_bind is None:
                             continue
@@ -1599,14 +1600,17 @@ class BQRetriever(BaseRetriever):
                                     },
                                 }
                             )
-                if bind_sqls:
-                    sql_source = "bind_compiler"
-                    sql_queries = bind_sqls
-                else:
-                    sql_source = "nl2sql"
+                if not bind_sqls and (remaining_tables or not covered_price):
                     need_nl2sql = self.nl2sql_enabled and not contract_sql_only and not bind_refusals
                     if need_nl2sql:
-                        nl_tables = sorted(selected_tables) if selected_tables else None
+                        nl_tables = sorted(remaining_tables) or None
+                        remaining_intents = query_intents
+                        if covered_price and isinstance(query_intents, list):
+                            remaining_intents = [
+                                intent for intent in query_intents
+                                if isinstance(intent, dict)
+                                and remaining_tables.intersection(intent.get("tables") or [])
+                            ]
                         nl2sql_sqls = self._nl_to_sql_queries(
                             query,
                             table_hints=hint_list[:1] if fast_fact and hint_list else hint_list,
@@ -1619,29 +1623,55 @@ class BQRetriever(BaseRetriever):
                             selected_tables=nl_tables,
                             query=query,
                             bind_contracts=bind_contracts,
-                            query_intents=query_intents,
+                            query_intents=remaining_intents,
                             primary_measures=primary_measures,
                             task_mode=task_mode,
                             max_queries=1 if fast_fact else max_queries,
                         )
-                    sql_queries = list(nl2sql_sqls)
+                sql_queries = [*template_sqls, *bind_sqls, *nl2sql_sqls]
+                if bind_sqls and not template_sqls:
+                    sql_source = "bind_compiler"
             else:
-                template_sqls = _try_template_sql()
-                if template_sqls:
+                if price_turn:
+                    template_sqls = _try_template_sql(selected_tables & price_tables)
+                if template_meta is None:
+                    template_sqls = _try_template_sql()
+                template_name = (template_meta or {}).get("template")
+                template_table = str((template_meta or {}).get("table_id") or "").split(".")[-1].lower()
+                covered_tables = (
+                    price_tables if template_name in ("mart_price", "price_gap")
+                    else {template_table} if template_sqls and template_table
+                    else set()
+                )
+                pattern_tables = selected_tables
+                pattern_intents = query_intents
+                pattern_slot_by_index = intent_slot_by_index
+                if covered_tables:
+                    pattern_tables = selected_tables - covered_tables
+                    remaining = [
+                        (idx, intent) for idx, intent in enumerate(query_intents or [])
+                        if isinstance(intent, dict) and pattern_tables.intersection(intent.get("tables") or [])
+                    ]
+                    pattern_intents = [intent for _, intent in remaining]
+                    pattern_slot_by_index = {
+                        idx: intent_slot_by_index.get(original_idx, "")
+                        for idx, (original_idx, _) in enumerate(remaining)
+                    }
+                if (template_sqls or template_name == "price_gap") and not (
+                    covered_tables and pattern_intents
+                ):
                     sql_queries = template_sqls
-                elif (template_meta or {}).get("template") == "price_gap":
-                    pass
                 else:
                     pattern_cap = 1 if fast_fact else None
                     pattern_hits = try_sql_patterns(
-                        query_intents,
+                        pattern_intents,
                         project_id=self.project_id,
                         dataset=ds_name,
                         query=query,
                         entities=entities,
                         time_start=time_start,
                         time_end=time_end,
-                        selected_tables=selected_tables,
+                        selected_tables=pattern_tables,
                         limit=rows_per_query,
                         geo_country=geo_country,
                         geo_countries=geo_countries,
@@ -1661,18 +1691,18 @@ class BQRetriever(BaseRetriever):
                             if not str(h.get("sql") or "").strip():
                                 continue
                             ii = h.get("intent_index")
-                            sid = intent_slot_by_index.get(ii, "") if isinstance(ii, int) else ""
+                            sid = pattern_slot_by_index.get(ii, "") if isinstance(ii, int) else ""
                             pattern_slot_ids.append(sid)
                         compiled_idx = {h.get("intent_index") for h in pattern_hits}
-                        if isinstance(query_intents, list):
+                        if isinstance(pattern_intents, list):
                             leftover_intents = [
                                 intent
-                                for idx, intent in enumerate(query_intents)
+                                for idx, intent in enumerate(pattern_intents)
                                 if idx not in compiled_idx and isinstance(intent, dict)
                             ]
-                    elif isinstance(query_intents, list):
+                    elif isinstance(pattern_intents, list):
                         leftover_intents = [
-                            intent for intent in query_intents if isinstance(intent, dict)
+                            intent for intent in pattern_intents if isinstance(intent, dict)
                         ]
                         sql_source = "pattern"
 
@@ -1725,7 +1755,7 @@ class BQRetriever(BaseRetriever):
                             selected_tables=nl_tables,
                             query=query,
                             bind_contracts=bind_contracts,
-                            query_intents=query_intents,
+                            query_intents=leftover_intents or query_intents,
                             primary_measures=primary_measures,
                             task_mode=task_mode,
                             max_queries=1 if fast_fact else max_queries,
@@ -1733,7 +1763,7 @@ class BQRetriever(BaseRetriever):
                         if nl2sql_sqls and not pattern_sqls:
                             sql_source = "nl2sql"
                     if not sql_queries:
-                        sql_queries = list(pattern_sqls) + list(nl2sql_sqls)
+                        sql_queries = [*template_sqls, *pattern_sqls, *nl2sql_sqls]
 
         if engine_execute_only:
             sql_source = "engine"
@@ -1752,10 +1782,9 @@ class BQRetriever(BaseRetriever):
         else:
             sql_source = "none"
 
-        if not sql_queries and (template_meta or {}).get("template") == "price_gap":
-            self.last_sql_source = "template"
-            self.last_bq_execute_ms = 0.0
-            return [
+        price_gap_items: list[dict[str, Any]] = []
+        if template_meta and template_meta.get("template") == "price_gap":
+            price_gap_items.append(
                 {
                     "content": str(template_meta.get("gap_message") or ""),
                     "source": "bigquery",
@@ -1767,7 +1796,11 @@ class BQRetriever(BaseRetriever):
                         "countries": template_meta.get("countries") or [],
                     },
                 }
-            ]
+            )
+            if not sql_queries:
+                self.last_sql_source = "template"
+                self.last_bq_execute_ms = 0.0
+                return price_gap_items
 
         if not sql_queries:
             reason = (
@@ -1809,8 +1842,8 @@ class BQRetriever(BaseRetriever):
             ]
 
         allowed = set(self.datasets_config.values())
-        budget = top_k or self.max_rows
-        items: list[dict[str, Any]] = list(bind_refusals)
+        budget = max(top_k or self.max_rows, min(max_queries, len(sql_queries)))
+        items: list[dict[str, Any]] = [*bind_refusals, *price_gap_items]
         any_usable_rows = False
         prepared_ok = False
         queries_left = max_queries
@@ -1836,6 +1869,7 @@ class BQRetriever(BaseRetriever):
             *,
             source: str,
             slot_ids: list[str] | None = None,
+            reserve_rows: int = 0,
         ) -> None:
             nonlocal budget, any_usable_rows, prepared_ok, queries_left
 
@@ -2115,7 +2149,7 @@ class BQRetriever(BaseRetriever):
                 budget = max(budget, RESULT_ROW_BUDGET)
                 batch_row_limit = RESULT_ROW_BUDGET + 1
             else:
-                batch_row_limit = min(rows_per_query, budget) if budget > 0 else rows_per_query
+                batch_row_limit = min(rows_per_query, max(1, (budget - reserve_rows) // len(batch)))
             for idx, raw_sql in enumerate(batch):
                 if queries_left <= 0:
                     break
@@ -2240,6 +2274,23 @@ class BQRetriever(BaseRetriever):
 
         if explicit_sql:
             _run_sql_batch(sql_queries, source=sql_source)
+        elif template_sqls and (bind_sqls or pattern_sqls or nl2sql_sqls):
+            _run_sql_batch(
+                template_sqls,
+                source="template",
+                reserve_rows=len(bind_sqls) + len(pattern_sqls) + len(nl2sql_sqls),
+            )
+            if bind_sqls:
+                _run_sql_batch(bind_sqls, source="bind_compiler")
+            if pattern_sqls:
+                _run_sql_batch(
+                    pattern_sqls,
+                    source="pattern",
+                    slot_ids=pattern_slot_ids or None,
+                    reserve_rows=len(nl2sql_sqls),
+                )
+            if nl2sql_sqls:
+                _run_sql_batch(nl2sql_sqls, source="nl2sql")
         elif pattern_sqls or nl2sql_sqls:
             if pattern_sqls:
                 _run_sql_batch(pattern_sqls, source="pattern", slot_ids=pattern_slot_ids or None)

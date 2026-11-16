@@ -138,6 +138,18 @@ def test_document_budget_caps_documents() -> None:
     assert pack.dropped == {"document_budget": 4}
 
 
+def test_diagnosis_pack_keeps_documents_when_price_rows_fill_the_limit() -> None:
+    contract = TurnContract(measure_id="market_price", job="diagnose")
+    rows = [
+        {"content": f"[Structured data] Rice {n} KES/kg", "_context_kind": "bigquery"}
+        for n in range(1, 5)
+    ]
+    policy = {"content": "Fuel subsidies improved rural market access.", "_context_kind": "policy"}
+    pack = typed_context_pack([*rows, policy], contract, top_k=3)
+    assert pack.items == [*rows[:2], policy]
+    assert pack.dropped == {"over_top_k": 2}
+
+
 def test_relevance_floor_drops_weak_documents() -> None:
     contract = TurnContract(measure_id="production", job="fact", serve_status="served")
     items = [

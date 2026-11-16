@@ -58,6 +58,13 @@ def test_wholesale_question_filters_wholesale() -> None:
     assert "price_type = 'Wholesale'" in sql
 
 
+def test_rwanda_rice_can_plan_the_requested_year() -> None:
+    hit = _plan("What was the price of rice in Rwanda in 2025?", ["Rwanda"], "2025")
+    assert hit["template"] == "mart_price"
+    assert "country_iso3 IN ('RWA')" in hit["sql"]
+    assert "year = 2025" in hit["sql"]
+
+
 def test_multi_country_multi_year_groups_by_year() -> None:
     hit = plan_price_template(
         query="Compare wholesale rice prices in Kenya and Uganda since 2020",
@@ -73,6 +80,17 @@ def test_multi_country_multi_year_groups_by_year() -> None:
     assert "country_iso3 IN ('KEN', 'UGA')" in sql
     assert "year BETWEEN 2020 AND 2026" in sql
     assert "b.year" in sql
+
+
+@pytest.mark.parametrize("wording", ["the price of food", "food prices"])
+def test_policy_question_food_price_series_use_staples(wording: str) -> None:
+    query = f"How did agricultural policies affect farmer livelihoods and {wording} since 2015?"
+    hit = _plan(query, ["Ghana", "Liberia", "Mali"])
+
+    assert hit["template"] == "mart_price"
+    assert hit["product_names"]
+    assert "wage" not in hit["sql"].lower()
+    assert "country_iso3 IN (" in hit["sql"]
 
 
 def test_source_follows_requested_years() -> None:

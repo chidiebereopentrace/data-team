@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, MeasureSpec, query_locks_production
+from ml.rag.chatbot.analytical_intent import asks_about_causal_effect
 from ml.rag.chatbot.intent_bundles import (
     MatchedBundle,
     bundle_primary_measure,
@@ -214,6 +215,9 @@ def compile_job(
     ql = q.lower()
     intent = str((decomposition or {}).get("intent") or "").strip().lower()
     mode = (task_mode_hint or "").strip().lower()
+
+    if mode == "analytical" and asks_about_causal_effect(q):
+        return "diagnose"
 
     model_job = str((decomposition or {}).get("job") or "").strip().lower()
     if model_job in JOB_ALLOWED:

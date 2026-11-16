@@ -220,8 +220,10 @@ def _build_prompt(
     if mode == "fact_lookup":
         system += (
             "\n\nFACT LOOKUP: First sentence = what was measured (product or indicator and place) "
-            "+ number/fact + unit + period + [N] when citing. "
-            "No report headings."
+            "+ number/fact + unit + period + [N] when citing. Lead with the requested product or indicator "
+            "when it is present and label related products, such as grain and flour, separately. "
+            "State any material gap in one short sentence. Stop after answering the question. "
+            "Include an outlook or recommendations only if requested. No report headings."
         )
     elif mode == "briefing":
         system += (

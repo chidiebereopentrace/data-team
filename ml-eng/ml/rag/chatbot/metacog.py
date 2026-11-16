@@ -17,6 +17,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any, Final
 
+from ml.rag.chatbot.analytical_intent import asks_about_causal_effect
 from ml.rag.chatbot.capability_registry import apply_vector_policy
 from ml.rag.chatbot.decompose_context import JOB_ALLOWED
 from ml.rag.chatbot.turn_contract import NARRATIVE_ALLOWED_JOBS, NON_RAG_JOBS, TurnContract
@@ -88,9 +89,8 @@ _SYSTEM = (
     "  evidence_needs: array from [bq, news, research, ota, web]\n"
     "  must_ground_in: one of bigquery, narrative, any\n"
     "  claim_budget: one of strict_numeric, causal_careful, narrative_ok\n"
-    "  verify_checks: short string checklist items "
-    '(e.g. geo_match, year_match, measure_match, no_invented_drivers)\n'
-    "  composer_hints: up to 4 short imperative lines for answer tone\n"
+    "  verify_checks: array from [geo_match, year_match, measure_match, no_invented_drivers]\n"
+    "  composer_hints: array of up to 4 short imperative strings for answer tone\n"
     "  skip_verify: boolean\n"
     "  rationale: one short sentence\n"
     "Rules: prefer diagnose (not diagnosis) when the user asks why/causes/drivers. "
@@ -136,23 +136,24 @@ class MetacogPlan:
             mode = "diagnose"
         if mode not in ADVISORY_MODES:
             mode = "pass"
-        needs: list[str] = []
-        for item in raw.get("evidence_needs") or []:
-            n = str(item).strip().lower()
-            if n in EVIDENCE_NEEDS and n not in needs:
-                needs.append(n)
         ground = str(raw.get("must_ground_in") or "any").strip().lower()
         if ground not in MUST_GROUND_IN:
             ground = "any"
         budget = str(raw.get("claim_budget") or "narrative_ok").strip().lower()
         if budget not in CLAIM_BUDGETS:
             budget = "narrative_ok"
-        checks = tuple(
-            str(c).strip() for c in (raw.get("verify_checks") or _DEFAULT_VERIFY_CHECKS) if str(c).strip()
-        )[:12]
-        hints = tuple(
-            str(h).strip()[:160] for h in (raw.get("composer_hints") or []) if str(h).strip()
-        )[:4]
+        checks_raw = raw.get("verify_checks")
+        checks = (
+            tuple(dict.fromkeys(c for c in checks_raw if c in _DEFAULT_VERIFY_CHECKS))
+            if isinstance(checks_raw, list)
+            else ()
+        )
+        hints_raw = raw.get("composer_hints")
+        hints = (
+            tuple(h.strip()[:160] for h in hints_raw if isinstance(h, str) and h.strip())[:4]
+            if isinstance(hints_raw, list)
+            else ()
+        )
         try:
             conf = float(raw.get("confidence") or 0.0)
         except (TypeError, ValueError):
@@ -164,7 +165,7 @@ class MetacogPlan:
         return cls(
             advisory_mode=mode,
             confidence=conf,
-            evidence_needs=tuple(needs),
+            evidence_needs=_clean_needs(raw.get("evidence_needs")),
             must_ground_in=ground,
             claim_budget=budget,
             verify_checks=checks or _DEFAULT_VERIFY_CHECKS,
@@ -357,6 +358,9 @@ def build_metacog_plan(
     job = str(getattr(turn, "job", None) or "fact")
     if not q:
         return MetacogPlan(source="none", rationale="empty_query", skip_verify=True)
+
+    if job == "diagnose" and asks_about_causal_effect(q):
+        return heuristic_metacog_plan(q, current_job=job)
 
     # The compiled contract already describes a fully specified fact lookup.
     if (

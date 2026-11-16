@@ -217,3 +217,42 @@ def test_bind_compiler_skips_nl2sql() -> None:
 
     nl2sql_fn.assert_not_called()
     assert any((it.get("metadata") or {}).get("sql_source") == "bind_compiler" for it in items)
+
+
+def test_price_template_keeps_other_requested_warehouse_indicators() -> None:
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=False)
+    production = "agg_production_country_year"
+    client = MagicMock()
+    client.query.return_value.result.return_value = [{"country_iso3": "KEN", "value": 100}]
+    with (
+        patch.object(retriever, "_get_client", return_value=client),
+        patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None),
+    ):
+        items = retriever.retrieve(
+            "What were the maize price and maize production in Kenya in 2023?",
+            selected_tables=["fct_prices", production],
+            bind_contracts={
+                production: {
+                    "table_id": production,
+                    "required_filters_sql": (
+                        "country_iso3 = 'KEN' AND year = 2023 AND product_key IN "
+                        "(SELECT product_key FROM `proj.mart_dev.dim_product` WHERE product_name = 'Maize')"
+                    ),
+                    "measure_columns": ["production_qty"],
+                },
+            },
+            query_intents=[{"goal": "price"}, {"goal": "production"}],
+            primary_measures=["market_price", "production"],
+            entities=["maize"],
+            geo_country="Kenya",
+            time_start="2023-01-01",
+            time_end="2023-12-31",
+            task_mode="analytical",
+            plan_source="class_engine",
+        )
+
+    sources = {
+        item["metadata"]["sql_source"] for item in items
+        if item.get("metadata", {}).get("job_id")
+    }
+    assert {"template", "bind_compiler"}.issubset(sources)

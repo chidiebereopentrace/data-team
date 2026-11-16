@@ -55,7 +55,8 @@ _enrich_cache: dict[str, tuple[float, str]] = {}
 _SYSTEM = (
     "You rewrite African agricultural questions into one clear English sentence "
     "for warehouse lookup and document retrieval. "
-    "Preserve crop, country/place, years/time span, and measure intent. "
+    "Preserve every requested indicator, comparison, outcome, and causal relationship, "
+    "as well as the crops, places, and time windows. "
     "Expand well-known local crop names only when confident "
     "(e.g. akpu → cassava, mahindi → maize, osikapa → rice). "
     "Do not invent years, places, or crops that are not in the input. "

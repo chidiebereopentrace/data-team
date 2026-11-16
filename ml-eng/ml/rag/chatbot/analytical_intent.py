@@ -46,6 +46,17 @@ _INVESTOR_BEST_RE = re.compile(
     re.IGNORECASE,
 )
 
+_CAUSAL_EFFECT_RE = re.compile(
+    r"\b(?:how\s+(?:do|does|did|has|have|had)\b[^?.!]{0,160}\b"
+    r"(?:affect|influence|impact|shape)(?:s|ed)?|"
+    r"(?:effects?|impacts?)\s+of\b[^?.!]{0,160}\bon)\b",
+    re.IGNORECASE,
+)
+
+
+def asks_about_causal_effect(query: str) -> bool:
+    return bool(_CAUSAL_EFFECT_RE.search(query))
+
 
 def is_analytical_query(query: str, decomposition: dict[str, Any] | None = None) -> bool:
     """
@@ -89,6 +100,8 @@ def is_analytical_query(query: str, decomposition: dict[str, Any] | None = None)
             reportish = False
     agri = bool(_AGRI_RE.search(q))
 
+    if (agri or has_region or has_multi_geo) and asks_about_causal_effect(q):
+        return True
     if reportish and (agri or has_region or compareish or export):
         return True
     # Regional multi-pillar assessment (production / prices / hunger / IPC).
@@ -118,4 +131,4 @@ def _years_span(decomposition: dict[str, Any]) -> bool:
     return False
 
 
-__all__ = ["is_analytical_query"]
+__all__ = ["asks_about_causal_effect", "is_analytical_query"]
