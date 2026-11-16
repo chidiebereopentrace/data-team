@@ -30,7 +30,7 @@ _VECTOR_TEXT_MAX = 4
 
 @dataclass(frozen=True)
 class QueryViews:
-    user_query: str
+    user_query: str = ""  # Made optional for backward compatibility with TypedDict consumers
     english_query: str = ""  # BQ retrieval variant (English for multi-lingual vector embeddings)
     context_rewrite: str = ""
     detail_rewrite: str = ""
