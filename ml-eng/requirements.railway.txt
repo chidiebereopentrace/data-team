@@ -27,7 +27,8 @@ PyYAML>=6.0
 
 # Vector DB + hybrid sparse (BM25 via fastembed)
 qdrant-client>=1.9.0
-fastembed>=0.5.0
+fastembed==0.8.0
+huggingface-hub>=0.34,<1
 
 # Session storage (in-memory fallback when RAG_REDIS_URL unset)
 redis>=5.0.0

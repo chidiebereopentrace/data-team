@@ -15,11 +15,13 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
 import requests
 
+from ml.rag.chatbot.stage_budget import RetrievalWorkers, remaining_seconds
 from ml.rag.hf_token import get_hf_api_token
 from ml.rag.observability import (
     get_observe_decorator,
@@ -39,14 +41,23 @@ HF_ROUTER_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
 _SOFT_FAIL_HTTP = frozenset({401, 402, 403, 410, 429, 502, 503})
 
 _usage_lock = threading.Lock()
-_request_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+_request_usage: ContextVar[dict[str, int] | None] = ContextVar("rag_llm_usage", default=None)
+_HTTP_WORKERS = RetrievalWorkers("rag-llm-http", workers=12)
 
 # Per-request truncation tracking (ML-054). OpenAI-compatible APIs report
 # finish_reason=="length" when generation stopped because max_tokens was hit.
 # That signal was previously read and discarded, so multi-part answers could be
 # cut off mid-sentence with no error and no indication to the user.
 _truncation_lock = threading.Lock()
-_request_truncation = {"length_capped_calls": 0, "last_finish_reason": ""}
+
+
+@dataclass
+class _Truncation:
+    length_capped_calls: int = 0
+    last_finish_reason: str = ""
+
+
+_request_truncation: ContextVar[_Truncation | None] = ContextVar("rag_llm_truncation", default=None)
 
 
 @dataclass(frozen=True)
@@ -67,26 +78,17 @@ class TokenUsage:
 
 def reset_llm_usage() -> None:
     """Clear per-request token accumulator (call at start of run_rag)."""
-    with _usage_lock:
-        _request_usage["prompt_tokens"] = 0
-        _request_usage["completion_tokens"] = 0
-        _request_usage["total_tokens"] = 0
+    _request_usage.set({"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
 
 
 def get_llm_usage() -> TokenUsage:
     with _usage_lock:
-        return TokenUsage(
-            prompt_tokens=_request_usage["prompt_tokens"],
-            completion_tokens=_request_usage["completion_tokens"],
-            total_tokens=_request_usage["total_tokens"],
-        )
+        return TokenUsage(**(_request_usage.get() or {}))
 
 
 def reset_llm_truncation() -> None:
     """Clear per-request truncation state (call at start of run_rag)."""
-    with _truncation_lock:
-        _request_truncation["length_capped_calls"] = 0
-        _request_truncation["last_finish_reason"] = ""
+    _request_truncation.set(_Truncation())
 
 
 def record_finish_reason(reason: str | None) -> None:
@@ -94,15 +96,20 @@ def record_finish_reason(reason: str | None) -> None:
     r = (reason or "").strip().lower()
     if not r:
         return
+    truncation = _request_truncation.get()
+    if truncation is None:
+        truncation = _Truncation()
+        _request_truncation.set(truncation)
     with _truncation_lock:
-        _request_truncation["last_finish_reason"] = r
+        truncation.last_finish_reason = r
         if r == "length":
-            _request_truncation["length_capped_calls"] += 1
+            truncation.length_capped_calls += 1
 
 
 def last_finish_reason() -> str:
     with _truncation_lock:
-        return str(_request_truncation["last_finish_reason"] or "")
+        truncation = _request_truncation.get()
+        return truncation.last_finish_reason if truncation else ""
 
 
 def answer_was_length_capped() -> bool:
@@ -112,7 +119,8 @@ def answer_was_length_capped() -> bool:
 
 def length_capped_call_count() -> int:
     with _truncation_lock:
-        return int(_request_truncation["length_capped_calls"] or 0)
+        truncation = _request_truncation.get()
+        return truncation.length_capped_calls if truncation else 0
 
 
 def add_llm_usage(raw: dict[str, Any] | None) -> None:
@@ -122,10 +130,15 @@ def add_llm_usage(raw: dict[str, Any] | None) -> None:
     prompt = int(raw.get("prompt_tokens") or raw.get("input_tokens") or 0)
     completion = int(raw.get("completion_tokens") or raw.get("output_tokens") or 0)
     total = int(raw.get("total_tokens") or (prompt + completion))
+    usage = _request_usage.get()
+    if usage is None:
+        reset_llm_usage()
+        usage = _request_usage.get()
+    assert usage is not None
     with _usage_lock:
-        _request_usage["prompt_tokens"] += prompt
-        _request_usage["completion_tokens"] += completion
-        _request_usage["total_tokens"] += total
+        usage["prompt_tokens"] += prompt
+        usage["completion_tokens"] += completion
+        usage["total_tokens"] += total
 
 
 DEFAULT_LLM_MODEL_ID = "qwen/qwen3-30b-a3b-instruct-2507"
@@ -193,6 +206,10 @@ def llm_chat_complete(
         return ""
 
     effective_timeout = llm_default_timeout_s() if timeout_s is None else timeout_s
+    effective_timeout = remaining_seconds(effective_timeout)
+    if effective_timeout == 0:
+        logger.info("LLM request skipped after the RAG deadline")
+        return ""
     headers: dict[str, str] = {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -225,8 +242,15 @@ def llm_chat_complete(
         if run_id:
             payload["session_id"] = run_id[:256]
             headers["x-session-id"] = run_id[:256]
+    future = None
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=effective_timeout)
+        future = _HTTP_WORKERS.try_submit(
+            lambda: requests.post(url, headers=headers, json=payload, timeout=effective_timeout)
+        )
+        if future is None:
+            logger.info("LLM request skipped while HTTP workers are busy")
+            return ""
+        resp = future.result(timeout=remaining_seconds(effective_timeout))
         if resp.status_code in _SOFT_FAIL_HTTP:
             logger.warning(
                 "llm_chat_complete: HTTP %s from %s (model=%s)",
@@ -258,7 +282,9 @@ def llm_chat_complete(
             metadata=gen_metadata,
         )
         return text
-    except requests.Timeout:
+    except (requests.Timeout, TimeoutError):
+        if future is not None:
+            future.cancel()
         logger.warning(
             "llm_chat_complete: timed out after %.0fs (model=%s, url=%s)",
             effective_timeout,

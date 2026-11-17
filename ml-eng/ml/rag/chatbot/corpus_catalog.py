@@ -100,7 +100,7 @@ _CURRICULUM_RE = re.compile(
 )
 _POLICY_RE = re.compile(
     r"\b(polic(?:y|ies)|regulation|regulatory|legislation|law|strategy|"
-    r"framework|act\b|decree)\b",
+    r"framework|action\s+plans?|plan\s+d['’]action|act\b|decree)\b",
     re.IGNORECASE,
 )
 _REPORT_RE = re.compile(
@@ -159,6 +159,15 @@ def default_boosts() -> dict[str, float]:
 
 def _boost(base: dict[str, float], key: str, delta: float) -> None:
     base[key] = round(float(base.get(key, 0.0)) + delta, 4)
+
+
+def comparison_document_corpora(topics: list[str]) -> list[str]:
+    """Search indicator sources and collections that match the requested explanation."""
+    corpora = ["ota", "public_reports", "news", "academic_papers"]
+    for pattern, corpus in ((_POLICY_RE, "policies"), (_FORMATION_RE, "formation")):
+        if any(pattern.search(topic) for topic in topics):
+            corpora.append(corpus)
+    return corpora
 
 
 def select_corpora(

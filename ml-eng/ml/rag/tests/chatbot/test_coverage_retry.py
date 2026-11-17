@@ -5,57 +5,7 @@ from typing import Any
 
 import pytest
 
-from ml.rag.chatbot.coverage_retry import should_coverage_retry, should_retry_bq, slots_missing_from_evidence
-
 _SKIPPED_WAREHOUSE_PLAN = {"skip_bq": True, "reason": "fixture"}
-
-
-def test_slots_missing_when_empty() -> None:
-    state = {
-        "decomposition": {"geography": ["Kenya"], "entities": ["maize"]},
-        "bq_results": [],
-        "reranked_context": [],
-    }
-    assert slots_missing_from_evidence(state) is True
-
-
-def test_slots_present_in_bq() -> None:
-    state = {
-        "decomposition": {"geography": ["Kenya"], "entities": ["maize"]},
-        "bq_results": [{"content": "Kenya maize production 2020 was 4Mt"}],
-        "coverage_retry": 0,
-        "route_candidate": "full_rag",
-    }
-    assert slots_missing_from_evidence(state) is False
-    assert should_coverage_retry(state) is False
-
-
-def test_retry_only_once() -> None:
-    state = {
-        "decomposition": {"geography": ["Kenya"]},
-        "bq_results": [],
-        "reranked_context": [],
-        "coverage_retry": 1,
-        "route_candidate": "full_rag",
-    }
-    assert should_coverage_retry(state) is False
-
-
-def test_discarded_candidates_and_failed_jobs_do_not_cover_facets() -> None:
-    state = {
-        "decomposition": {"geography": ["Senegal"], "entities": ["millet"]},
-        "bq_results": [{"content": "Senegal millet failed", "metadata": {"status": "validation_failed"}}],
-        "merged_context": [{"content": "Senegal millet report rejected by reranking"}],
-        "reranked_context": [{"content": "Senegal rice prices"}],
-    }
-    assert slots_missing_from_evidence(state)
-
-
-def test_identical_warehouse_retry_cannot_repair_invalid_sql() -> None:
-    assert not should_retry_bq({
-        "bq_sql_plan": {"selected_tables": ["fct_prices"]},
-        "bq_sql_debug": [{"status": "validation_failed"}],
-    })
 
 
 @pytest.fixture
@@ -73,7 +23,6 @@ def replay_retrieval(monkeypatch: pytest.MonkeyPatch):
         decomposition: dict[str, Any] | None = None,
         initial: graph.RAGGraphState | None = None,
         warehouse_first_rows: list[dict[str, Any]] | None = None,
-        warehouse_retry_rows: list[dict[str, Any]] | None = None,
     ):
         vector_calls = []
         warehouse_calls = []
@@ -98,8 +47,7 @@ def replay_retrieval(monkeypatch: pytest.MonkeyPatch):
 
         def retrieve_warehouse(state):
             warehouse_calls.append(state)
-            rows = warehouse_first_rows if len(warehouse_calls) == 1 else warehouse_retry_rows
-            return {"bq_results": rows or []}
+            return {"bq_results": warehouse_first_rows or []}
 
         monkeypatch.setattr(graph, "node_decompose", lambda state: {
             "decomposition": decomposition or {"geography": ["Kenya"], "entities": ["rice"]},
@@ -108,7 +56,7 @@ def replay_retrieval(monkeypatch: pytest.MonkeyPatch):
         })
         monkeypatch.setattr(graph, "node_parallel_retrieve", retrieve)
         plan = _SKIPPED_WAREHOUSE_PLAN
-        if warehouse_first_rows or warehouse_retry_rows is not None:
+        if warehouse_first_rows:
             plan = {"selected_tables": ["prod_country_year"]}
         monkeypatch.setattr(graph, "node_bq_reason", lambda state: {"bq_sql_plan": plan})
         monkeypatch.setattr(graph, "node_bq_retrieve", retrieve_warehouse)
@@ -122,7 +70,7 @@ def replay_retrieval(monkeypatch: pytest.MonkeyPatch):
             "rerank_top_k": 1,
             **(initial or {}),
         })
-        assert len(warehouse_calls) == (1 if warehouse_retry_rows is None else 2)
+        assert len(warehouse_calls) == 1
         return result, vector_calls, generated_from
 
     return replay
@@ -141,26 +89,18 @@ def test_covered_turn_keeps_merged_and_ranked_evidence(replay_retrieval) -> None
     assert result["bq_sql_plan"] == _SKIPPED_WAREHOUSE_PLAN
 
 
-def test_successful_retry_reaches_generation(replay_retrieval) -> None:
+def test_unchanged_scope_does_not_trigger_an_identical_search(replay_retrieval) -> None:
     result, calls, generated = replay_retrieval(
         ["Water availability influences farm yields."],
         ["Kenya rice farms rely on irrigation."],
     )
-    assert len(calls) == 2
-    assert result["coverage_retry"] == 1
-    assert result["reranked_context"][0]["content"] == "[News] Kenya rice farms rely on irrigation."
+    assert len(calls) == 1
+    assert result["coverage_retry"] == 0
+    assert result["reranked_context"][0]["content"] == "[News] Water availability influences farm yields."
     assert generated == [result["reranked_context"][0]["content"]]
 
 
-def test_empty_retry_keeps_first_pass_evidence(replay_retrieval) -> None:
-    result, calls, generated = replay_retrieval(["Water availability influences farm yields."], [])
-    assert len(calls) == 2
-    assert result["coverage_retry"] == 1
-    assert result["merged_context"][0]["content"] == "[News] Water availability influences farm yields."
-    assert generated == [result["merged_context"][0]["content"]]
-
-
-def test_old_warehouse_rows_do_not_make_empty_vector_retry_successful(replay_retrieval) -> None:
+def test_keeps_completed_warehouse_and_document_evidence(replay_retrieval) -> None:
     result, calls, generated = replay_retrieval(
         ["Water availability influences farm yields."],
         [],
@@ -171,28 +111,10 @@ def test_old_warehouse_rows_do_not_make_empty_vector_retry_successful(replay_ret
             "metadata": {"value_semantics": {"measure_value": 30}},
         }],
     )
-    assert len(calls) == 2
-    assert result["coverage_retry"] == 1
+    assert len(calls) == 1
+    assert result["coverage_retry"] == 0
     assert {item["source"] for item in result["reranked_context"]} == {"news", "bigquery"}
     assert set(generated) == {item["content"] for item in result["reranked_context"]}
-
-
-@pytest.mark.parametrize("source", ["news", "bigquery"])
-def test_retry_uses_evidence_when_only_one_leg_returns_it(replay_retrieval, source: str) -> None:
-    fact = "Kenya rice production was 150,000 tonnes in 2024."
-    warehouse_rows = [{
-        "content": fact,
-        "source": "bigquery",
-        "metadata": {"value_semantics": {"measure_value": 150_000}},
-    }] if source == "bigquery" else []
-    result, calls, generated = replay_retrieval(
-        [], [fact] if source == "news" else [], warehouse_retry_rows=warehouse_rows,
-    )
-    assert len(calls) == 2
-    assert result["coverage_retry"] == 1
-    evidence, = result["reranked_context"]
-    assert evidence["source"] == source
-    assert generated == [evidence["content"]]
 
 
 @pytest.mark.parametrize("geography_source,time_source", [("profile", "query"), ("query", "ui")])

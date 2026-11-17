@@ -100,7 +100,11 @@ def complete_enum(table_id: str, column: str) -> list[str]:
     if column == "product_name":
         index = _load_index_file()
         dim_key = "dim_product.product_name"
-        dim_labels = index.get("enums", {}).get(dim_key) or _yaml_enums("dim_product", column)
+        # This index can predate the Mart profile. Both are catalog evidence
+        # for labels accepted by a physical dim_product predicate.
+        indexed_labels = index.get("enums", {}).get(dim_key) or []
+        profiled_labels = (load_mart_table_schema("dim_product") or {}).get("product_name_value_samples") or []
+        dim_labels = list(dict.fromkeys([*indexed_labels, *profiled_labels]))
         if bare != "dim_product":
             scoped = index.get("fact_scoped", {}).get(f"{bare}.{column}")
             if isinstance(scoped, list) and scoped:

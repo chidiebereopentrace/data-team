@@ -7,6 +7,7 @@ from typing import Any
 
 import requests
 
+from ml.rag.chatbot.stage_budget import remaining_seconds
 from ml.rag.llm_chat import llm_uses_openrouter
 from ml.rag.observability import get_openrouter_run_id, openrouter_sessions_enabled
 
@@ -129,6 +130,9 @@ def openrouter_rerank(
     max_chars = rerank_max_doc_chars()
     docs = [str(d or "")[:max_chars] for d in documents]
     effective_timeout = rerank_timeout_s() if timeout_s is None else timeout_s
+    effective_timeout = remaining_seconds(effective_timeout)
+    if effective_timeout == 0:
+        return []
     effective_top_n = max(1, min(int(top_n), len(docs)))
 
     headers: dict[str, str] = {

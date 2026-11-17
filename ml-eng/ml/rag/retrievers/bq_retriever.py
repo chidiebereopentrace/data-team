@@ -7,7 +7,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import threading
 import time
 from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
@@ -52,6 +51,7 @@ from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
 from ml.rag.chatbot.bq_execute_state import NON_EVIDENCE_ROW_STATUSES, evidence_id_for_sql
 from ml.rag.chatbot.mart_coverage import clamp_year, load_coverage, route_tables
 from ml.rag.chatbot.result_shape import check_result_shape
+from ml.rag.chatbot.stage_budget import RetrievalWorkers
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 from ml.rag.observability import (
@@ -66,6 +66,7 @@ from ml.rag.retrievers.base import BaseRetriever
 from ml.rag.session_store import get_bq_schema_cache, set_bq_schema_cache
 
 logger = logging.getLogger(__name__)
+_QUERY_WORKERS = RetrievalWorkers("rag-bigquery-job", workers=12)
 
 _AGG_TABLE_RE = re.compile(r"\bagg_", re.I)
 _TIME_PRED_RE = re.compile(
@@ -1073,7 +1074,7 @@ class BQRetriever(BaseRetriever):
                 if revalidated is not None:
                     validated = revalidated
         check_err = _post_checks(validated)
-        if check_err and sql_retry_enabled() and not code_owned:
+        if check_err and sql_retry_enabled() and not code_owned and _source != "bind_compiler":
             allowed_list = ", ".join(sorted(selected_tables)) or "(none)"
             bind_block = ""
             if bind_contracts:
@@ -1541,7 +1542,10 @@ class BQRetriever(BaseRetriever):
         price_turn = bool(selected_tables and set(selected_tables) & price_tables)
         if not engine_execute_only and not sql_queries and not explicit_sql:
             if planned_path:
-                template_sqls = _try_template_sql(selected_tables & price_tables) if price_turn else []
+                template_sqls = (
+                    _try_template_sql(selected_tables & price_tables)
+                    if price_turn and kwargs.get("plan_source") != "turn_requirements" else []
+                )
                 covered_price = bool(template_sqls or (template_meta or {}).get("template") == "price_gap")
                 remaining_tables = set(selected_tables)
                 if covered_price:
@@ -1566,7 +1570,8 @@ class BQRetriever(BaseRetriever):
                                 shape_pattern = str(intent.get("pattern") or "")
                             if not shape_job and intent.get("shape"):
                                 shape_job = str(intent.get("shape") or "")
-                    asked = requested_operation(query or "")
+                    requirement_path = kwargs.get("plan_source") == "turn_requirements"
+                    asked = None if requirement_path else requested_operation(query or "")
                     for tid in sorted(remaining_tables):
                         raw_bind = bind_contract_for_table(bind_contracts, tid)
                         if raw_bind is None:
@@ -1578,7 +1583,7 @@ class BQRetriever(BaseRetriever):
                             limit=1,
                             job=shape_job,
                             pattern=shape_pattern,
-                            operation=asked,
+                            operation="compare" if requirement_path else asked,
                             breakdown=breakdown,
                         )
                         if compiled is None:
@@ -2102,6 +2107,9 @@ class BQRetriever(BaseRetriever):
                             **telem,
                         }
                     )
+                    # BigQuery DATE and DATETIME fields cannot round-trip
+                    # through the text form of a Python row.
+                    row_meta["raw_row"] = d
                     if slot_id:
                         row_meta["subquestion_id"] = slot_id
                         row_meta["slot_id"] = slot_id
@@ -2174,6 +2182,8 @@ class BQRetriever(BaseRetriever):
                     and template_meta.get("template") == "mart_point_fact"
                 )
                 limit = 1 if point_fact_cap else batch_row_limit
+                bind = contract_by_sql.get(raw_sql)
+                requirement_bind = bind if kwargs.get("plan_source") == "turn_requirements" else None
                 validated, prep_err = self._prepare_sql(
                     raw_sql,
                     question=query,
@@ -2191,7 +2201,7 @@ class BQRetriever(BaseRetriever):
                     query=query,
                     primary_measures=primary_measures,
                     geography=geography,
-                    crop_required=crop_required,
+                    crop_required=bool(requirement_bind["product_literals"]) if requirement_bind else crop_required,
                     geography_required=geography_required,
                     sql_source=source,
                     decomposition=decomp if isinstance(decomp, dict) else None,
@@ -2245,26 +2255,43 @@ class BQRetriever(BaseRetriever):
             if not prepared:
                 return
 
-            use_parallel = _bq_execute_parallel() and len(prepared) > 1
-            if use_parallel:
-                workers = min(_bq_execute_workers(), len(prepared))
-                logger.info(
-                    "BQ execute parallel workers=%s batch_size=%s source=%s",
-                    workers,
-                    len(prepared),
-                    source,
-                )
-                merge_lock = threading.Lock()
-
-                def _run_one(work: _PreparedWork) -> None:
-                    exec_items, mark_prepared = _execute_prepared(work)
-                    with merge_lock:
-                        _merge_execute_result(exec_items, mark_prepared=mark_prepared)
-
-                with ThreadPoolExecutor(max_workers=workers) as pool:
-                    futs = [pool.submit(_run_one, work) for work in prepared]
-                    for fut in futs:
-                        fut.result()
+            if _bq_execute_parallel() or deadline is not None:
+                width = _bq_execute_workers() if _bq_execute_parallel() else 1
+                for start in range(0, len(prepared), width):
+                    active = {}
+                    for work in prepared[start : start + width]:
+                        remaining = None if deadline is None else deadline - time.perf_counter()
+                        if remaining is not None and remaining <= 0:
+                            items.append(_bq_diagnostic_item(
+                                status="timeout", message="Warehouse deadline reached", sql=work.validated, sql_source=source,
+                            ))
+                            continue
+                        future = _QUERY_WORKERS.try_submit(run_with_tracing_context(_execute_prepared, work))
+                        if future is None:
+                            items.append(_bq_diagnostic_item(
+                                status="execution_error", message="Warehouse query workers are busy", sql=work.validated, sql_source=source,
+                            ))
+                        else:
+                            active[future] = work
+                    timeout = None if deadline is None else max(0.0, deadline - time.perf_counter())
+                    done, pending = wait(active, timeout=timeout)
+                    for future, work in active.items():
+                        if future in pending:
+                            future.cancel()
+                            items.append(_bq_diagnostic_item(
+                                status="timeout", message="Warehouse deadline reached", sql=work.validated, sql_source=source,
+                            ))
+                        elif future in done:
+                            try:
+                                exec_items, mark_prepared = future.result()
+                            except Exception:
+                                logger.exception("Warehouse result could not be prepared")
+                                items.append(_bq_diagnostic_item(
+                                    status="execution_error", message="Warehouse result could not be prepared",
+                                    sql=work.validated, sql_source=source,
+                                ))
+                            else:
+                                _merge_execute_result(exec_items, mark_prepared=mark_prepared)
             else:
                 for work in prepared:
                     if budget <= 0:

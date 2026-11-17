@@ -874,6 +874,16 @@ def _alias_score(query_lower: str, alias: str) -> int:
     return 0
 
 
+def explicit_measure_ids(query: str) -> list[str]:
+    """Measure aliases in the request, excluding domain and companion guesses."""
+    text = normalize_query_text(query).lower()
+    return [
+        mid for mid in _PRIORITY_IDS
+        if any(_alias_score(text, alias) for alias in MEASURES[mid].aliases)
+        and mid not in ("data_export_panel", "investor_best_country")
+    ]
+
+
 def _score_measure(
     mid: str,
     *,

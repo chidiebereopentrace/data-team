@@ -23,7 +23,8 @@ def preprocess_news_collection(
     max_files: int | None = None,
 ) -> int:
     _ = chunk_chars, overlap_chars
-    chunks = preprocess_folder(input_dir, max_files=max_files)
+    # This writes a complete snapshot, including documents indexed by earlier builds.
+    chunks = preprocess_folder(input_dir, max_files=max_files, use_manifest=False)
     return write_chunks_jsonl(chunks, output_path)
 
 

@@ -265,12 +265,31 @@ Embeddings, hybrid search, and rerank models are **baked** in `Dockerfile.railwa
 
 1. **Build**: redeploy with **build cache cleared** after YAML / graph / Dockerfile warmup changes.
 2. **Qdrant**: all six collections exist and are populated (OTA may start empty).
-3. **Ready**: `GET /ready` returns `ready` (needs Qdrant + LLM creds; when `BQ_PROJECT` is set also needs valid GCP SA + BigQuery reachability — see nested `bq`).
+3. **Ready**: `GET /ready` returns HTTP 200 with `status: ready` and `query_embeddings_ready: true`. When `BQ_PROJECT` is set, check the nested `bq` result as well. Railway uses this endpoint for the deployment health check.
 4. **Smoke queries**:
    - Meta: `{"query":"Who are you?"}`
    - Retrieval: maize or policy question — news / academic / policies paths populated
    - BQ: e.g. fertilizer use or maize production in Nigeria — BQ uses `mart_dev` tables
    - Rerank: Langfuse / response metadata shows `rerank_mode=cross_encoder` on a full_rag query
+
+### Rebuild a Qdrant corpus before switching retrieval
+
+Preprocess the original files for each corpus into a separate JSONL file. For PDFs, use
+`ml.rag.text_processors.research_papers_preprocessor` with `--doc-kind academic_article`,
+`policy_document`, or `public_report` as appropriate. For news, use
+`ml.rag.text_processors.news_collection_preprocessor` to write a full snapshot.
+
+Set that corpus's `QDRANT_COLLECTION_*` variable to a new, unused collection name in the
+ingestion process. Use `ml.rag.text_processors.load_pdf_chunks_to_vector_db` with
+`--input` pointing to the snapshot and `--collection` set to the same name. Leave the
+live collection in place and omit `--reset`.
+
+Before switching traffic, verify the source inventory against the previous release,
+compare Qdrant's exact point count to the snapshot's unique chunk count, and confirm
+every point has the expected `doc_kind` and current `INGEST_VERSION`. Run the retrieval
+checks against the new collection from staging. Check that filtered queries find expected
+passages within `RAG_CORPUS_RETRIEVE_TIMEOUT_S`. Use a staging deployment with the new
+collection name before updating the production setting.
 
 ---
 

@@ -215,7 +215,12 @@ SEMANTIC_RELATIONSHIPS: dict[str, dict[str, Any]] = {
         companions=[_comp("fct_soil_health", "plot-level detail")],
     ),
     "agg_food_security_monthly": _rels(
-        joins=[_DIM_GEO_JOIN, _DIM_CLASSIFICATION_JOIN, _DIM_SCENARIO_JOIN],
+        joins=[
+            _DIM_GEO_JOIN,
+            _DIM_CLASSIFICATION_JOIN,
+            _DIM_SCENARIO_JOIN,
+            _join("dim_time", ["time_key"], "LEFT", "Calendar year for monthly observation keys"),
+        ],
     ),
     "agg_food_security_country_month": _rels(
         joins=[_DIM_GEO_JOIN, _DIM_SOURCE_JOIN],

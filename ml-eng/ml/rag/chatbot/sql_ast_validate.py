@@ -42,6 +42,10 @@ class TableRef:
     name: str
 
 
+def string_literal(value: str) -> str:
+    return exp.Literal.string(value or "").sql(dialect=_DIALECT)
+
+
 def parse_select(sql: str) -> tuple[exp.Expression | None, str | None]:
     """Parse exactly one read-only query; return (ast, error)."""
     try:

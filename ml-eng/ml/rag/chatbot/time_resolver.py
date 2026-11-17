@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, cast
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,22 @@ class TimeWindow:
     strict: bool = True
     forecast: bool = False
     from_report: bool = False
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, object]) -> TimeWindow | None:
+        start = parse_iso_date(str(raw.get("start") or ""))
+        end = parse_iso_date(str(raw.get("end") or ""))
+        grain = raw.get("grain")
+        if start is None or end is None or start > end:
+            return None
+        if grain not in ("day", "week", "month", "season", "year", "range"):
+            return None
+        return cls(
+            start, end, cast(Grain, grain), str(raw.get("phrase") or ""),
+            strict=raw.get("strict") is True,
+            forecast=raw.get("forecast") is True,
+            from_report=raw.get("from_report") is True,
+        )
 
     def as_dict(self) -> dict[str, object]:
         return {

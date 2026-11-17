@@ -330,6 +330,8 @@ def compile_sql_from_bind(
 
     select_list = [c for c in cols[:4]]
     _append_columns(select_list, [col for col in _TIME_GRAIN if col in names])
+    if "as_of_date" in names and "as_of_date_basis" in names:
+        _append_columns(select_list, ["as_of_date_basis"])
     _append_columns(select_list, [col for col in grain if col in names and col not in hash_keys])
     _append_columns(select_list, direct_labels)
     _append_columns(select_list, _unnamed_discriminators(bare, where_sql, names))

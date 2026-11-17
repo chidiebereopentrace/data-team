@@ -255,6 +255,13 @@ with st.sidebar:
     t_end = st.text_input("Time end YYYY-MM-DD (optional)", placeholder="2025-12-31")
     show_debug = st.checkbox("Show pipeline inspector (last run)", value=debug_default_enabled())
 
+if backend_mode == "in_process" and os.environ.get("QDRANT_URL") and os.environ.get("QDRANT_API_KEY"):
+    from ml.rag.retrievers.vector_retriever import warmup_query_embeddings
+
+    if not warmup_query_embeddings():
+        st.error("Query embeddings failed to initialize. Check the server logs before retrying.")
+        st.stop()
+
 active = st.session_state.active_session_id
 sess = st.session_state.rag_sessions[active]
 if "conversation_summary" not in sess:

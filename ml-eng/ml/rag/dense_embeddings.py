@@ -42,26 +42,24 @@ def _embed_cache_put(key: tuple[str, str], vec: list[float]) -> None:
     while len(_embed_cache) > _EMBED_CACHE_MAX:
         _embed_cache.popitem(last=False)
 
-_E5_SMALL = "intfloat/multilingual-e5-small"
-_E5_REGISTERED = False
+_E5_MODEL_DIMS = {
+    "intfloat/multilingual-e5-small": 384,
+    "intfloat/multilingual-e5-base": 768,
+}
 
 
-def _ensure_e5_small_registered() -> None:
-    global _E5_REGISTERED
-    if _E5_REGISTERED:
-        return
+def _register_e5_model(model_id: str) -> None:
     from fastembed import TextEmbedding
     from fastembed.common.model_description import ModelSource, PoolingType
 
     TextEmbedding.add_custom_model(
-        model=_E5_SMALL,
+        model=model_id,
         pooling=PoolingType.MEAN,
         normalization=True,
-        sources=ModelSource(hf=_E5_SMALL),
-        dim=384,
+        sources=ModelSource(hf=model_id),
+        dim=_E5_MODEL_DIMS[model_id],
         model_file="onnx/model.onnx",
     )
-    _E5_REGISTERED = True
 
 
 @lru_cache(maxsize=4)
@@ -75,13 +73,9 @@ def _text_embedding(model_id: str) -> Any:
 
     mid = (model_id or DEFAULT_DENSE_MODEL).strip() or DEFAULT_DENSE_MODEL
     logger.info("Loading fastembed TextEmbedding %r (one-time)", mid)
-    try:
-        return TextEmbedding(model_name=mid)
-    except Exception:
-        if mid == _E5_SMALL or "multilingual-e5-small" in mid.lower():
-            _ensure_e5_small_registered()
-            return TextEmbedding(model_name=mid)
-        raise
+    if mid in _E5_MODEL_DIMS and not any(info["model"] == mid for info in TextEmbedding.list_supported_models()):
+        _register_e5_model(mid)
+    return TextEmbedding(model_name=mid)
 
 
 def embed_dense_texts(texts: list[str], *, model_id: str) -> list[list[float]]:
@@ -127,12 +121,3 @@ def embed_dense_texts(texts: list[str], *, model_id: str) -> list[list[float]]:
             }
         )
     return out
-
-
-def warmup_dense_model(model_id: str | None = None) -> None:
-    """Download/load ONNX weights into FASTEMBED_CACHE_PATH (Docker build or startup)."""
-    mid = (model_id or DEFAULT_DENSE_MODEL).strip() or DEFAULT_DENSE_MODEL
-    vecs = embed_dense_texts(["warmup"], model_id=mid)
-    if not vecs or len(vecs[0]) != 384:
-        raise RuntimeError(f"fastembed warmup failed for {mid!r}")
-    logger.info("fastembed dense model ready: %r (dim=%d)", mid, len(vecs[0]))

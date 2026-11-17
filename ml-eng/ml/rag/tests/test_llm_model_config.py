@@ -41,6 +41,9 @@ def ready_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("RAG_LLM_BASE_URL", "https://openrouter.ai/api/v1")
     monkeypatch.setenv("RAG_LLM_API_KEY", "sk-test")
     monkeypatch.delenv("BQ_PROJECT", raising=False)
+    monkeypatch.delenv("RAG_REDIS_URL", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.setattr(api_mod, "warmup_query_embeddings", lambda: True)
     return TestClient(api_mod.app)
 
 
@@ -81,7 +84,8 @@ def test_log_resolved_llm_models_emits_info(caplog: pytest.LogCaptureFixture) ->
 
 
 def test_ready_includes_llm_models(ready_client: TestClient) -> None:
-    resp = ready_client.get("/ready")
+    with ready_client:
+        resp = ready_client.get("/ready")
     assert resp.status_code == 200
     body = resp.json()
     assert "llm_models" in body

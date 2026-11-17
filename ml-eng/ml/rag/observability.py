@@ -941,12 +941,12 @@ def run_with_tracing_context(fn: Callable[..., Any], *args: Any, **kwargs: Any) 
                     from opentelemetry import context as otel_context
 
                     token = otel_context.attach(otel_ctx)
-                    try:
-                        return fn(*args, **kwargs)
-                    finally:
-                        otel_context.detach(token)
                 except Exception:
                     return fn(*args, **kwargs)
+                try:
+                    return fn(*args, **kwargs)
+                finally:
+                    otel_context.detach(token)
             return fn(*args, **kwargs)
 
         return var_ctx.run(_call)

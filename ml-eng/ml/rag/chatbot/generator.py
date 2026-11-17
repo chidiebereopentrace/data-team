@@ -344,6 +344,7 @@ class GenerationResult:
     citations: list[dict[str, Any]]
     acf: ACFResult | None = None
     generate_input_chars: int | None = None
+    cited_document_requirements: tuple[str, ...] = ()
 
 
 EvidenceTier = Literal["strong", "partial", "empty"]
@@ -1125,6 +1126,13 @@ def _build_context_block(
             continue
 
         header = _source_header_label(item, source_id, cite_line=cite_line)
+        metadata = _item_metadata(item)
+        document_questions = metadata.get("document_requirements")
+        fact_candidates = metadata.get("document_fact_candidates")
+        if isinstance(document_questions, list) and document_questions:
+            header += "\nExplanation candidate for " + " | ".join(map(str, document_questions))[:220]
+        elif isinstance(fact_candidates, list) and fact_candidates:
+            header += "\nFigure candidate for " + ", ".join(map(str, fact_candidates))[:120]
         body_trunc = body[: max(0, take - len(header) - 2)]
         if not body_trunc.strip():
             continue
@@ -1689,6 +1697,7 @@ def _finalize_generation_result(
     usable_bq: bool = False,
     bq_sql_debug: list[dict[str, Any]] | None = None,
     ontology_plan: dict[str, Any] | None = None,
+    require_document_citations: bool = False,
 ) -> GenerationResult:
     """Attach structured citations and score ACF Path B on cited sources only."""
     # ML-055: single funnel for successful answers -- catch degenerate/looping
@@ -1713,6 +1722,9 @@ def _finalize_generation_result(
             output_type=output_type,
             allowed_subtopics=allowed_subtopics,
         )
+        if require_document_citations:
+            referenced_ids = extract_referenced_source_ids(prose)
+            source_registry = [ref for ref in source_registry if ref.source_id in referenced_ids]
         suppress_citations = evidence_tier == "empty"
         citations = referenced_citations(
             prose,
@@ -1814,11 +1826,20 @@ def _finalize_generation_result(
             }
         )
         prose = scrub_spoken_answer(prose)
+        final_source_ids = extract_referenced_source_ids(prose) if require_document_citations else set()
+        document_questions = tuple(dict.fromkeys(
+            question
+            for ref in cited_refs
+            if ref.source_id in final_source_ids
+            for question in (_item_metadata(ref.item).get("document_requirements") or ())
+            if isinstance(question, str)
+        ))
         return GenerationResult(
             answer=prose,
             citations=citations,
             acf=acf,
             generate_input_chars=generate_input_chars,
+            cited_document_requirements=document_questions,
         )
 
 
@@ -1962,6 +1983,8 @@ def generate(
         task_mode=task_mode,
         export_intent=export_intent_s,
     )
+    require_document_citations = bool(kwargs.get("require_document_citations"))
+    inline_citations = inline_citations or require_document_citations
 
     usable_context = dedupe_bq_context_items(filter_context_items(list(context_items or [])))
     usable_context = dedupe_context_items(usable_context)
@@ -2001,8 +2024,11 @@ def generate(
             )
         )
         explanation = "No warehouse rows or documents matched this question."
-        incomplete_source: Literal["warehouse", "documents"] | None = None
-        if warehouse_check_failed:
+        incomplete_source: Literal["warehouse", "documents", "both"] | None = None
+        if warehouse_check_failed and kwargs.get("retrieval_partial"):
+            incomplete_source = "both"
+            explanation = "Both warehouse and document retrieval were incomplete."
+        elif warehouse_check_failed:
             incomplete_source = "warehouse"
             explanation = "The warehouse query did not complete, so availability could not be verified."
         elif kwargs.get("retrieval_partial"):
@@ -2117,15 +2143,16 @@ def generate(
             usable_bq=usable_bq,
             bq_sql_debug=bq_sql_debug,
             ontology_plan=ontology_plan,
+            require_document_citations=require_document_citations,
         )
 
     excerpts: list[str] = []
-    for item in usable_context[:6]:
-        text = str(item.get("content") or item.get("text") or "").strip()
+    for ref in source_registry[:6]:
+        text = str(ref.item.get("content") or ref.item.get("text") or "").strip()
         if text:
-            excerpts.append(text[:500])
+            excerpts.append(f"[{ref.source_id}] {text[:500]}")
     if excerpts and source_registry:
-        body = "\n\n".join(f"[{i}] {text}" for i, text in enumerate(excerpts, 1))
+        body = "\n\n".join(excerpts)
         partial = (
             "The model did not finish in time. What the retrieved sources say:\n\n" + body
         )
@@ -2145,6 +2172,7 @@ def generate(
             usable_bq=usable_bq,
             bq_sql_debug=bq_sql_debug,
             ontology_plan=ontology_plan,
+            require_document_citations=require_document_citations,
         )
     if llm_configured():
         hint = (

@@ -910,9 +910,13 @@ def _profiled_domain(table_id: str, column: str) -> list[str] | None:
     """All labels of ``table.column`` when the profile captured the full domain, else None."""
     schema = _load_schema_for_ref(table_id) or {}
     samples = schema.get(f"{column}_value_samples")
-    if not isinstance(samples, list) or not samples:
-        return None
     stats = schema.get(f"{column}_value_stats")
+    if not isinstance(samples, list) or not samples:
+        if isinstance(stats, dict) and stats.get("distinct_count") == 1:
+            value = stats.get("min_value")
+            if isinstance(value, str) and value and value == stats.get("max_value"):
+                return [value]
+        return None
     if isinstance(stats, dict) and "is_truncated" in stats:
         complete = stats.get("is_truncated") is False
     else:
@@ -926,11 +930,12 @@ def label_domain(table_ids: set[str], column: str) -> set[str] | None:
     None means only a capped sample is known, so an unseen label is not evidence of a bad label.
     """
     col = column.lower()
-    domains = [
-        _profiled_domain(t, col)
-        for t in table_ids
-        if (_load_schema_for_ref(t) or {}).get(f"{col}_value_samples")
-    ]
+    domains = []
+    for table in table_ids:
+        profile = _load_schema_for_ref(table) or {}
+        domain = _profiled_domain(table, col)
+        if profile.get(f"{col}_value_samples") or domain is not None:
+            domains.append(domain)
     if domains and all(d is not None for d in domains):
         return {label.lower() for d in domains for label in d or []}
     dimension = _DIMENSION_LABEL_COLUMNS.get(col)

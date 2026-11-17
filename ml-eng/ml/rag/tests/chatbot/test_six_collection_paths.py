@@ -38,6 +38,22 @@ def test_chunking_aliases_cover_six_collections() -> None:
     assert profile_for_collection("public_reports").qdrant_collection
 
 
+@pytest.mark.parametrize("env, corpus", [
+    ("QDRANT_COLLECTION_NEWS", "news"),
+    ("QDRANT_COLLECTION_ACADEMIC_PAPERS", "research"),
+    ("QDRANT_COLLECTION_POLICIES", "research"),
+    ("QDRANT_COLLECTION_PUBLIC_REPORTS", "research"),
+    ("QDRANT_COLLECTION_FORMATION", "research"),
+    ("QDRANT_COLLECTION_OTA_INSIGHTS", "ota"),
+])
+def test_configured_versioned_collection_uses_corpus_profile(
+    monkeypatch: pytest.MonkeyPatch, env: str, corpus: str
+) -> None:
+    collection = f"{env.removeprefix('QDRANT_COLLECTION_').lower()}_v2"
+    monkeypatch.setenv(env, collection)
+    assert profile_for_collection(collection).corpus == corpus
+
+
 def test_parallel_retrieve_registers_six_paths() -> None:
     state: graph_mod.RAGGraphState = {"query": "maize Kenya"}
     calls: list[str] = []
@@ -154,6 +170,9 @@ def test_one_failing_corpus_does_not_wipe_others() -> None:
     assert out["vector_academic_papers_results"] == []
     assert len(out["vector_policies_results"]) == 1
     assert len(out["vector_ota_results"]) == 1
+    assert out["retrieval_partial"] is True
+    assert out["corpus_selection"]["results"]["academic_papers"]["status"] == "error"
+    assert out["corpus_selection"]["results"]["public_reports"]["status"] == "empty"
 
 
 def test_slow_corpus_does_not_hold_ready_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -214,6 +233,37 @@ def test_merge_emits_distinct_context_kinds() -> None:
     assert any(m["content"].startswith("[Public report") for m in merged)
     assert any(m["content"].startswith("[Formation") for m in merged)
     assert any(m["content"].startswith("[OTA") for m in merged)
+
+
+def test_policy_hits_survive_a_later_query_view_timing_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    release = Event()
+    seen = []
+    hit = _hit("policy_document")
+
+    def search(query, **kwargs):
+        seen.append(query)
+        if len(seen) == 1:
+            return [hit]
+        release.wait(1)
+        return []
+
+    monkeypatch.setenv("RAG_CORPUS_RETRIEVE_TIMEOUT_S", "0.15")
+    monkeypatch.setattr(graph_mod, "_use_legacy_research_collection", lambda: False)
+    for name in ("news", "academic_papers", "public_reports", "formation", "ota"):
+        monkeypatch.setattr(graph_mod, f"_retrieve_{name}", lambda state: [])
+    try:
+        with mock.patch.object(graph_mod, "VectorRetriever") as retriever:
+            retriever.return_value.last_index_health = None
+            retriever.return_value.retrieve.side_effect = search
+            out = graph_mod.node_parallel_retrieve({
+                "query": "How did agricultural policies affect livelihoods in Ghana?",
+                "decomposition": {"evidence_topics": ["farmer livelihoods"]},
+            })
+        assert out.get("retrieval_partial") is True
+        assert [item["content"] for item in out["vector_policies_results"]] == [hit["content"]]
+        assert out["corpus_selection"]["results"]["policies"]["status"] == "timeout"
+    finally:
+        release.set()
 
 
 def test_dense_corpus_soft_fails_on_retrieve_error() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ml.rag.chatbot.bq_context_enrich import resolve_row_semantics
+from ml.rag.chatbot.bq_sql_validate import validate_sql_table_allowlist
 from ml.rag.chatbot.bq_table_schema_yaml import (
     compile_measure_filters,
     compile_table_bind_contract,
@@ -72,6 +73,14 @@ def test_year_column_stays_an_equality() -> None:
     )
     assert sql.strip() == "AND year = 2020"
     assert "dim_time" not in sql
+
+
+def test_monthly_food_security_planned_year_filter_uses_allowed_dimension() -> None:
+    table = "agg_food_security_monthly"
+    where = compile_time_filter_sql(table, year=2020, project_id="p", dataset="mart_dev")
+    assert "dim_time" in where
+    sql = f"SELECT time_key FROM `p.mart_dev.{table}` WHERE TRUE {where}"
+    assert validate_sql_table_allowlist(sql, {table}) is None
 
 
 def test_as_of_date_window_is_unchanged() -> None:

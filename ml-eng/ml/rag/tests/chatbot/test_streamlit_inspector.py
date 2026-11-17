@@ -2,10 +2,21 @@
 from __future__ import annotations
 
 from ml.rag.chatbot.streamlit_inspector import (
+    _retrieval_count,
     _flow_narrative,
     infer_pipeline_route,
     normalize_query_response,
 )
+
+
+def test_http_metrics_show_returned_counts_and_mark_missing_counts() -> None:
+    result = {
+        "_backend_mode": "http_api",
+        "_http_trace": {"vector_policies_count": 8},
+        "vector_policies_results": [],
+    }
+    assert _retrieval_count(result, "vector_policies_results", "vector_policies_count") == 8
+    assert _retrieval_count(result, "vector_news_results", "vector_news_count") == "—"
 
 
 def test_infer_pipeline_route_meta() -> None:

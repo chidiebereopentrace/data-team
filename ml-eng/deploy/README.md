@@ -77,7 +77,7 @@ gcloud run deploy opentrace-rag-api \
 The image exposes:
 
 - `GET /health` — liveness (always fast)
-- `GET /ready`  — readiness (checks presence of critical env vars without connecting)
+- `GET /ready`  — readiness (HTTP 503 when required configuration or query embedding warmup fails, or a configured BigQuery is unavailable)
 
 Use `/ready` for GCE health checks / load balancer backends.
 

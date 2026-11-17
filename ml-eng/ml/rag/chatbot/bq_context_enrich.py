@@ -130,7 +130,7 @@ def _s(value: Any) -> str:
     return str(value).strip()
 
 
-def _table_from_sql(sql: str) -> str:
+def table_from_sql(sql: str) -> str:
     text = sql or ""
     m = _MART_TABLE_RE.search(text)
     if m:
@@ -526,14 +526,20 @@ def resolve_row_semantics(
     src = table_source_meta(bare)
     measure_col, measure_val = _pick_measure_column(row, table_id=bare, sql=sql)
     measure_label = _resolve_measure_label(bare, row, measure_col, sql=sql)
-    unit = _resolve_unit(bare, row, measure_col)
+    source_column = _value_source_column(sql) if measure_col == "value" else measure_col
+    column_units = schema.get("column_units")
+    schema_unit = _s(column_units.get(source_column)) if isinstance(column_units, dict) else ""
+    unit = schema_unit or _resolve_unit(bare, row, source_column or measure_col)
     sub_place = _first_present(row, _SUB_PLACE_KEYS)
     country = _first_present(row, ("country_name", "country", "country_iso3"))
     geo = ", ".join(p for p in (sub_place, country) if p) or _first_present(row, _GEO_KEYS)
     time_bits = [_first_present(row, (k,)) for k in _TIME_KEYS]
     time_s = " ".join(t for t in time_bits if t)
     period_start, period_end = _s(row.get("period_start")), _s(row.get("latest_date"))
-    period = f"{period_start} to {period_end}" if period_start and period_end else period_end
+    period = (
+        f"{period_start} to {period_end}"
+        if period_start and period_end else period_end or _first_present(row, ("year", "harvest_year", "as_of_date"))
+    )
 
     discriminators: dict[str, str] = {}
     for col in discriminator_columns(bare):
@@ -1122,7 +1128,7 @@ def _enrich_single_item(
     raw = _raw_row_from_item(item)
     sql = _s(meta.get("sql"))
     if not table_id:
-        table_id = _table_from_sql(sql)
+        table_id = table_from_sql(sql)
     if not table_id:
         table_id = _s(meta.get("table_id"))
 
@@ -1219,7 +1225,7 @@ def enrich_bq_results(
 
     enriched: list[dict[str, Any]] = []
     for sql, group in by_sql.items():
-        table_id = _table_from_sql(sql if sql != "__no_sql__" else "")
+        table_id = table_from_sql(sql if sql != "__no_sql__" else "")
         if not table_id and selected:
             table_id = selected[0]
         consolidated = _consolidate_point_fact_batch(
