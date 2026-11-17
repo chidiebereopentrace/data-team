@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 PlanSource = Literal[
+    "turn_requirements",
     "class_engine",
     "slot_reasoner",
     "analytical",

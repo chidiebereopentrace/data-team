@@ -43,6 +43,8 @@ jobs:
             ml-eng/ml/rag/tests/chatbot/test_kenya_rice_planned_path.py \
             ml-eng/ml/rag/tests/chatbot/test_price_template_vocab.py \
             ml-eng/ml/rag/tests/chatbot/test_facet_compiler.py \
+            ml-eng/ml/rag/tests/chatbot/test_turn_evidence_requirements.py \
+            ml-eng/ml/rag/tests/chatbot/test_source_selection.py \
             ml-eng/ml/rag/tests/chatbot/test_query_decomposer_model_first.py \
             ml-eng/ml/rag/tests/chatbot/test_generator_evidence_law.py \
             ml-eng/ml/rag/tests/chatbot/test_acf_unsourced_cap.py \
@@ -68,8 +70,11 @@ jobs:
             ml-eng/ml/rag/tests/chatbot/test_decompose_context.py \
             ml-eng/ml/rag/tests/retrievers/test_bq_retriever_planned_path.py \
             ml-eng/ml/rag/tests/retrievers/test_bq_engine_execute.py \
+            ml-eng/ml/rag/tests/retrievers/test_bq_execute_parallel.py \
             ml-eng/ml/rag/tests/test_api_auth.py \
+            ml-eng/ml/rag/tests/test_llm_usage.py \
             ml-eng/ml/rag/tests/test_api_error_detail.py \
+            ml-eng/ml/rag/tests/test_ota_baseline.py \
             ml-eng/ml/serving \
             ml-eng/opentrace_ontology/tests \
             -v --tb=short
@@ -77,4 +82,8 @@ jobs:
         run: |
           . .venv/bin/activate
           PYTHONPATH=ml-eng python -m ml.rag.eval.run_golden_query_views
+      - name: Inventory Continental OTA fixtures
+        run: |
+          . .venv/bin/activate
+          PYTHONPATH=ml-eng python -m ml.rag.eval.run_ota_eval --inventory --split all
 

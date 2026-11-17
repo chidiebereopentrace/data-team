@@ -174,6 +174,17 @@ COLLECTION_ALIASES: dict[str, CorpusKey] = {
     "opentrace_ota": "ota",
 }
 
+_COLLECTION_ENV_PROFILES: dict[str, CorpusKey] = {
+    "QDRANT_COLLECTION_NEWS": "news",
+    "QDRANT_COLLECTION_ACADEMIC_PAPERS": "research",
+    "QDRANT_COLLECTION_POLICIES": "research",
+    "QDRANT_COLLECTION_PUBLIC_REPORTS": "research",
+    "QDRANT_COLLECTION_FORMATION": "research",
+    "QDRANT_COLLECTION_RESEARCH_PAPERS": "research",
+    "QDRANT_COLLECTION_OTA_INSIGHTS": "ota",
+    "QDRANT_COLLECTION_OTA": "ota",
+}
+
 
 def profile_for_corpus(corpus: CorpusKey) -> ChunkingProfile:
     return PROFILES[corpus]
@@ -184,7 +195,7 @@ def profile_for_collection(collection_name: str) -> ChunkingProfile:
     key = COLLECTION_ALIASES.get(name)
     if key:
         return PROFILES[key]
-    for corpus, prof in PROFILES.items():
-        if prof.qdrant_collection == name:
-            return prof
+    for env, corpus in _COLLECTION_ENV_PROFILES.items():
+        if name and os.environ.get(env, "").strip() == name:
+            return PROFILES[corpus]
     return PROFILES["news"]

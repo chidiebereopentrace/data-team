@@ -19,6 +19,7 @@ import os
 import time
 import traceback
 import uuid
+from asyncio import to_thread, wrap_future
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,7 @@ from ml.rag.local_env import load_rag_dotenv
 _ml_eng = Path(__file__).resolve().parents[3]
 load_rag_dotenv(_ml_eng)
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -66,12 +67,15 @@ from ml.rag.observability import (
     flush_langfuse,
     get_current_trace_id,
     rag_trace_context,
+    run_with_tracing_context,
     record_trace_score,
     tracing_release,
 )
 from ml.rag.rate_limiter import check_plan_rate_limit
+from ml.rag.chatbot.stage_budget import RetrievalWorkers
 from ml.rag.request_context import resolve_request_context
 from ml.rag.retrievers.web_retriever import web_fallback_enabled
+from ml.rag.retrievers.vector_retriever import warmup_query_embeddings
 from ml.rag.session_store import (
     delete_session,
     get_idempotent_response,
@@ -83,6 +87,7 @@ from ml.serving.enterprise.auth import EnterpriseAuthMiddleware, get_request_ten
 from ml.serving.enterprise.metering import record_usage
 
 logger = logging.getLogger("ml.rag.api")
+_QUERY_REQUESTS = RetrievalWorkers("rag-api-request", workers=8)
 
 _TRACE_BQ_SQL_DEBUG_MAX = MAX_DIAGNOSTIC_SQL_STATEMENTS
 
@@ -95,6 +100,8 @@ def _slim_bq_sql_plan_for_trace(plan: Any) -> dict[str, Any] | None:
         "query_intents": plan.get("query_intents"),
         "skip_bq": plan.get("skip_bq"),
         "rationale": plan.get("rationale"),
+        "plan_source": plan.get("plan_source"),
+        "fact_tables": plan.get("fact_tables"),
         "slot_path": plan.get("slot_path"),
         "reasoner_job": plan.get("reasoner_job"),
     }
@@ -118,7 +125,9 @@ def _trace_submitted_bq_sql(result: dict[str, Any]) -> list[str]:
 
 
 @asynccontextmanager
-async def _app_lifespan(_app: FastAPI):
+async def _app_lifespan(app: FastAPI):
+    qdrant_configured = all(os.environ.get(k, "").strip() for k in ("QDRANT_URL", "QDRANT_API_KEY"))
+    app.state.query_embeddings_ready = qdrant_configured and await to_thread(warmup_query_embeddings)
     yield
     flush_langfuse()
 
@@ -318,11 +327,10 @@ async def health():
 
 
 @app.get("/ready")
-async def ready():
+async def ready(request: Request, response: Response):
     """
     Readiness probe.
-    Reports whether the minimum configuration for Qdrant + LLM appears to be present
-    (without revealing secrets). Useful for GCE managed instance groups / load balancers.
+    Requires Qdrant/LLM configuration and successful query embedding warmup.
     Redis connectivity (if configured via RAG_REDIS_URL) is reported for observability but
     does not affect the ready status (sessions gracefully fall back to in-memory).
     When BQ_PROJECT is set, GCP credentials must be valid JSON and BigQuery must respond;
@@ -344,19 +352,24 @@ async def ready():
     redis_info: dict[str, Any] | None = None
     if os.environ.get("RAG_REDIS_URL") or os.environ.get("REDIS_URL"):
         try:
-            redis_info = redis_status()
+            redis_info = await to_thread(redis_status)
         except Exception:
             redis_info = {"backend": "error", "connected": False}
 
-    bq_info = _bq_readiness()
+    bq_info = await to_thread(_bq_readiness)
     bq_blocks = bool(bq_info.get("project_set")) and not bool(bq_info.get("ok"))
     if bq_blocks and "BQ_PROJECT+GCP credentials" not in missing:
         missing.append("BQ_PROJECT+GCP credentials")
 
+    embeddings_ready = getattr(request.app.state, "query_embeddings_ready", False)
+    is_ready = not missing and embeddings_ready
+    if not is_ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     payload: dict[str, Any] = {
-        "status": "ready" if not missing and not bq_blocks else "not_ready",
+        "status": "ready" if is_ready else "not_ready",
         "service": "rag",
         "missing_config_keys": missing,
+        "query_embeddings_ready": embeddings_ready,
         "bq": bq_info,
     }
     if redis_info:
@@ -445,7 +458,7 @@ async def _run_query(
     owner = _session_owner(http_request)
     idempotency_key = http_request.headers.get("idempotency-key", "").strip()
     if idempotency_key:
-        replay = get_idempotent_response(owner, idempotency_key)
+        replay = await to_thread(get_idempotent_response, owner, idempotency_key)
         if replay is not None:
             return QueryResponse.model_validate(replay)
     langfuse_trace_id: str | None = None
@@ -455,7 +468,7 @@ async def _run_query(
         if client_history:
             loaded, session_found = empty_session_blob(), False
         else:
-            loaded, session_found = load_session(owner, session_id)
+            loaded, session_found = await to_thread(load_session, owner, session_id)
         try:
             ctx = resolve_request_context(
                 user_profile=request.user_profile,
@@ -530,7 +543,10 @@ async def _run_query(
         ) as trace_handle:
             langfuse_trace_id = get_current_trace_id()
             rag_started_at = time.perf_counter()
-            result = run_rag(request.query, **kwargs)
+            future = _QUERY_REQUESTS.try_submit(run_with_tracing_context(run_rag, request.query, **kwargs))
+            if future is None:
+                raise HTTPException(status_code=503, detail="RAG is at capacity. Try again shortly.")
+            result = await wrap_future(future)
             rag_pipeline_ms = (time.perf_counter() - rag_started_at) * 1000
             trace_handle.update_output(result, latency_ms=rag_pipeline_ms)
             langfuse_trace_id = get_current_trace_id() or langfuse_trace_id
@@ -540,14 +556,19 @@ async def _run_query(
         if request.include_trace and trace_allowed:
             trace = {
                 "decomposition": result.get("decomposition"),
+                "route_candidate": result.get("route_candidate"),
+                "answer_lang": result.get("answer_lang"),
                 "bq_table_candidates_count": len(result.get("bq_table_candidates") or []),
+                "bq_results_count": len(result.get("bq_results") or []),
                 "vector_news_count": len(result.get("vector_news_results") or []),
                 "vector_academic_papers_count": len(result.get("vector_academic_papers_results") or []),
+                "vector_policies_count": len(result.get("vector_policies_results") or []),
                 "vector_policies_count": len(result.get("vector_policies_results") or []),
                 "vector_public_reports_count": len(result.get("vector_public_reports_results") or []),
                 "vector_formation_count": len(result.get("vector_formation_results") or []),
                 "vector_academic_count": len(result.get("vector_academic_results") or []),
                 "vector_ota_count": len(result.get("vector_ota_results") or []),
+                "web_results_count": len(result.get("web_results") or []),
                 "merged_context_count": len(result.get("merged_context") or []),
                 "reranked_context_count": len(result.get("reranked_context") or []),
                 "langfuse_trace_id": langfuse_trace_id,
@@ -561,12 +582,18 @@ async def _run_query(
                 "bq_submitted_sql": _trace_submitted_bq_sql(result),
                 "bq_sql_debug": _trace_bq_sql_debug_rows(result),
                 "bq_sql_plan": _slim_bq_sql_plan_for_trace(result.get("bq_sql_plan")),
+                "comparison_gaps": result.get("comparison_gaps"),
+                "fact_requirement_coverage": result.get("fact_requirement_coverage"),
+                "document_requirement_coverage": result.get("document_requirement_coverage"),
+                "source_selection": result.get("source_selection"),
                 "sql_source": result.get("sql_source"),
                 "bq_cache_hit": result.get("bq_cache_hit"),
                 "bq_nl2sql_ms": result.get("bq_nl2sql_ms"),
                 "bq_execute_ms": result.get("bq_execute_ms"),
                 "decompose_llm_ms": result.get("decompose_llm_ms"),
                 "vector_ms": result.get("vector_ms"),
+                "corpus_selection": result.get("corpus_selection"),
+                "retrieval_partial": result.get("retrieval_partial"),
                 "rerank_ms": result.get("rerank_ms"),
                 "generate_ms": result.get("generate_ms"),
                 "supervisor_plan": result.get("supervisor_plan"),
@@ -585,7 +612,8 @@ async def _run_query(
         answer = result.get("answer", "") or ""
         if not ctx.has_client_history:
             profile = ctx.user_profile or {}
-            saved = persist_session_turn(
+            saved = await to_thread(
+                persist_session_turn,
                 owner,
                 session_id,
                 request.query.strip(),
@@ -634,7 +662,7 @@ async def _run_query(
             artifacts=artifacts,
         )
         if idempotency_key:
-            save_idempotent_response(owner, idempotency_key, response.model_dump(mode="json"))
+            await to_thread(save_idempotent_response, owner, idempotency_key, response.model_dump(mode="json"))
         return response
     except HTTPException:
         raise

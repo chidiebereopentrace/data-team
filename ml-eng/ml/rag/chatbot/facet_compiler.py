@@ -4,8 +4,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, MeasureSpec, query_locks_production
-from ml.rag.chatbot.analytical_intent import asks_about_causal_effect
+from ml.rag.chatbot.agri_measure_ontology import (
+    MEASURES, MeasureHit, MeasureSpec, explicit_measure_ids, query_locks_production,
+)
+from ml.rag.chatbot.analytical_intent import asks_about_causal_effect, requests_document_content
 from ml.rag.chatbot.intent_bundles import (
     MatchedBundle,
     bundle_primary_measure,
@@ -19,8 +21,9 @@ from ml.rag.chatbot.continental_scope import (
     is_continental_rank_query,
 )
 from ml.rag.chatbot.query_decomposer import _CROP_ENTITY_RE
-from ml.rag.chatbot.geo_iso3 import infer_country_iso3_from_query
+from ml.rag.chatbot.geo_iso3 import infer_country_iso3_from_query, name_to_iso3
 from ml.rag.chatbot.time_resolver import (
+    TimeWindow,
     parse_iso_date,
     resolve_relative_time,
     retrieval_envelope,
@@ -29,6 +32,8 @@ from ml.rag.chatbot.time_resolver import (
 from ml.rag.chatbot.slot_validator import validate_turn_slots
 from ml.rag.chatbot.turn_contract import (
     BreakdownDim,
+    DocumentRequirement,
+    FactRequirement,
     GeoGrain,
     Job,
     TimeGrain,
@@ -102,15 +107,20 @@ def compile_time_spec(query: str, decomposition: dict[str, Any] | None) -> TimeS
     hard_filter = False
     time_role: str = "either"
 
+    ref_raw = str(dec.get("reference_date") or "").strip()[:10]
+    ref = parse_iso_date(ref_raw) or utc_today()
+    raw_windows = dec.get("time_windows")
+    windows = [
+        window for item in raw_windows if isinstance(item, dict)
+        if (window := TimeWindow.from_dict(item)) is not None
+    ] if isinstance(raw_windows, list) else []
+    if not windows:
+        windows = resolve_relative_time(q, ref, infer_country_iso3_from_query(q))
     if _LEAN_SEASON_RE.search(ql):
         return TimeSpec(
             start=ts, end=te, grain="season", relative="next_lean_season",
-            hard_filter=True, time_role="observation",
+            hard_filter=True, time_role="observation", windows=windows,
         )
-
-    ref_raw = str(dec.get("reference_date") or "").strip()[:10]
-    ref = parse_iso_date(ref_raw) or utc_today()
-    windows = resolve_relative_time(q, ref, infer_country_iso3_from_query(q))
     if windows and not ts and not te:
         envelope = retrieval_envelope(windows)
         if envelope:
@@ -151,6 +161,7 @@ def compile_time_spec(query: str, decomposition: dict[str, Any] | None) -> TimeS
         relative=relative,
         hard_filter=hard_filter,
         time_role=time_role,  # type: ignore[arg-type]
+        windows=windows,
     )
 
 
@@ -367,6 +378,7 @@ def compile_turn_contract(
     measure_hit: MeasureHit | None = None,
     task_mode_hint: str = "",
     matched_bundles: tuple[MatchedBundle, ...] | None = None,
+    original_question: str | None = None,
 ) -> TurnContract:
     dec = decomposition if isinstance(decomposition, dict) else {}
     breakdown = compile_breakdown(query)
@@ -392,6 +404,35 @@ def compile_turn_contract(
     )
     time_spec = compile_time_spec(query, dec)
     geo_grain = compile_geo_grain(query, dec)
+    original = query if original_question is None else original_question
+    requested = explicit_measure_ids(query)
+    if original != query:
+        requested = list(dict.fromkeys([*requested, *explicit_measure_ids(original)]))
+    explicit_comparison = bool(requested and _COMPARE_RE.search(query))
+    compares_countries = (
+        len(geo) >= 2 and all(name_to_iso3(place) for place in geo)
+        and str(dec.get("geo_scope") or "") in ("", "country", "multi_country")
+    )
+    if explicit_comparison and (len(time_spec.windows) >= 2 or compares_countries):
+        job = "compare"
+        if compares_countries:
+            geo_grain = "country"
+        if measure_id not in requested:
+            measure_id = requested[0]
+    asks_for_documents = (
+        requests_document_content(query) or asks_about_causal_effect(query)
+        or re.search(r"\b(?:assessments?|studies|reports|evidence)\b", query, re.I)
+        or (
+            re.search(r"\b(?:explain|contribut\w+|impacts?)\b", query, re.I)
+            and re.search(r"\b(?:polic(?:y|ies)|program(?:me)?s?|reforms?)\b", query, re.I)
+        )
+    )
+    topics: list[str] = []
+    if asks_for_documents:
+        topics_raw = dec.get("evidence_topics")
+        if isinstance(topics_raw, list):
+            topics = [topic.strip() for topic in topics_raw if isinstance(topic, str) and topic.strip()]
+        topics = topics or [query]
 
     plan_type: str = "numeric"
     if job in ("diagnose", "brief", "outlook"):
@@ -412,6 +453,9 @@ def compile_turn_contract(
         plan_type=plan_type,  # type: ignore[arg-type]
         pathogen_id=pathogen_id,
         population=population,
+        original_question=original,
+        facts=[FactRequirement(mid) for mid in requested],
+        documents=[DocumentRequirement(topic) for topic in dict.fromkeys(topics)],
     )
 
     measure_spec = MEASURES.get(measure_id) if measure_id else None

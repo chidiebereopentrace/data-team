@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from threading import Barrier, Event
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -45,23 +46,11 @@ def _mock_bq_client() -> MagicMock:
     return client
 
 
-def _executor_that_runs_inline() -> MagicMock:
-    pool = MagicMock()
-
-    def submit(fn, *args, **kwargs):
-        fut = MagicMock()
-        fut.result.side_effect = lambda: fn(*args, **kwargs)
-        return fut
-
-    pool.submit.side_effect = submit
-    pool.__enter__.return_value = pool
-    return pool
-
-
 def _retrieve_explicit_batch(
     retriever: BQRetriever,
     client: MagicMock,
     sqls: list[str],
+    *, deadline: float | None = None,
 ) -> list[dict]:
     with patch.object(retriever, "_get_client", return_value=client):
         with patch.object(retriever, "_prepare_sql", side_effect=_fast_prepare):
@@ -72,6 +61,7 @@ def _retrieve_explicit_batch(
                 time_start="2022-01-01",
                 crop_required=False,
                 geography_required=False,
+                deadline=deadline,
             )
 
 
@@ -87,21 +77,49 @@ def test_bq_execute_parallel_default_on(monkeypatch: pytest.MonkeyPatch) -> None
     assert _bq_execute_parallel() is True
 
 
-def test_execute_parallel_uses_thread_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_execute_parallel_starts_three_jobs_together(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RAG_BQ_EXECUTE_PARALLEL", "on")
     monkeypatch.setenv("RAG_BQ_EXECUTE_PARALLEL_WORKERS", "3")
     retriever = BQRetriever(project_id="proj", nl2sql_enabled=False)
     sqls = [_explicit_sql(str(i)) for i in range(3)]
     client = _mock_bq_client()
-    pool = _executor_that_runs_inline()
+    started = Barrier(3, timeout=3)
 
-    with patch("ml.rag.retrievers.bq_retriever.ThreadPoolExecutor", return_value=pool) as tp_cls:
-        items = _retrieve_explicit_batch(retriever, client, sqls)
+    def result(**_kwargs):
+        started.wait()
+        return [{"country_iso3": "NGA", "total": 1.0}]
 
-    tp_cls.assert_called_once()
-    assert tp_cls.call_args.kwargs["max_workers"] == 3
+    client.query.return_value.result.side_effect = result
+    items = _retrieve_explicit_batch(retriever, client, sqls)
+
     assert client.query.call_count == 3
     assert len(items) == 3
+    assert all(item["metadata"]["status"] == "ok" for item in items)
+
+
+def test_one_stalled_job_preserves_completed_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_BQ_EXECUTE_PARALLEL", "on")
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=False)
+    client = MagicMock()
+    release = Event()
+
+    def submit(sql, **_kwargs):
+        job = MagicMock()
+        if "/* slow */" in sql:
+            job.result.side_effect = lambda **_kwargs: release.wait(5) and []
+        else:
+            job.result.return_value = [{"country_iso3": "NGA", "total": 1.0}]
+        return job
+
+    client.query.side_effect = submit
+    try:
+        items = _retrieve_explicit_batch(
+            retriever, client, [_explicit_sql("slow"), _explicit_sql("finished")],
+            deadline=time.perf_counter() + 0.75,
+        )
+        assert {item["metadata"]["status"] for item in items} == {"ok", "timeout"}
+    finally:
+        release.set()
 
 
 def test_execute_parallel_off_is_sequential(monkeypatch: pytest.MonkeyPatch) -> None:

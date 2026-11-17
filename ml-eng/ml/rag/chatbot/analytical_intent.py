@@ -58,6 +58,52 @@ def asks_about_causal_effect(query: str) -> bool:
     return bool(_CAUSAL_EFFECT_RE.search(query))
 
 
+_DOCUMENT_RE = re.compile(
+    r"\b(?:polic(?:y|ies)|strateg(?:y|ies)|laws?|regulations?|guidelines?|reports?|studies|"
+    r"action\s+plans?|frameworks?|politiques?|strat[ée]gies?|rapports?|plans?\s+d['’]action)\b",
+    re.I,
+)
+_DOCUMENT_LOOKUP_RE = re.compile(
+    r"^(?:summari[sz]e|outline|list\s+the\s+provisions|que\s+dit|r[ée]sume[rz]?)\b|"
+    r"^(?:explain\s+)?(?:what|how)\s+(?:does|do|did|is|are)\b[^?.!]{0,180}"
+    r"\b(?:say|says|define|describe|require|recommend|state|stipulate|provisions|objectives|targets)\b|"
+    r"^quelles?\s+sont\b[^?.!]{0,150}\b(?:objectifs|dispositions|recommandations)\b",
+    re.I,
+)
+_SEPARATE_ANALYSIS_RE = re.compile(
+    r"(?:[?;.]|\band\b|\bthen\b)\s*(?:compare|calculate|quantify|"
+    r"how\s+(?:much|many|did|have|has)|what\s+(?:changed|was\s+the\s+change))\b",
+    re.I,
+)
+
+
+def requests_document_content(query: str) -> bool:
+    """Recognize a clause asking what a document says or recommends."""
+    clauses = _document_clauses(query)
+    return any(
+        _is_document_clause(clause) for clause in clauses
+    )
+
+
+def is_document_lookup(query: str) -> bool:
+    """A document question with no separate request to quantify observed change."""
+    return bool(
+        _is_document_clause(_document_clauses(query)[0])
+        and not _SEPARATE_ANALYSIS_RE.search(query)
+    )
+
+
+def _document_clauses(query: str) -> list[str]:
+    return re.split(r"[?;]\s*|\s+and\s+(?=(?:what|how)\s)", query, flags=re.I)
+
+
+def _is_document_clause(clause: str) -> bool:
+    return bool(
+        _DOCUMENT_LOOKUP_RE.search(clause.strip()) and _DOCUMENT_RE.search(clause)
+        and not asks_about_causal_effect(clause)
+    )
+
+
 def is_analytical_query(query: str, decomposition: dict[str, Any] | None = None) -> bool:
     """
     True when the user wants multi-country / multi-year structured analysis or a report.

@@ -27,10 +27,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from ml.rag.chatbot.stage_budget import remaining_seconds
 from ml.rag.retrievers.base import BaseRetriever
 from ml.rag.retrievers.index_contract import IndexHealth, collection_health
 from ml.rag.observability import get_observe_decorator, trace_elapsed_ms, update_current_span_metadata
-from ml.rag.text_processors.chunking_config import profile_for_collection
+from ml.rag.text_processors.chunking_config import PROFILES, profile_for_collection
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,7 @@ def _resolve_embed_backend(mode: str) -> str:
     - local: sentence_transformers when torch is installed; else fastembed
     - hf_api (legacy): redirected to fastembed with a warning
     """
-    raw = (mode or "local").strip().lower()
+    raw = mode.strip().lower() or "fastembed"
     if raw == "hf_api":
         logger.warning(
             "RAG_EMBEDDINGS_MODE=hf_api is deprecated; using in-container fastembed instead"
@@ -220,6 +221,28 @@ def _embed_texts(texts: list[str], *, model_id: str, mode: str) -> list[list[flo
     m = _load_sentence_transformer(model_id)
     vecs = m.encode(texts, normalize_embeddings=True)
     return [[float(x) for x in row] for row in vecs]
+
+
+@lru_cache(maxsize=1)
+def warmup_query_embeddings() -> bool:
+    """Initialize the configured query models before accepting search requests."""
+    from ml.rag.sparse_embeddings import hybrid_search_enabled, warmup_sparse_model
+
+    mode = _env("RAG_EMBEDDINGS_MODE", "fastembed")
+    ready = True
+    for model_id in dict.fromkeys(profile.embedding_model for profile in PROFILES.values()):
+        try:
+            _embed_texts_for_indexing(["warmup"], model_id=model_id, mode=mode, is_query=True)
+        except Exception:
+            ready = False
+            logger.exception("Could not initialize dense query model %s", model_id)
+    if hybrid_search_enabled():
+        try:
+            warmup_sparse_model()
+        except Exception:
+            ready = False
+            logger.exception("Could not initialize the sparse query model")
+    return ready
 
 
 def _publication_years_in_range(
@@ -514,7 +537,7 @@ class VectorRetriever(BaseRetriever):
         )
         self.embed_model = embed_model
         self._client = None
-        self._embed_mode = _env("RAG_EMBEDDINGS_MODE", "local") or "local"
+        self._embed_mode = _env("RAG_EMBEDDINGS_MODE", "fastembed")
         self._embed_model_id = embedding_model_id(self.collection_name)
         self.last_index_health: IndexHealth | None = None
 
@@ -526,7 +549,8 @@ class VectorRetriever(BaseRetriever):
             from qdrant_client import QdrantClient
         except ImportError as e:
             raise ImportError("Install qdrant-client: pip install qdrant-client") from e
-        self._client = make_qdrant_client(timeout_s=timeout_s)
+        capped = remaining_seconds(timeout_s)
+        self._client = make_qdrant_client(timeout_s=max(1.0, capped if capped is not None else timeout_s))
         return self._client
 
     def _metadata_passes_filters(

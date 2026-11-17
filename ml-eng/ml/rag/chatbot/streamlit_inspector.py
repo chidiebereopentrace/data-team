@@ -68,6 +68,10 @@ INSPECTOR_JSON_KEYS: tuple[str, ...] = (
     "task_mode",
     "analytical_mode",
     "generation_plan",
+    "comparison_gaps",
+    "fact_requirement_coverage",
+    "document_requirement_coverage",
+    "source_selection",
     "artifacts",
     "langfuse_trace_id",
     "_backend_mode",
@@ -247,6 +251,10 @@ def normalize_query_response(
         "acf_question_type": acf.get("question_type"),
         "decomposition": trace.get("decomposition") if trace else {},
         "bq_sql_plan": bq_sql_plan,
+        "comparison_gaps": trace.get("comparison_gaps") if trace else None,
+        "fact_requirement_coverage": trace.get("fact_requirement_coverage") if trace else None,
+        "document_requirement_coverage": trace.get("document_requirement_coverage") if trace else None,
+        "source_selection": trace.get("source_selection") if trace else None,
         "bq_sql_queries": list(trace.get("bq_sql_queries") or []) if trace else [],
         "bq_sql_debug": list(trace.get("bq_sql_debug") or []) if trace else [],
         "sql_source": trace.get("sql_source") if trace else None,
@@ -259,6 +267,9 @@ def normalize_query_response(
         "context_applied": trace.get("context_applied") if trace else None,
         "user_query_dropped": trace.get("user_query_dropped") if trace else None,
         "vector_cache_hit": trace.get("vector_cache_hit") if trace else None,
+        "corpus_selection": trace.get("corpus_selection"),
+        "vector_ms": trace.get("vector_ms"),
+        "retrieval_partial": trace.get("retrieval_partial"),
         "coverage_retry": trace.get("coverage_retry") if trace else None,
         "bq_table_candidates": [],
         "vector_news_results": [],
@@ -468,6 +479,13 @@ def render_request_context(
         if expanded:
             st.caption(f"Expanded regions: {', '.join(str(x) for x in expanded)}")
 
+    sources = _as_dict(result.get("source_selection"))
+    for source, label in (("bigquery", "BigQuery"), ("qdrant", "Qdrant")):
+        decision = _as_dict(sources.get(source))
+        if decision:
+            action = "Selected" if decision.get("selected") else "Skipped"
+            reason = str(decision.get("reason") or "").replace("_", " ")
+            st.caption(f"{label} · {action} · {reason}")
     gen_plan = _as_dict(result.get("generation_plan"))
     if gen_plan:
         shape = str(gen_plan.get("answer_shape") or "—")
@@ -487,33 +505,40 @@ def render_request_context(
     )
 
 
+def _retrieval_count(result: dict[str, Any], items_key: str, trace_key: str) -> int | str:
+    if result.get("_backend_mode") == "http_api":
+        count = _as_dict(result.get("_http_trace")).get(trace_key)
+        return count if isinstance(count, int) else "—"
+    return len(result.get(items_key) or [])
+
+
 def render_metrics_row(result: dict[str, Any], *, latency_ms: float | None = None) -> None:
     usage = _as_dict(result.get("usage"))
     lat = latency_ms if latency_ms is not None else result.get("latency_ms")
 
     r1 = st.columns(8)
     with r1[0]:
-        st.metric("BQ table matches", len(result.get("bq_table_candidates") or []))
+        st.metric("BQ table matches", _retrieval_count(result, "bq_table_candidates", "bq_table_candidates_count"))
     with r1[1]:
-        st.metric("BQ rows", len(result.get("bq_results") or []))
+        st.metric("BQ rows", _retrieval_count(result, "bq_results", "bq_results_count"))
     with r1[2]:
-        st.metric("News", len(result.get("vector_news_results") or []))
+        st.metric("News", _retrieval_count(result, "vector_news_results", "vector_news_count"))
     with r1[3]:
-        st.metric("Academic", len(result.get("vector_academic_papers_results") or []))
+        st.metric("Academic", _retrieval_count(result, "vector_academic_papers_results", "vector_academic_papers_count"))
     with r1[4]:
-        st.metric("Policy", len(result.get("vector_policies_results") or []))
+        st.metric("Policy", _retrieval_count(result, "vector_policies_results", "vector_policies_count"))
     with r1[5]:
-        st.metric("Public", len(result.get("vector_public_reports_results") or []))
+        st.metric("Public", _retrieval_count(result, "vector_public_reports_results", "vector_public_reports_count"))
     with r1[6]:
-        st.metric("Formation", len(result.get("vector_formation_results") or []))
+        st.metric("Formation", _retrieval_count(result, "vector_formation_results", "vector_formation_count"))
     with r1[7]:
-        st.metric("OTA", len(result.get("vector_ota_results") or []))
+        st.metric("OTA", _retrieval_count(result, "vector_ota_results", "vector_ota_count"))
 
     r1b = st.columns(3)
     with r1b[0]:
-        st.metric("Web", len(result.get("web_results") or []))
+        st.metric("Web", _retrieval_count(result, "web_results", "web_results_count"))
     with r1b[1]:
-        st.metric("→ reranked", len(result.get("reranked_context") or []))
+        st.metric("→ reranked", _retrieval_count(result, "reranked_context", "reranked_context_count"))
     with r1b[2]:
         st.metric("→ cited", len(result.get("citations") or []))
 
@@ -939,10 +964,19 @@ def render_pipeline_inspector(
         st.subheader("Retrieval metrics")
         render_metrics_row(result, latency_ms=latency_ms)
 
+        corpus_selection = _as_dict(result.get("corpus_selection"))
+        corpus_results = _as_dict(corpus_selection.get("results"))
+        if corpus_results:
+            st.caption("Qdrant corpus results")
+            st.json(corpus_results)
+        elif corpus_selection.get("rationale"):
+            st.caption(f"Qdrant routing: {corpus_selection['rationale']}")
+
         render_sql_panel(result)
 
-        st.subheader("Retrieved data by source")
-        render_retrieval_tabs(result)
+        if backend_mode == "in_process":
+            st.subheader("Retrieved data by source")
+            render_retrieval_tabs(result)
 
         render_artifacts(result)
 

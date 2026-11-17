@@ -118,7 +118,7 @@ def gap_answer(
     decomposition: dict[str, Any] | None,
     contract: TurnContract | None,
     *,
-    incomplete_source: Literal["warehouse", "documents"] | None = None,
+    incomplete_source: Literal["warehouse", "documents", "both"] | None = None,
 ) -> str:
     dec = decomposition if isinstance(decomposition, dict) else {}
     measure_id = (contract.measure_id if contract else None) or next(
@@ -138,6 +138,8 @@ def gap_answer(
         place = f"{place} (set by {place_setter})"
     period = _requested_period(dec)
     scope = " ".join(part for part in (f"for {place}" if place else "", period) if part)
+    if incomplete_source == "both":
+        return lead + f"OpenTrace could not verify evidence {scope} because the warehouse query and document search did not complete."
     if incomplete_source:
         figures = f"{indicator} figures" if measure_id else "the requested figures"
         detail = f"{figures} {scope}".strip()

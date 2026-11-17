@@ -5,6 +5,22 @@ from __future__ import annotations
 from ml.rag.llm_chat import add_llm_usage, get_llm_usage, reset_llm_usage
 
 
+def test_concurrent_turns_keep_separate_token_totals() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    barrier = Barrier(2, timeout=3)
+
+    def turn(tokens: int) -> int:
+        reset_llm_usage()
+        add_llm_usage({"total_tokens": tokens})
+        barrier.wait()
+        return get_llm_usage().total_tokens
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(turn, [13, 27])) == [13, 27]
+
+
 def test_add_llm_usage_sums_across_calls() -> None:
     reset_llm_usage()
     add_llm_usage({"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150})

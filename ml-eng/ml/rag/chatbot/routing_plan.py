@@ -1,14 +1,115 @@
 """Turn routing spine: measure + classes + corpora from decompose/enricher facets."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, Literal, TypedDict
 
-from ml.rag.chatbot.agri_measure_ontology import MeasureHit
+from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, entity_is_measure_noise
+from ml.rag.chatbot.analytical_intent import is_analytical_query, is_document_lookup
 from ml.rag.chatbot.class_corpus_policy import corpora_for_classes
 from ml.rag.chatbot.class_supervisor import SupervisorPlan
 from ml.rag.chatbot.intent_bundles import MatchedBundle
+from ml.rag.chatbot.slot_validator import crop_satisfied, geography_satisfied
 from ml.rag.chatbot.turn_contract import TurnContract
+
+
+Source = Literal["bigquery", "qdrant"]
+
+
+class RequirementDecision(TypedDict):
+    requirement: str
+    selected: bool
+    reason: str
+
+
+class SourceDecision(TypedDict):
+    selected: bool
+    reason: str
+    requirements: list[RequirementDecision]
+
+
+class SourceSelection(TypedDict):
+    bigquery: SourceDecision
+    qdrant: SourceDecision
+
+
+def select_sources(
+    turn: TurnContract, *, query: str, decomposition: dict[str, Any], task_mode: str,
+) -> SourceSelection:
+    """Choose source legs and retain why each requirement can or cannot run."""
+    document_lookup = is_document_lookup(query)
+    analytical = task_mode == "analytical" or is_analytical_query(query, decomposition)
+    structured = (
+        task_mode in ("fact_lookup", "data_export_only", "clarify")
+        or turn.job in ("compare", "trend", "rank", "breakdown")
+    )
+    measures = [fact.measure_id for fact in turn.facts]
+    if not measures and turn.measure_id and (structured or analytical):
+        measures = [turn.measure_id]
+
+    facts: list[RequirementDecision] = []
+    for measure_id in measures:
+        spec = MEASURES.get(measure_id)
+        commodity_scope = replace(turn, entities=[
+            entity for entity in turn.entities if not entity_is_measure_noise(entity, primary_measures=[measure_id])
+        ])
+        if document_lookup:
+            reason = "document_content_requested"
+        elif spec is None or not spec.indicator_classes:
+            reason = "no_warehouse_mapping"
+        elif not geography_satisfied(query=query, decomposition=decomposition, contract=turn, measure=spec):
+            reason = "geography_required"
+        elif not crop_satisfied(
+            query=query, decomposition=decomposition, contract=commodity_scope, measure=spec,
+        ):
+            reason = "commodity_required"
+        else:
+            reason = "scoped_indicator"
+        facts.append({"requirement": measure_id, "selected": reason == "scoped_indicator", "reason": reason})
+
+    has_scoped_fact = any(fact["selected"] for fact in facts)
+    has_indicator_scope = has_scoped_fact or (
+        bool(turn.geo) and any(fact["reason"] == "no_warehouse_mapping" for fact in facts)
+    )
+    discovery = (
+        not document_lookup and not facts and analytical
+        and bool(turn.geo or turn.geo_grain in ("africa", "region"))
+        and bool(turn.entities or decomposition.get("domains"))
+    )
+    docs: list[RequirementDecision] = [
+        {"requirement": doc.question, "selected": True, "reason": "document_evidence_requested"}
+        for doc in turn.documents
+    ]
+    if document_lookup and not docs:
+        docs.append({"requirement": query, "selected": True, "reason": "document_content_requested"})
+    if docs:
+        document_reason = "document_content_requested" if document_lookup else "document_evidence_requested"
+    elif task_mode == "data_export_only":
+        document_reason = "data_only_request"
+    elif discovery or (analytical and not structured) or not (structured and (measures or task_mode == "clarify")):
+        document_reason = "scoped_discovery" if analytical else "contextual_evidence"
+    elif has_indicator_scope:
+        document_reason = "indicator_context"
+        docs.append({"requirement": query, "selected": True, "reason": "indicator_context"})
+    else:
+        document_reason = "insufficient_structured_scope"
+    return {
+        "bigquery": {
+            "selected": has_scoped_fact or discovery,
+            "reason": (
+                "document_content_requested" if document_lookup else
+                "scoped_indicators" if has_scoped_fact else
+                "scoped_discovery" if discovery else
+                facts[0]["reason"] if facts else "no_structured_requirement"
+            ),
+            "requirements": facts,
+        },
+        "qdrant": {
+            "selected": document_reason not in ("data_only_request", "insufficient_structured_scope"),
+            "reason": document_reason,
+            "requirements": docs,
+        },
+    }
 
 
 @dataclass(frozen=True)
@@ -81,4 +182,4 @@ def build_routing_plan(
     )
 
 
-__all__ = ["RoutingPlan", "build_routing_plan"]
+__all__ = ["RoutingPlan", "Source", "SourceSelection", "build_routing_plan", "select_sources"]

@@ -33,6 +33,8 @@ from ml.rag.chatbot.mart_indicator_classes import (
     indicator_classes_for_table,
 )
 from ml.rag.helpers.mart_semantic_relationships import SEMANTIC_RELATIONSHIPS
+from ml.rag.chatbot.sql_ast_validate import string_literal as _sql_literal
+from ml.rag.chatbot.time_resolver import TimeWindow
 from ml.rag.helpers.mart_semantic_relationships import compact_rels_summary as mart_compact_rels_summary
 from ml.rag.helpers.mart_semantic_relationships import format_join_fragments_for_nl2sql as mart_join_fragments
 from ml.rag.helpers.staging_semantic_relationships import compact_rels_summary
@@ -1519,10 +1521,6 @@ _PRODUCT_PREFER_TABLES = ("dim_product", "agg_production_annual")
 _SHARED_DICTIONARY_COLUMNS = frozenset({_PRODUCT_LABEL_COL})
 
 
-def _sql_literal(value: str) -> str:
-    return "'" + (value or "").replace("'", "''") + "'"
-
-
 @dataclass(frozen=True)
 class SemanticFilterClause:
     sql: str
@@ -1814,6 +1812,20 @@ def compile_product_filter_sql(
             return f"AND {col} = {_sql_literal(resolved[0])} ", resolved
         lits = ", ".join(_sql_literal(v) for v in resolved[:16])
         return f"AND {col} IN ({lits}) ", resolved
+
+    # The candidate labels can come from source vocabularies, while the filter
+    # below reads dim_product. Use its observed spelling for equivalent names.
+    dim_labels = column_samples_for_table(_PRODUCT_JOIN_DIM, _PRODUCT_LABEL_COL)
+    equivalent_labels: dict[frozenset[str], list[str]] = {}
+    for label in dim_labels:
+        key = frozenset(_canon_token(token) for token in _alnum_tokens(label))
+        equivalent_labels.setdefault(key, []).append(label)
+    canonical_labels: list[str] = []
+    for label in resolved:
+        key = frozenset(_canon_token(token) for token in _alnum_tokens(label))
+        matches = equivalent_labels.get(key, [])
+        canonical_labels.extend(matches or [label])
+    resolved = list(dict.fromkeys(canonical_labels))[:16]
 
     if product_spine:
         fk_col = _PRODUCT_FK_COL if _PRODUCT_FK_COL in {
@@ -2656,11 +2668,33 @@ def compile_table_bind_contract(
     )
     tcol = year_column(bare)
     time_sql = time_clause.sql.strip() if time_clause else None
-    if time_clause and time_clause.sql.strip():
-        parts.append(time_clause.sql.strip())
+    # A comparison of distinct periods must not retrieve observations between them.
+    comparison = dec.get("comparison_windows")
+    windows = [
+        window for item in comparison if isinstance(item, dict)
+        if (window := TimeWindow.from_dict(item)) is not None
+    ] if isinstance(comparison, list) else []
+    employment_comparison = (
+        bare == "fct_employment" and primary_measures == ["employment_share"] and len(windows) >= 2
+    )
+    if len(windows) >= 2:
+        if employment_comparison:
+            # The year column is the observation year. as_of_date may reflect loading.
+            predicates = [f"year BETWEEN {window.start.year} AND {window.end.year}" for window in windows]
+        else:
+            predicates = [
+                compile_time_filter_sql(
+                    bare, project_id=proj, dataset=ds,
+                    time_start=window.start.isoformat(), time_end=window.end.isoformat(),
+                ).strip().removeprefix("AND ")
+                for window in windows
+            ]
+        time_sql = f"AND ({' OR '.join(predicates)})" if all(predicates) else None
+    if time_sql:
+        parts.append(time_sql)
         provenance["time"] = str(dec.get("time_policy_source") or dec.get("time_source") or "question")
 
-    bind_product_labels = _resolve_bind_product_labels(
+    bind_product_labels = [] if employment_comparison else _resolve_bind_product_labels(
         bare,
         query=query,
         facets=dec,
@@ -2669,7 +2703,7 @@ def compile_table_bind_contract(
         product_labels=product_labels,
         product_blob_text=pb,
     )
-    prod_clause = compile_semantic_filter(
+    prod_clause = None if employment_comparison else compile_semantic_filter(
         bare,
         "product",
         blob=pb,
@@ -2698,7 +2732,7 @@ def compile_table_bind_contract(
             if str(k).strip()
         }
 
-    spine_hits = compile_spine_entity_filters(
+    spine_hits = [] if employment_comparison else compile_spine_entity_filters(
         bare,
         blob=pb or query,
         project_id=proj,
@@ -2725,7 +2759,16 @@ def compile_table_bind_contract(
         measure_blob_text=mb,
         primary_measures=primary_measures,
     )
-    if meas_clause and meas_clause.sql.strip():
+    if employment_comparison:
+        # Use one denominator and one national total across all comparison years.
+        measure_filters = [
+            ("indicator", "Share of employment in agriculture in total employment - ILO Modelled Estimates"),
+            ("sex", "Total"),
+            ("unit", "%"),
+        ]
+        parts.extend(f"AND {column} = {_sql_literal(value)}" for column, value in measure_filters)
+        provenance["measure"] = "resolved_request"
+    elif meas_clause and meas_clause.sql.strip():
         parts.append(meas_clause.sql.strip())
         provenance["measure"] = "question" if primary_measures is None else "resolved_request"
     if spine_entity_filters:

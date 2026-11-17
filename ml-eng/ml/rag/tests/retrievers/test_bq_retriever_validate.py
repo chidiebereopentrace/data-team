@@ -461,7 +461,7 @@ def test_retrieve_zero_rows_labeled_empty_result() -> None:
     assert not meta.get("validation_failed")
 
 
-def test_retrieve_broadens_empty_year_once() -> None:
+def test_retrieve_does_not_broaden_an_explicit_empty_year() -> None:
     retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
     nl_sql = (
         "SELECT country_iso3, SUM(value) AS total "
@@ -471,10 +471,8 @@ def test_retrieve_broadens_empty_year_once() -> None:
     )
     empty_job = MagicMock()
     empty_job.result.return_value = []
-    filled_job = MagicMock()
-    filled_job.result.return_value = [{"country_iso3": "NGA", "value": 10.0}]
     client = MagicMock()
-    client.query.side_effect = [empty_job, filled_job]
+    client.query.return_value = empty_job
     with patch.object(retriever, "_nl_to_sql_queries", return_value=[nl_sql]):
         with patch.object(retriever, "_get_client", return_value=client):
             with patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None):
@@ -491,14 +489,15 @@ def test_retrieve_broadens_empty_year_once() -> None:
                         crop_required=False,
                         geography_required=False,
                     )
-    assert any("NGA" in str(it.get("content")) for it in items)
+    assert len(items) == 1
+    assert items[0]["metadata"]["status"] == "empty_result"
     execute_calls = [
         c.args[0]
         for c in client.query.call_args_list
         if c.args and str(c.args[0]).upper().startswith("SELECT")
     ]
-    assert len(execute_calls) >= 2
-    assert "BETWEEN 2021 AND 2023" in execute_calls[-1]
+    assert len(execute_calls) == 1
+    assert "year = 2022" in execute_calls[0]
     assert "dim_" not in execute_calls[-1]
 
 

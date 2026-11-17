@@ -8,6 +8,7 @@ import pytest
 from ml.rag.chatbot.capability_registry import resolve_capability
 from ml.rag.chatbot.price_sql import plan_price_template
 from ml.rag.chatbot.price_vocab import names_price_product, price_sql_vocab_errors
+from ml.rag.chatbot.sql_ast_validate import parse_select
 from ml.rag.chatbot.turn_contract import TimeSpec, TurnContract
 from ml.rag.retrievers.bq_retriever import BQRetriever
 
@@ -91,6 +92,30 @@ def test_policy_question_food_price_series_use_staples(wording: str) -> None:
     assert hit["product_names"]
     assert "wage" not in hit["sql"].lower()
     assert "country_iso3 IN (" in hit["sql"]
+
+
+def test_regional_food_basket_sql_parses_with_apostrophes_in_mart_values(monkeypatch) -> None:
+    query = "How did agricultural policies affect farmer livelihoods and food prices in West Africa since 2015?"
+    hit = _plan(query, ["Mauritania", "Côte d'Ivoire", "Ghana"], "2024")
+    assert hit["template"] == "mart_price"
+    _, error = parse_select(hit["sql"])
+    assert error is None
+    monkeypatch.setenv("RAG_BQ_SQL_DRY_RUN", "on")
+    client = Mock()
+    client.query.return_value.total_bytes_processed = 0
+    validated, error = BQRetriever(project_id="proj", nl2sql_enabled=False)._prepare_sql(
+        hit["sql"],
+        question=query,
+        table_hints=[],
+        selected_tables={"fct_prices"},
+        allowed_datasets={"mart_dev"},
+        limit=60,
+        client=client,
+        crop_required=False,
+        sql_source="template",
+    )
+    assert error is None
+    assert validated is not None
 
 
 def test_source_follows_requested_years() -> None:

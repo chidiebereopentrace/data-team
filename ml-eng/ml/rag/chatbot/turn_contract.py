@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from ml.rag.chatbot.time_resolver import TimeWindow
+
 GeoGrain = Literal["point", "admin2", "admin1", "country", "region", "africa"]
 TimeGrain = Literal["year", "year_range", "season", "latest", "panel"]
 Job = Literal[
@@ -52,6 +54,7 @@ class TimeSpec:
     relative: str = ""
     time_role: TimeRole = "either"
     hard_filter: bool = False
+    windows: list[TimeWindow] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -61,6 +64,7 @@ class TimeSpec:
             "relative": self.relative,
             "time_role": self.time_role,
             "hard_filter": self.hard_filter,
+            "windows": [window.as_dict() for window in self.windows],
         }
 
     @classmethod
@@ -73,6 +77,10 @@ class TimeSpec:
         time_role = str(raw.get("time_role") or "either").strip().lower()
         if time_role not in ("observation", "publication", "either", "historical"):
             time_role = "either"
+        windows = [
+            window for item in _records(raw.get("windows"))
+            if (window := TimeWindow.from_dict(item)) is not None
+        ]
         return cls(
             start=str(raw.get("start") or "").strip()[:10],
             end=str(raw.get("end") or "").strip()[:10],
@@ -80,7 +88,18 @@ class TimeSpec:
             relative=str(raw.get("relative") or "").strip(),
             time_role=time_role,  # type: ignore[arg-type]
             hard_filter=bool(raw.get("hard_filter")),
+            windows=windows,
         )
+
+
+@dataclass(frozen=True)
+class FactRequirement:
+    measure_id: str
+
+
+@dataclass(frozen=True)
+class DocumentRequirement:
+    question: str
 
 
 @dataclass
@@ -106,6 +125,10 @@ class TurnContract:
     vector_block: list[str] = field(default_factory=list)
     population: str = ""
     pathogen_id: str = ""
+    # Each requirement inherits the turn's geography, periods and operation.
+    original_question: str = ""
+    facts: list[FactRequirement] = field(default_factory=list)
+    documents: list[DocumentRequirement] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         raw = asdict(self)
@@ -174,6 +197,11 @@ class TurnContract:
             vector_block=_parse_str_list(raw.get("vector_block")),
             population=str(raw.get("population") or "").strip(),
             pathogen_id=str(raw.get("pathogen_id") or "").strip(),
+            original_question=str(raw.get("original_question") or ""),
+            facts=[FactRequirement(mid) for item in _records(raw.get("facts"))
+                   if (mid := str(item.get("measure_id") or "").strip())],
+            documents=[DocumentRequirement(question) for item in _records(raw.get("documents"))
+                       if (question := str(item.get("question") or "").strip())],
         )
 
     def is_fail_closed(self) -> bool:
@@ -201,3 +229,7 @@ def _parse_str_list(raw: Any) -> list[str]:
     if not isinstance(raw, list):
         return []
     return [str(x).strip() for x in raw if str(x).strip()]
+
+
+def _records(raw: Any) -> list[dict[str, Any]]:
+    return [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []

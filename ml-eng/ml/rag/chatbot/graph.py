@@ -6,8 +6,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, wait
+from concurrent.futures import TimeoutError as FuturesTimeoutError, wait
+from dataclasses import dataclass, field, replace
 from typing import Any, TypedDict, cast
 
 from ml.rag.chatbot.acf_scoring import ACFState, acf_result_to_state, curated_product_acf, no_evidence_acf
@@ -61,11 +63,16 @@ from ml.rag.chatbot.query_ir import compile_early_query_ir, compile_query_ir
 from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan, _slot_reasoner_active
 from ml.rag.chatbot.class_engine_runner import engine_results_to_bq_plan, run_class_engines
 from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
+from ml.rag.chatbot.evidence_requirements import (
+    fact_requirement_coverage, is_fact_comparison, matches_bound_fact, plan_fact_comparison,
+)
+from ml.rag.chatbot.document_evidence import document_requirement_coverage, requirement_document_candidates
 from ml.rag.chatbot.class_supervisor import SupervisorPlan, compile_supervisor_plan, corpora_for_supervisor_plan, tables_for_supervisor_plan
 from ml.rag.chatbot.context_diversity import diversify_context_pack
 from ml.rag.chatbot.evidence_kinds import is_warehouse_item
-from ml.rag.chatbot.coverage_retry import should_coverage_retry, should_retry_bq
-from ml.rag.chatbot.corpus_catalog import CORPUS_CATALOG, CorpusSelection, formation_doc_kinds, select_corpora
+from ml.rag.chatbot.corpus_catalog import (
+    CORPUS_CATALOG, CorpusSelection, comparison_document_corpora, formation_doc_kinds, select_corpora,
+)
 from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
 from ml.rag.chatbot.facet_compiler import compile_turn_contract, compile_breakdown
 from ml.rag.chatbot.intent_bundles import bundle_primary_measures, bundle_required_measures, match_intent_bundles
@@ -86,7 +93,7 @@ from ml.rag.chatbot.time_retrieval import sync_decomposition_time, time_fallback
 from ml.rag.chatbot.turn_contract import TurnContract
 from ml.rag.chatbot.typed_pack import PackResult, typed_context_pack
 from ml.rag.chatbot.answer_outcome import decide_outcome, gap_answer
-from ml.rag.chatbot.stage_budget import RetrievalWorkers, stage_budget_seconds
+from ml.rag.chatbot.stage_budget import RetrievalWorkers, remaining_seconds, request_budget, stage_budget_seconds
 from ml.rag.chatbot.generation_plan import build_generation_plan
 from ml.rag.chatbot.global_reasoner import compile_reasoner_plan, reasoner_plan_to_bq_plan
 from ml.rag.chatbot.composer import (
@@ -137,7 +144,7 @@ from ml.rag.chatbot.query_decomposer import (
 )
 from ml.rag.chatbot.time_resolver import parse_iso_date, resolve_relative_time, utc_today
 from ml.rag.chatbot.query_normalize import normalize_query_text
-from ml.rag.chatbot.routing_plan import RoutingPlan, build_routing_plan
+from ml.rag.chatbot.routing_plan import RoutingPlan, Source, SourceSelection, build_routing_plan, select_sources
 from ml.rag.chatbot.reranker import last_rerank_mode, rerank
 from ml.rag.retrievers.bq_retriever import BQRetriever
 from ml.rag.retrievers.vector_retriever import VectorRetriever
@@ -358,6 +365,7 @@ def _retrieve_vector_cascade(
     allow_geo_fallback: bool = True,
     max_levels: int | None = None,
     allow_time_fallback: bool | None = None,
+    deadline: float | None = None,
 ) -> list[dict[str, Any]]:
     """Try full filters, widen time ±1y, then drop time/geo when fallbacks allow."""
     attempts: list[dict[str, Any]] = [dict(base_kwargs)]
@@ -409,16 +417,12 @@ def _retrieve_vector_cascade(
         if key in seen:
             continue
         seen.add(key)
-        try:
-            raw = vr.retrieve(query, **kwargs)
-        except Exception:
-            logger.warning(
-                "Vector retrieve failed for %s (filters=%s)",
-                vr.collection_name,
-                {k: kwargs[k] for k in kwargs if k not in ("top_k", "vector_search_mode", "doc_kind", "doc_kinds")},
-                exc_info=True,
-            )
-            raw = []
+        if deadline is not None and time.perf_counter() >= deadline:
+            raise FuturesTimeoutError("document retrieval deadline")
+        raw = vr.retrieve(query, **kwargs)
+        health = vr.last_index_health
+        if health is not None and health.queryable is False:
+            raise RuntimeError("Qdrant index unavailable or incompatible")
         if raw:
             label = _cascade_attempt_label(base_kwargs, kwargs)
             if label != "none":
@@ -500,7 +504,11 @@ def _vector_texts_from_state(state: RAGGraphState) -> list[str]:
 def _document_search_texts(state: RAGGraphState) -> list[str]:
     texts = _vector_texts_from_state(state)
     dec = state.get("decomposition") or {}
-    topics = dec.get("evidence_topics")
+    raw = state.get("turn_contract")
+    topics = (
+        [doc.question for doc in TurnContract.from_dict(raw).documents]
+        if isinstance(raw, dict) else dec.get("evidence_topics")
+    )
     if not isinstance(topics, list) or not topics:
         return texts
     # Keep the whole question and necessary language/context views. Replace the
@@ -508,6 +516,25 @@ def _document_search_texts(state: RAGGraphState) -> list[str]:
     detail = state.get("detail_rewrite")
     focused = [topic for topic in topics if isinstance(topic, str) and topic.strip()]
     return list(dict.fromkeys([*(text for text in texts if text != detail), *focused]))
+
+
+def _document_time_is_observation(state: RAGGraphState, contract: TurnContract) -> bool:
+    """Observation dates belong in the search text, even for later releases."""
+    sources = state.get("source_selection")
+    indicator_context = bool(sources and sources["qdrant"]["reason"] == "indicator_context")
+    if not indicator_context and not (is_fact_comparison(contract) and contract.documents):
+        return False
+    if contract.time_spec.time_role not in ("observation", "historical"):
+        return False
+    query = _bq_planning_query(state)
+    return not re.search(r"\b(?:published|released|issued|dated)\s+(?:in|on|during|between|after|before)\b", query, re.I)
+
+
+@dataclass
+class _VectorProgress:
+    deadline: float
+    hits: list[dict[str, Any]] = field(default_factory=list)
+    cache_hit: bool = False
 
 
 def _vector_retrieve_for_corpus(
@@ -558,10 +585,17 @@ def _vector_retrieve_for_corpus(
 
     kwargs = build_kwargs(state, dec)
     _apply_geo_to_kwargs(kwargs, countries)
-    if ts:
-        kwargs["published_at_from"] = ts
-    if te:
-        kwargs["published_at_to"] = te
+    if (default_collection == "public_reports" or is_fact_comparison(contract)) and _document_time_is_observation(
+        state, contract,
+    ):
+        # An assessment may be published after the events it explains.
+        kwargs.pop("published_at_from", None)
+        kwargs.pop("published_at_to", None)
+    else:
+        if ts:
+            kwargs["published_at_from"] = ts
+        if te:
+            kwargs["published_at_to"] = te
 
     from ml.rag.chatbot.ontology_routing import (
         ontology_plan_for_state,
@@ -593,7 +627,13 @@ def _vector_retrieve_for_corpus(
     corpus_key = default_collection
     any_cache_hit = False
     per_text: list[list[dict[str, Any]]] = []
+    progress = state.get("vector_progress")
+    deadline = progress.deadline if progress else None
+    top_k = int(kwargs.get("top_k") or 10)
+    limit = max(top_k * 2, 20)
     for text in texts:
+        if deadline is not None and time.perf_counter() >= deadline:
+            raise FuturesTimeoutError("document retrieval deadline")
         cache_key = retrieval_cache_key(
             session_id=session_id,
             text=text,
@@ -605,29 +645,33 @@ def _vector_retrieve_for_corpus(
         cached = get_cached_hits(cache_key)
         if cached is not None:
             any_cache_hit = True
-            per_text.append(cached)
-            continue
-        raw = _retrieve_vector_cascade(
-            vr,
-            text,
-            base_kwargs=kwargs,
-            countries=countries,
-            has_time=bool(ts or te),
-            geo_fallback_env=geo_fallback_env,
-            time_fallback_env=time_fallback_env,
-            allow_geo_fallback=allow_geo_fb,
-            max_levels=cascade_max,
-            allow_time_fallback=time_fb,
-        )
-        if countries:
-            raw = _post_filter_geography(raw, countries)
-        set_cached_hits(cache_key, raw)
+            raw = cached
+        else:
+            raw = _retrieve_vector_cascade(
+                vr,
+                text,
+                base_kwargs=kwargs,
+                countries=countries,
+                has_time=bool(ts or te),
+                geo_fallback_env=geo_fallback_env,
+                time_fallback_env=time_fallback_env,
+                allow_geo_fallback=allow_geo_fb,
+                max_levels=cascade_max,
+                allow_time_fallback=time_fb,
+                deadline=deadline,
+            )
+            if countries:
+                raw = _post_filter_geography(raw, countries)
+            set_cached_hits(cache_key, raw)
         per_text.append(raw)
+        if progress:
+            progress.cache_hit = any_cache_hit
+            if raw:
+                progress.hits = _merge_vector_context_dicts(per_text, limit=limit)
     # Stash cache flag on state dict when mutable
     if any_cache_hit and isinstance(state, dict):
         state["vector_cache_hit"] = True  # type: ignore[index]
-    top_k = int(kwargs.get("top_k") or 10)
-    return _merge_vector_context_dicts(per_text, limit=max(top_k * 2, 20))
+    return _merge_vector_context_dicts(per_text, limit=limit)
 
 
 class RAGGraphState(ACFState, total=False):
@@ -686,6 +730,7 @@ class RAGGraphState(ACFState, total=False):
     category: str | None
     user_profile: dict[str, Any] | None
     corpus_selection: dict[str, Any] | None
+    vector_progress: _VectorProgress
     # Named answer-language tag (en|sw|fr|pcm|ar|am|ig|…|mixed|unknown)
     answer_lang: str | None
     # English enrich shadow for bind/retrieve (original stays in query/user_query)
@@ -725,7 +770,11 @@ class RAGGraphState(ACFState, total=False):
     measure_id: str | None
     recency_tier: str | None
     turn_contract: dict[str, Any]
+    comparison_gaps: list[dict[str, Any]]
+    fact_requirement_coverage: list[dict[str, Any]]
+    document_requirement_coverage: list[dict[str, Any]]
     routing_plan: dict[str, Any]
+    source_selection: SourceSelection
     query_ir: dict[str, Any]
     supervisor_plan: dict[str, Any] | None
     generation_plan: dict[str, Any] | None
@@ -941,10 +990,40 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             measure_hit=measure_hit,
             task_mode_hint=task_mode,
             matched_bundles=matched_bundles,
+            original_question=state.get("query") or user_q,
         )
-        turn = resolve_capability(turn)
-        if turn.is_fail_closed() and turn.job == "clarify":
+        sources = select_sources(turn, query=q, decomposition=dec, task_mode=task_mode)
+        has_bq = sources["bigquery"]["selected"]
+        has_documents = sources["qdrant"]["selected"]
+        indicator_context = sources["qdrant"]["reason"] == "indicator_context"
+        if has_bq:
+            if turn.job == "clarify":
+                turn.job = "fact"
+                turn.serve_status = "served"
+                turn.serve_reason = ""
+                turn.plan_type = "numeric"
+            turn = resolve_capability(turn)
+        elif has_documents:
+            # The warehouse's missing slots and capability registry do not
+            # prevent serving a document question.
+            if sources["qdrant"]["reason"] == "document_content_requested":
+                turn.job = "brief"
+                task_mode = "research"
+            elif turn.job == "clarify" or not turn.documents:
+                turn.job = "brief"
+            turn.serve_status = "served"
+            turn.serve_reason = ""
+            turn.plan_type = "narrative"
+            turn.skip_bq = True
+            turn.skip_vector_retrieval = False
+        if not (has_bq or has_documents):
             task_mode = "clarify"
+        elif task_mode == "clarify":
+            if has_bq:
+                task_mode = "analytical" if has_documents and not indicator_context else "fact_lookup"
+            else:
+                task_mode = "research"
+        analytical = task_mode == "analytical"
         # Social / meta / product gates stay on the original — never re-run on enrich.
         meta = is_meta_query(user_q)
         help_q = (not meta) and is_help_query(user_q, dec)
@@ -1046,14 +1125,19 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             "route_candidate": route_candidate,
             "early_short_circuit": False,
             "skipped_decompose_llm": skipped_decompose_llm,
-            "skipped_retrieval": not turn.should_retrieve_vector(),
+            "skipped_retrieval": not (has_bq or has_documents),
+            "source_selection": sources,
             "decompose_llm_ms": decompose_llm_ms,
             "metacog_llm_ms": 0.0,
             "metacog_plan": None,
             "metacog_verify": None,
         }
         # Advisory metacog before supervisor/reasoner so diagnose pins flow into job.
-        if metacog_enabled() and route_candidate == "full_rag":
+        explicit_comparison = is_fact_comparison(turn)
+        if (
+            metacog_enabled() and route_candidate == "full_rag" and has_bq and has_documents
+            and not indicator_context and not explicit_comparison
+        ):
             metacog_t0 = time.perf_counter()
             mp = build_metacog_plan(
                 q,
@@ -1085,7 +1169,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             primary_measures=dec.get("primary_measures") if isinstance(dec.get("primary_measures"), list) else None,
         )
         out["supervisor_plan"] = sp.to_dict()
-        if _slot_reasoner_active():
+        if _slot_reasoner_active() and has_bq and not explicit_comparison:
             rp = compile_reasoner_plan(
                 q,
                 decomposition=dec,
@@ -1248,7 +1332,7 @@ def _news_kwargs(state: RAGGraphState, dec: dict[str, Any]) -> dict[str, Any]:
     }
     if _env_on("RAG_NEWS_DOMAIN_FILTER", default=True):
         domains = dec.get("domains") or []
-        if domains:
+        if domains and len(dec.get("evidence_topics") or []) < 2:
             kwargs["domains_substring"] = str(domains[0])
     return kwargs
 
@@ -1298,6 +1382,8 @@ def _retrieve_legacy_research(state: RAGGraphState) -> list[dict[str, Any]]:
             time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
         )
     except Exception:
+        if state.get("vector_progress"):
+            raise
         logger.exception("Legacy research retrieval failed")
         raw = []
     return [_tag_vector(x, "research") for x in raw]
@@ -1326,6 +1412,8 @@ def _retrieve_dense_corpus(
             time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
         )
     except Exception:
+        if state.get("vector_progress"):
+            raise
         logger.exception(
             "Retrieval failed for collection %s (%s)",
             default_collection,
@@ -1337,7 +1425,7 @@ def _retrieve_dense_corpus(
 
 def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
     dec = state.get("decomposition") or {}
-    texts = _vector_texts_from_state(state)
+    texts = _document_search_texts(state)
     if not texts:
         fallback = (state.get("query") or "").strip()
         texts = [fallback] if fallback else []
@@ -1347,11 +1435,17 @@ def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
     )
     ts = str(dec.get("time_start") or "").strip()[:10]
     te = str(dec.get("time_end") or "").strip()[:10]
+    raw_turn = state.get("turn_contract")
+    contract = TurnContract.from_dict(raw_turn if isinstance(raw_turn, dict) else None)
+    if _document_time_is_observation(state, contract):
+        ts, te = "", ""
     top_k = int(state.get("news_top_k") or _DEFAULT_NEWS_TOP_K)
     news_coll = os.environ.get("QDRANT_COLLECTION_NEWS", "news_data").strip() or "news_data"
     vr = VectorRetriever(collection_name=news_coll)
     strict_compare = _strict_compare_filters(dec)
     allow_geo_fb = not strict_compare
+    progress = state.get("vector_progress")
+    completed: list[list[dict[str, Any]]] = []
 
     def _cascade_for_text(
         text: str,
@@ -1365,7 +1459,7 @@ def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
             kw["geo_country"] = target_countries[0]
         elif target_countries:
             _apply_geo_to_kwargs(kw, target_countries)
-        return _retrieve_vector_cascade(
+        raw = _retrieve_vector_cascade(
             vr,
             text,
             base_kwargs=kw,
@@ -1374,10 +1468,15 @@ def _retrieve_news(state: RAGGraphState) -> list[dict[str, Any]]:
             geo_fallback_env="RAG_NEWS_GEO_FALLBACK",
             time_fallback_env="RAG_NEWS_TIME_FALLBACK",
             allow_geo_fallback=allow_geo_fb,
+            deadline=progress.deadline if progress else None,
         )
+        if progress and raw:
+            completed.append(_post_filter_geography(raw, target_countries or countries))
+            progress.hits = _merge_vector_context_dicts(completed, limit=top_k)
+        return raw
 
     def _run_for_countries(target_countries: list[str], *, allow_geo_fb: bool) -> list[dict[str, Any]]:
-        if len(target_countries) >= 2:
+        if len(target_countries) >= 2 and strict_compare:
             per_k = max(3, (top_k + len(target_countries) - 1) // len(target_countries))
             batches: list[list[dict[str, Any]]] = []
             for country in target_countries:
@@ -1490,6 +1589,8 @@ def _retrieve_formation(state: RAGGraphState) -> list[dict[str, Any]]:
             time_fallback_env="RAG_RESEARCH_TIME_FALLBACK",
         )
     except Exception:
+        if state.get("vector_progress"):
+            raise
         logger.exception("Retrieval failed for collection formation (QDRANT_COLLECTION_FORMATION)")
         raw = []
     return [_tag_vector(x, "formation") for x in raw]
@@ -1521,7 +1622,11 @@ def _retrieve_ota(state: RAGGraphState) -> list[dict[str, Any]]:
 
     try:
         raw = vr.retrieve(q, doc_kind="ota_insight", **kw)
+        if vr.last_index_health is not None and vr.last_index_health.queryable is False:
+            raise RuntimeError("Qdrant index unavailable or incompatible")
     except Exception:
+        if state.get("vector_progress"):
+            raise
         logger.exception("OTA retrieval failed for collection %s", coll)
         raw = []
 
@@ -1565,6 +1670,9 @@ def _title_merge_label(prefix: str, meta: dict[str, Any]) -> str:
 
 _VECTOR_WORKERS = RetrievalWorkers("rag-vector", workers=12)
 _WAREHOUSE_WORKERS = RetrievalWorkers("rag-warehouse", workers=4)
+_WAREHOUSE_LEGS = RetrievalWorkers("rag-warehouse-leg", workers=4)
+_RERANK_WORKERS = RetrievalWorkers("rag-rerank", workers=4)
+_GENERATION_RESERVE_S = 10.0
 
 
 def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
@@ -1582,7 +1690,14 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
     sp_raw = state.get("supervisor_plan")
     sp = SupervisorPlan.from_dict(sp_raw if isinstance(sp_raw, dict) else None)
     contract_job = contract.job if contract.measure_id or contract.job != "fact" else contract.job
-    if not contract.should_retrieve_vector() and not (sp and sp.must_search_qdrant):
+    sources = state.get("source_selection")
+    if (
+        (sources is not None and not sources["qdrant"]["selected"])
+        or (
+            sources is None and not contract.should_retrieve_vector() and not contract.documents
+            and not (sp and sp.must_search_qdrant)
+        )
+    ):
         return {
             "vector_news_results": [],
             "vector_academic_papers_results": [],
@@ -1628,12 +1743,13 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
             "news_allowed": bool(planner.get("news_allowed", True)),
             "reasoner_planner": True,
         }
-    if sp and sp.classes and sp.must_search_qdrant:
+    document_lookup = sources is not None and sources["qdrant"]["reason"] == "document_content_requested"
+    if not document_lookup and sp and sp.classes and sp.must_search_qdrant:
         class_corpora = corpora_for_supervisor_plan(sp)
         if class_corpora:
             filtered = [c for c in class_corpora if c in CORPUS_CATALOG]
             if filtered:
-                if decomposition.get("evidence_topics") or len(decomposition.get("primary_measures") or []) > 1:
+                if contract.documents or len(decomposition.get("primary_measures") or []) > 1:
                     filtered = list(dict.fromkeys([*filtered, *selection.active]))
                 selection = CorpusSelection(
                     filtered,
@@ -1654,6 +1770,18 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
                 boosts=selection.boosts,
                 rationale=f"{selection.rationale}|metacog_evidence",
             )
+    scoped_comparison = bool(contract.documents) and is_fact_comparison(contract)
+    if scoped_comparison:
+        selection = CorpusSelection(
+            comparison_document_corpora([doc.question for doc in contract.documents]),
+            boosts=dict(selection.boosts),
+            rationale=f"{selection.rationale}|explicit_document_requirements",
+        )
+    indicator_context = sources is not None and sources["qdrant"]["reason"] == "indicator_context"
+    if indicator_context:
+        selection = CorpusSelection(
+            ["ota", "public_reports", "news"], boosts=selection.boosts, rationale="indicator_context",
+        )
     active = set(selection.active)
     boosts = selection.boosts
 
@@ -1711,18 +1839,31 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
     }
 
     jobs: dict[Any, str] = {}
+    progress_by_corpus: dict[str, _VectorProgress] = {}
+    statuses: dict[str, str] = {}
     corpus_timeout = min(
         stage_budget_seconds("RAG_CORPUS_RETRIEVE_TIMEOUT_S", default_s=4.0),
         stage_budget_seconds("RAG_STAGE_RETRIEVE_BUDGET_S", default_s=12.0),
     )
     vector_t0 = time.perf_counter()
+    deadline = vector_t0 + corpus_timeout
     retrievers = {key: fn for key, fn in retrievers.items() if key in active}
-    if _use_legacy_research_collection():
+    if not (indicator_context or scoped_comparison) and _use_legacy_research_collection():
         retrievers["legacy_research"] = _retrieve_legacy_research
     for key, fn in retrievers.items():
-        future = _VECTOR_WORKERS.try_submit(run_with_tracing_context(fn, state_for_retrieve))
+        if corpus_timeout == 0:
+            statuses[key] = "timeout"
+            corpus_errors.append(f"{key}:timeout")
+            continue
+        progress = _VectorProgress(deadline)
+        progress_by_corpus[key] = progress
+        corpus_state = state_for_retrieve.copy()
+        corpus_state["vector_progress"] = progress
+        with request_budget(max(0.0, deadline - time.perf_counter())):
+            future = _VECTOR_WORKERS.try_submit(run_with_tracing_context(fn, corpus_state))
         if future is None:
             corpus_errors.append(f"{key}:busy")
+            statuses[key] = "busy"
         else:
             jobs[future] = key
 
@@ -1730,16 +1871,35 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
     done, pending = wait(jobs, timeout=remaining)
     for future in pending:
         future.cancel()
-        corpus_errors.append(f"{jobs[future]}:timeout")
+        kind = jobs[future]
+        statuses[kind] = "timeout"
+        corpus_errors.append(f"{kind}:timeout")
     for future in done:
         kind = jobs[future]
         try:
             result = future.result()
+        except FuturesTimeoutError:
+            statuses[kind] = "timeout"
+            corpus_errors.append(f"{kind}:timeout")
+            continue
         except Exception as exc:
-            logger.exception("Parallel retrieval failed for %s; returning empty list", kind)
+            logger.exception("Parallel retrieval failed for %s", kind)
+            statuses[kind] = "error"
             corpus_errors.append(f"{kind}:{type(exc).__name__}")
             continue
         buckets[kind] = result if isinstance(result, list) else []
+        statuses[kind] = "hits" if buckets[kind] else "empty"
+
+    from ml.rag.chatbot.corpus_catalog import context_kind_for_corpus_key
+
+    for key, status in statuses.items():
+        if status in ("timeout", "error"):
+            context_kind = "research" if key == "legacy_research" else context_kind_for_corpus_key(key)
+            buckets[key] = [_tag_vector(hit, context_kind) for hit in progress_by_corpus[key].hits]
+    corpus_results = {
+        key: {"status": statuses[key], "hits": len(buckets[key])}
+        for key in retrievers
+    }
 
     def _with_boost(items: list[dict[str, Any]], corpus_key: str) -> list[dict[str, Any]]:
         boost = float(boosts.get(corpus_key, 0.0))
@@ -1763,6 +1923,7 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
         "corpus_rationale": selection.rationale,
         "corpus_count": len(selection.active),
         "vector_ms": trace_elapsed_ms(vector_t0),
+        "corpus_results": corpus_results,
     }
     if corpus_errors:
         meta_update["corpus_error"] = ",".join(corpus_errors)
@@ -1794,13 +1955,13 @@ def node_parallel_retrieve(state: RAGGraphState) -> RAGGraphState:
         + list(formation_out)
         + list(legacy_out),
         "vector_results": combined,
-        "corpus_selection": {**selection.to_dict(), **planner_meta},
+        "corpus_selection": {**selection.to_dict(), **planner_meta, "results": corpus_results},
         "vector_ms": meta_update["vector_ms"],
         "corpus_count": len(selection.active),
         "cascade_level": 1 if task_mode in ("fact_lookup", "data_export_only") else None,
         "vector_texts_used": texts_used,
         "user_query_dropped": _uq_dropped(state_for_retrieve.get("query_views"), texts_used),
-        "vector_cache_hit": bool(state_for_retrieve.get("vector_cache_hit")),
+        "vector_cache_hit": any(progress.cache_hit for progress in progress_by_corpus.values()),
         "retrieval_partial": bool(corpus_errors),
     }
 
@@ -1856,13 +2017,26 @@ def _build_bq_sql_plan(
 ) -> dict[str, Any]:
     """Single BQ plan builder.
 
-    Priority (do not reorder without updating tests + ARCHITECTURE mode matrix):
+    Explicit comparisons use the bound requirements before other planning paths.
+    Priority for other request shapes:
       1. slot reasoner (when active + bq_subquestions)
       2. class engines → bind_contracts (planned path; no engine SELECT strings)
       3. analytical / export → reason_bq_sql_plan escape
       4. compile_error block (default when classes empty and compiler preference on)
       5. legacy reason_bq_sql_plan only when compiler preference off
     """
+    raw = state.get("turn_contract")
+    turn = TurnContract.from_dict(raw if isinstance(raw, dict) else None)
+    sources = state.get("source_selection")
+    if sources is not None and turn.facts:
+        selected = {
+            item["requirement"] for item in sources["bigquery"]["requirements"] if item["selected"]
+        }
+        turn = replace(turn, facts=[fact for fact in turn.facts if fact.measure_id in selected])
+    requirement_plan = plan_fact_comparison(turn, query=q, facets=dec)
+    if requirement_plan is not None:
+        return normalize_bq_plan(requirement_plan, plan_source="turn_requirements")
+
     rp_raw = state.get("reasoner_plan")
     reasoner = ReasonerPlan.from_dict(rp_raw if isinstance(rp_raw, dict) else None)
     if reasoner and reasoner.bq_subquestions() and _slot_reasoner_active():
@@ -1970,6 +2144,7 @@ def node_bq_reason(state: RAGGraphState) -> RAGGraphState:
     contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
     if (
         contract.skip_bq
+        and plan.get("plan_source") != "turn_requirements"
         and not plan.get("heavy_path")
         and not plan.get("slot_path")
         and not plan.get("bq_sql_queries")
@@ -2175,6 +2350,9 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
     dec: dict[str, Any] = raw_dec if isinstance(raw_dec, dict) else {}
     raw_plan = state.get("bq_sql_plan")
     plan: dict[str, Any] = raw_plan if isinstance(raw_plan, dict) else {}
+    requirement_path = plan.get("plan_source") == "turn_requirements"
+    tc_raw = state.get("turn_contract")
+    contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
     if plan.get("skip_bq"):
         return {
             "bq_results": [],
@@ -2189,7 +2367,7 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
     if (
         os.environ.get("ADZA_ONTOLOGY_SKIP_BQ", "0").strip().lower()
         in ("1", "true", "on", "yes")
-        and not bq_should_run(onto_plan)
+        and not requirement_path and not bq_should_run(onto_plan)
     ):
         # Intentional skip for qdrant_only subjects — do not mark warehouse empty.
         return {
@@ -2203,7 +2381,7 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
         }
 
     cached = state.get("structured_ranking_cache")
-    if isinstance(cached, dict) and is_ranking_follow_up(q, dec, cached):
+    if not requirement_path and isinstance(cached, dict) and is_ranking_follow_up(q, dec, cached):
         results = bq_results_from_cache(cached)
         bq_sql_queries, bq_sql_debug = aggregate_bq_sql_debug(results)
         update_current_span_metadata({"bq_cache_hit": True})
@@ -2243,7 +2421,7 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
             if isinstance(entry, dict) and _fp_equal(entry.get("fingerprint"), fp):
                 fact_cached = entry
                 break
-    if should_reuse_facts(
+    if not requirement_path and should_reuse_facts(
         context_applied=bool(state.get("context_applied")),
         current_facets=facets,
         cached_entry=fact_cached,
@@ -2281,6 +2459,11 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
     )
     ts = str(dec.get("time_start") or "").strip()[:10]
     te = str(dec.get("time_end") or "").strip()[:10]
+    if requirement_path:
+        countries = contract.geo
+        ts = min(window.start for window in contract.time_spec.windows).isoformat()
+        te = max(window.end for window in contract.time_spec.windows).isoformat()
+        dec = {**dec, "geography": countries, "time_start": ts, "time_end": te}
     entities = dec.get("entities") if isinstance(dec.get("entities"), list) else None
     domains = dec.get("domains") if isinstance(dec.get("domains"), list) else None
     retriever = BQRetriever()
@@ -2291,7 +2474,9 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
         bq_geo["geo_country"] = countries[0]
 
     max_sql_queries: int | None = None
-    if bool(state.get("analytical_mode")) or plan.get("analytical_mode"):
+    if requirement_path:
+        max_sql_queries = int(plan["max_sql_queries"])
+    elif bool(state.get("analytical_mode")) or plan.get("analytical_mode"):
         from ml.rag.chatbot.analytical_bq_plan import analytical_sql_query_floor
 
         max_sql_queries = int(plan.get("max_sql_queries") or analytical_sql_query_floor())
@@ -2302,8 +2487,6 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
     if engine_execute_only:
         intents = []
     bq_timeout = stage_budget_seconds("RAG_BQ_RETRIEVE_TIMEOUT_S", default_s=25.0)
-    tc_raw = state.get("turn_contract")
-    contract = TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None)
     contract_kwargs: dict[str, Any] = {}
     if contract.measure_id or contract.serve_status != "served":
         contract_kwargs = {
@@ -2315,6 +2498,7 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
     bq_failure_row: dict[str, Any] | None = None
     node_timed_out = False
     retrieve_deadline = time.perf_counter() + bq_timeout
+    job_deadline = retrieve_deadline - min(0.20, bq_timeout * 0.15)
     retrieve_kwargs: dict[str, Any] = {
         "crop_required": bool(plan.get("crop_required", True)),
         "geography_required": bool(plan.get("geography_required", True)),
@@ -2336,6 +2520,8 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
     plan_source = str(plan.get("plan_source") or "").strip()
     if plan_source:
         retrieve_kwargs["plan_source"] = plan_source
+    if requirement_path:
+        contract_kwargs.update(contract_sql_only=True, serve_status="served", template_key="")
     retrieve_mode = str(plan.get("retrieve_mode") or "").strip()
     if retrieve_mode:
         retrieve_kwargs["retrieve_mode"] = retrieve_mode
@@ -2369,7 +2555,7 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
                 domains=domains,
                 task_mode=task_mode,
                 sql=pre_queries if pre_queries else None,
-                deadline=retrieve_deadline,
+                deadline=job_deadline,
                 **bq_geo,
                 **contract_kwargs,
                 **retrieve_kwargs,
@@ -2673,7 +2859,10 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
             active_corpora = len(active_raw)
     structured = [item for item in merged if is_warehouse_item(item)]
     documents = [item for item in merged if not is_warehouse_item(item)]
-    if len(documents) <= 8 and active_corpora <= 1:
+    scoped_documents = _has_explicit_document_requirements(state, contract)
+    if scoped_documents:
+        documents = requirement_document_candidates(contract, documents)
+    if not scoped_documents and len(documents) <= 8 and active_corpora <= 1:
         packed = diversify_context_pack(list(documents), top_k=None, task_mode=task_mode)
         pack = typed_context_pack(
             [*structured, *packed], contract, top_k=top_k if top_k > 0 else None
@@ -2703,13 +2892,28 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
     score_k = max(top_k, min(pool, max(len(merged), top_k)))
     numeric_query = is_numeric_data_query(str(query), dec)
     comparative_query = is_comparative_bq_query(str(query), dec)
-    scored = rerank(
-        query,
-        documents,
-        top_k=score_k,
-        numeric_query=numeric_query,
-        comparative_query=comparative_query,
-    ) if documents else []
+    def _rank() -> tuple[list[dict[str, Any]], str]:
+        ranked = rerank(
+            "\n".join(doc.question for doc in contract.documents) if scoped_documents else query,
+            documents,
+            top_k=score_k,
+            numeric_query=numeric_query,
+            comparative_query=comparative_query,
+        )
+        return ranked, last_rerank_mode()
+
+    scored, mode = documents[:score_k], "skipped_budget" if documents else "skipped_no_documents"
+    with request_budget(reserve_s=_GENERATION_RESERVE_S):
+        if documents and remaining_seconds() != 0:
+            future = _RERANK_WORKERS.try_submit(run_with_tracing_context(_rank))
+            if future is not None:
+                try:
+                    scored, mode = future.result(timeout=remaining_seconds())
+                except FuturesTimeoutError:
+                    future.cancel()
+                except Exception:
+                    mode = "skipped_error"
+                    logger.exception("Document rerank failed")
     packed = diversify_context_pack(scored, top_k=None, task_mode=task_mode)
     pack = typed_context_pack(
         [*structured, *packed], contract, top_k=top_k if top_k > 0 else None
@@ -2718,7 +2922,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
     return {
         "reranked_context": items,
         "evidence_drops": _with_place_drops(dropped, place_dropped),
-        "rerank_mode": last_rerank_mode(),
+        "rerank_mode": mode,
         "rerank_ms": trace_elapsed_ms(rerank_t0),
         "rerank_pool_size": pool,
         "retrieval_stage_counts": {
@@ -2912,7 +3116,15 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         str(query),
         dec_dict,
     )
+    raw_turn = state.get("turn_contract")
+    turn = TurnContract.from_dict(raw_turn if isinstance(raw_turn, dict) else None)
+    raw_plan = state.get("bq_sql_plan")
+    plan_dict = raw_plan if isinstance(raw_plan, dict) else {}
+    requirement_plan = plan_dict.get("plan_source") == "turn_requirements"
     bq_results = state.get("bq_results") or []
+    if requirement_plan:
+        context = [item for item in context if not is_warehouse_item(item) or matches_bound_fact(item, turn, plan_dict)]
+        bq_results = [row for row in bq_results if matches_bound_fact(row, turn, plan_dict)]
     usable_bq = [r for r in bq_results if is_usable_structured_bq_row(r)]
     analytical = bool(state.get("analytical_mode"))
     task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
@@ -2964,8 +3176,6 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         gkw["export_intent"] = state.get("export_intent")
     raw_bq_debug = state.get("bq_sql_debug")
     bq_debug = list(raw_bq_debug) if isinstance(raw_bq_debug, list) else []
-    raw_plan = state.get("bq_sql_plan")
-    plan_dict = raw_plan if isinstance(raw_plan, dict) else {}
     state_queries = list(state.get("bq_sql_queries") or [])
     pre_queries = collect_pre_queries(
         plan_dict,
@@ -3054,13 +3264,40 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         rows_by_subquestion=rows_by if slot_active else None,
     )
     gkw["generation_plan"] = gen_plan.to_dict()
-    raw_topics = (dec_dict or {}).get("evidence_topics")
-    topics = [topic for topic in raw_topics if isinstance(topic, str)] if isinstance(raw_topics, list) else []
+    topics = [doc.question for doc in turn.documents]
+    fact_coverage: list[dict[str, Any]] = []
+    corpus_selection = state.get("corpus_selection")
+    corpus_results = corpus_selection.get("results") if isinstance(corpus_selection, dict) else None
+    document_coverage = (
+        document_requirement_coverage(
+            turn, context, corpus_results=corpus_results if isinstance(corpus_results, dict) else None,
+        )
+        if _has_explicit_document_requirements(state, turn) else []
+    )
     if topics:
         gkw["composer_addendum"] = (
             "Address each requested aspect separately and state any evidence gap for that aspect. "
             "Requested aspects: " + "; ".join(topics)
         )
+    if document_coverage:
+        gkw["require_document_citations"] = True
+        missing_documents = [
+            f"{entry['question']} ({entry['status'].replace('_', ' ')})"
+            for entry in document_coverage if entry["status"] != "candidate_available"
+        ]
+        instructions = (
+            "Cite each document-based claim inline using its source number. "
+            "Use the passage tagged for the requirement and verify its actual wording. "
+            "Describe an association as such unless the cited passage establishes causation."
+        )
+        if missing_documents:
+            instructions += " State these document evidence gaps: " + "; ".join(missing_documents)
+        gkw["composer_addendum"] += "\n\n" + instructions
+    if requirement_plan:
+        # Use only rows that actually reach generation and carry their original observation dates.
+        numeric_context = [item for item in context if is_usable_structured_bq_row(item)]
+        fact_coverage = fact_requirement_coverage(turn, plan_dict, numeric_context, bq_debug)
+    gaps = [entry for entry in fact_coverage if entry["status"] != "satisfied"]
     onto_for_gen = state.get("ontology_plan")
     if isinstance(onto_for_gen, dict):
         gkw["ontology_plan"] = onto_for_gen
@@ -3108,6 +3345,28 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         gkw["turn_contract"] = tc_raw
     if gen_plan.effective_category:
         gkw["category"] = gen_plan.effective_category
+    if requirement_plan:
+        requirements = [
+            "Compare each requested indicator (" + ", ".join(f.measure_id for f in turn.facts)
+            + ") across the requested places and periods.",
+            "Use only matching evidence and do not substitute a related metric. "
+            "Explain relationships with cited assessments and distinguish causation from association. "
+            "Do not treat partial rows as complete series or average across sources or scales.",
+        ]
+        if gaps:
+            requirements.append(
+                "State separately where comparable data is unavailable: "
+                + "; ".join(
+                    f"{g['measure']} in {g['geo']} for {', '.join(map(str, g['missing_years']))} "
+                    f"({g['status'].replace('_', ' ')})" for g in gaps
+                )
+                + ". Keep and cite the findings that are supported."
+            )
+        if document_coverage:
+            requirements.append("Verify the exact indicator, place, period and unit of any figure cited from a document.")
+        gkw["composer_addendum"] = "\n\n".join(filter(None, (
+            gkw.get("composer_addendum"), " ".join(requirements),
+        )))
     gen_t0 = time.perf_counter()
     gen_result = generate(query, context, **gkw)
     draft_answer = str(gen_result.answer or "")
@@ -3151,6 +3410,10 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
     acf = revised_result.acf or no_evidence_acf()
     answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
     dec_dict = dec if isinstance(dec, dict) else {}
+    cited_topics = set(revised_result.cited_document_requirements)
+    for entry in document_coverage:
+        if entry["status"] == "candidate_available":
+            entry["status"] = "cited_candidate" if entry["question"] in cited_topics else "candidate_not_cited"
 
     out_gen: dict[str, Any] = {
         "query": str(query),
@@ -3160,6 +3423,9 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         "answer_lang": answer_lang,
         "answer_outcome": decide_outcome(filter_context_items(context)).kind,
         "generation_plan": gen_plan.to_dict(),
+        "comparison_gaps": gaps,
+        "fact_requirement_coverage": fact_coverage,
+        "document_requirement_coverage": document_coverage,
         "generate_ms": trace_elapsed_ms(gen_t0),
         "generate_max_tokens": gen_max,
         "generate_input_chars": getattr(revised_result, "generate_input_chars", None),
@@ -3365,20 +3631,73 @@ def node_generate_product(state: RAGGraphState) -> RAGGraphState:
 
 
 def node_retrieve_legs(state: RAGGraphState) -> RAGGraphState:
-    """Run document retrieval and the full warehouse leg in parallel."""
+    """Dispatch only the selected source legs and overlap work when both are needed."""
+    with request_budget(reserve_s=_GENERATION_RESERVE_S):
+        return _retrieve_selected_legs(state)
+
+
+def _retrieve_selected_legs(state: RAGGraphState) -> RAGGraphState:
+    reason: RAGGraphState = {}
 
     def _bq_leg() -> RAGGraphState:
+        nonlocal reason
         reason = node_bq_reason(state)
         retrieve = node_bq_retrieve({**state, **reason})
         return {**reason, **retrieve}
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        fut_vec = pool.submit(node_parallel_retrieve, state)
-        fut_bq = pool.submit(_bq_leg)
-        vec_out = fut_vec.result()
-        bq_out = fut_bq.result()
-    
-    return {**vec_out, **bq_out}
+    bq_selected = _source_selected(state, "bigquery")
+    docs_selected = _source_selected(state, "qdrant")
+    if not bq_selected:
+        docs = node_parallel_retrieve(state) if docs_selected else {}
+        return RAGGraphState(**{**docs, "bq_results": [], "bq_sql_plan": {"skip_bq": True}, "sql_source": "skipped"})
+    future = None
+    if remaining_seconds() != 0:
+        future = _WAREHOUSE_LEGS.try_submit(run_with_tracing_context(_bq_leg))
+    docs = node_parallel_retrieve(state) if docs_selected else {
+        "vector_results": [],
+        "corpus_selection": {"active": [], "boosts": {}, "rationale": "source_selection"},
+        "vector_ms": 0.0,
+        "corpus_count": 0,
+    }
+    bq_failure = "bq_error"
+    if future is not None:
+        try:
+            return {**docs, **future.result(timeout=remaining_seconds())}
+        except FuturesTimeoutError:
+            future.cancel()
+            bq_failure = "bq_timeout"
+        except Exception:
+            logger.exception("Warehouse retrieval leg failed")
+    elif remaining_seconds() == 0:
+        bq_failure = "bq_timeout"
+    return {
+        **docs,
+        **reason,
+        "bq_results": [],
+        "bq_sql_debug": [{"status": bq_failure}],
+    }
+
+
+def _source_selected(state: RAGGraphState, source: Source) -> bool:
+    sources = state.get("source_selection")
+    return sources is None or sources[source]["selected"]
+
+
+def _has_explicit_document_requirements(state: RAGGraphState, turn: TurnContract) -> bool:
+    sources = state.get("source_selection")
+    return bool(turn.documents) and (
+        is_fact_comparison(turn) or bool(sources and sources["qdrant"]["reason"] == "document_content_requested")
+    )
+
+
+def _route_after_evidence(state: RAGGraphState) -> str:
+    sources = state.get("source_selection")
+    if sources and (
+        not sources["qdrant"]["selected"]
+        or sources["qdrant"]["reason"] in ("document_content_requested", "indicator_context")
+    ):
+        return "generate"
+    return route_after_rerank(dict(state))
 
 
 def _evidence_empty(state: RAGGraphState) -> bool:
@@ -3423,62 +3742,33 @@ def _profile_ui_scope_updates(state: RAGGraphState) -> RAGGraphState:
     return updates
 
 
-def _rerun_retrieve_merge_rerank(state: RAGGraphState) -> RAGGraphState:
-    retry_bq = should_retry_bq(dict(state))
-    if retry_bq:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            fut_vec = pool.submit(node_parallel_retrieve, state)
-            fut_bq = pool.submit(node_bq_retrieve, state)
-            vec_out = fut_vec.result()
-            bq_out = fut_bq.result()
-        updates = vec_out
-        updates.update(bq_out)
-    else:
-        updates = node_parallel_retrieve(state)
-    updates.update(node_merge({**state, **updates}))
-    updates.update(node_rerank({**state, **updates}))
-    return updates
-
-
 def node_coverage_retry(state: RAGGraphState) -> RAGGraphState:
-    """At most one re-vector (+ optional BQ) when required slots missing from evidence.
-
-    When the empty result was filtered by profile or UI scope, that one retry
-    drops only those filters. Query-derived countries and dates stay.
-    """
+    """Retry an empty document search once when optional filters can be removed."""
+    remaining = remaining_seconds()
+    if remaining is not None and remaining <= _GENERATION_RESERVE_S + 1:
+        return {}
+    plan = state.get("bq_sql_plan")
+    if isinstance(plan, dict) and plan.get("plan_source") == "turn_requirements":
+        # The comparison plan has already searched its explicit periods and places.
+        # Repeating whole retrieval cannot resolve a missing or unbound series.
+        return {}
     dec_raw = state.get("decomposition")
     dec: dict[str, Any] = dec_raw if isinstance(dec_raw, dict) else {}
     if (
         int(state.get("profile_scope_retry") or 0) < 1
+        and _source_selected(state, "qdrant")
         and not state.get("retrieval_partial")
         and _evidence_empty(state)
         and _profile_ui_scope_active(dec)
     ):
         updates = _profile_ui_scope_updates(state)
-        with observed_span("profile_scope_retry", input_data={"attempt": 1}):
-            updates.update(_rerun_retrieve_merge_rerank({**state, **updates}))
+        with request_budget(reserve_s=_GENERATION_RESERVE_S), observed_span("profile_scope_retry", input_data={"attempt": 1}):
+            updates.update(node_parallel_retrieve({**state, **updates}))
+            updates.update(node_merge({**state, **updates}))
+            updates.update(node_rerank({**state, **updates}))
             update_current_span_metadata({"profile_scope_retry": 1})
         return updates
-
-    if not should_coverage_retry(dict(state)):
-        return {}
-
-    updates: RAGGraphState = {"coverage_retry": 1}
-    with observed_span("coverage_retry", input_data={"attempt": 1}):
-        retried = _rerun_retrieve_merge_rerank({**state, **updates})
-        new_ranked = retried.get("reranked_context") or []
-        if "bq_results" not in retried:
-            # Rows carried over from the first pass do not make the retry successful.
-            new_ranked = [item for item in new_ranked if not is_warehouse_item(item)]
-        new_evidence: RAGGraphState = {
-            "reranked_context": new_ranked,
-            "bq_results": retried.get("bq_results") or [],
-        }
-        keep_first_pass = not _evidence_empty(state) and _evidence_empty(new_evidence)
-        if not keep_first_pass:
-            updates.update(retried)
-        update_current_span_metadata({"coverage_retry": 1, "kept_first_pass": keep_first_pass})
-    return updates
+    return {}
 
 
 def node_metacog_revise(state: RAGGraphState) -> RAGGraphState:
@@ -3582,7 +3872,11 @@ def build_graph():
 
     graph = StateGraph(RAGGraphState)
 
-    graph.add_node("decompose", node_decompose)
+    def _decompose_with_budget(state: RAGGraphState) -> RAGGraphState:
+        with request_budget(reserve_s=_GENERATION_RESERVE_S):
+            return node_decompose(state)
+
+    graph.add_node("decompose", _decompose_with_budget)
     graph.add_node("retrieve_legs", node_retrieve_legs)
     graph.add_node("merge", node_merge)
     graph.add_node("rerank", node_rerank)
@@ -3638,7 +3932,7 @@ def build_graph():
     )
     graph.add_conditional_edges(
         "coverage_retry",
-        route_after_rerank,
+        _route_after_evidence,
         {
             "web_fallback": "web_fallback",
             "generate": "metacog_revise",
@@ -3744,7 +4038,9 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
         category=str(kwargs.get("category") or "").strip() or None,
         tags=extra_tags,
     )
-    result = graph.invoke(initial, config=cfg)
+    timeout = stage_budget_seconds("RAG_REQUEST_TIMEOUT_S", default_s=45.0)
+    with request_budget(timeout):
+        result = graph.invoke(initial, config=cfg)
     out = dict(result)
     out.setdefault("citations", [])
     out.setdefault("artifacts", [])

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import contextmanager
+from threading import Event
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -94,6 +97,32 @@ def test_query_without_key_is_401(client: TestClient, calls: list) -> None:
 
 def test_health_is_public(client: TestClient) -> None:
     assert client.get("/health").status_code == 200
+
+
+def test_running_query_does_not_block_liveness(client: TestClient, calls: list, monkeypatch) -> None:
+    entered = Event()
+    release = Event()
+
+    def slow_run(*_args, **_kwargs):
+        entered.set()
+        release.wait(3)
+        return {"answer": "finished", "citations": []}
+
+    monkeypatch.setattr("ml.rag.graph.run_rag", slow_run)
+
+    async def probe() -> None:
+        transport = httpx.ASGITransport(app=client.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as api:
+            query = asyncio.create_task(api.post("/query", headers={"X-API-Key": WEB_KEY}, json={"query": "maize yields"}))
+            try:
+                assert await asyncio.to_thread(entered.wait, 2)
+                assert (await api.get("/health")).status_code == 200
+                assert not query.done()
+            finally:
+                release.set()
+            assert (await query).status_code == 200
+
+    asyncio.run(probe())
 
 
 def test_docs_require_key(client: TestClient) -> None:

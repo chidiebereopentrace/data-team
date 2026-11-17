@@ -173,12 +173,20 @@ def typed_context_pack(
             dropped["relevance_floor"] += 1
             continue
         scored_docs.append(it)
+    scoped_docs = [item for item in scored_docs if item_meta(item).get("document_requirements")]
+    if scoped_docs:
+        scored_docs = [*scoped_docs, *(item for item in scored_docs if not item_meta(item).get("document_requirements"))]
     budget_docs = scored_docs[:DOCUMENT_BUDGET]
     dropped["document_budget"] += len(scored_docs) - len(budget_docs)
 
     if contract.job == "diagnose" and top_k and budget_docs:
         # Leave room for documents that support an explanation alongside the figures.
         row_budget = top_k - min(len(budget_docs), max(1, top_k // 2))
+        dropped["over_top_k"] += max(0, len(shaped_rows) - row_budget)
+        shaped_rows = shaped_rows[:row_budget]
+    elif contract.job == "compare" and top_k and scoped_docs:
+        # Leave a place for an explanation in a comparison with many numeric rows.
+        row_budget = max(0, top_k - 1)
         dropped["over_top_k"] += max(0, len(shaped_rows) - row_budget)
         shaped_rows = shaped_rows[:row_budget]
 

@@ -183,7 +183,7 @@ def test_build_mart_point_fact_production_with_yield_entity_noise() -> None:
     assert "element = 'Yield'" not in sql
     assert "metric = 'production_production_physical'" in sql
     assert "NGA" in sql
-    assert "product_name = 'Maize'" in sql
+    assert "product_name = 'Maize (corn)'" in sql
 
 
 def test_sanitize_decomposition_strips_yield_climate_for_production() -> None:

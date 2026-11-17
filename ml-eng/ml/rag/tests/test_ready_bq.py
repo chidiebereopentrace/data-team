@@ -21,14 +21,17 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS_BASE64", raising=False)
     monkeypatch.delenv("RAG_REDIS_URL", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.setattr(api_mod, "warmup_query_embeddings", lambda: True)
     return TestClient(api_mod.app)
 
 
 def test_ready_skips_bq_when_project_unset(client: TestClient) -> None:
-    resp = client.get("/ready")
+    with client:
+        resp = client.get("/ready")
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ready"
+    assert body["query_embeddings_ready"] is True
     assert body["bq"]["ok"] is True
     assert body["bq"].get("skipped")
 
@@ -38,8 +41,9 @@ def test_ready_not_ready_when_bq_project_without_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("BQ_PROJECT", "demo-project")
-    resp = client.get("/ready")
-    assert resp.status_code == 200
+    with client:
+        resp = client.get("/ready")
+    assert resp.status_code == 503
     body = resp.json()
     assert body["status"] == "not_ready"
     assert body["bq"]["ok"] is False
@@ -67,8 +71,19 @@ def test_ready_gcp_json_ok_but_bq_client_fails(
         "ok": False,
         "error": "bq unreachable",
     })
-    resp = client.get("/ready")
-    assert resp.status_code == 200
+    with client:
+        resp = client.get("/ready")
+    assert resp.status_code == 503
     body = resp.json()
     assert body["status"] == "not_ready"
     assert body["bq"]["ok"] is False
+
+
+def test_failed_embedding_warmup_blocks_readiness(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(api_mod, "warmup_query_embeddings", lambda: False)
+    with client:
+        resp = client.get("/ready")
+        assert client.get("/health").status_code == 200
+    assert resp.status_code == 503
+    assert resp.json()["query_embeddings_ready"] is False
+    assert resp.json()["missing_config_keys"] == []

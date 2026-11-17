@@ -13,6 +13,7 @@ from typing import Any
 
 from ml.rag.chatbot.bundle_metrics import AGRI_ACTIVITIES_STAPLES, food_price_basket
 from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
+from ml.rag.chatbot.sql_ast_validate import string_literal as _lit
 from ml.rag.chatbot.price_vocab import (
     PricePlace,
     PriceSeries,
@@ -74,10 +75,6 @@ def price_window(time_start: str | None, time_end: str | None, query: str) -> Pr
     if not years:
         return PriceWindow(None, None)
     return PriceWindow(min(years), max(years))
-
-
-def _lit(value: str) -> str:
-    return "'" + str(value).replace("'", "''") + "'"
 
 
 def _in(values: list[str]) -> str:
