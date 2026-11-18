@@ -1,0 +1,21 @@
+{
+  "view": "opentrace-prod-5ga4.mart_dev.v_dim_indicator",
+  "updated": "2026-11-07 19:28:33.417000+00:00",
+  "dependent_mart_views": [],
+  "dry_run_bytes": 14587367,
+  "probe_job_id": "c110949c-6720-48a6-a2c4-2527c4ab1ce4",
+  "probe_rows": 1,
+  "columns": [
+    "country_name",
+    "year",
+    "item_key",
+    "measurement_form",
+    "unit",
+    "value_avg",
+    "row_count",
+    "geography_country_name",
+    "indicator_name",
+    "indicator_key"
+  ],
+  "dependency_check_sql": "SELECT table_name FROM `opentrace-prod-5ga4.mart_dev.INFORMATION_SCHEMA.VIEWS` WHERE table_name != 'v_dim_indicator' AND STRPOS(LOWER(view_definition), 'v_dim_indicator') > 0"
+}

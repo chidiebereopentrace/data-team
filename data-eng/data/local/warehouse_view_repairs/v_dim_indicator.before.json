@@ -1,0 +1,79 @@
+{
+  "kind": "bigquery#table",
+  "etag": "tMCYOSSUt3H9ZWJzh9tyPg==",
+  "id": "opentrace-prod-5ga4:mart_dev.v_dim_indicator",
+  "selfLink": "https://bigquery.googleapis.com/bigquery/v2/projects/opentrace-prod-5ga4/datasets/mart_dev/tables/v_dim_indicator",
+  "tableReference": {
+    "projectId": "opentrace-prod-5ga4",
+    "datasetId": "mart_dev",
+    "tableId": "v_dim_indicator"
+  },
+  "schema": {
+    "fields": [
+      {
+        "name": "country_name",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "year",
+        "type": "INTEGER",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "item_key",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "measurement_form",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "unit",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "value_avg",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "row_count",
+        "type": "INTEGER",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "country_name_1",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "indicator_name",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "indicator_key",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      }
+    ]
+  },
+  "numBytes": "0",
+  "numLongTermBytes": "0",
+  "numRows": "0",
+  "creationTime": "1789821058941",
+  "lastModifiedTime": "1789821059214",
+  "type": "VIEW",
+  "view": {
+    "query": "SELECT \r\n    -- Attributs de la table d'agr\u00e9gat / fait\r\n    f.country_name,\r\n    f.year,\r\n    f.item_key,\r\n    f.measurement_form,\r\n    f.unit,\r\n    f.value_avg,\r\n    f.row_count,\r\n\r\n    -- Attributs des dimensions crois\u00e9es (optionnel)\r\n    geo.country_name,\r\n    ind.indicator_name,\r\n    ind.indicator_key\r\n\r\nFROM `opentrace-prod-5ga4.mart_dev.agg_economics_country_year` AS f\r\n\r\n-- Jointure avec les dimensions via les cl\u00e9s explicites (_key)\r\nLEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_geography` AS geo \r\n    ON f.geography_key = geo.geography_key\r\n\r\nLEFT JOIN `opentrace-prod-5ga4.mart_dev.dim_indicator` AS ind \r\n    ON f.item_key = ind.indicator_key\r\n\r\nWHERE f.year >= 2020\r\nORDER BY f.country_name ASC, f.year DESC;",
+    "useLegacySql": false
+  },
+  "location": "europe-west3",
+  "numTotalLogicalBytes": "0",
+  "numActiveLogicalBytes": "0",
+  "numLongTermLogicalBytes": "0"
+}

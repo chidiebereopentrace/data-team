@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: farmlover_landing
+    description: "Collected Farm Lover data in BigQuery."
+    database: opentrace-prod-5ga4
+    schema: landing
+
+    tables:
+      - name: tshwane_prices
+        identifier: farmlover_tshwane_prices
+        description: "Tshwane market prices and package details."

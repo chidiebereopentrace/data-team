@@ -19,7 +19,8 @@
 # BigQuery reality:
 # - Datasets are named: landing, raw_dev, staging_dev, intermediate_dev, mart_dev
 # - Local Postgres schemas are created to match those dataset ids.
-# - The setup profile refreshes scripts/{layer}_tables.txt from live BigQuery, then loads those tables.
+# - Tables and views are discovered live for each configured dataset.
+# - BQ_PARTITION_LIMIT=0 copies all rows; per-layer subsets use BQ_{LAYER}_TABLES.
 
 services:
   postgres:
