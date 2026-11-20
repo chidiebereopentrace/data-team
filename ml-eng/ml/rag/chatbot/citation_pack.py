@@ -5,6 +5,30 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
+
+def consolidate_warehouse_citations(
+    answer: str, citations: list[dict[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Present one source per warehouse indicator, retaining document identities.
+
+    Row-level ids remain internal until grounding and evidence scoring finish.
+    Repeated warehouse markers map to the first cited row of that source/indicator.
+    """
+    sources: dict[tuple[str, str], int] = {}
+    aliases: dict[int, int] = {}
+    public = []
+    for citation in citations:
+        source_id = int(citation["id"])
+        if citation.get("kind") == "structured_data":
+            key = (str(citation.get("text") or ""), str(citation.get("url") or ""))
+            canonical = sources.setdefault(key, source_id)
+            aliases[source_id] = canonical
+            if canonical != source_id:
+                continue
+        public.append(citation)
+    prose = re.sub(r"\[(\d+)\]", lambda match: f"[{aliases.get(int(match[1]), int(match[1]))}]", answer)
+    return _collapse_duplicate_citation_markers(prose), public
+
 _SOURCE_REF_RE = re.compile(
     r"\[Source\s+(\d+)\]"
     r"|\[(?!\s*Source\s)(\d+)\]"
@@ -32,7 +56,7 @@ _KNOWN_ANALYTICAL_HEADINGS = (
     "Regional overview",
 )
 _MODEL_SOURCES_APPENDIX_RE = re.compile(
-    r"\n+(?:Sources|References|Bibliography)\s*:?\s*\n[\s\S]*\Z",
+    r"(?:\A|\n+)(?:Sources|References|Bibliography)\s*:?\s*\n[\s\S]*\Z",
     re.IGNORECASE,
 )
 

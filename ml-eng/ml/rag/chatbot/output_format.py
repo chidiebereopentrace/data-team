@@ -4,7 +4,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from ml.rag.chatbot.capability_registry import unsupported_answer_hint
 from ml.rag.chatbot.turn_contract import NUMERIC_JOBS, TurnContract
 
 OutputType = Literal[
@@ -159,11 +158,11 @@ SLOT_TEMPLATES: dict[OutputType, OutputSlots] = {
         allow_headings=frozenset(),
     ),
     "insufficient": OutputSlots(
-        lead="Cannot ground TYPE at GRAIN for PLACE × TIME — then what exists instead.",
-        spine="Do not invent a table; state available grain or breakdown.",
+        lead="In plain language, say which requested finding could not be verified in this run and why.",
+        spine="Present any relevant verified findings. Never copy template instructions or internal status labels.",
         interpretation=None,
         implications=None,
-        limits="How to rephrase the question (1–2 lines). No Sources unless truly cited.",
+        limits="A failed, rejected or incomplete search does not establish that data is absent. Cite only evidence used.",
         allow_headings=frozenset(),
     ),
     "export": OutputSlots(
@@ -284,6 +283,10 @@ def answer_subtopics(
 
 
 _PERSONA_IMPLICATIONS: dict[str, str] = {
+    "Research": (
+        "4–8 lines on interpretation, comparability, methods and limitations — use the same "
+        "verified figures; distinguish association from causal identification."
+    ),
     "Government": (
         "4–8 lines on planning, fiscal, or monitoring implications — same spine numbers only; "
         "no new statistics."
@@ -302,6 +305,10 @@ _PERSONA_IMPLICATIONS: dict[str, str] = {
 }
 
 _COMPARE_PERSONA_IMPLICATIONS: dict[str, str] = {
+    "Research": (
+        "4–8 lines on comparability of definitions, periods and spatial grain across the "
+        "comparison — same table figures only; identify limits to inference."
+    ),
     "Government": (
         "4–8 lines on policy or fiscal implications from the comparison table — "
         "same figures only."
@@ -319,6 +326,7 @@ _COMPARE_PERSONA_IMPLICATIONS: dict[str, str] = {
 }
 
 _INSUFFICIENT_REPHRASE: dict[str, str] = {
+    "Research": "Identify the indicator, study geography and observation period needed for a reproducible analysis.",
     "Government": (
         "Try national grain with a single year, or ask for IPC phase at country level."
     ),
@@ -412,7 +420,7 @@ def format_prompt_for_type(
         )
     lines.append(f"- Spine: {slots.spine}")
     if grain_window_line:
-        lines.append(f"- Scope line (after lead): {grain_window_line}")
+        lines.append(f"- Respect this requested scope; express it naturally, without copying this label: {grain_window_line}")
     if slots.interpretation:
         lines.append(f"- Interpretation (optional): {slots.interpretation}")
     if implications_text and include_implications:
@@ -446,8 +454,6 @@ def render_insufficient(
     category: str = "",
 ) -> str:
     """Deterministic insufficient answer — lead with miss, then alternatives."""
-    job = job_label or contract.job or "answer"
-    grain = contract.geo_grain or "requested grain"
     place = ", ".join(contract.geo[:8]) if contract.geo else "requested place"
     if contract.geo and len(contract.geo) > 8:
         place = f"{place}, … ({len(contract.geo)} places)"
@@ -460,13 +466,12 @@ def render_insufficient(
     elif ts.grain == "latest":
         time_part = "latest"
 
-    scope = grain_window_line(contract)
-    lead_parts = [f"Cannot ground a {job} at {grain}"]
+    lead_parts = ["I could not verify the requested findings"]
     if place:
         lead_parts.append(f"for {place}")
     if time_part:
-        lead_parts.append(f"× {time_part}")
-    lead = " ".join(lead_parts) + "."
+        lead_parts.append(f"during {time_part}")
+    lead = " ".join(lead_parts) + " in this run."
 
     if contract.measure_id == "disease_prevalence" and contract.serve_status == "unsupported_grain":
         pathogen = contract.pathogen_id or "this pathogen"
@@ -481,30 +486,7 @@ def render_insufficient(
         )
         return f"{lead} {body} Specify region, study year, or herd type for a literature-based answer."
 
-    alt = unsupported_answer_hint(contract)
-    if contract.serve_reason == "sex_breakdown_unavailable_total_only":
-        alt = (
-            "Total agricultural employment share may be available; "
-            "sex breakdown is not in the warehouse."
-        )
-
-    lines = [lead]
-    if alt:
-        lines.append(alt)
-    elif scope:
-        lines.append(f"Available scope: {scope}.")
-    else:
-        lines.append(
-            "Try national grain, a single year, or drop breakdown dimensions."
-        )
-    if contract.job in NUMERIC_JOBS and contract.serve_status == "served":
-        lines.append(
-            "No structured figure matched this question in Context for the requested scope."
-        )
-    rephrase = persona_insufficient_rephrase(category)
-    if rephrase:
-        lines.append(rephrase)
-    return " ".join(lines)
+    return lead + " This does not establish that the underlying data is unavailable."
 
 
 def forbidden_headings_for_type(

@@ -158,3 +158,10 @@ def test_every_sentence_unsourced_becomes_a_limitation() -> None:
     out = strip_unsourced_figures("Production was 4200 tonnes.", ["4200"])
     assert "4200" not in out
     assert "does not support a numerical claim" in out
+
+
+def test_removing_a_figure_preserves_markdown_sections() -> None:
+    answer = "### Findings\n\nYield increased. Exports reached 4200 tonnes.\n\n### Limits\n\nThe evidence is incomplete."
+    assert strip_unsourced_figures(answer, ["4200"]) == (
+        "### Findings\n\nYield increased.\n\n### Limits\n\nThe evidence is incomplete."
+    )

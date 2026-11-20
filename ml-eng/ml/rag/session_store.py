@@ -45,6 +45,8 @@ _IDEMPOTENCY_TTL_S: int = int(os.environ.get("RAG_IDEMPOTENCY_TTL_SECONDS", "864
 
 # Redis client (lazy, thread-safe init)
 _redis_client: Any | None = None
+_redis_retry_at: float = 0.0
+_REDIS_RECOVERY_COOLDOWN_S = 30.0
 _redis_lock = threading.Lock()
 
 # In-memory fallback (thread-safe). Stores (value, expiry_ts or None)
@@ -54,7 +56,7 @@ _fallback_lock = threading.Lock()
 
 def _get_client() -> Any | None:
     """Return a validated Redis client or None (triggers fallback)."""
-    global _redis_client
+    global _redis_client, _redis_retry_at
     if redis is None:
         if _REDIS_URL:
             logger.warning(
@@ -65,10 +67,14 @@ def _get_client() -> Any | None:
         return None
     if _redis_client is not None:
         return _redis_client
+    if time.monotonic() < _redis_retry_at:
+        return None
 
     with _redis_lock:
         if _redis_client is not None:
             return _redis_client
+        if time.monotonic() < _redis_retry_at:
+            return None
         try:
             client = redis.Redis.from_url(
                 _REDIS_URL,
@@ -82,6 +88,9 @@ def _get_client() -> Any | None:
             logger.info("session_store: connected to Redis (%s)", safe_url)
             return _redis_client
         except Exception as exc:
+            # One failed connection must not block every cache/session access.
+            # Probe again after a bounded cooldown so service recovery is detected.
+            _redis_retry_at = time.monotonic() + _REDIS_RECOVERY_COOLDOWN_S
             logger.warning(
                 "session_store: Redis unavailable (%s); falling back to in-process memory. "
                 "Multi-worker deployments will not share sessions/caches. "
@@ -188,7 +197,10 @@ def set_json(key: str, value: Any, *, ttl_s: int | None = None) -> None:
 
 
 def incr_json_fields(key: str, increments: dict[str, int], *, ttl_s: int | None = None) -> dict[str, int]:
-    """Atomically increment numeric fields in a JSON object and return the updated dict."""
+    """Increment numeric fields in a JSON object and return the updated dict.
+
+    This is a get-then-set. Do not use it for a counter that must survive concurrent replicas.
+    """
     current = get_json(key) or {}
     if not isinstance(current, dict):
         current = {}
@@ -199,6 +211,38 @@ def incr_json_fields(key: str, increments: dict[str, int], *, ttl_s: int | None 
     eff_ttl = ttl_s if ttl_s is not None else 60 * 60 * 24 * 40
     set_json(key, current, ttl_s=eff_ttl)
     return {k: int(current.get(k, 0) or 0) for k in increments}
+
+
+def incr_counter(key: str, *, ttl_s: int) -> int:
+    """Increment an integer key and return the new count. Set the TTL only on the first hit."""
+    client = _get_client()
+    if client is not None:
+        try:
+            count = int(client.incr(key))
+            if count == 1 and ttl_s > 0:
+                client.expire(key, ttl_s)
+            return count
+        except Exception as exc:
+            logger.warning("session_store: redis incr failed for %s: %s (using fallback)", key, exc)
+
+    with _fallback_lock:
+        now = _now()
+        current = _fallback.get(key)
+        value = 0
+        expiry: float | None = None
+        if current is not None:
+            stored, expiry = current
+            if expiry is not None and now > expiry:
+                stored, expiry = 0, None
+            try:
+                value = int(stored)
+            except (TypeError, ValueError):
+                value = 0
+        value += 1
+        if value == 1:
+            expiry = now + ttl_s if ttl_s > 0 else None
+        _fallback[key] = (value, expiry)
+        return value
 
 
 def delete_key(key: str) -> None:

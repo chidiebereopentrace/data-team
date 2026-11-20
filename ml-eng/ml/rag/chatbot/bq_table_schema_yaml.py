@@ -1727,7 +1727,7 @@ def _resolve_product_labels_for_table(
     else:
         resolved = match_value_samples(blob, pool)
     kept = [label for label in resolved if _label_belongs_on_table(label, blob or " ".join(hinted), pool)]
-    return kept[:6]
+    return kept
 
 
 def _resolve_hints_against(hints: list[str], exact_pool: list[str], fuzzy_pool: list[str]) -> list[str]:
@@ -1758,7 +1758,7 @@ def _resolve_bind_product_labels(
     bare = _strip_fqn(table_id).lower()
     explicit = [str(x).strip() for x in (product_labels or []) if str(x).strip()]
     if explicit:
-        return explicit[:6]
+        return explicit
     from ml.rag.chatbot.bundle_metrics import resolve_staple_products
 
     staples = resolve_staple_products(query, facets)
@@ -2386,6 +2386,7 @@ class TableBindContract:
     time_sql: str | None = None
     product_column: str | None = None
     product_literals: list[str] = field(default_factory=list)
+    product_group_prefix: str = ""
     measure_columns: list[str] = field(default_factory=list)
     measure_filters: list[tuple[str, str]] = field(default_factory=list)
     spine_entity_filters: list[tuple[str, str]] = field(default_factory=list)
@@ -2418,6 +2419,7 @@ class TableBindContract:
             "time_sql": self.time_sql,
             "product_column": self.product_column,
             "product_literals": list(self.product_literals),
+            "product_group_prefix": self.product_group_prefix,
             "measure_columns": list(self.measure_columns),
             "measure_filters": [[c, v] for c, v in self.measure_filters],
             "spine_entity_filters": [[fk, lab] for fk, lab in self.spine_entity_filters],
@@ -2449,6 +2451,7 @@ class TableBindContract:
             time_sql=str(raw.get("time_sql") or "") or None,
             product_column=str(raw.get("product_column") or "") or None,
             product_literals=[str(x) for x in (raw.get("product_literals") or []) if str(x).strip()],
+            product_group_prefix=str(raw.get("product_group_prefix") or ""),
             measure_columns=[str(x) for x in (raw.get("measure_columns") or []) if str(x).strip()],
             measure_filters=measure_filters,
             spine_entity_filters=spine_entity_filters,
@@ -2674,11 +2677,11 @@ def compile_table_bind_contract(
         window for item in comparison if isinstance(item, dict)
         if (window := TimeWindow.from_dict(item)) is not None
     ] if isinstance(comparison, list) else []
-    employment_comparison = (
-        bare == "fct_employment" and primary_measures == ["employment_share"] and len(windows) >= 2
+    employment_share_binding = (
+        bare == "fct_employment" and primary_measures in (["employment_share"], ["labour_productivity"]) and bool(windows)
     )
-    if len(windows) >= 2:
-        if employment_comparison:
+    if len(windows) >= 2 or employment_share_binding:
+        if employment_share_binding:
             # The year column is the observation year. as_of_date may reflect loading.
             predicates = [f"year BETWEEN {window.start.year} AND {window.end.year}" for window in windows]
         else:
@@ -2694,7 +2697,8 @@ def compile_table_bind_contract(
         parts.append(time_sql)
         provenance["time"] = str(dec.get("time_policy_source") or dec.get("time_source") or "question")
 
-    bind_product_labels = [] if employment_comparison else _resolve_bind_product_labels(
+    product_discovery = bool(dec.get("product_discovery"))
+    bind_product_labels = [] if employment_share_binding or product_discovery else _resolve_bind_product_labels(
         bare,
         query=query,
         facets=dec,
@@ -2703,7 +2707,7 @@ def compile_table_bind_contract(
         product_labels=product_labels,
         product_blob_text=pb,
     )
-    prod_clause = None if employment_comparison else compile_semantic_filter(
+    prod_clause = None if employment_share_binding or product_discovery else compile_semantic_filter(
         bare,
         "product",
         blob=pb,
@@ -2716,6 +2720,15 @@ def compile_table_bind_contract(
     if prod_clause and prod_clause.sql.strip():
         parts.append(prod_clause.sql.strip())
         provenance["product"] = "question" if match_value_samples(query, product_literals) else "resolved_request"
+    group_prefix = str(dec.get("product_group_prefix") or "") if product_discovery else ""
+    if group_prefix and re.fullmatch(r"01[1-9]?", group_prefix) and pcol:
+        # The dimension contains both primary crops and animal/processed goods.
+        # Normalize FAOSTAT's optional spreadsheet quote before matching CPC.
+        group_filter = f"REGEXP_REPLACE(cpcv2, r'^[^0-9]+', '') LIKE '{group_prefix}%'"
+        parts.append(
+            f"AND {pcol} IN (SELECT product_key FROM `{proj}.{ds}.dim_product` WHERE {group_filter})"
+        )
+        provenance["product_group"] = f"CPC v2:{group_prefix}"
 
     roles_raw = dec.get("entity_roles")
     entity_roles: dict[str, list[str]] | None = None
@@ -2732,7 +2745,7 @@ def compile_table_bind_contract(
             if str(k).strip()
         }
 
-    spine_hits = [] if employment_comparison else compile_spine_entity_filters(
+    spine_hits = [] if employment_share_binding or product_discovery else compile_spine_entity_filters(
         bare,
         blob=pb or query,
         project_id=proj,
@@ -2759,12 +2772,15 @@ def compile_table_bind_contract(
         measure_blob_text=mb,
         primary_measures=primary_measures,
     )
-    if employment_comparison:
+    if employment_share_binding:
+        tcol = "year"
         # Use one denominator and one national total across all comparison years.
+        labour_productivity = primary_measures == ["labour_productivity"]
         measure_filters = [
-            ("indicator", "Share of employment in agriculture in total employment - ILO Modelled Estimates"),
+            ("indicator", "Agriculture value added per worker (constant 2015 US$)" if labour_productivity
+             else "Share of employment in agriculture in total employment - ILO Modelled Estimates"),
             ("sex", "Total"),
-            ("unit", "%"),
+            ("unit", "USD" if labour_productivity else "%"),
         ]
         parts.extend(f"AND {column} = {_sql_literal(value)}" for column, value in measure_filters)
         provenance["measure"] = "resolved_request"
@@ -2790,6 +2806,7 @@ def compile_table_bind_contract(
         time_sql=time_sql,
         product_column=pcol,
         product_literals=product_literals,
+        product_group_prefix=group_prefix,
         measure_columns=measure_cols,
         measure_filters=measure_filters,
         spine_entity_filters=spine_entity_filters,
@@ -2806,6 +2823,30 @@ def compile_table_bind_contract(
 def match_product_samples(table_id: str, blob: str) -> list[str]:
     """Dictionary-resolved product labels for SQL filters (not fact-column hash samples)."""
     return _resolve_product_labels_for_table(table_id, blob=blob)
+
+
+def product_group_prefix(query: str) -> str:
+    """Resolve a requested group to the CPC v2 hierarchy stored in dim_product.
+
+    UNSD hierarchy: https://unstats.un.org/unsd/classifications/Econ/Structure/Detail/EN/1073/01
+    Group filters use catalog codes, never an invented list of representative crops.
+    """
+    text = fold_accents(query).casefold()
+    groups = (
+        (r"\bcereals?\b|\bcereales\b", "011"),
+        (r"\bvegetables?\b|\blegumes frais\b", "012"),
+        (r"\bfruits?\b|\bnuts\b", "013"),
+        (r"\boilseeds?\b|\boleagin\w*\b", "014"),
+        (r"\btubers?\b|\broot crops\b|\btubercules\b", "015"),
+        (r"\bspices?\b|\bepices\b|\bstimulant crops\b", "016"),
+        (r"\bpulses\b|\bdried legumes\b|\blegumineuses\b", "017"),
+        (r"\bsugar crops\b|\bplantes sucrieres\b", "018"),
+        (r"\bfibre crops\b|\bfiber crops\b|\bforage\b", "019"),
+    )
+    for pattern, prefix in groups:
+        if re.search(pattern, text):
+            return prefix
+    return "01" if re.search(r"\bcrops?\b|\bcultures\b", text) else ""
 
 
 def default_discriminator_value(

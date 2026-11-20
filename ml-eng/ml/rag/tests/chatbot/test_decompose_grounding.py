@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest import mock
 
+from ml.rag.chatbot.geo_iso3 import name_to_iso3
+
 from ml.rag.chatbot.query_decomposer import (
     decompose_query,
     facet_grounded_in_query,
@@ -41,6 +43,12 @@ def test_igbo_yam_query_does_not_keep_hallucinated_nigeria() -> None:
 
 def test_geography_drops_literal_country_stopword() -> None:
     assert normalize_geography_for_filter(["country", "Nigeria", "world"]) == ["Nigeria"]
+
+
+def test_accented_country_with_curly_apostrophe_is_not_lost() -> None:
+    query = "Compare rice imports in Senegal, Côte d’Ivoire and Madagascar from 2015 to 2024."
+    out = decompose_query(query, use_llm=False)
+    assert {name_to_iso3(place) for place in out["geography"]} == {"SEN", "CIV", "MDG"}
 
 
 def test_which_country_agricultural_activity_africa_default() -> None:

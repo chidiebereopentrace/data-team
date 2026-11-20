@@ -19,6 +19,7 @@ PLAN_ROUTE_SLUGS: dict[str, str] = {
     "ngos": "NGOs",
     "agribusinesses": "Agribusinesses",
     "integrated": "Integrated",
+    "research": "Research",
 }
 
 PLAN_TYPES: list[dict[str, str]] = [
@@ -52,15 +53,20 @@ PLAN_TYPES: list[dict[str, str]] = [
         "label": "Integrated Account",
         "description": "Full cross-sector access; category lens selected per message.",
     },
+    {
+        "id": "Research",
+        "label": "Research & Academia",
+        "description": "Evidence synthesis, comparative analysis and reproducible data exports for research and academia.",
+    },
 ]
 
 _PLAN_TYPE_IDS = frozenset(p["id"] for p in PLAN_TYPES)
 
 # Plans that allow multi-country retrieval and compare-style answers.
-_CROSS_COUNTRY_PLANS = frozenset({"Agribusinesses", "Integrated"})
+_CROSS_COUNTRY_PLANS = frozenset({"Agribusinesses", "Integrated", "Research"})
 
 # Plans whose dedicated API routes may produce downloadable exports.
-_EXPORT_PLANS = frozenset({"Agribusinesses", "Integrated"})
+_EXPORT_PLANS = frozenset({"Agribusinesses", "Integrated", "Research"})
 
 
 def valid_plan_type_ids() -> frozenset[str]:
@@ -85,7 +91,7 @@ def plan_allows_cross_country(plan_type: str | None) -> bool:
     """Whether this turn may keep every country the query named.
 
     The flag defaults off, so every plan keeps query geography. When it is on,
-    only Agribusinesses and Integrated stay multi-country.
+    only Agribusinesses, Integrated and Research stay multi-country.
     """
     if not single_country_policy_enabled():
         return True
@@ -128,6 +134,13 @@ def plan_generation_addendum(plan_type: str | None) -> str:
         return (
             "Plan tier: Agribusiness. Market dynamics, price volatility, and sourcing-region risk "
             "are in scope. Cross-country comparison is allowed when the context supports it."
+        )
+    if pt == "Research":
+        return (
+            "Plan tier: Research & Academia. Support detailed evidence synthesis, multi-year "
+            "and cross-country analysis when supported, and reproducible downloadable data. "
+            "Preserve definitions, units, provenance and coverage. Explain methodological "
+            "limitations and do not imply statistical significance or causation without evidence."
         )
     if pt == "Integrated":
         return (
@@ -214,6 +227,7 @@ def default_category_for_plan(plan_type: str | None) -> str | None:
         "NGOs": "NGOs",
         "Agribusinesses": "Agribusinesses",
         "Integrated": None,  # category selected per message by the Integrated plan
+        "Research": "Research",
     }
     return _defaults.get((plan_type or "").strip())
 
@@ -235,6 +249,7 @@ def model_for_plan(plan_type: str | None) -> str | None:
         "NGOs": "RAG_LLM_MODEL_NGOS",
         "Agribusinesses": "RAG_LLM_MODEL_AGRIBUSINESSES",
         "Integrated": "RAG_LLM_MODEL_INTEGRATED",
+        "Research": "RAG_LLM_MODEL_RESEARCH",
     }
     if not pt or pt not in _env_keys:
         return None  # unknown plan — caller falls back to RAG_LLM_MODEL_ID

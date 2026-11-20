@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from collections import defaultdict
 from typing import Any
 
-from ml.rag.chatbot.evidence_kinds import NARRATIVE_KINDS, source_kind
+from ml.rag.chatbot.evidence_kinds import NARRATIVE_KINDS, is_warehouse_item, source_kind
 
 
 def _item_metadata(item: dict[str, Any]) -> dict[str, Any]:
@@ -39,6 +40,14 @@ def _normalize_url_key(val: str) -> str:
 
 def _dedupe_key(item: dict[str, Any]) -> str:
     meta = _item_metadata(item)
+    if is_warehouse_item(item):
+        row = meta.get("raw_row")
+        content = item.get("content") or item.get("text")
+        if isinstance(row, dict) and row:
+            return "bq:" + json.dumps((meta.get("table_id"), row), sort_keys=True, default=str)
+        if content:
+            return "bq:" + json.dumps((meta.get("source_id"), content), default=str)
+        return f"id:{id(item)}"
     doi = _normalize_doi(str(meta.get("doi") or ""))
     if doi:
         return f"doi:{doi}"
@@ -71,7 +80,7 @@ def _dedupe_key(item: dict[str, Any]) -> str:
 
 
 def dedupe_context_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop near-duplicate chunks (same URL/title/content fingerprint); keep first."""
+    """Drop identical warehouse observations and near-duplicate document chunks."""
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in items or []:

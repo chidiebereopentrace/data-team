@@ -9,7 +9,7 @@ from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ml.serving.enterprise.metering import check_tenant_quotas, check_tenant_rate_limit
+from ml.serving.enterprise.metering import check_tenant_quotas
 from ml.serving.enterprise.tenant_registry import (
     EnterpriseTenant,
     enterprise_auth_mode,
@@ -52,7 +52,6 @@ class EnterpriseAuthMiddleware(BaseHTTPMiddleware):
 
         try:
             check_tenant_quotas(tenant)
-            check_tenant_rate_limit(tenant)
         except HTTPException as exc:
             return JSONResponse(
                 status_code=exc.status_code,

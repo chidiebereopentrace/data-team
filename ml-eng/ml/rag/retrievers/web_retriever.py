@@ -1057,7 +1057,7 @@ def retrieve_web_fallback_detailed(
     skip_wikipedia = (
         task_mode == "analytical"
         or heavy_path
-        or plan_type in ("government", "agribusinesses", "integrated")
+        or plan_type in ("government", "agribusinesses", "integrated", "research")
         or str(dec.get("job") or "").strip().lower()
         in ("fact", "series", "panel", "share", "compare", "report", "data_export_only")
     )

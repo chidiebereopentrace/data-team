@@ -13,7 +13,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _VALID_PLAN_SLUGS = frozenset(
-    {"free", "farmers", "government", "ngos", "agribusinesses", "integrated"}
+    {"free", "farmers", "government", "ngos", "agribusinesses", "integrated", "research"}
 )
 
 

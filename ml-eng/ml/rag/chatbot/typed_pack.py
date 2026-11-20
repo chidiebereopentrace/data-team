@@ -124,6 +124,10 @@ def _filter_outlook_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _shape_rows(rows: list[dict[str, Any]], contract: TurnContract) -> list[dict[str, Any]]:
+    if any(item_meta(row).get("requirement_id") for row in rows):
+        # These rows were validated against their own scopes, which can differ
+        # from the turn's default dates and indicator.
+        return rows
     if contract.job == "trend":
         return _filter_trend_rows(rows, contract)
     if contract.job == "list":
@@ -160,6 +164,11 @@ def typed_context_pack(
 
     shaped_rows = _shape_rows(rows, contract)
     dropped["row_shape"] += len(rows) - len(shaped_rows)
+    if any(item_meta(row).get("price_report") or item_meta(row).get("requirement_id") for row in shaped_rows):
+        # SQL result limits bound structured evidence. A passage top-k must not
+        # silently discard the observations needed for a requested operation.
+        # The final model-context budget still applies in the generator.
+        top_k = None
 
     ranked_docs = _rank_documents_by_period(documents, contract)
     scored_docs: list[dict[str, Any]] = []
@@ -174,8 +183,15 @@ def typed_context_pack(
             continue
         scored_docs.append(it)
     scoped_docs = [item for item in scored_docs if item_meta(item).get("document_requirements")]
+    required_docs: list[dict[str, Any]] = []
     if scoped_docs:
-        scored_docs = [*scoped_docs, *(item for item in scored_docs if not item_meta(item).get("document_requirements"))]
+        covered: set[str] = set()
+        extras = []
+        for item in scoped_docs:
+            topics = {str(value) for value in item_meta(item)["document_requirements"]}
+            (required_docs if topics - covered else extras).append(item)
+            covered.update(topics)
+        scored_docs = [*required_docs, *extras, *(item for item in scored_docs if not item_meta(item).get("document_requirements"))]
     budget_docs = scored_docs[:DOCUMENT_BUDGET]
     dropped["document_budget"] += len(scored_docs) - len(budget_docs)
 
@@ -184,9 +200,9 @@ def typed_context_pack(
         row_budget = top_k - min(len(budget_docs), max(1, top_k // 2))
         dropped["over_top_k"] += max(0, len(shaped_rows) - row_budget)
         shaped_rows = shaped_rows[:row_budget]
-    elif contract.job == "compare" and top_k and scoped_docs:
-        # Leave a place for an explanation in a comparison with many numeric rows.
-        row_budget = max(0, top_k - 1)
+    elif contract.job == "compare" and top_k and required_docs:
+        # Keep one passage per requested explanation within the document budget.
+        row_budget = top_k - min(len(required_docs), DOCUMENT_BUDGET, max(0, top_k - 1))
         dropped["over_top_k"] += max(0, len(shaped_rows) - row_budget)
         shaped_rows = shaped_rows[:row_budget]
 

@@ -116,7 +116,7 @@
         "type": "object"
       },
       "ArtifactItem": {
-        "description": "Downloadable export produced on Agribusinesses / Integrated chat routes.",
+        "description": "Downloadable export produced on export-enabled paid chat routes.",
         "properties": {
           "byte_size": {
             "description": "Artifact size in bytes",
@@ -145,6 +145,7 @@
             "description": "Export format",
             "enum": [
               "csv",
+              "geojson",
               "chart",
               "docx",
               "pdf",
@@ -323,7 +324,7 @@
                 "type": "null"
               }
             ],
-            "description": "Prior turns for this request (canonical). Server session is not updated when set.",
+            "description": "Prior turns for this request. The web-frontend tenant must not send this field; the server loads the thread from the session id. When any other tenant sets it, the server session is neither read nor written.",
             "title": "Chat History"
           },
           "conversation_history": {
@@ -338,8 +339,28 @@
                 "type": "null"
               }
             ],
-            "description": "Deprecated alias for chat_history.",
+            "description": "Deprecated alias for chat_history. The web-frontend tenant must not send it.",
             "title": "Conversation History"
+          },
+          "export_intent": {
+            "anyOf": [
+              {
+                "enum": [
+                  "csv",
+                  "geojson",
+                  "chart",
+                  "docx",
+                  "pdf",
+                  "multi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional export format. When set, it overrides export wording in the question. Omit it and ask in the question for a person.",
+            "title": "Export Intent"
           },
           "include_trace": {
             "default": false,
@@ -395,7 +416,7 @@
                 "type": "null"
               }
             ],
-            "description": "Omit to start a new session; reuse for multi-turn chat (server-side memory)",
+            "description": "Conversation id. The web-frontend tenant must send the id the app minted and reuse it for that thread. Other tenants may omit it to start a session.",
             "title": "Session Id"
           },
           "time_end_override": {
@@ -429,7 +450,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional product user id for Langfuse user analytics (client-supplied until auth).",
+            "description": "Signed-in account id. Required for the web-frontend tenant. The per-user rate limit counts this id. Another tenant that omits it shares that tenant's anonymous bucket.",
             "title": "User Id"
           },
           "user_profile": {
@@ -441,7 +462,7 @@
                 "type": "null"
               }
             ],
-            "description": "User profile: country, plan_type (access/geo), category (generation persona)."
+            "description": "Required for the web-frontend tenant, with plan_type and category. country is an optional African ISO3. plan_type does not grant route access."
           }
         },
         "required": [
@@ -461,7 +482,7 @@
             "type": "string"
           },
           "artifacts": {
-            "description": "Downloadable exports (CSV/chart/DOCX/PDF). Populated on Agribusinesses and Integrated plans when the query requests an export and builders succeed; otherwise empty. Signed URL TTL defaults to 86400s \u2014 refresh via GET /artifacts/{artifact_id}/url.",
+            "description": "Downloadable exports (CSV/GeoJSON/chart/DOCX/PDF). Populated on Agribusinesses, Integrated and Research plans when the query requests an export and builders succeed; otherwise empty. Signed URL TTL defaults to 86400s \u2014 refresh via GET /artifacts/{artifact_id}/url.",
             "items": {
               "$ref": "#/components/schemas/ArtifactItem"
             },
@@ -608,16 +629,25 @@
       },
       "UserProfile": {
         "additionalProperties": false,
+        "description": "Optional request context; the authenticated route determines access to the plan.",
         "properties": {
           "category": {
-            "enum": [
-              "Government",
-              "NGOs",
-              "Agribusinesses",
-              "Farmers"
+            "anyOf": [
+              {
+                "enum": [
+                  "Government",
+                  "NGOs",
+                  "Agribusinesses",
+                  "Farmers",
+                  "Research"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Category",
-            "type": "string"
+            "title": "Category"
           },
           "country": {
             "anyOf": [
@@ -631,34 +661,31 @@
             "title": "Country"
           },
           "plan_type": {
-            "enum": [
-              "Free",
-              "Farmers",
-              "Government",
-              "NGOs",
-              "Agribusinesses",
-              "Integrated"
+            "anyOf": [
+              {
+                "enum": [
+                  "Free",
+                  "Farmers",
+                  "Government",
+                  "NGOs",
+                  "Agribusinesses",
+                  "Integrated",
+                  "Research"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Plan Type",
-            "type": "string"
+            "title": "Plan Type"
           }
         },
-        "required": [
-          "plan_type",
-          "category"
-        ],
         "title": "UserProfile",
         "type": "object"
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -1094,9 +1121,48 @@
         "summary": "Query (NGOs plan)"
       }
     },
+    "/query/research": {
+      "post": {
+        "description": "Research & Academia \u2014 evidence synthesis and downloadable data. Path locks plan_type.",
+        "operationId": "query_research_query_research_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query (Research & Academia plan)"
+      }
+    },
     "/ready": {
       "get": {
-        "description": "Readiness probe.\nReports whether the minimum configuration for Qdrant + LLM appears to be present\n(without revealing secrets). Useful for GCE managed instance groups / load balancers.\nRedis connectivity (if configured via RAG_REDIS_URL) is reported for observability but\ndoes not affect the ready status (sessions gracefully fall back to in-memory).\nWhen BQ_PROJECT is set, GCP credentials must be valid JSON and BigQuery must respond;\notherwise status is not_ready (Free/paid NL2SQL depends on BQ).",
+        "description": "Readiness probe.\nRequires Qdrant/LLM configuration and successful query embedding warmup.\nRedis connectivity (if configured via RAG_REDIS_URL) is reported for observability but\ndoes not affect the ready status (sessions gracefully fall back to in-memory).\nWhen BQ_PROJECT is set, GCP credentials must be valid JSON and BigQuery must respond;\notherwise status is not_ready (Free/paid NL2SQL depends on BQ).",
         "operationId": "ready_ready_get",
         "responses": {
           "200": {
@@ -1147,6 +1213,23 @@
           }
         },
         "summary": "Delete Session Endpoint"
+      }
+    },
+    "/version": {
+      "get": {
+        "description": "Build and contract identity: SHA, execution mode, catalog and ledger versions, settings fingerprint.",
+        "operationId": "version_version_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Version"
       }
     }
   }

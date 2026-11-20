@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal
 
-from ml.rag.chatbot.time_resolver import parse_iso_date, time_gap_sentence, utc_today
+from ml.rag.chatbot.time_resolver import DAILY_RECENCY_DAYS, parse_iso_date, time_gap_sentence, utc_today
 
 from ml.rag.llm_chat import (
     answer_was_length_capped,
@@ -42,7 +42,7 @@ from ml.rag.chatbot.continental_scope import RANKING_QUERY_RE as _RANKING_QUERY_
 from ml.rag.chatbot.answer_language import (
     detect_answer_language,
     is_english_answer_lang,
-    language_not_yet_supported_answer,
+    generation_failure_answer,
     looks_like_degenerate_repetition,
 )
 from ml.rag.chatbot.answer_outcome import decide_outcome, gap_answer
@@ -58,8 +58,9 @@ from ml.rag.chatbot.citation_pack import (
     _strip_invalid_citation_markers,
     _strip_model_sources_appendix,
     extract_referenced_source_ids,
+    consolidate_warehouse_citations,
 )
-from ml.rag.chatbot.generation_prompt import _build_prompt, _current_date_block
+from ml.rag.chatbot.generation_prompt import _build_prompt
 from ml.rag.chatbot.context_diversity import dedupe_context_items
 from ml.rag.chatbot.evidence_kinds import (
     NARRATIVE_KINDS,
@@ -397,14 +398,14 @@ _PRODUCTION_TREND_MISLABEL_RE = re.compile(
 _MULTIPART_TASK_MODES = frozenset({"analytical", "research", "briefing"})
 
 
-_TRUNCATION_NOTICE = (
-    "\n\n_Note: this answer was cut short because it reached the maximum "
-    "response length, so it may be incomplete. Ask about fewer countries, "
-    "a narrower time range, or one topic at a time for a full answer._"
-)
+_TRUNCATION_NOTICES = {
+    "en": "Note: the explanation reached the maximum response length and may be incomplete.",
+    "fr": "Remarque : l’explication a atteint la longueur maximale de réponse et peut être incomplète.",
+    "sw": "Kumbuka: maelezo yamefikia kikomo cha urefu wa jibu na huenda hayajakamilika.",
+}
 
 
-def _append_truncation_notice(answer: str) -> str:
+def _append_truncation_notice(answer: str, *, lang: str = "en") -> str:
     """
     Append an explicit notice when the model stopped on the max_tokens ceiling.
 
@@ -415,14 +416,15 @@ def _append_truncation_notice(answer: str) -> str:
     text = (answer or "").rstrip()
     if not text or not answer_was_length_capped():
         return answer
-    if "reached the maximum" in text:
+    notice = _TRUNCATION_NOTICES.get(lang, _TRUNCATION_NOTICES["en"])
+    if notice in text:
         return text
-    return text + _TRUNCATION_NOTICE
+    return text + f"\n\n_{notice}_"
 
 
 def _guard_degenerate_language_output(answer: str, query: str) -> str:
     """
-    Replace repetitive/looping output with a clean not-yet-supported message.
+    Replace genuine text loops with a transient generation error.
 
     ML-055 (Sprint 2 P0): Swahili/French answers sometimes degenerated into the
     same phrase repeated up to five times. Only guards non-English answers --
@@ -436,9 +438,9 @@ def _guard_degenerate_language_output(answer: str, query: str) -> str:
     lang = detect_answer_language(query)
     if is_english_answer_lang(lang):
         return answer
-    return language_not_yet_supported_answer(lang)
+    return generation_failure_answer(lang)
 def _generate_max_tokens(task_mode: str | None = None) -> int:
-    env_ceiling = int(os.environ.get("RAG_GENERATE_MAX_TOKENS", "2048") or 2048)
+    env_ceiling = int(os.environ.get("RAG_GENERATE_MAX_TOKENS", "8192") or 8192)
     mode = (task_mode or "chat").strip().lower()
     default = _TASK_MODE_MAX_TOKENS.get(mode, 512)
     if mode in _MULTIPART_TASK_MODES:
@@ -518,6 +520,13 @@ def _bq_table_from_meta(meta: dict[str, Any]) -> str:
 
 
 def _bq_row_hint(meta: dict[str, Any]) -> str:
+    raw = meta.get("raw_row")
+    if isinstance(raw, dict):
+        meta = {**raw, **meta}
+    if not meta.get("country_name") and meta.get("country_iso3"):
+        from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name
+
+        meta = {**meta, "country_name": iso3_to_canonical_name(str(meta["country_iso3"]))}
     parts: list[str] = []
     for key in _BQ_ROW_HINT_KEYS:
         val = meta.get(key)
@@ -626,13 +635,21 @@ def _names_product_and_price(
     query: str,
     decomposition: dict[str, Any] | None,
 ) -> bool:
+    from ml.rag.chatbot.bundle_metrics import food_price_basket
+
+    if food_price_basket(query):
+        return bool(
+            re.search(r"\bfood\b", blob, re.I)
+            and re.search(r"\b(?:prices?|inflation|CPI|indices?|index)\b", blob, re.I)
+            or _PRICE_WORD_RE.search(blob) and _CROP_TOKEN_RE.search(blob)
+        )
     if not _PRICE_WORD_RE.search(blob or ""):
         return False
     topics = _query_topic_tokens(query, decomposition)
     if not topics:
         return False
     folded = (blob or "").lower()
-    return any(token in folded for token in topics)
+    return any(re.search(rf"(?<!\w){re.escape(token)}(?!\w)", folded) for token in topics)
 
 
 def _query_topic_tokens(query: str, decomposition: dict[str, Any] | None) -> set[str]:
@@ -849,37 +866,48 @@ def pin_bq_context_first(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def note_time_fallback(
     decomposition: dict[str, Any] | None,
     items: list[dict[str, Any]] | None,
+    *,
+    observation_only: bool = False,
 ) -> None:
-    """When cited evidence is outside the requested window, record both ranges."""
+    """Record an out-of-window range using the appropriate evidence dates."""
     if not isinstance(decomposition, dict) or decomposition.get("time_fallback"):
         return
     start = parse_iso_date(str(decomposition.get("time_start") or ""))
     end = parse_iso_date(str(decomposition.get("time_end") or ""))
     if start is None or end is None:
         return
-    evidence: list[date] = []
-    for item in items or []:
+    evidence: list[tuple[date, date]] = []
+    rows = [item for item in items or [] if is_warehouse_item(item)]
+    use_observations = observation_only or bool(rows)
+    for item in rows if use_observations else items or []:
         meta = _item_metadata(item)
-        found: date | None = None
+        if use_observations:
+            raw = meta.get("raw_row")
+            if isinstance(raw, dict):
+                observed = parse_iso_date(str(raw.get("latest_date") or ""))
+                if not observed and raw.get("as_of_date_basis") != "loaded_at":
+                    observed = parse_iso_date(str(raw.get("as_of_date") or ""))
+                if observed:
+                    period_start = parse_iso_date(str(raw.get("period_start") or "")) or observed
+                    evidence.append((min(period_start, observed), observed))
+                    continue
+                year = str(raw.get("year") or raw.get("harvest_year") or "")[:4]
+                if len(year) == 4 and year.isdigit() and 1900 <= int(year) <= 2100:
+                    evidence.append((date(int(year), 1, 1), date(int(year), 12, 31)))
+            continue
         for key in ("as_of_date", "published_at", "date", "year"):
             raw = str(meta.get(key) or "").strip()
-            if len(raw) >= 10 and raw[4] == "-":
-                found = parse_iso_date(raw[:10])
-            elif len(raw) >= 4 and raw[:4].isdigit():
+            if found := parse_iso_date(raw):
+                evidence.append((found, found))
+                break
+            if len(raw) == 4 and raw.isdigit():
                 year = int(raw[:4])
                 if 1900 <= year <= 2100:
-                    found = date(year, 1, 1)
-            if found is not None:
-                break
-        if found is not None:
-            evidence.append(found)
-    if not evidence or any(start <= day <= end for day in evidence):
+                    evidence.append((date(year, 1, 1), date(year, 12, 31)))
+                    break
+    if not evidence or any(first <= end and last >= start for first, last in evidence):
         return
-    latest = max(evidence)
-    if latest.month == 1 and latest.day == 1:
-        used_start, used_end = date(latest.year, 1, 1), date(latest.year, 12, 31)
-    else:
-        used_start = used_end = latest
+    used_start, used_end = max(evidence, key=lambda period: period[1])
     phrase = str(decomposition.get("time_phrase") or "that period")
     decomposition["time_fallback"] = {
         "requested": {"start": start.isoformat(), "end": end.isoformat(), "phrase": phrase},
@@ -930,12 +958,36 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
             return None
         table_id = str(meta.get("table_id") or _bq_table_from_meta(meta) or "").strip()
         source_name = _public_source_label(table_id, meta)
-        hint = _bq_row_hint(meta)
-        if source_name:
-            return f"[{source_name}] {hint}" if hint else f"[{source_name}]"
-        if hint:
-            return f"[Structured data] {_BQ_PUBLIC_LABEL} ({hint})"
-        return f"[Structured data] {_BQ_PUBLIC_LABEL}"
+        semantics = meta.get("value_semantics")
+        semantics = semantics if isinstance(semantics, dict) else {}
+        raw_row = meta.get("raw_row")
+        raw_row = raw_row if isinstance(raw_row, dict) else {}
+        fallback = next((label for token, label in (
+            ("yield", "Crop yield"), ("production", "Production metrics"), ("employment", "Employment metrics"),
+            ("climate", "Climate metrics"), ("trade", "Trade metrics"), ("soil", "Soil metrics"),
+        ) if token in table_id.lower()), "Agricultural indicators")
+        indicator = "Market price" if "price" in table_id.lower() else str(
+            semantics.get("measure_label") or meta.get("indicator_name") or raw_row.get("indicator_name")
+            or meta.get("measure_label") or meta.get("indicator") or raw_row.get("indicator")
+            or meta.get("metric") or raw_row.get("metric") or fallback
+        ).strip()
+        indicator = indicator.replace("_", " ")
+        label = f"{source_name or 'Structured data'} — {indicator[:1].upper() + indicator[1:]}"
+        # A price report is one institution and indicator covering the basket.
+        # An itemized production member stays on the citation so crops do not collapse.
+        is_price = (
+            bool(meta.get("price_report"))
+            or "price" in table_id.lower()
+            or indicator.casefold() == "market price"
+        )
+        member = str(
+            meta.get("product_name") or raw_row.get("product_name")
+            or meta.get("item_name") or raw_row.get("item_name")
+            or ""
+        ).strip()
+        if member and not is_price and member.casefold() not in label.casefold():
+            label = f"{label} — {member}"
+        return label
 
     if kind in ("academic_article", "academic"):
         raw_title = str(meta.get("article_title") or meta.get("title") or "")
@@ -970,7 +1022,7 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
         src = str(meta.get("source") or meta.get("publisher") or "").strip()
         date = str(meta.get("published_at") or meta.get("date") or "").strip()[:10]
         if title:
-            entry = f"{title} â€” {src}" if src else title
+            entry = f"{title} \u2014 {src}" if src else title
             if date:
                 entry += f" ({date})"
             line = f"[News] {entry}"
@@ -980,19 +1032,19 @@ def _format_source_citation(item: dict[str, Any]) -> str | None:
     if kind in ("ota_insight", "ota_metric"):
         name = str(meta.get("metric_text") or meta.get("title") or meta.get("label") or "").strip()
         if name:
-            return f"[OTA Insight] {name} â€” OpenTrace OTA"
+            return f"[OTA Insight] {name} \u2014 OpenTrace OTA"
         return None
 
     if kind == "web_wikipedia":
         title = str(meta.get("title") or "Wikipedia").strip()
         url = str(meta.get("url") or "").strip()
-        label = "[Wikipedia â€” tertiary, community-edited source]"
-        return f"{label} {title} â€” {url}" if url else f"{label} {title}"
+        label = "[Wikipedia \u2014 tertiary, community-edited source]"
+        return f"{label} {title} \u2014 {url}" if url else f"{label} {title}"
 
     if kind == "web_search":
         title = str(meta.get("title") or "Web source").strip()
         url = str(meta.get("url") or "").strip()
-        return f"[Web] {title} â€” {url}" if url else f"[Web] {title}"
+        return f"[Web] {title} \u2014 {url}" if url else f"[Web] {title}"
 
     return None
 
@@ -1026,27 +1078,14 @@ def _source_header_label(
     header = f"[Source {source_id}]\nType: {_source_kind_display(kind)}"
     if cite_line:
         header += f"\nCitation: {cite_line}"
+    metadata = _item_metadata(item)
+    document_questions = metadata.get("document_requirements")
+    fact_candidates = metadata.get("document_fact_candidates")
+    if isinstance(document_questions, list) and document_questions:
+        header += "\nExplanation candidate for " + " | ".join(map(str, document_questions))[:220]
+    elif isinstance(fact_candidates, list) and fact_candidates:
+        header += "\nFigure candidate for " + ", ".join(map(str, fact_candidates))[:120]
     return header
-
-
-def dedupe_bq_context_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Collapse duplicate BigQuery rows (same metadata ``source_id``) before packing."""
-    seen: set[str] = set()
-    out: list[dict[str, Any]] = []
-    for item in items:
-        if not is_warehouse_item(item):
-            out.append(item)
-            continue
-        meta = _item_metadata(item)
-        key = str(meta.get("source_id") or "").strip()
-        if not key:
-            out.append(item)
-            continue
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(item)
-    return out
 
 
 def _registry_from_context_items(items: list[dict[str, Any]]) -> list[SourceRef]:
@@ -1065,26 +1104,36 @@ def _chunk_allocations(
     items: list[dict[str, Any]],
     budget: int,
     chunk_cap: int,
+    *,
+    source_ids: list[int] | None = None,
 ) -> list[int]:
-    """Rank-weighted per-chunk char budgets; BQ chunks get a minimum floor."""
+    """Rank-weighted budgets bounded by actual text, reserving space for each source."""
     n = len(items)
     if n == 0 or budget <= 0:
         return []
 
     weights = [max(1, n - i) for i in range(n)]
     total_weight = sum(weights)
-    alloc = [min(chunk_cap, max(1, int(budget * w / total_weight))) for w in weights]
-
-    for i, item in enumerate(items):
-        if is_warehouse_item(item):
-            alloc[i] = max(alloc[i], min(_BQ_MIN_CHARS, chunk_cap))
+    # Measure the header that will actually be written. A later source id is wider
+    # than the item's position, and that extra character was clipping the last
+    # character of a study that otherwise fit in the budget.
+    sizes = [min(chunk_cap, len(_source_header_label(
+                 item, source_ids[i] if source_ids is not None else i + 1,
+                 cite_line=_format_source_citation(item)))
+                 + len(str(item.get("content") or item.get("text") or "")) + 3)
+             for i, item in enumerate(items)]
+    floors = [min(size, _BQ_MIN_CHARS if is_warehouse_item(item) else 400)
+              for size, item in zip(sizes, items, strict=True)]
+    alloc = [min(size, max(floor, int(budget * weight / total_weight)))
+             for size, floor, weight in zip(sizes, floors, weights, strict=True)]
+    if sum(floors) > budget:
+        floors = [min(size, max(1, budget // n)) for size in sizes]
 
     while sum(alloc) > budget:
-        shrinkable = [j for j in range(n) if alloc[j] > 1]
+        shrinkable = [j for j in range(n) if alloc[j] > floors[j]]
         if not shrinkable:
             break
-        non_bq = [j for j in shrinkable if not is_warehouse_item(items[j])]
-        idx = max(non_bq if non_bq else shrinkable, key=lambda j: alloc[j])
+        idx = max(shrinkable, key=lambda j: alloc[j] - floors[j])
         alloc[idx] -= 1
 
     return alloc
@@ -1094,26 +1143,26 @@ def _build_context_block(
     context_items: list[dict[str, Any]],
     budget: int,
     chunk_cap: int,
+    *, source_ids: list[int] | None = None,
 ) -> tuple[str, list[SourceRef]]:
     """
     Pack reranked chunks into a numbered, labeled context string and source registry.
     """
     if not context_items:
         return "", []
+    if source_ids is not None and len(source_ids) != len(context_items):
+        raise ValueError("Each context item needs one source id")
 
     content_key = "content" if any("content" in c for c in context_items) else "text"
-    allocations = _chunk_allocations(context_items, budget, chunk_cap)
+    allocations = _chunk_allocations(context_items, budget, chunk_cap, source_ids=source_ids)
 
     parts: list[str] = []
     registry: list[SourceRef] = []
     used = 0
 
     for idx, (item, limit) in enumerate(zip(context_items, allocations, strict=False)):
-        source_id = idx + 1
+        source_id = source_ids[idx] if source_ids is not None else idx + 1
         cite_line = _format_source_citation(item)
-        if cite_line:
-            registry.append(SourceRef(source_id=source_id, item=item, citation_line=cite_line))
-
         if used >= budget:
             continue
 
@@ -1126,19 +1175,14 @@ def _build_context_block(
             continue
 
         header = _source_header_label(item, source_id, cite_line=cite_line)
-        metadata = _item_metadata(item)
-        document_questions = metadata.get("document_requirements")
-        fact_candidates = metadata.get("document_fact_candidates")
-        if isinstance(document_questions, list) and document_questions:
-            header += "\nExplanation candidate for " + " | ".join(map(str, document_questions))[:220]
-        elif isinstance(fact_candidates, list) and fact_candidates:
-            header += "\nFigure candidate for " + ", ".join(map(str, fact_candidates))[:120]
-        body_trunc = body[: max(0, take - len(header) - 2)]
+        body_trunc = body[: max(0, take - len(header) - 3)]
         if not body_trunc.strip():
             continue
 
         block = f"{header}\n{body_trunc.strip()}"
         parts.append(block)
+        if cite_line:
+            registry.append(SourceRef(source_id=source_id, item={**item, "content": body_trunc.strip()}, citation_line=cite_line))
         used += len(block) + 2
 
     return "\n\n".join(parts), registry
@@ -1504,13 +1548,14 @@ def referenced_citations(
         inline_citations=inline_citations,
         suppress_unreferenced=suppress_unreferenced,
     )
-    return [_source_ref_to_citation_dict(r) for r in refs]
+    return consolidate_warehouse_citations(prose, [_source_ref_to_citation_dict(r) for r in refs])[1]
 
 
 def _append_structured_citations(answer: str, source_registry: list[SourceRef]) -> str:
     """Append Sources block for referenced (or all) sources with bibliographic detail."""
     answer = _strip_model_sources_appendix(answer)
-    cites = referenced_citations(answer, source_registry)
+    refs = _referenced_source_refs(answer, source_registry)
+    answer, cites = consolidate_warehouse_citations(answer, [_source_ref_to_citation_dict(ref) for ref in refs])
     if not cites:
         return answer
     lines = [f"{c['id']}. {c['text']}" for c in cites]
@@ -1698,15 +1743,25 @@ def _finalize_generation_result(
     bq_sql_debug: list[dict[str, Any]] | None = None,
     ontology_plan: dict[str, Any] | None = None,
     require_document_citations: bool = False,
+    model_output: bool = True,
+    verified_prefix: str = "",
 ) -> GenerationResult:
     """Attach structured citations and score ACF Path B on cited sources only."""
     # ML-055: single funnel for successful answers -- catch degenerate/looping
     # non-English output here before it reaches the user (Sprint 2 P0).
-    answer = _guard_degenerate_language_output(answer, query)
+    guarded = _guard_degenerate_language_output(answer, query)
+    if guarded != answer and not verified_prefix:
+        return GenerationResult(
+            answer=guarded, citations=[],
+            acf=no_evidence_acf(explanation="Generation produced a repetitive answer; no claims were delivered."),
+            generate_input_chars=generate_input_chars,
+        )
+    answer = guarded
     answer = _prepend_time_gap(answer, decomposition)
     # ML-054: single funnel for successful answers -- flag a max_tokens cut-off
     # here so no caller can return a silently truncated answer.
-    answer = _append_truncation_notice(answer)
+    if model_output:
+        answer = _append_truncation_notice(answer, lang=detect_answer_language(query))
     t0 = time.perf_counter()
     with observed_span("citations", input_data={"registry_size": len(source_registry)}):
         prose = _strip_model_sources_appendix(answer)
@@ -1722,21 +1777,18 @@ def _finalize_generation_result(
             output_type=output_type,
             allowed_subtopics=allowed_subtopics,
         )
+        cited_prose = "\n\n".join(filter(None, (verified_prefix, prose)))
         if require_document_citations:
-            referenced_ids = extract_referenced_source_ids(prose)
+            referenced_ids = extract_referenced_source_ids(cited_prose)
             source_registry = [ref for ref in source_registry if ref.source_id in referenced_ids]
         suppress_citations = evidence_tier == "empty"
         citations = referenced_citations(
-            prose,
+            cited_prose,
             source_registry,
             inline_citations=inline_citations,
             suppress_unreferenced=suppress_citations,
         )
         citations = _sanitize_citation_text(citations)
-        if _append_sources_to_answer() and citations:
-            lines = [f"{c['id']}. {c['text']}" for c in citations]
-            prose = (prose.rstrip() + "\n\nSources\n" + "\n".join(lines)).strip()
-
         kind_counts: dict[str, int] = {}
         for c in citations:
             kind = str(c.get("kind") or "unknown")
@@ -1749,7 +1801,7 @@ def _finalize_generation_result(
                 continue
 
         cited_refs = _referenced_source_refs(
-            prose,
+            cited_prose,
             source_registry,
             inline_citations=inline_citations,
             suppress_unreferenced=suppress_citations,
@@ -1769,6 +1821,14 @@ def _finalize_generation_result(
         if unsourced:
             prose = strip_unsourced_figures(prose, unsourced)
             acf = _cap_acf_for_unsourced_figures(acf, unsourced)
+        prose = "\n\n".join(filter(None, (verified_prefix, prose)))
+        prose, citations = consolidate_warehouse_citations(
+            prose, [_source_ref_to_citation_dict(ref) for ref in cited_refs],
+        )
+        citations = _sanitize_citation_text(citations)
+        if _append_sources_to_answer() and citations:
+            lines = [f"{c['id']}. {c['text']}" for c in citations]
+            prose = (prose.rstrip() + "\n\nSources\n" + "\n".join(lines)).strip()
 
         acf = _cap_acf_for_evidence_tier(acf, evidence_tier)
         acf = apply_bq_execute_ceiling(
@@ -1857,10 +1917,7 @@ def _call_llama(
     """
     gen_timeout = float(os.environ.get("RAG_GENERATE_TIMEOUT_S", "0") or 0) or llm_default_timeout_s()
     max_toks = max_tokens if max_tokens is not None else _generate_max_tokens()
-    # Sprint 1 (Jul 2026): set to 0.7 so responses have natural variety across similar
-    # queries. Gaps never reach the LLM: `decide_outcome` returns the gap text when
-    # no row or document survived packing.
-    temperature = float(os.environ.get("RAG_GENERATE_TEMPERATURE", "0.7") or 0.7)
+    temperature = float(os.environ.get("RAG_GENERATE_TEMPERATURE", "0.6") or 0.6)
     return llm_chat_complete(
         messages,
         model=model or llm_model_id(),
@@ -1940,6 +1997,60 @@ def generate(
     if not isinstance(decomposition, dict):
         decomposition = None
 
+    price_rows = kwargs.get("price_list_rows")
+    language = kwargs.get("answer_lang") or detect_answer_language(query)
+    contract_raw = kwargs.get("turn_contract")
+    contract = TurnContract.from_dict(contract_raw if isinstance(contract_raw, dict) else None)
+    if (
+        isinstance(price_rows, list) and decomposition and kwargs.get("task_mode") == "fact_lookup"
+        and contract.job == "fact" and not contract.documents and not contract.breakdown
+        and not kwargs.get("export_intent")
+        and set(decomposition.get("primary_measures") or []) == {"market_price"}
+    ):
+        from ml.rag.chatbot.price_list_answer import render_verified_price
+        from ml.rag.chatbot.price_vocab import resolve_price_place
+
+        countries = _query_target_countries(decomposition)
+        products = decomposition.get("entities") or []
+        start = parse_iso_date(str(decomposition.get("time_start") or ""))
+        end = parse_iso_date(str(decomposition.get("time_end") or ""))
+        if (
+            len(countries) == len(products) == 1 and start and end and (end - start).days == DAILY_RECENCY_DAYS
+            and not resolve_price_place(query, name_to_iso3(countries[0]) or "")
+        ):
+            rendered = render_verified_price(
+                price_rows, country=countries[0], product=str(products[0]),
+                start=start.isoformat(), end=end.isoformat(), language=language,
+            )
+            if rendered:
+                answer, chosen = rendered
+                refs = _registry_from_context_items(chosen)
+                answer, citations = consolidate_warehouse_citations(answer, [_source_ref_to_citation_dict(ref) for ref in refs])
+                return GenerationResult(
+                    answer=answer, citations=citations,
+                    acf=score_cited_evidence(refs, query=query, decomposition=decomposition),
+                )
+    if isinstance(price_rows, list) and language in ("en", "pcm") and decomposition:
+        from ml.rag.chatbot.price_list_answer import render_price_list
+        from ml.rag.chatbot.price_sql import price_window, requested_price_list_products, to_iso3
+        from ml.rag.chatbot.price_vocab import resolve_price_place
+
+        geos = decomposition.get("geography") or []
+        countries = to_iso3(geos)
+        products = requested_price_list_products(query)
+        measures = set(decomposition.get("primary_measures") or [])
+        if products and measures == {"market_price"} and len(countries) == 1 and not resolve_price_place(query, countries[0]):
+            answer, chosen = render_price_list(
+                price_rows, products, country=geos[0], country_iso3=countries[0],
+                window=price_window(decomposition.get("time_start"), decomposition.get("time_end"), query),
+                pidgin=language == "pcm",
+            )
+            refs = _registry_from_context_items(chosen)
+            acf = score_cited_evidence(refs, query=query, decomposition=decomposition) if refs else no_evidence_acf()
+            acf = _cap_acf_for_evidence_tier(acf, "partial")
+            answer, citations = consolidate_warehouse_citations(answer, [_source_ref_to_citation_dict(ref) for ref in refs])
+            return GenerationResult(answer=answer, citations=citations, acf=acf)
+
     mem_kwargs = dict(kwargs)
     mem_kwargs["query"] = query
     mem_kwargs["decomposition"] = decomposition
@@ -1986,10 +2097,18 @@ def generate(
     require_document_citations = bool(kwargs.get("require_document_citations"))
     inline_citations = inline_citations or require_document_citations
 
-    usable_context = dedupe_bq_context_items(filter_context_items(list(context_items or [])))
-    usable_context = dedupe_context_items(usable_context)
+    usable_context = dedupe_context_items(filter_context_items(list(context_items or [])))
     usable_context = drop_price_off_topic(usable_context, query, decomposition)
     outcome = decide_outcome(usable_context)
+    if not usable_context and any(fact.enumerate_members for fact in contract.facts) and language == "en":
+        from ml.rag.chatbot.evidence_requirements import fact_gap_description
+
+        coverage = kwargs.get("fact_requirement_coverage") or []
+        if coverage:
+            return GenerationResult(
+                answer="\n\n".join(fact_gap_description(gap) for gap in coverage), citations=[],
+                acf=no_evidence_acf(explanation="No matching fact evidence; query outcomes are reported explicitly."),
+            )
 
     output_type = output_type_from_plan(generation_plan)
     answer_subtopics = tuple((generation_plan or {}).get("answer_subtopics") or ())
@@ -2013,7 +2132,6 @@ def generate(
     if not ungrounded and (
         warehouse_miss or (outcome.is_gap and not (task_mode == "data_export_only" and export_intent_s))
     ):
-        contract_raw = kwargs.get("turn_contract")
         warehouse_check_failed = any(
             bq_exec_flags.get(flag)
             for flag in (
@@ -2023,6 +2141,8 @@ def generate(
                 "structured_bq_timed_out",
             )
         )
+        if kwargs.get("warehouse_was_attempted") and not bq_sql_debug:
+            warehouse_check_failed = True
         explanation = "No warehouse rows or documents matched this question."
         incomplete_source: Literal["warehouse", "documents", "both"] | None = None
         if warehouse_check_failed and kwargs.get("retrieval_partial"):
@@ -2040,7 +2160,7 @@ def generate(
             answer=gap_answer(
                 query,
                 decomposition,
-                TurnContract.from_dict(contract_raw if isinstance(contract_raw, dict) else None),
+                contract,
                 incomplete_source=incomplete_source,
             ),
             citations=[],
@@ -2071,10 +2191,82 @@ def generate(
     )
     chunk_cap = _chunk_max_chars()
     context_block, source_registry = _build_context_block(usable_context, ctx_budget, chunk_cap)
-    if not source_registry and usable_context:
-        source_registry = _registry_from_context_items(usable_context)
+    if isinstance(kwargs.get("comparison_plan"), dict):
+        # Verified operations consume complete, SQL-bounded observations. Their
+        # citations must not depend on space for prose in the model prompt.
+        warehouse_refs = [ref for ref in _registry_from_context_items(usable_context) if is_warehouse_item(ref.item)]
+        source_registry = sorted(
+            [*warehouse_refs, *(ref for ref in source_registry if not is_warehouse_item(ref.item))],
+            key=lambda ref: ref.source_id,
+        )
+    verified_report = ""
+    if language == "en" and not export_intent_s:
+        from ml.rag.chatbot.price_list_answer import render_verified_price_report
+
+        verified_report = render_verified_price_report(
+            [(ref.source_id, ref.item) for ref in source_registry],
+            start=str((decomposition or {}).get("time_start") or ""),
+            end=str((decomposition or {}).get("time_end") or ""),
+        )
+        if verified_report:
+            inline_citations = True
+            context_block = verified_report + "\n\n" + "\n\n".join(
+                _source_header_label(ref.item, ref.source_id, cite_line=ref.citation_line)
+                + "\n" + str(ref.item.get("content") or "")
+                for ref in source_registry if is_document_item(ref.item)
+            )
+            composer_addendum += (
+                "\n\nVerified tables will precede your text. Do not repeat them. Provide the requested analysis "
+                "of the trends, separating price indices from market prices and missing years. "
+                "Cite documentary explanations inline. Omit unsupported causes or recommendations."
+            )
+    comparison_plan = kwargs.get("comparison_plan")
+    verified_comparison = ""
+    if isinstance(comparison_plan, dict) and language == "en" and not export_intent_s:
+        from ml.rag.chatbot.evidence_requirements import render_verified_facts
+
+        verified_comparison = render_verified_facts(
+            contract, comparison_plan, [(ref.source_id, ref.item) for ref in source_registry],
+            coverage=kwargs.get("fact_requirement_coverage"),
+        )
+        if verified_comparison:
+            inline_citations = True
+            # Complete observations are rendered outside the model. Supply compact
+            # endpoints and reserve the remaining context for the actual studies.
+            refs = _registry_from_context_items(usable_context)
+            model_table = render_verified_facts(
+                contract, comparison_plan, [(ref.source_id, ref.item) for ref in refs],
+                coverage=kwargs.get("fact_requirement_coverage"), endpoints_only=True,
+            )
+            if len(model_table) > ctx_budget // 2:
+                model_table = model_table[:ctx_budget // 2] + "\n[Excerpt; the complete verified table is delivered separately.]"
+            doc_refs = [ref for ref in refs if is_document_item(ref.item)]
+            doc_block, doc_registry = _build_context_block(
+                [ref.item for ref in doc_refs], max(0, ctx_budget - len(model_table) - 2), chunk_cap,
+                source_ids=[ref.source_id for ref in doc_refs],
+            )
+            source_registry = sorted(
+                [*(ref for ref in refs if is_warehouse_item(ref.item)), *doc_registry], key=lambda ref: ref.source_id,
+            )
+            context_block = model_table + "\n\n" + doc_block
+            composer_addendum += (
+                "\n\nA verified table with the figures and changes will precede your text. "
+                "Do not produce additional tables or repeat numerical observations. Explain the requested "
+                "relationships using the verified endpoints and cited studies. State the actual ending years, "
+                "not an unverified requested year. A country-specific documentary claim requires that country "
+                "in the cited passage, not only in parent-document metadata. Do not transfer findings to other "
+                "countries or assert an income effect without supporting household evidence. Distinguish "
+                "coincidence from causation. Omit proposed drivers unsupported by the cited passage."
+            )
     source_kinds = [source_kind(item) for item in usable_context]
-    note_time_fallback(decomposition, usable_context)
+    publication_window = contract.time_spec.time_role == "publication"
+    note_time_fallback(
+        decomposition,
+        [ref.item for ref in source_registry if not publication_window or is_document_item(ref.item)],
+        observation_only=not publication_window and (
+            _asks_market_price(decomposition) or bool(measure_id and is_numeric_data_query(query, decomposition))
+        ),
+    )
 
     messages = _build_prompt(
         query,
@@ -2110,12 +2302,14 @@ def generate(
             "evidence_tier": evidence_tier,
         }
     )
-    llama_answer = _call_llama(
+    document_ids = {ref.source_id for ref in source_registry if is_document_item(ref.item)}
+    llama_answer = None if verified_comparison and not document_ids else _call_llama(
         messages,
         purpose="generate",
         model=model_for_plan(plan_type),
         max_tokens=gen_max,
     )
+    cleaned = ""
     if llama_answer:
         cleaned = _normalize_inline_citations(
             _clean_answer(
@@ -2127,6 +2321,33 @@ def generate(
                 allowed_subtopics=answer_subtopics,
             )
         )
+    comparison_narrative_unavailable = bool(
+        verified_comparison and contract.documents
+        and (not (document_ids & extract_referenced_source_ids(cleaned)) or answer_was_length_capped())
+    )
+    if comparison_narrative_unavailable:
+        cleaned = (
+            "The documentary evidence could not be assessed in this run."
+            if document_ids and not llama_answer else
+            "A document-based explanation of these changes could not be verified in this run."
+        )
+    report_narrative_unavailable = False
+    if verified_report:
+        document_ids = {ref.source_id for ref in source_registry if is_document_item(ref.item)}
+        report_narrative_unavailable = bool(
+            not cleaned or answer_was_length_capped()
+            or not (document_ids & extract_referenced_source_ids(cleaned))
+        )
+        if report_narrative_unavailable:
+            cleaned = "The numerical report above is complete. I could not complete a verified explanation of the drivers in this run."
+    if (cleaned or verified_comparison) and cleaned.rstrip("?!. ").casefold() != query.strip().rstrip("?!. ").casefold():
+        if (
+            task_mode == "fact_lookup" and contract.facts and not require_document_citations
+            and not extract_referenced_source_ids(cleaned)
+        ):
+            warehouse_refs = [ref for ref in source_registry if is_warehouse_item(ref.item)]
+            if warehouse_refs:
+                source_registry = warehouse_refs
         return _finalize_generation_result(
             cleaned,
             source_registry,
@@ -2144,35 +2365,15 @@ def generate(
             bq_sql_debug=bq_sql_debug,
             ontology_plan=ontology_plan,
             require_document_citations=require_document_citations,
+            verified_prefix=verified_report or verified_comparison,
+            model_output=bool(llama_answer) and not (report_narrative_unavailable or comparison_narrative_unavailable),
         )
 
-    excerpts: list[str] = []
-    for ref in source_registry[:6]:
-        text = str(ref.item.get("content") or ref.item.get("text") or "").strip()
-        if text:
-            excerpts.append(f"[{ref.source_id}] {text[:500]}")
-    if excerpts and source_registry:
-        body = "\n\n".join(excerpts)
-        partial = (
-            "The model did not finish in time. What the retrieved sources say:\n\n" + body
-        )
-        return _finalize_generation_result(
-            partial,
-            source_registry,
-            query=query,
-            decomposition=decomposition,
-            inline_citations=True,
+    if source_registry:
+        return GenerationResult(
+            answer=generation_failure_answer(language),
+            citations=[], acf=no_evidence_acf(explanation="Generation stopped before a verified answer was completed."),
             generate_input_chars=input_chars,
-            evidence_tier="partial",
-            export_intent=export_intent_s,
-            yield_only=yield_only,
-            output_type=output_type,
-            allowed_subtopics=answer_subtopics,
-            bq_exec_flags=bq_exec_flags,
-            usable_bq=usable_bq,
-            bq_sql_debug=bq_sql_debug,
-            ontology_plan=ontology_plan,
-            require_document_citations=require_document_citations,
         )
     if llm_configured():
         hint = (

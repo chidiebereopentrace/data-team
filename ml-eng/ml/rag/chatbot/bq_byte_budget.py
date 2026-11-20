@@ -1,8 +1,7 @@
-"""UTF-8 byte budgets for BQ reasoner / NL2SQL hints / result context."""
+"""UTF-8 byte budgets for BQ reasoner and NL2SQL schema hints."""
 from __future__ import annotations
 
 import os
-from typing import Any
 
 
 def _env_int(name: str, default: int) -> int:
@@ -25,10 +24,6 @@ def hint_max_bytes() -> int:
         except ValueError:
             pass
     return _env_int("RAG_BQ_HINT_MAX_CHARS", 8000)
-
-
-def context_max_bytes() -> int:
-    return _env_int("RAG_BQ_CONTEXT_MAX_BYTES", 6000)
 
 
 def utf8_len(text: str) -> int:
@@ -74,35 +69,3 @@ def pack_lines(lines: list[str], max_bytes: int) -> tuple[str, bool]:
             text = frag if not text else text + "\n" + frag
         break
     return text, truncated
-
-
-def trim_bq_result_contents(
-    rows: list[dict[str, Any]],
-    *,
-    max_bytes: int | None = None,
-) -> tuple[list[dict[str, Any]], bool]:
-    """Trim serialized BQ row content to a total UTF-8 byte budget (priority order preserved)."""
-    budget = context_max_bytes() if max_bytes is None else max(0, max_bytes)
-    out: list[dict[str, Any]] = []
-    used = 0
-    truncated = False
-    for row in rows:
-        content = str(row.get("content") or "")
-        cost = utf8_len(content)
-        if used + cost <= budget:
-            out.append(row)
-            used += cost
-            continue
-        remain = budget - used
-        if remain > 32:
-            frag, _ = truncate_utf8(content, remain)
-            trimmed = dict(row)
-            trimmed["content"] = frag
-            meta = dict(trimmed.get("metadata") or {})
-            meta["bq_context_truncated"] = True
-            trimmed["metadata"] = meta
-            out.append(trimmed)
-            used = budget
-        truncated = True
-        break
-    return out, truncated or len(out) < len(rows)

@@ -16,6 +16,7 @@ from ml.rag.chat_history import normalize_messages
 from ml.rag.chatbot.agri_entities import CROP_ENTITY_RE
 from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.geo_iso3 import countries_named_in_text, iso3_to_canonical_name, name_to_iso3
+from ml.rag.chatbot.agri_measure_ontology import entity_is_measure_noise
 from ml.rag.chatbot.product_knowledge import is_help_query, is_product_query
 from ml.rag.chatbot.query_gate import is_greeting_query
 
@@ -194,7 +195,8 @@ def slots_from_decomposition(dec: dict[str, Any] | None) -> dict[str, Any]:
     """Slots the decomposer resolved for this turn (entities and places it understood)."""
     d = dec if isinstance(dec, dict) else {}
     out: dict[str, Any] = {}
-    entities = [str(e).strip().lower() for e in d.get("entities") or [] if str(e).strip()]
+    entities = [str(e).strip().lower() for e in d.get("entities") or []
+                if str(e).strip() and not entity_is_measure_noise(str(e))]
     if entities:
         out["commodity"] = list(dict.fromkeys(entities))
     geos = [str(g).strip() for g in d.get("geography") or [] if str(g).strip()]

@@ -513,7 +513,7 @@ Deterministic post-retrieval reasoner — runs inside **`node_generate`** after 
 | `synthesis_notes` | 1–3 deterministic instruction strings |
 | `rationale` | Code path id for Streamlit inspector |
 | `report_sections` | Dynamic `##` outline for analytical / heavy compare-trend answers (not a fixed five-section brief) |
-| `effective_category` | Resolved persona (`Government`, `NGOs`, `Agribusinesses`, `Farmers`) |
+| `effective_category` | Resolved persona (`Government`, `NGOs`, `Agribusinesses`, `Farmers`, `Research`) |
 | `category_source` | `explicit` (API profile) \| `query` (inferred) \| `plan_type` \| `none` |
 | `use_bullet_layout` | Farmers persona: bullet topics instead of section headings |
 

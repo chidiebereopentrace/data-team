@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
+from ml.rag.chatbot.agri_entities import CROP_COMMODITY_TERMS
 from ml.rag.chatbot.bundle_metrics import AGRI_ACTIVITIES_STAPLES, food_price_basket
 from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
 from ml.rag.chatbot.sql_ast_validate import string_literal as _lit
@@ -24,6 +26,7 @@ from ml.rag.chatbot.price_vocab import (
     resolve_price_place,
     resolve_price_products,
 )
+from ml.rag.chatbot.time_resolver import DAILY_RECENCY_DAYS, parse_iso_date, resolve_relative_time
 
 _ISO3_RE = re.compile(r"^[A-Z]{3}$")
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
@@ -32,18 +35,39 @@ _PRICE_RE = re.compile(
     re.IGNORECASE,
 )
 _ROW_LIMIT = 60
+PRICE_LIST_ROW_LIMIT = 500
+_PRICE_CROP_RE = re.compile(
+    r"\b(" + "|".join(map(re.escape, sorted(CROP_COMMODITY_TERMS, key=len, reverse=True))) + r")(?:e?s)?\b",
+    re.I,
+)
+_PRICE_LIST_RE = re.compile(r"\b(?:price\s+list(?:s)?|list\b[^.?!]{0,60}\bprices?)\b", re.I)
+_PROCESSED_RE = re.compile(r"\b(?:flour|bran|meal|oil|starch|flaked|feed)\b", re.I)
+
+
+def requested_price_list_products(query: str) -> list[str]:
+    """Identify explicit lists of separately named crops."""
+    if not _PRICE_LIST_RE.search(query) or _PROCESSED_RE.search(query):
+        return []
+    products = list(dict.fromkeys(
+        "maize" if match[1].lower() == "corn" else match[1].lower()
+        for match in _PRICE_CROP_RE.finditer(query)
+    ))
+    return products if len(products) > 1 else []
 
 
 @dataclass(frozen=True)
 class PriceWindow:
-    """Single year, inclusive year range, or latest month held per series."""
+    """Requested bounds and whether to return the latest month per series."""
 
     year_start: int | None
     year_end: int | None
+    date_start: date | None = None
+    date_end: date | None = None
+    latest_in_window: bool = False
 
     @property
     def latest(self) -> bool:
-        return self.year_start is None and self.year_end is None
+        return self.latest_in_window or (self.year_start is None and self.year_end is None)
 
     @property
     def multi_year(self) -> bool:
@@ -65,16 +89,21 @@ def to_iso3(labels: list[str]) -> list[str]:
 
 
 def price_window(time_start: str | None, time_end: str | None, query: str) -> PriceWindow:
-    years: list[int] = []
-    for raw in (time_start, time_end):
-        m = _YEAR_RE.search(str(raw or ""))
-        if m:
-            years.append(int(m.group(0)))
-    if not years:
+    start = parse_iso_date(time_start or "")
+    end = parse_iso_date(time_end or "")
+    low = _YEAR_RE.search(time_start or "")
+    high = _YEAR_RE.search(time_end or "")
+    if not low and not high:
         years = [int(m.group(0)) for m in _YEAR_RE.finditer(query or "")]
-    if not years:
-        return PriceWindow(None, None)
-    return PriceWindow(min(years), max(years))
+        return PriceWindow(min(years), max(years)) if years else PriceWindow(None, None)
+    low_year = int(low.group(0)) if low else None
+    high_year = int(high.group(0)) if high else None
+    named = resolve_relative_time(query, end) if start and end and (end - start).days == DAILY_RECENCY_DAYS else []
+    latest = (
+        len(named) == 1 and not named[0].strict and named[0].grain == "range"
+        and named[0].start == start and named[0].end == end
+    )
+    return PriceWindow(low_year or high_year, high_year or low_year, start, end, latest)
 
 
 def _in(values: list[str]) -> str:
@@ -91,6 +120,8 @@ def build_price_sql(
     price_type: str | None,
     window: PriceWindow,
     places: list[PricePlace] | None = None,
+    product_groups: dict[str, list[PriceSeries]] | None = None,
+    summarize: bool = False,
 ) -> str:
     """Code-owned price SQL. ``series`` are vocabulary rows already scoped to ``iso3s``.
 
@@ -136,36 +167,83 @@ def build_price_sql(
             filters.append(f"price_type IN ({_in(held_types)})")
     if metrics:
         filters.append(f"metric IN ({_in(metrics)})")
-    qualify = ""
-    if window.latest:
+    if window.date_start:
+        filters.append(f"as_of_date >= DATE '{window.date_start}'")
+    if window.date_end:
+        filters.append(f"as_of_date <= DATE '{window.date_end}'")
+    if window.year_start is None:
         floor = min(int(s.last_date[:4]) for s in series if s.last_date[:4].isdigit()) - 1
         filters.append(f"year >= {floor}")
-        qualify = (
-            "QUALIFY DATE_TRUNC(as_of_date, MONTH) = MAX(DATE_TRUNC(as_of_date, MONTH)) OVER "
-            f"(PARTITION BY country_iso3, product_key, price_source, price_type, unit, currency{scope_partition}) "
-        )
     elif window.multi_year:
         filters.append(f"year BETWEEN {window.year_start} AND {window.year_end}")
     else:
         filters.append(f"year = {window.year_start}")
-    year_col = "b.year, " if window.multi_year else ""
+    qualify = ""
+    if window.latest:
+        qualify = (
+            "QUALIFY DATE_TRUNC(as_of_date, MONTH) = MAX(DATE_TRUNC(as_of_date, MONTH)) OVER "
+            f"(PARTITION BY country_iso3, product_key, price_source, price_type, unit, currency{scope_partition}) "
+        )
+    annual = window.multi_year and not window.latest
+    year_col = "b.year, " if annual else ""
     fqn = f"`{project_id}.{dataset}"
-    return (
-        f"SELECT b.country_iso3, {scope_outer}d.product_name, b.price_type, b.price_source, b.unit, b.currency, {year_col}"
+    requested_inner = requested_outer = requested_group = ""
+    if product_groups:
+        cases = " ".join(
+            f"WHEN product_key IN ({_in([s.product_key for s in members])}) THEN {_lit(product)}"
+            for product, members in product_groups.items() if members
+        )
+        requested_inner = f"CASE {cases} END AS requested_product, "
+        requested_outer = "b.requested_product, "
+        requested_group = ", b.requested_product"
+    sql = (
+        f"SELECT b.country_iso3, {scope_outer}{requested_outer}d.product_name, b.price_type, b.price_source, b.unit, b.currency, {year_col}"
         "AVG(b.value) AS avg_price, MIN(b.value) AS min_price, "
         "MAX(b.value) AS max_price, COUNT(DISTINCT b.market_key) AS market_count, "
         "MIN(b.as_of_date) AS period_start, MAX(b.as_of_date) AS latest_date "
         "FROM ("
-        f"SELECT country_iso3, {scope_inner}product_key, price_type, price_source, unit, currency, "
+        f"SELECT country_iso3, {scope_inner}{requested_inner}product_key, price_type, price_source, unit, currency, "
         "year, as_of_date, market_key, value "
         f"FROM {fqn}.fct_prices` "
         f"WHERE {' AND '.join(filters)} "
         f"{qualify}"
         f") b JOIN {fqn}.dim_product` d ON d.product_key = b.product_key "
-        f"GROUP BY b.country_iso3{scope_group}, d.product_name, b.price_type, b.price_source, b.unit, b.currency"
-        f"{', b.year' if window.multi_year else ''} "
-        f"ORDER BY {'b.year, ' if window.multi_year else ''}{scope_order}market_count DESC "
-        f"LIMIT {_ROW_LIMIT}"
+        f"GROUP BY b.country_iso3{scope_group}{requested_group}, d.product_name, b.price_type, b.price_source, b.unit, b.currency"
+        f"{', b.year' if annual else ''} "
+    )
+    if product_groups:
+        # Keep one series per crop throughout the period. Its type, currency and unit
+        # remain separate and a missing year stays empty.
+        series_keys = "country_iso3, requested_product, product_name, price_type, price_source, unit, currency"
+        selected = (
+            f"WITH prices AS ({sql}), coverage AS ("
+            f"SELECT *, COUNT(*) OVER (PARTITION BY {series_keys}) AS covered_years, "
+            f"MAX(latest_date) OVER (PARTITION BY {series_keys}) AS last_seen FROM prices) "
+            "SELECT * EXCEPT(covered_years, last_seen) FROM coverage "
+            "QUALIFY DENSE_RANK() OVER (PARTITION BY country_iso3, requested_product "
+            "ORDER BY CASE price_type WHEN 'Retail' THEN 0 WHEN 'Wholesale' THEN 1 ELSE 2 END, "
+            "covered_years DESC, last_seen DESC, product_name, price_source, unit, currency) = 1 "
+        )
+        if summarize:
+            return _summarize_price_history(selected, series_keys)
+        return selected + f"ORDER BY {'year DESC, ' if annual else ''}requested_product LIMIT {PRICE_LIST_ROW_LIMIT}"
+    time_order = "latest_date DESC, " if window.latest else "b.year, " if annual else ""
+    return sql + f"ORDER BY {scope_order}{time_order}market_count DESC LIMIT {_ROW_LIMIT}"
+
+
+def _summarize_price_history(sql: str, series_keys: str) -> str:
+    """One comparable series per country and basket item, retaining every annual figure."""
+    first = "ARRAY_AGG(avg_price ORDER BY year LIMIT 1)[OFFSET(0)]"
+    last = "ARRAY_AGG(avg_price ORDER BY year DESC LIMIT 1)[OFFSET(0)]"
+    return (
+        f"WITH selected AS ({sql}) SELECT {series_keys}, "
+        f"{first} AS first_price, MIN(year) AS first_year, {last} AS avg_price, MAX(year) AS year, "
+        f"IF(unit = '%', NULL, 100 * SAFE_DIVIDE({last} - {first}, {first})) AS change_pct, "
+        f"IF(unit = '%', {last} - {first}, NULL) AS change_percentage_points, "
+        "STRING_AGG(FORMAT('%d: %.2f', year, avg_price), '; ' ORDER BY year) AS annual_prices, "
+        "COUNT(*) AS covered_years, MAX(market_count) AS market_count, "
+        "MIN(period_start) AS period_start, MAX(latest_date) AS latest_date "
+        f"FROM selected GROUP BY {series_keys} ORDER BY country_iso3, requested_product LIMIT {PRICE_LIST_ROW_LIMIT}"
     )
 
 
@@ -205,10 +283,31 @@ def plan_price_template(
     series: list[PriceSeries] = []
     closest: list[str] = []
     named = food_price_basket(query)
-    if named:
-        staples = re.compile(r"\b(?:" + "|".join(AGRI_ACTIVITIES_STAPLES) + r")\b", re.I)
+    window = price_window(time_start, time_end, query)
+    report = named and window.multi_year
+    products = requested_price_list_products(query) if len(iso3s) == 1 and not named else []
+    groups: dict[str, list[PriceSeries]] = {}
+    if products and not resolve_price_place(query, iso3s[0]):
+        groups = {
+            product: [
+                row for row in resolve_price_products(product, iso3s[0]).series
+                if not _PROCESSED_RE.search(row.product_name)
+            ] for product in products
+        }
+        series = [row for members in groups.values() for row in members]
+        named = True
+    elif named:
         vocab = load_price_vocab()
-        series = [s for code in iso3s for s in vocab.for_country(code) if staples.search(s.product_name)]
+        groups = {
+            product: [row for code in iso3s for row in resolve_price_products(product, code).series]
+            for product in AGRI_ACTIVITIES_STAPLES
+        }
+        if report:
+            for product in ("Consumer Prices, Food Indices (2015 = 100)", "Food price inflation"):
+                groups[product] = [row for code in iso3s for row in vocab.for_country(code) if row.product_name == product]
+        series = [row for members in groups.values() for row in members]
+        if not report:
+            groups = {}
     else:
         for code in iso3s:
             res = resolve_price_products(blob, code)
@@ -227,16 +326,21 @@ def plan_price_template(
         }
     places, place_note = _places_for(query, iso3s, series)
     notes = [place_note] if place_note else []
-    window = price_window(time_start, time_end, query)
-    if not window.latest:
+    report = report and not places
+    if named and not products and not report:
+        groups = {}
+    if report:
+        notes.append(
+            "Commodity coverage is the available maize, rice, cassava, sorghum, millet and yam basket; "
+            "it is not all foods or an official CPI basket. National food indices and food-price inflation "
+            "are separate series. annual_prices contains every retrieved year. Changes use first_year "
+            "and year for the same product, source, price type, unit and currency; missing years stay missing. "
+            "Current-year averages cover only observations through latest_date and are provisional."
+        )
+    if window.year_start is not None:
         in_window = [s for s in series if _covers(s, window)]
         if in_window:
             series = in_window
-        else:
-            span = f"{window.year_start}" + ("" if window.year_end == window.year_start else f"-{window.year_end}")
-            latest_year = max(s.last_date[:4] for s in series)
-            notes.append(f"No price rows for {span}; latest available month shown (data runs to {latest_year}).")
-            window = PriceWindow(None, None)
     sources = held_price_sources(blob, series)
     if not sources:
         return None
@@ -245,13 +349,15 @@ def plan_price_template(
     price_type: str | None = None
     if named_type:
         price_type = choose_price_type(blob, scoped, sources[0] if len(sources) == 1 else None)
+        if price_type is None and groups:
+            return {"sql": "", "template": "price_gap", "gap_message": _gap_message(blob, iso3s, []), "table_id": "fct_prices"}
         if price_type is None:
             price_type = choose_price_type("", scoped, sources[0] if len(sources) == 1 else None)
             if price_type:
                 notes.append(
                     f"The requested price type is not held for this product; {price_type} prices shown."
                 )
-    if window.latest:
+    if window.year_start is None and not groups:
         freshest = max(s.last_date for s in scoped)
         cutoff = f"{int(freshest[:4]) - 1}{freshest[4:]}"
         scoped = [s for s in scoped if s.last_date >= cutoff]
@@ -270,11 +376,15 @@ def plan_price_template(
             price_type=price_type,
             window=window,
             places=places,
+            product_groups=groups or None,
+            summarize=report,
         ),
         "template": "mart_price",
         "countries": iso3s,
         "places": [f"{p.level}:{p.name}" for p in places],
-        "product_names": sorted({s.product_name for s in scoped})[:12],
+        "product_names": sorted({s.product_name for s in scoped}),
+        "price_list_products": products if groups else [],
+        "price_report": report,
         "price_source": sources[0] if len(sources) == 1 else sources,
         "price_type": price_type,
         "widened": " ".join(notes),

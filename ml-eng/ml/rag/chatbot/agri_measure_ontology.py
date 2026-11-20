@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from ml.rag.chatbot.agri_entities import query_has_crop_or_commodity
 from ml.rag.chatbot.mart_indicator_classes import class_for_query, facts_for_classes
-from ml.rag.chatbot.query_normalize import normalize_query_text
+from ml.rag.chatbot.query_normalize import indicator_query_text, normalize_query_text
 from ml.rag.chatbot.time_resolver import resolve_relative_time, utc_today
 
 RecencyTier = Literal["live", "near_term", "historical_ok", "point_in_time"]
@@ -56,6 +56,16 @@ class MeasureHit:
 
 
 MEASURES: dict[str, MeasureSpec] = {
+    "labour_productivity": MeasureSpec(
+        id="labour_productivity",
+        aliases=("agricultural productivity", "agriculture productivity", "labour productivity",
+                 "labor productivity", "value added per worker", "output per worker", "productivity"),
+        corpus_domains=("Agricultural Economics", "Agricultural Production & Yield"),
+        bq_index_domains=("employment",), candidate_tables=("fct_employment",),
+        filter_hints="Agriculture value added per worker (constant 2015 US$); sex='Total'; unit='USD'",
+        default_task_mode="analytical", indicator_classes=("EL",),
+        notes="Sector labour productivity, not crop yield, physical output or farm income.",
+    ),
     "production": MeasureSpec(
         id="production",
         aliases=(
@@ -645,6 +655,7 @@ _PRIORITY_IDS: tuple[str, ...] = (
     "gdp",
     "hdi",
     "employment_share",
+    "labour_productivity",
     "socio_economic",
     "land_inputs",
     "emissions",
@@ -874,12 +885,23 @@ def _alias_score(query_lower: str, alias: str) -> int:
     return 0
 
 
+def _productivity_matches(measure: str, text: str) -> bool:
+    """Resolve land and labour productivity from the words actually requested."""
+    if measure not in ("yield", "labour_productivity") or not re.search(r"\bproductivity\b", text, re.I):
+        return True
+    labour = bool(re.search(r"\b(?:labou?r productivity|(?:added|output) per worker)\b", text, re.I))
+    land = bool(re.search(r"\b(?:yields?|hectare|(?:crop|land) productivity)\b|t/ha", text, re.I))
+    land = land or (query_has_crop_or_commodity(text) and not labour)
+    return (land if measure == "yield" else labour or not land)
+
+
 def explicit_measure_ids(query: str) -> list[str]:
     """Measure aliases in the request, excluding domain and companion guesses."""
-    text = normalize_query_text(query).lower()
+    text = indicator_query_text(query).lower()
     return [
         mid for mid in _PRIORITY_IDS
         if any(_alias_score(text, alias) for alias in MEASURES[mid].aliases)
+        and _productivity_matches(mid, text)
         and mid not in ("data_export_panel", "investor_best_country")
     ]
 
@@ -894,6 +916,8 @@ def _score_measure(
     if mid not in MEASURES:
         return None
     if mid in ("data_export_panel", "investor_best_country"):
+        return None
+    if not _productivity_matches(mid, query_lower):
         return None
     spec = MEASURES[mid]
     score = 0

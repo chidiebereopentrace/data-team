@@ -15,10 +15,11 @@ import os
 import re
 import time
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from ml.rag.chatbot.answer_language import detect_language_with_confidence
+from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
 from ml.rag.llm_chat import llm_chat_complete, llm_model_id
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,20 @@ ENRICH_EN_CONFIDENCE_MIN: Final[float] = 0.6
 
 _CACHE_TTL_S = 3600.0
 _CACHE_MAX = 256
-_enrich_cache: dict[str, tuple[float, str]] = {}
+_enrich_cache: dict[str, tuple[float, LanguageEnrichment]] = {}
+# Subject anchors are terminology, not sentence-specific translations. Keep
+# ambiguous words (e.g. Igbo "ala" alone) out of these high-precision patterns.
+_SOIL_ANCHORS = {
+    "en": r"\bsoil\b",
+    "fr": r"\bsols?\b|\bfertilite\b",
+    "ig": r"\baja\b(?=.*\b(?:ala\s*ugbo|alaugbo|ugbo|ubi)\b)",
+    "sw": r"\budongo\b",
+}
+_IGBO_CURRENT_PRICE = re.compile(
+    r"(?:kedu\s+)?ego\s+ole\s+(?:ka\s+)?(?:a\s*|ha\s+)?na[-\s]?ele\s+"
+    r"(?P<product>\w+)\s+na\s+(?P<country>.+?)\s+ugbu\s*a\s*\??",
+)
+_IGBO_PRICE_CROPS = {"osikapa": "rice"}
 
 _SYSTEM = (
     "You rewrite African agricultural questions into one clear English sentence "
@@ -59,7 +73,9 @@ _SYSTEM = (
     "as well as the crops, places, and time windows. "
     "Expand well-known local crop names only when confident "
     "(e.g. akpu → cassava, mahindi → maize, osikapa → rice). "
-    "Do not invent years, places, or crops that are not in the input. "
+    "Keep the original subject and task. You may expand relevant supporting context, "
+    "but do not replace the question with a different crop, policy or indicator. "
+    "Do not change explicit years or places, or present suggested crops as an exhaustive requested list. "
     "Output only the English sentence — no quotes, no preamble, no JSON."
 )
 
@@ -69,8 +85,10 @@ class LanguageEnrichment:
     answer_lang: str
     needs_enrich: bool
     english_query: str
-    enrich_source: str  # none | llm | cache
+    enrich_source: str  # none | llm | cache | lexicon | anchored_original
     confidence: float = 0.0
+    subjects: tuple[str, ...] = ()
+    subject_guard_applied: bool = False
 
 
 def lang_enrich_enabled() -> bool:
@@ -118,7 +136,7 @@ def _normalize_cache_key(query: str, answer_lang: str) -> str:
     return digest
 
 
-def _cache_get(key: str) -> str | None:
+def _cache_get(key: str) -> LanguageEnrichment | None:
     hit = _enrich_cache.get(key)
     if not hit:
         return None
@@ -129,7 +147,7 @@ def _cache_get(key: str) -> str | None:
     return value
 
 
-def _cache_set(key: str, value: str) -> None:
+def _cache_set(key: str, value: LanguageEnrichment) -> None:
     if len(_enrich_cache) >= _CACHE_MAX:
         ordered = sorted(_enrich_cache.items(), key=lambda kv: kv[1][0])
         for old_key, _ in ordered[: max(1, _CACHE_MAX // 4)]:
@@ -188,16 +206,18 @@ def enrich_query_to_english(
             confidence=conf,
         )
 
+    if lang == "ig":
+        folded = "".join(c for c in unicodedata.normalize("NFD", q.casefold()) if not unicodedata.combining(c))
+        match = _IGBO_CURRENT_PRICE.fullmatch(folded)
+        if match and (crop := _IGBO_PRICE_CROPS.get(match["product"])):
+            if country_id := name_to_iso3(match["country"]):
+                country = iso3_to_canonical_name(country_id)
+                return LanguageEnrichment(lang, True, f"What is the current market price of {crop} in {country}?", "lexicon", conf)
+
     cache_key = _normalize_cache_key(q, lang)
     cached = _cache_get(cache_key)
     if cached is not None:
-        return LanguageEnrichment(
-            answer_lang=lang,
-            needs_enrich=True,
-            english_query=cached,
-            enrich_source="cache",
-            confidence=conf,
-        )
+        return replace(cached, enrich_source="cache", confidence=conf)
 
     messages = [
         {"role": "system", "content": _SYSTEM},
@@ -223,7 +243,9 @@ def enrich_query_to_english(
         raw = ""
 
     english = _clean_english(raw)
-    if not english:
+    folded = "".join(c for c in unicodedata.normalize("NFD", q.casefold()) if not unicodedata.combining(c))
+    subjects = ("soil",) if re.search(_SOIL_ANCHORS.get(lang, r"(?!)"), folded) else ()
+    if not english and not subjects:
         return LanguageEnrichment(
             answer_lang=lang,
             needs_enrich=True,
@@ -232,14 +254,22 @@ def enrich_query_to_english(
             confidence=conf,
         )
 
-    _cache_set(cache_key, english)
-    return LanguageEnrichment(
+    guarded = bool(subjects and not re.search(r"\bsoil\b|\bfertility\b|\bfarmland\b", english, re.I))
+    if guarded:
+        # Retain the complete original question and a known bilingual anchor.
+        # An expansion that replaces its subject cannot become the request.
+        english = q + " | Explicit subject: " + ", ".join(subjects)
+    result = LanguageEnrichment(
         answer_lang=lang,
         needs_enrich=True,
         english_query=english,
-        enrich_source="llm",
+        enrich_source="anchored_original" if guarded else "llm",
         confidence=conf,
+        subjects=subjects,
+        subject_guard_applied=guarded,
     )
+    _cache_set(cache_key, result)
+    return result
 
 
 __all__ = [

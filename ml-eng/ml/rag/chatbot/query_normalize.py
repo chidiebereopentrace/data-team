@@ -141,4 +141,9 @@ def normalize_query_text(query: str) -> str:
     return q.strip()
 
 
-__all__ = ["normalize_query_text"]
+def indicator_query_text(query: str) -> str:
+    """Treat word-separating dashes alike for indicator matching, leaving dates intact."""
+    return re.sub(r"(?<=[^\W\d_])[-‐‑‒–—](?=[^\W\d_])", " ", normalize_query_text(query))
+
+
+__all__ = ["normalize_query_text", "indicator_query_text"]

@@ -267,7 +267,7 @@ def is_data_export_only_query(query: str, decomposition: dict[str, Any] | None =
         return False
     if _EXPORT_ONLY_RE.search(q):
         return True
-    if export in ("csv", "chart") and not re.search(
+    if export in ("csv", "geojson", "chart") and not re.search(
         r"\b(explain|analy[sz]e|report|compar|why|brief)\b", q, re.IGNORECASE
     ):
         return True
@@ -329,6 +329,8 @@ def resolve_task_mode(
     # Panels / numbers-only exports beat analytical "past N years" report detection.
     if is_data_export_only_query(q, decomposition):
         return "data_export_only"
+    if str((decomposition or {}).get("job") or "") in ("diagnose", "report", "synthesis"):
+        return "analytical"
     if is_analytical_query(q, decomposition) or (
         hit
         and hit.measure.default_task_mode == "analytical"

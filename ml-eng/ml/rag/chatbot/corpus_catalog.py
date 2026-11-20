@@ -341,7 +341,7 @@ def select_corpora(
             reasons.append("farmers_soft_skip_academic")
         reasons.append("plan_farmers")
 
-    if plan in ("Agribusinesses", "Integrated"):
+    if plan in ("Agribusinesses", "Integrated", "Research"):
         preferred.add("ota")
         _boost(boosts, "ota", 0.06)
         reasons.append("plan_ota_boost")

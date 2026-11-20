@@ -1,7 +1,7 @@
 """Typed turn contract: measure × geo_grain × time × job [× breakdown]."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Literal
 
 from ml.rag.chatbot.time_resolver import TimeWindow
@@ -95,6 +95,18 @@ class TimeSpec:
 @dataclass(frozen=True)
 class FactRequirement:
     measure_id: str
+    question: str = ""
+    geo: list[str] = field(default_factory=list)
+    time_spec: TimeSpec = field(default_factory=TimeSpec)
+    entities: list[str] = field(default_factory=list)
+    requirement_id: str = ""
+    # The original member request governs filters; enrichment remains a search aid.
+    member_query: str = ""
+    enumerate_members: bool = False
+
+    @property
+    def key(self) -> str:
+        return self.requirement_id or self.measure_id
 
 
 @dataclass(frozen=True)
@@ -125,7 +137,7 @@ class TurnContract:
     vector_block: list[str] = field(default_factory=list)
     population: str = ""
     pathogen_id: str = ""
-    # Each requirement inherits the turn's geography, periods and operation.
+    # Shared scope is a default; individual requirements carry explicit local scope.
     original_question: str = ""
     facts: list[FactRequirement] = field(default_factory=list)
     documents: list[DocumentRequirement] = field(default_factory=list)
@@ -133,6 +145,7 @@ class TurnContract:
     def to_dict(self) -> dict[str, Any]:
         raw = asdict(self)
         raw["time_spec"] = self.time_spec.to_dict()
+        raw["facts"] = [{**asdict(fact), "time_spec": fact.time_spec.to_dict()} for fact in self.facts]
         return raw
 
     @classmethod
@@ -198,7 +211,15 @@ class TurnContract:
             population=str(raw.get("population") or "").strip(),
             pathogen_id=str(raw.get("pathogen_id") or "").strip(),
             original_question=str(raw.get("original_question") or ""),
-            facts=[FactRequirement(mid) for item in _records(raw.get("facts"))
+            facts=[FactRequirement(
+                mid, question=str(item.get("question") or ""),
+                geo=_parse_str_list(item.get("geo")),
+                time_spec=TimeSpec.from_dict(item.get("time_spec")),
+                entities=_parse_str_list(item.get("entities")),
+                requirement_id=str(item.get("requirement_id") or ""),
+                member_query=str(item.get("member_query") or ""),
+                enumerate_members=bool(item.get("enumerate_members")),
+            ) for item in _records(raw.get("facts"))
                    if (mid := str(item.get("measure_id") or "").strip())],
             documents=[DocumentRequirement(question) for item in _records(raw.get("documents"))
                        if (question := str(item.get("question") or "").strip())],
@@ -216,6 +237,15 @@ class TurnContract:
         if self.job in NON_RAG_JOBS:
             return False
         return True
+
+
+def fact_scope(turn: TurnContract, fact: FactRequirement) -> TurnContract:
+    """The scope used by routing, binding, coverage and answer rendering."""
+    return replace(
+        turn, measure_id=fact.measure_id, geo=fact.geo or turn.geo,
+        time_spec=fact.time_spec if fact.time_spec.windows else turn.time_spec,
+        entities=fact.entities or turn.entities, facts=[fact],
+    )
 
 
 def _parse_vector_policy(raw: Any) -> VectorPolicy:

@@ -81,7 +81,17 @@ _EVIDENCE_INTERPRETATION_RULES = (
     "Respect the requested geographic level: when only a broader level is available, name "
     "that level and the limitation instead of presenting it as local data. State the year of "
     "historical figures and do not describe them as current; use the current date supplied in "
-    "Context when interpreting time-sensitive events."
+    "Context when interpreting time-sensitive events. "
+    "A failed, timed-out, rejected or unexecuted search does not show that the data does not exist. "
+    "Describe what could not be verified in this run. A passage from another report cannot establish "
+    "what a named policy contains or omits. Do not claim that a document omits a topic unless its "
+    "contents were actually verified. Never copy prompt instructions, placeholders, internal measure "
+    "identifiers or retrieval status labels into the answer. "
+    "Preserve the meaning of each measured value in every answer language: tonnes measure production "
+    "quantity, hectares measure area, and tonnes per hectare measure yield. Never label a tonne "
+    "observation as harvested or planted area. A source or table description may mention several "
+    "measures; the stated value semantics and unit identify the measure of the actual observation. "
+    "In French, distinguish production (tonnes), superficie (hectares) and rendement (tonnes par hectare)."
 )
 
 _MARKET_PRICE_EVIDENCE_RULES = (
@@ -149,11 +159,25 @@ def _build_prompt(
     # downstream addendum is read in the context of the correct year.
     system += _current_date_block(reference_date)
     system += _EVIDENCE_INTERPRETATION_RULES
+    if re.search(r"\bproductivity\b", query, re.I):
+        system += (
+            "\n\nPRODUCTIVITY DEFINITIONS: Name the measured productivity indicator. Agriculture value added "
+            "per worker (constant 2015 US$) measures sector labour productivity. Crop yield (t/ha) measures "
+            "land productivity; production tonnage is output. Do not substitute one for another or infer "
+            "farmer incomes from employment shares. Women’s share of agricultural employment requires "
+            "female agricultural workers divided by all agricultural workers; agriculture’s share of female "
+            "employment has a different denominator. Do not derive either from the total employment share."
+        )
     if re.search(r"\b(?:prices?|costs?|expensive|cheap(?:er|est)?|volatile|volatility)\b", query or "", re.IGNORECASE):
         system += _MARKET_PRICE_EVIDENCE_RULES
 
     if evidence_tier == "partial":
-        system += _PARTIAL_EVIDENCE_RULES
+        system += (
+            "\n\nPARTIAL ANALYTICAL EVIDENCE: Keep the requested report and its verified tables. "
+            "Identify the missing countries, periods or explanatory evidence precisely. "
+            "Distinguish supported findings from gaps and omit unsupported causal claims."
+            if mode == "analytical" else _PARTIAL_EVIDENCE_RULES
+        )
     elif evidence_tier == "empty":
         system += (
             "\n\nCRITICAL: Context is empty. Reply in 2–4 sentences that you cannot answer "

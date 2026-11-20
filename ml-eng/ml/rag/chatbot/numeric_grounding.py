@@ -59,6 +59,7 @@ _LIST_MARKER_RE = re.compile(r"(?m)^\s{0,3}(?:#{1,6}\s*)?\d{1,2}[.)]\s")
 
 # Inline citation markers [1] must never be read as figures.
 _CITATION_MARKER_RE = re.compile(r"\[\d+\]")
+_ISO_DATE_RE = re.compile(r"\b(?:19|20|21)\d{2}-\d{2}-\d{2}\b")
 
 # Ordinals and small counts carry little factual risk on their own.
 _SMALL_NUMBER_CEILING = 10
@@ -108,7 +109,7 @@ def _candidate_figures(answer: str) -> list[str]:
     """Pull figures from the answer that represent factual claims."""
     if not answer:
         return []
-    text = _CITATION_MARKER_RE.sub(" ", answer)
+    text = _ISO_DATE_RE.sub(" ", _CITATION_MARKER_RE.sub(" ", answer))
     text = _LIST_MARKER_RE.sub(" ", text)
 
     found: list[str] = []
@@ -162,16 +163,16 @@ def strip_unsourced_figures(answer: str, unsourced: list[str]) -> str:
     if not answer or not unsourced:
         return answer
     flagged = {_normalise(fig) for fig in unsourced}
-    kept: list[str] = []
-    for sentence in _SENTENCE_RE.split(answer.strip()):
-        figures = {_normalise(fig) for fig in _candidate_figures(sentence)}
-        if figures & flagged:
+    lines: list[str] = []
+    for line in answer.splitlines():
+        if not line.strip():
+            lines.append(line)
             continue
-        if sentence.strip():
-            kept.append(sentence.strip())
-    if not kept:
-        return _UNSUPPORTED_LIMIT
-    return " ".join(kept)
+        kept = [sentence for sentence in _SENTENCE_RE.split(line)
+                if not flagged.intersection(_candidate_figures(sentence))]
+        if kept:
+            lines.append(" ".join(kept))
+    return "\n".join(lines).strip() or _UNSUPPORTED_LIMIT
 
 
 def append_unsourced_caveat(answer: str, unsourced: list[str]) -> str:

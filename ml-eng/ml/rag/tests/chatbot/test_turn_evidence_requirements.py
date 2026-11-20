@@ -1,8 +1,11 @@
 from datetime import date
 from unittest.mock import MagicMock
 
+import pytest
+
 from ml.rag.chatbot.compile_sql_from_bind import compile_operation
 from ml.rag.chatbot.document_evidence import document_requirement_coverage
+from ml.rag.chatbot.document_evidence import requirement_document_candidates
 from ml.rag.chatbot.evidence_requirements import fact_requirement_coverage, matches_bound_fact
 from ml.rag.chatbot.facet_compiler import compile_turn_contract
 from ml.rag.chatbot.graph import (
@@ -12,6 +15,7 @@ from ml.rag.chatbot.graph import (
     node_bq_retrieve,
     node_coverage_retry,
     node_decompose,
+    node_generate,
     node_merge,
     node_parallel_retrieve,
     node_rerank,
@@ -35,6 +39,34 @@ FACETS = {
 }
 
 
+@pytest.mark.parametrize("job", ["trend", "report", "fact"])
+def test_food_price_report_retrieves_without_a_named_commodity(monkeypatch, job):
+    query = "give me a robust detailed aanlytics of food price changes in nigeria and cameroun since 2020 till now"
+    facets = {
+        "intent": "descriptive", "job": job, "entities": [],
+        "geography": ["Nigeria", "Cameroon"], "primary_measures": ["market_price"],
+        "time_start": "2020-01-01", "time_end": "2026-11-18", "reference_date": "2026-11-18",
+    }
+    monkeypatch.setattr("ml.rag.chatbot.graph.decompose_query", lambda *a, **kw: dict(facets))
+    state = node_decompose({"query": query, "reference_date": "2026-11-18"})
+    assert state["task_mode"] == "analytical", state.get("turn_contract")
+    assert state["source_selection"]["bigquery"]["selected"]
+    assert state["source_selection"]["qdrant"]["selected"]
+    planned = node_bq_reason({"query": query, **state})
+    plan = planned["bq_sql_plan"]
+    assert set(plan["selected_tables"]) <= {"fct_prices", "agg_prices_country_month"}, plan
+    client = MagicMock()
+    client.query.return_value.result.return_value = []
+    monkeypatch.setenv("BQ_PROJECT", "test")
+    monkeypatch.setattr(BQRetriever, "_get_client", lambda self: client)
+    monkeypatch.setattr("ml.rag.retrievers.bq_retriever.dry_run_sql", lambda *a, **kw: None)
+    retrieved = node_bq_retrieve({"query": query, **state, **planned})
+    sql = " ".join(call.args[0] for call in client.query.call_args_list)
+    assert client.query.call_count >= 1, retrieved.get("bq_sql_debug")
+    assert "NGA" in sql and "CMR" in sql
+    assert "2020" in sql and "2026" in sql
+
+
 def test_explicit_requirements_survive_language_enrichment_and_serialization():
     original = "Comparez la sécheresse, le rendement du maïs et l’insécurité alimentaire au Kenya."
     contract = compile_turn_contract(QUESTION, FACETS, original_question=original, answer_lang="fr")
@@ -48,6 +80,57 @@ def test_explicit_requirements_survive_language_enrichment_and_serialization():
     assert [(w.start.isoformat(), w.end.isoformat()) for w in restored.time_spec.windows] == [
         ("2018-01-01", "2019-12-31"), ("2022-01-01", "2023-12-31"),
     ]
+
+
+def test_investment_comparison_keeps_both_indicators_and_focused_policy_evidence():
+    query = (
+        "Compare maize yields and agriculture’s share of total employment in Kenya and Uganda in 2018 and 2023. "
+        "Using cited policy evaluations or research, assess whether mechanisation or farm input policies "
+        "help explain the changes. Distinguish measured policy effects from plausible explanations."
+    )
+    facets = {**FACETS, "geography": ["Kenya", "Uganda"], "evidence_topics": []}
+    turn = compile_turn_contract(query, facets)
+    assert [(w.start.year, w.end.year) for w in turn.time_spec.windows] == [(2018, 2018), (2023, 2023)]
+    planned = node_bq_reason({"query": query, "decomposition": facets, "turn_contract": turn.to_dict()})["bq_sql_plan"]
+    assert planned["fact_tables"] == {"yield": "agg_production_country_year", "employment_share": "fct_employment"}
+    assert all(" OR " in bind["time_sql"] for bind in planned["bind_contracts"].values())
+
+    policy = "A 2020 evaluation in Kenya found that mechanisation improved maize yields."
+    unrelated = "In Kenya, a 2020 agricultural investment committee discussed plausible explanations."
+    candidates = requirement_document_candidates(turn, [
+        {"source": "policy", "content": policy}, {"source": "policy", "content": unrelated},
+    ])
+    assert [item["content"] for item in candidates] == [policy]
+    assert candidates[0]["metadata"]["document_requirements"]
+
+
+def test_comparative_answer_keeps_verified_endpoints_when_model_omits_them(monkeypatch):
+    query = ("Compare maize yields and agricultural employment share in Kenya and Uganda in 2018 and 2023. "
+             "Using research, explain whether mechanisation affected the changes.")
+    facets = {**FACETS, "geography": ["Kenya", "Uganda"], "evidence_topics": []}
+    turn = compile_turn_contract(query, facets)
+    planned = node_bq_reason({"query": query, "decomposition": facets, "turn_contract": turn.to_dict()})["bq_sql_plan"]
+    rows = []
+    for measure, table in planned["fact_tables"].items():
+        for country, iso in (("Kenya", "KEN"), ("Uganda", "UGA")):
+            for year, delta in ((2018, 0), (2023, 2)):
+                value = 31 + delta if measure == "employment_share" else 1.25 + delta
+                organisation = "ILOSTAT" if measure == "employment_share" else "FAOSTAT"
+                rows.append({"source": "bigquery", "content": f"{country} {measure} in {year} was {value}.",
+                             "metadata": {"table_id": table, "status": "ok", "country_name": country,
+                                          "year": year, "organisation_name": organisation,
+                                          "source_id": measure, "source_url": f"https://example.org/{table}",
+                                          "value_semantics": {"measure_value": value},
+                                          "raw_row": {"country_iso3": iso, "year": year, "value": value,
+                                                      "organisation_name": organisation}}})
+    monkeypatch.setattr("ml.rag.chatbot.generator._call_llama", lambda *a, **kw: "Employment figures are missing [1].")
+    result = node_generate({"query": query, "decomposition": facets, "task_mode": "analytical", "answer_lang": "en",
+                            "turn_contract": turn.to_dict(), "bq_sql_plan": planned,
+                            "bq_results": rows, "reranked_context": rows})
+    assert "Employment figures are missing" not in result["answer"]
+    assert "33.00 %" in result["answer"] and "+2.00 percentage points" in result["answer"]
+    assert "+2.00 t/ha" in result["answer"]
+    assert len(result["citations"]) == 2  # Source/indicator citations retain all eight observations in the answer.
 
 
 def test_warehouse_and_document_plans_follow_the_same_turn(monkeypatch):

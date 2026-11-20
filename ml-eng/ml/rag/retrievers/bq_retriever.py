@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from ml.rag.chatbot.acf_metadata import project_bq_row_acf
+from ml.rag.chatbot.agri_measure_ontology import get_measure
 from ml.rag.chatbot.bq_byte_budget import hint_max_bytes, truncate_utf8
 from ml.rag.chatbot.bq_sql_patterns import try_sql_patterns
 from ml.rag.chatbot.bq_sql_templates import try_sql_template
 from ml.rag.chatbot.bq_sql_validate import (
-    broaden_empty_sql_once,
     dry_run_sql,
     inject_missing_metric_filters,
     inject_bind_contract_filters,
@@ -44,14 +44,15 @@ from ml.rag.chatbot.compile_sql_from_bind import (
     RESULT_ROW_BUDGET,
     bind_contract_for_table,
     compile_operation,
-    question_names_year,
     requested_operation,
 )
 from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, name_to_iso3
 from ml.rag.chatbot.bq_execute_state import NON_EVIDENCE_ROW_STATUSES, evidence_id_for_sql
-from ml.rag.chatbot.mart_coverage import clamp_year, load_coverage, route_tables
+from ml.rag.chatbot.mart_coverage import load_coverage, route_tables
 from ml.rag.chatbot.result_shape import check_result_shape
+from ml.rag.chatbot.price_sql import PRICE_LIST_ROW_LIMIT
 from ml.rag.chatbot.stage_budget import RetrievalWorkers
+from ml.rag.chatbot.time_resolver import parse_iso_date
 from ml.rag.llm_chat import llm_chat_complete, llm_default_timeout_s, llm_model_id
 from ml.rag.local_env import load_rag_dotenv
 from ml.rag.observability import (
@@ -69,14 +70,6 @@ logger = logging.getLogger(__name__)
 _QUERY_WORKERS = RetrievalWorkers("rag-bigquery-job", workers=12)
 
 _AGG_TABLE_RE = re.compile(r"\bagg_", re.I)
-_TIME_PRED_RE = re.compile(
-    r"\b(time_key|year|harvest_year|observation_year|mp_year)\s*(=|BETWEEN)\s*(\d{4})(?:\s+AND\s+(\d{4}))?",
-    re.IGNORECASE,
-)
-_AS_OF_RE = re.compile(
-    r"as_of_date BETWEEN DATE '(\d{4})-\d{2}-\d{2}' AND DATE '(\d{4})-\d{2}-\d{2}'",
-    re.IGNORECASE,
-)
 
 
 def _coverage_spans(sql: str, geo_country: str | None) -> list[tuple[str, int, int]]:
@@ -101,51 +94,6 @@ def _coverage_sentence(spans: list[tuple[str, int, int]]) -> str:
         return ""
     parts = [f"{table} holds {start}-{end}" for table, start, end in spans]
     return " Covered years: " + "; ".join(parts) + "."
-
-
-def retry_empty_sql(
-    sql: str,
-    query: str,
-    geo_country: str | None,
-    *,
-    crop_required: bool,
-    geography_required: bool,
-) -> tuple[str | None, int | None]:
-    """One retry. A named year stays put. An unnamed year moves to the latest covered year."""
-    if question_names_year(query or ""):
-        return None, None
-    spans = _coverage_spans(sql, geo_country)
-    if spans:
-        latest = max(end for _table, _start, end in spans)
-        shifted = _shift_time_to_latest(sql, latest)
-        if shifted != sql:
-            return shifted, latest
-    broadened = broaden_empty_sql_once(
-        sql,
-        crop_required=crop_required,
-        geography_required=geography_required,
-    )
-    return broadened, None
-
-
-def _shift_time_to_latest(sql: str, latest: int) -> str:
-    """Move a missed time window onto one covered year, keeping a span's length."""
-
-    def _as_of(match: re.Match[str]) -> str:
-        start, end = int(match.group(1)), int(match.group(2))
-        width = max(0, end - start)
-        begin = latest - width
-        return f"as_of_date BETWEEN DATE '{begin}-01-01' AND DATE '{latest}-12-31'"
-
-    def _pred(match: re.Match[str]) -> str:
-        col, op, first, second = match.group(1), match.group(2), match.group(3), match.group(4)
-        if op.upper() == "BETWEEN" and second:
-            width = max(0, int(second) - int(first))
-            return f"{col} BETWEEN {latest - width} AND {latest}"
-        return f"{col} = {latest}"
-
-    shifted = _AS_OF_RE.sub(_as_of, sql)
-    return _TIME_PRED_RE.sub(_pred, shifted)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -1374,6 +1322,15 @@ class BQRetriever(BaseRetriever):
         else:
             time_end = time_end.strip()[:10]
 
+        start_date = parse_iso_date(time_start or "")
+        end_date = parse_iso_date(time_end or "")
+        if start_date and end_date and start_date > end_date:
+            return [_bq_diagnostic_item(
+                status="no_valid_sql",
+                message="Warehouse time window ends before it starts",
+                prep_error="inverted_time_window",
+            )]
+
         entities = kwargs.get("entities")
         if not isinstance(entities, list):
             entities = None
@@ -1388,16 +1345,32 @@ class BQRetriever(BaseRetriever):
                 tid = str(item).strip().split(".")[-1].lower()
                 if _is_mart_table_id(tid):
                     selected_tables.add(tid)
+        raw_pm = kwargs.get("primary_measures")
+        primary_measures: list[str] | None = None
+        if isinstance(raw_pm, list):
+            primary_measures = list(dict.fromkeys(str(m).strip() for m in raw_pm if str(m).strip())) or None
+        task_mode = str(kwargs.get("task_mode") or "").strip().lower()
+        measure = get_measure(primary_measures[0]) if primary_measures and len(primary_measures) == 1 else None
+        # The broad class plan may include companion tables. A point lookup with
+        # one resolved measure should only query its serving tables.
+        fact_scope = bool(
+            selected_tables and measure and measure.candidate_tables
+            and task_mode == "fact_lookup" and not kwargs.get("heavy_path")
+            and not kwargs.get("sql") and kwargs.get("plan_source") != "turn_requirements"
+        )
+        if fact_scope and measure:
+            selected_tables.intersection_update(measure.candidate_tables)
+            if not selected_tables:
+                return [_bq_diagnostic_item(
+                    status="no_valid_sql",
+                    message=f"No selected warehouse table serves {measure.id}",
+                    prep_error="measure_table_mismatch",
+                )]
         iso3 = name_to_iso3(geo_country) if geo_country else None
         if not iso3 and geo_countries and len(geo_countries) == 1:
             iso3 = name_to_iso3(geo_countries[0])
         if selected_tables:
             selected_tables = set(route_tables(selected_tables, iso3))
-        if iso3 and time_end and len(time_end) >= 4 and time_end[:4].isdigit():
-            first = next(iter(selected_tables), "")
-            capped = clamp_year(first, iso3, int(time_end[:4]))
-            if capped is not None and capped < int(time_end[:4]):
-                time_end = f"{capped}-12-31"
 
         raw_ovf = kwargs.get("ontology_value_filters")
         ontology_value_filters: dict[str, list[str]] | None = None
@@ -1423,12 +1396,13 @@ class BQRetriever(BaseRetriever):
 
         raw_intents = kwargs.get("query_intents")
         query_intents: list[Any] | None = raw_intents if isinstance(raw_intents, list) else None
+        if fact_scope and query_intents:
+            query_intents = [
+                intent for intent in query_intents if isinstance(intent, dict)
+                and (not intent.get("tables") or selected_tables.intersection(intent["tables"]))
+            ]
         crop_required = bool(kwargs.get("crop_required", True))
         geography_required = bool(kwargs.get("geography_required", True))
-        raw_pm = kwargs.get("primary_measures")
-        primary_measures: list[str] | None = None
-        if isinstance(raw_pm, list):
-            primary_measures = [str(m).strip() for m in raw_pm if str(m).strip()] or None
         decomp = kwargs.get("decomposition")
         geography: list[str] | None = None
         if isinstance(decomp, dict):
@@ -1439,7 +1413,6 @@ class BQRetriever(BaseRetriever):
             geography = list(geo_countries)
         elif geography is None and geo_country:
             geography = [geo_country]
-        task_mode = str(kwargs.get("task_mode") or "").strip().lower()
         serve_status = str(kwargs.get("serve_status") or "served").strip().lower()
         contract_sql_only = bool(kwargs.get("contract_sql_only"))
         template_key = str(kwargs.get("template_key") or "").strip()
@@ -1537,6 +1510,11 @@ class BQRetriever(BaseRetriever):
             or bool(kwargs.get("nl2sql_fallback"))
             or str(kwargs.get("plan_source") or "").strip() == "class_engine"
         )
+        if fact_scope and bind_contracts:
+            bind_contracts = {
+                table: bind for table in selected_tables
+                if (bind := bind_contract_for_table(bind_contracts, table)) is not None
+            } or None
 
         price_tables = {"fct_prices", "agg_prices_country_month"}
         price_turn = bool(selected_tables and set(selected_tables) & price_tables)
@@ -1572,8 +1550,11 @@ class BQRetriever(BaseRetriever):
                                 shape_job = str(intent.get("shape") or "")
                     requirement_path = kwargs.get("plan_source") == "turn_requirements"
                     asked = None if requirement_path else requested_operation(query or "")
-                    for tid in sorted(remaining_tables):
-                        raw_bind = bind_contract_for_table(bind_contracts, tid)
+                    bindings = (
+                        list(bind_contracts.values()) if requirement_path else
+                        [bind_contract_for_table(bind_contracts, tid) for tid in sorted(remaining_tables)]
+                    )
+                    for raw_bind in bindings:
                         if raw_bind is None:
                             continue
                         compiled = compile_operation(
@@ -1907,7 +1888,6 @@ class BQRetriever(BaseRetriever):
                     if deadline is not None and time.perf_counter() >= deadline:
                         raise TimeoutError("Warehouse deadline reached before job submission")
                     job = client.query(validated, job_config=_jcfg)
-                    submitted_at_ms = int((time.perf_counter() - exec_t0) * 1000)
                     job_cap = _bq_job_timeout_s(validated)
                     remain = _remaining_deadline_s(deadline)
                     if remain is not None:
@@ -1981,61 +1961,6 @@ class BQRetriever(BaseRetriever):
                         }
                     )
                     return exec_items, True
-
-                used_year: int | None = None
-                if not rows and source != "engine":
-                    broadened, used_year = retry_empty_sql(
-                        validated,
-                        query or "",
-                        geo_country,
-                        crop_required=crop_required,
-                        geography_required=geography_required,
-                    )
-                    if broadened:
-                        revalidated, _prep_err = self._prepare_sql(
-                            broadened,
-                            question=query,
-                            table_hints=hint_list,
-                            selected_tables=selected_tables,
-                            allowed_datasets=allowed,
-                            limit=limit,
-                            client=client,
-                            geo_country=geo_country,
-                            geo_countries=geo_countries,
-                            time_start=time_start,
-                            time_end=time_end,
-                            entities=entities,
-                            domains=domains,
-                            query=query,
-                            primary_measures=primary_measures,
-                            geography=geography,
-                            crop_required=crop_required,
-                            geography_required=geography_required,
-                            sql_source=source,
-                            decomposition=decomp if isinstance(decomp, dict) else None,
-                            bind_contracts=bind_contracts,
-                            query_intents=query_intents,
-                        )
-                        if revalidated:
-                            try:
-                                from google.cloud.bigquery import QueryJobConfig as _QJC
-
-                                _max_b = max_bytes_billed_for_source(source)
-                                _jcfg = (
-                                    _QJC(maximum_bytes_billed=_max_b) if _max_b > 0 else None
-                                )
-                                job = client.query(revalidated, job_config=_jcfg)
-                                job_cap = _bq_job_timeout_s(revalidated)
-                                remain = _remaining_deadline_s(deadline)
-                                if remain is not None:
-                                    job_cap = min(job_cap, remain)
-                                rows = list(job.result(timeout=job_cap))
-                                validated = revalidated
-                            except Exception as exc:
-                                logger.warning(
-                                    "BQ broaden-once execute failed: %s",
-                                    str(exc)[:200],
-                                )
 
                 if not rows:
                     telem = _job_telemetry(row_count=0, status="empty_result")
@@ -2113,13 +2038,11 @@ class BQRetriever(BaseRetriever):
                     if slot_id:
                         row_meta["subquestion_id"] = slot_id
                         row_meta["slot_id"] = slot_id
-                    if used_year is not None:
-                        row_meta["year_used"] = used_year
                     content = str(d)
-                    if used_year is not None:
-                        content = f"{content} (year used: {used_year})"
                     if template_meta and source == "template":
                         row_meta["template"] = template_meta.get("template")
+                        if template_meta.get("price_report"):
+                            row_meta["price_report"] = True
                         if template_meta.get("widened"):
                             row_meta["coverage_note"] = template_meta["widened"]
                             content = f"{content} (note: {template_meta['widened']})"
@@ -2153,7 +2076,10 @@ class BQRetriever(BaseRetriever):
                         break
 
             prepared: list[_PreparedWork] = []
-            if source == "bind_compiler":
+            if source == "template" and ((template_meta or {}).get("price_list_products") or (template_meta or {}).get("price_report")):
+                budget = max(budget, PRICE_LIST_ROW_LIMIT)
+                batch_row_limit = PRICE_LIST_ROW_LIMIT
+            elif source == "bind_compiler":
                 budget = max(budget, RESULT_ROW_BUDGET)
                 batch_row_limit = RESULT_ROW_BUDGET + 1
             else:
@@ -2184,28 +2110,30 @@ class BQRetriever(BaseRetriever):
                 limit = 1 if point_fact_cap else batch_row_limit
                 bind = contract_by_sql.get(raw_sql)
                 requirement_bind = bind if kwargs.get("plan_source") == "turn_requirements" else None
+                scope = requirement_bind.get("request_scope", {}) if requirement_bind else {}
+                scoped_tables = {requirement_bind["table_id"]} if requirement_bind else selected_tables
                 validated, prep_err = self._prepare_sql(
                     raw_sql,
-                    question=query,
+                    question=scope.get("question", query),
                     table_hints=hint_list,
-                    selected_tables=selected_tables,
+                    selected_tables=scoped_tables,
                     allowed_datasets=allowed,
                     limit=limit,
                     client=client,
                     geo_country=geo_country,
                     geo_countries=geo_countries,
-                    time_start=time_start,
-                    time_end=time_end,
-                    entities=entities,
+                    time_start=scope.get("time_start", time_start),
+                    time_end=scope.get("time_end", time_end),
+                    entities=scope.get("entities", entities),
                     domains=domains,
                     query=query,
-                    primary_measures=primary_measures,
-                    geography=geography,
+                    primary_measures=scope.get("primary_measures", primary_measures),
+                    geography=scope.get("geography", geography),
                     crop_required=bool(requirement_bind["product_literals"]) if requirement_bind else crop_required,
                     geography_required=geography_required,
                     sql_source=source,
-                    decomposition=decomp if isinstance(decomp, dict) else None,
-                    bind_contracts=bind_contracts,
+                    decomposition=scope or (decomp if isinstance(decomp, dict) else None),
+                    bind_contracts={requirement_bind["table_id"]: requirement_bind} if requirement_bind else bind_contracts,
                     query_intents=query_intents,
                 )
                 if validated is None:
@@ -2226,6 +2154,9 @@ class BQRetriever(BaseRetriever):
                     }
                     if prep_err:
                         fail_meta["prep_error"] = prep_err[:500]
+                    if requirement_bind:
+                        fail_meta["requirement_id"] = requirement_bind["requirement_id"]
+                        fail_meta["table_id"] = requirement_bind["table_id"]
                     if template_meta and source == "template":
                         fail_meta["template"] = template_meta.get("template")
                     if pattern_meta and source == "pattern":
@@ -2239,6 +2170,8 @@ class BQRetriever(BaseRetriever):
                     )
                     continue
                 slot_id = ""
+                if requirement_bind:
+                    contract_by_sql[validated] = requirement_bind
                 if slot_ids and idx < len(slot_ids):
                     slot_id = str(slot_ids[idx] or "").strip()
                 prepared.append(
@@ -2415,4 +2348,10 @@ class BQRetriever(BaseRetriever):
                 meta = item.get("metadata")
                 if isinstance(meta, dict):
                     meta.setdefault("ontology_literal_notes", notes)
+        for item in items:
+            meta = item.get("metadata")
+            if isinstance(meta, dict) and (bound := contract_by_sql.get(str(meta.get("sql") or ""))):
+                if bound.get("requirement_id"):
+                    meta["requirement_id"] = bound["requirement_id"]
+                    meta["table_id"] = bound["table_id"]
         return items

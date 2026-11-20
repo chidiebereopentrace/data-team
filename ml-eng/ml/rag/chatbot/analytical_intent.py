@@ -146,6 +146,8 @@ def is_analytical_query(query: str, decomposition: dict[str, Any] | None = None)
             reportish = False
     agri = bool(_AGRI_RE.search(q))
 
+    if has_multi_geo and agri and _years_span(dec):
+        return True
     if (agri or has_region or has_multi_geo) and asks_about_causal_effect(q):
         return True
     if reportish and (agri or has_region or compareish or export):

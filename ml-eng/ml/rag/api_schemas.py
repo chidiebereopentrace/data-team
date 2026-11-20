@@ -78,6 +78,7 @@ PlanType = Literal[
     "NGOs",
     "Agribusinesses",
     "Integrated",
+    "Research",
 ]
 
 Category = Literal[
@@ -85,6 +86,7 @@ Category = Literal[
     "NGOs",
     "Agribusinesses",
     "Farmers",
+    "Research",
 ]
 
 
@@ -95,11 +97,11 @@ class CitationItem(BaseModel):
     url: str | None = None
 
 
-ArtifactKind = Literal["csv", "chart", "docx", "pdf", "html"]
+ArtifactKind = Literal["csv", "geojson", "chart", "docx", "pdf", "html"]
 
 
 class ArtifactItem(BaseModel):
-    """Downloadable export produced on Agribusinesses / Integrated chat routes."""
+    """Downloadable export produced on export-enabled paid chat routes."""
 
     id: str = Field(..., description="Stable artifact id for this response")
     kind: ArtifactKind = Field(..., description="Export format")
@@ -115,11 +117,13 @@ class ArtifactItem(BaseModel):
 
 
 class UserProfile(BaseModel):
+    """Optional request context; the authenticated route determines access to the plan."""
+
     model_config = ConfigDict(extra="forbid")
 
     country: str | None = None
-    plan_type: PlanType
-    category: Category
+    plan_type: PlanType | None = None
+    category: Category | None = None
 
 
 class UsageStats(BaseModel):

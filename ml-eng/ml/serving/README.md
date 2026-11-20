@@ -5,7 +5,7 @@
 | Module | Purpose |
 |--------|---------|
 | `enterprise/tenant_registry.py` | Loads tenants from `ENTERPRISE_TENANTS_JSON` / `ENTERPRISE_TENANTS_PATH`; keys are stored as SHA-256 digests only |
-| `enterprise/auth.py` | `EnterpriseAuthMiddleware`: 401 without a valid key, 403 on another tenant's `/query/{plan}` route, monthly quotas and per-tenant rpm |
+| `enterprise/auth.py` | `EnterpriseAuthMiddleware`: 401 without a valid key, 403 on another tenant's `/query/{plan}` route, and monthly quotas. Per-user rpm is counted in the query handler from `user_id` |
 | `enterprise/metering.py` | Per-tenant monthly query/token/export counters (Redis when `RAG_REDIS_URL` is set) |
 
 Public routes: `/`, `/health`, `/ready`. Everything else (including `/docs`) needs `X-API-Key` or `Authorization: Bearer`.

@@ -1,7 +1,7 @@
 """Tests for export intent detection and inline-citation gating."""
 from __future__ import annotations
 
-from ml.rag.chatbot.export_intent import detect_export_intent, want_inline_citations
+from ml.rag.chatbot.export_intent import detect_export_intent, resolve_export_intent, want_inline_citations
 
 
 def test_detect_csv_intent() -> None:
@@ -26,6 +26,14 @@ def test_detect_multi_intent() -> None:
 
 def test_no_export_intent() -> None:
     assert detect_export_intent("What are maize yields in Kenya?") is None
+
+
+def test_explicit_export_intent_wins_over_question_text() -> None:
+    assert resolve_export_intent("What are maize yields in Kenya?", "csv") == "csv"
+
+
+def test_omitted_export_intent_still_detects_csv() -> None:
+    assert resolve_export_intent("Export maize prices as a CSV", None) == "csv"
 
 
 def test_want_inline_citations_default_off() -> None:

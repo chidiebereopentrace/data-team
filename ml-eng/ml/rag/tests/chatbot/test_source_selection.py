@@ -1,15 +1,15 @@
 from threading import Barrier
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 from ml.rag.chatbot import graph
+from ml.rag.chatbot.language_enrich import LanguageEnrichment
 
 
 def _decompose(monkeypatch, query, **facets):
     monkeypatch.setattr(graph, "decompose_query", lambda *args, **kwargs: facets.copy())
     monkeypatch.setattr(
         graph, "enrich_query_to_english",
-        lambda *args, **kwargs: SimpleNamespace(answer_lang="en", english_query="", needs_enrich=False),
+        lambda *args, **kwargs: LanguageEnrichment(answer_lang="en", english_query="", needs_enrich=False, enrich_source="none"),
     )
     monkeypatch.setattr(graph, "metacog_enabled", lambda: False)
     return graph.node_decompose({"query": query})

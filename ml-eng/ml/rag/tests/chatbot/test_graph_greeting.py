@@ -10,6 +10,15 @@ from ml.rag.chatbot.graph import _document_search_texts, node_decompose
 from ml.rag.chatbot.active_request import resolve_turn
 
 
+def test_node_decompose_greeting_keeps_caller_export_intent() -> None:
+    with mock.patch("ml.rag.chatbot.graph.observed_span") as span:
+        with mock.patch("ml.rag.chatbot.graph.update_current_span_metadata"):
+            span.return_value.__enter__ = mock.Mock(return_value=None)
+            span.return_value.__exit__ = mock.Mock(return_value=False)
+            out = node_decompose({"query": "hi", "export_intent": "csv"})
+    assert out.get("export_intent") == "csv"
+
+
 def test_node_decompose_greeting_skips_memory_and_decompose() -> None:
     with mock.patch("ml.rag.chatbot.graph.enrich_query_to_english") as enrich:
         with mock.patch("ml.rag.chatbot.graph.build_query_views") as views:
@@ -298,6 +307,29 @@ def test_social_followups_never_carry_slots() -> None:
     for msg in ["hi", "merci", "asante", "sannu", "kedu", "sawubona"]:
         turn, _ = resolve_turn(msg, persisted=None, recent_turns=prior)
         assert turn.carried() == {}, msg
+
+
+def test_node_decompose_full_path_keeps_explicit_export_intent() -> None:
+    with mock.patch("ml.rag.chatbot.graph.decompose_query") as decompose:
+        decompose.return_value = {
+            "intent": "descriptive",
+            "entities": ["maize"],
+            "geography": ["Kenya"],
+            "domains": ["production"],
+            "time_start": "2020-01-01",
+            "time_end": "2020-12-31",
+            "_decompose_llm_ms": 0.0,
+            "_skipped_decompose_llm": True,
+        }
+        with mock.patch("ml.rag.chatbot.graph.observed_span") as span:
+            span.return_value.__enter__ = mock.Mock(return_value=None)
+            span.return_value.__exit__ = mock.Mock(return_value=False)
+            kept = node_decompose(
+                {"query": "maize production in Kenya 2020", "export_intent": "csv"}
+            )
+            detected = node_decompose({"query": "Export maize prices as a CSV"})
+    assert kept.get("export_intent") == "csv"
+    assert detected.get("export_intent") == "csv"
 
 
 def test_node_decompose_agri_query_runs_full_decompose() -> None:

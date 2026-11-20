@@ -98,19 +98,6 @@ _TRAILING_CLAUSE_RE = re.compile(
     r"\b(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING|QUALIFY)\b",
     re.IGNORECASE,
 )
-_YEAR_EQ_RE = re.compile(
-    r"\b(year|harvest_year|planting_year)\s*=\s*(\d{4})\b",
-    re.IGNORECASE,
-)
-_PRODUCT_EQ_RE = re.compile(
-    r"\b(product_name|product|item)\s*=\s*'((?:''|[^'])*)'",
-    re.IGNORECASE,
-)
-_PRODUCT_IN_RE = re.compile(
-    r"\b(product_name|product|item)\s+IN\s*\([^)]*\)",
-    re.IGNORECASE,
-)
-
 # Metric discriminators live in bq_table_schema_yaml (one list).
 
 _SQL_KEYWORDS = frozenset(
@@ -735,38 +722,6 @@ def inject_time_bounds(
             return _append_where_filters(text, clause), [f"{bare}.{ycol} BETWEEN {ts[:4]} AND {te[:4]}"]
 
     return text, []
-
-
-def broaden_empty_sql_once(
-    sql: str,
-    *,
-    crop_required: bool = True,
-    geography_required: bool = True,
-) -> str | None:
-    """
-    Soften a valid-but-empty SQL once: widen a single-year equality, optionally drop product.
-
-    Never drops geography filters. Returns None when nothing can be softened.
-    """
-    text = (sql or "").strip()
-    if not text:
-        return None
-    out = text
-    changed = False
-    year_match = _YEAR_EQ_RE.search(out)
-    if year_match:
-        year = int(year_match.group(2))
-        col = year_match.group(1)
-        out = _YEAR_EQ_RE.sub(f"{col} BETWEEN {year - 1} AND {year + 1}", out, count=1)
-        changed = True
-    if not crop_required:
-        replaced = _PRODUCT_EQ_RE.sub("1=1", out)
-        replaced = _PRODUCT_IN_RE.sub("1=1", replaced)
-        if replaced != out:
-            out = replaced
-            changed = True
-    _ = geography_required
-    return out if changed else None
 
 
 def _refs_for_sql_checks(sql: str, table_ids: set[str] | None = None) -> set[str]:

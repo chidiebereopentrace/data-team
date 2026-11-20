@@ -170,7 +170,7 @@ def test_generate_typed_gap_when_warehouse_empty_flag() -> None:
                 warehouse_was_attempted=True,
             )
     mock_llm.assert_not_called()
-    assert "no rows" in result.answer.lower() or "warehouse" in result.answer.lower()
+    assert "could not verify" in result.answer.lower()
 
 
 def test_generate_reports_rejected_warehouse_query_without_claiming_no_data() -> None:
@@ -224,6 +224,6 @@ def test_generate_typed_gap_when_warehouse_attempted_without_job() -> None:
             )
     mock_llm.assert_not_called()
     low = result.answer.lower()
-    assert "no production figures" in low
+    assert "could not verify production figures" in low
     assert "kenya" in low
-    assert "warehouse" in low
+    assert "data query" in low

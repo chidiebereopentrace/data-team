@@ -8,7 +8,6 @@ import yaml
 
 from ml.rag.chatbot.bq_byte_budget import (
     pack_lines,
-    trim_bq_result_contents,
     truncate_utf8,
     utf8_len,
 )
@@ -249,14 +248,6 @@ def test_byte_truncate_and_pack_lines() -> None:
     text, trunc = pack_lines(["aaaa", "bbbb", "cccc"], max_bytes=10)
     assert trunc
     assert utf8_len(text) <= 10
-
-
-def test_trim_bq_result_contents() -> None:
-    rows = [{"content": "x" * 100}, {"content": "y" * 100}, {"content": "z" * 100}]
-    out, truncated = trim_bq_result_contents(rows, max_bytes=150)
-    assert truncated
-    assert out
-    assert utf8_len("".join(str(r.get("content") or "") for r in out)) <= 150
 
 
 def test_validate_sql_staging_only() -> None:

@@ -10,7 +10,7 @@ from ml.rag.chatbot.class_corpus_policy import corpora_for_classes
 from ml.rag.chatbot.class_supervisor import SupervisorPlan
 from ml.rag.chatbot.intent_bundles import MatchedBundle
 from ml.rag.chatbot.slot_validator import crop_satisfied, geography_satisfied
-from ml.rag.chatbot.turn_contract import TurnContract
+from ml.rag.chatbot.turn_contract import FactRequirement, TurnContract, fact_scope
 
 
 Source = Literal["bigquery", "qdrant"]
@@ -43,29 +43,33 @@ def select_sources(
         task_mode in ("fact_lookup", "data_export_only", "clarify")
         or turn.job in ("compare", "trend", "rank", "breakdown")
     )
-    measures = [fact.measure_id for fact in turn.facts]
-    if not measures and turn.measure_id and (structured or analytical):
-        measures = [turn.measure_id]
+    requirements = turn.facts
+    if not requirements and turn.measure_id and (structured or analytical):
+        requirements = [FactRequirement(turn.measure_id)]
+    measures = [fact.measure_id for fact in requirements]
 
     facts: list[RequirementDecision] = []
-    for measure_id in measures:
+    for fact in requirements:
+        measure_id = fact.measure_id
         spec = MEASURES.get(measure_id)
-        commodity_scope = replace(turn, entities=[
-            entity for entity in turn.entities if not entity_is_measure_noise(entity, primary_measures=[measure_id])
+        scope = fact_scope(turn, fact)
+        question = fact.question or query
+        commodity_scope = replace(scope, entities=[
+            entity for entity in scope.entities if not entity_is_measure_noise(entity, primary_measures=[measure_id])
         ])
         if document_lookup:
             reason = "document_content_requested"
         elif spec is None or not spec.indicator_classes:
             reason = "no_warehouse_mapping"
-        elif not geography_satisfied(query=query, decomposition=decomposition, contract=turn, measure=spec):
+        elif not geography_satisfied(query=question, decomposition=decomposition, contract=scope, measure=spec):
             reason = "geography_required"
         elif not crop_satisfied(
-            query=query, decomposition=decomposition, contract=commodity_scope, measure=spec,
+            query=question, decomposition=decomposition, contract=commodity_scope, measure=spec,
         ):
             reason = "commodity_required"
         else:
             reason = "scoped_indicator"
-        facts.append({"requirement": measure_id, "selected": reason == "scoped_indicator", "reason": reason})
+        facts.append({"requirement": fact.key, "selected": reason == "scoped_indicator", "reason": reason})
 
     has_scoped_fact = any(fact["selected"] for fact in facts)
     has_indicator_scope = has_scoped_fact or (

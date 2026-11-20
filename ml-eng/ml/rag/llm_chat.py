@@ -16,7 +16,7 @@ import logging
 import os
 import threading
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import requests
@@ -53,8 +53,8 @@ _truncation_lock = threading.Lock()
 
 @dataclass
 class _Truncation:
-    length_capped_calls: int = 0
-    last_finish_reason: str = ""
+    length_capped_calls: dict[str, int] = field(default_factory=dict)
+    finish_reasons: dict[str, str] = field(default_factory=dict)
 
 
 _request_truncation: ContextVar[_Truncation | None] = ContextVar("rag_llm_truncation", default=None)
@@ -91,7 +91,7 @@ def reset_llm_truncation() -> None:
     _request_truncation.set(_Truncation())
 
 
-def record_finish_reason(reason: str | None) -> None:
+def record_finish_reason(reason: str | None, *, purpose: str = "generate") -> None:
     """Record an OpenAI-style finish_reason from a chat completion response."""
     r = (reason or "").strip().lower()
     if not r:
@@ -101,26 +101,29 @@ def record_finish_reason(reason: str | None) -> None:
         truncation = _Truncation()
         _request_truncation.set(truncation)
     with _truncation_lock:
-        truncation.last_finish_reason = r
+        truncation.finish_reasons[purpose] = r
         if r == "length":
-            truncation.length_capped_calls += 1
+            truncation.length_capped_calls[purpose] = truncation.length_capped_calls.get(purpose, 0) + 1
 
 
-def last_finish_reason() -> str:
+def last_finish_reason(*, purpose: str = "generate") -> str:
     with _truncation_lock:
         truncation = _request_truncation.get()
-        return truncation.last_finish_reason if truncation else ""
+        return truncation.finish_reasons.get(purpose, "") if truncation else ""
 
 
 def answer_was_length_capped() -> bool:
-    """True when the most recent completion stopped on the max_tokens ceiling."""
+    """True when answer generation, rather than another pipeline call, hit its token ceiling."""
     return last_finish_reason() == "length"
 
 
-def length_capped_call_count() -> int:
+def length_capped_call_count(*, purpose: str | None = None) -> int:
     with _truncation_lock:
         truncation = _request_truncation.get()
-        return truncation.length_capped_calls if truncation else 0
+        if truncation is None:
+            return 0
+        return (truncation.length_capped_calls.get(purpose, 0) if purpose is not None
+                else sum(truncation.length_capped_calls.values()))
 
 
 def add_llm_usage(raw: dict[str, Any] | None) -> None:
@@ -194,6 +197,9 @@ def llm_chat_complete(
     local OpenAI-compatible servers (LM Studio) apply chat templates server-side.
     """
     effective_model = model or llm_model_id()
+    with _truncation_lock:
+        if truncation := _request_truncation.get():
+            truncation.finish_reasons.pop(purpose or "unspecified", None)
     gen_metadata = {"purpose": purpose} if purpose else None
     update_current_llm_generation(
         input_data=safe_llm_trace_input(messages, effective_model),
@@ -208,6 +214,7 @@ def llm_chat_complete(
     effective_timeout = llm_default_timeout_s() if timeout_s is None else timeout_s
     effective_timeout = remaining_seconds(effective_timeout)
     if effective_timeout == 0:
+        record_finish_reason("budget_exhausted", purpose=purpose or "unspecified")
         logger.info("LLM request skipped after the RAG deadline")
         return ""
     headers: dict[str, str] = {
@@ -248,6 +255,7 @@ def llm_chat_complete(
             lambda: requests.post(url, headers=headers, json=payload, timeout=effective_timeout)
         )
         if future is None:
+            record_finish_reason("capacity_unavailable", purpose=purpose or "unspecified")
             logger.info("LLM request skipped while HTTP workers are busy")
             return ""
         resp = future.result(timeout=remaining_seconds(effective_timeout))
@@ -269,7 +277,7 @@ def llm_chat_complete(
             return ""
         # ML-054: capture finish_reason so a max_tokens cut-off is no longer
         # silently discarded (multi-part answers were ending mid-sentence).
-        record_finish_reason(choices[0].get("finish_reason"))
+        record_finish_reason(choices[0].get("finish_reason"), purpose=purpose or "unspecified")
         content = choices[0].get("message", {}).get("content")
         if content is None:
             logger.warning("llm_chat_complete: null message content from %s", url)
@@ -283,6 +291,7 @@ def llm_chat_complete(
         )
         return text
     except (requests.Timeout, TimeoutError):
+        record_finish_reason("timeout", purpose=purpose or "unspecified")
         if future is not None:
             future.cancel()
         logger.warning(
@@ -293,5 +302,6 @@ def llm_chat_complete(
         )
         return ""
     except Exception:
+        record_finish_reason("error", purpose=purpose or "unspecified")
         logger.exception("llm_chat_complete: request failed (model=%s, url=%s)", payload["model"], url)
         return ""

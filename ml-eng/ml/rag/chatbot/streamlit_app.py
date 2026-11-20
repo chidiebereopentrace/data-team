@@ -159,18 +159,18 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Backend")
+    default_api = os.environ.get("RAG_API_BASE_URL", "").strip()
     backend_labels = ["In-process (full detail)", "HTTP API (trace + SQL via /query)"]
     backend_choice = st.radio(
         "Execution mode",
         backend_labels,
-        index=0,
+        index=1 if default_api else 0,
         help=(
             "In-process calls run_rag() locally with full chunk lists. "
             "HTTP mode POSTs to /query/{plan} with include_trace (SQL + counts; no chunk text)."
         ),
     )
     backend_mode: BackendMode = "http_api" if backend_choice == backend_labels[1] else "in_process"
-    default_api = os.environ.get("RAG_API_BASE_URL", "").strip()
     api_base_url = st.text_input(
         "API base URL (HTTP mode)",
         value=default_api,

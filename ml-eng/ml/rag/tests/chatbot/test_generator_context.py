@@ -26,7 +26,6 @@ from ml.rag.chatbot.generator import (
     _strip_invalid_citation_markers,
     _strip_model_sources_appendix,
     _strip_preamble_openers,
-    dedupe_bq_context_items,
     extract_referenced_source_ids,
     filter_context_items,
     generate,
@@ -73,7 +72,7 @@ def test_generate_max_tokens_default_and_env() -> None:
         os.environ.pop("RAG_GENERATE_MAX_TOKENS", None)
         assert _generate_max_tokens("fact_lookup") == 512
         # env default (2048) now wins over the 1536 per-mode default
-        assert _generate_max_tokens("analytical") == 2048
+        assert _generate_max_tokens("analytical") == 8192
         assert _generate_max_tokens("fact_lookup") < _generate_max_tokens("analytical")
     with mock.patch.dict(os.environ, {"RAG_GENERATE_MAX_TOKENS": "512"}):
         # A low env ceiling must not shrink a multi-part mode below its floor.
@@ -133,10 +132,9 @@ def test_build_context_block_rank_weighting() -> None:
 def test_bq_citation_format() -> None:
     line = _format_source_citation(_bq_item())
     assert line is not None
-    assert "[Structured data]" in line
-    assert "OpenTrace agricultural data" in line
+    assert line == "Structured data — Crop yield"
     assert "yield_raw_data" not in line
-    assert "Senegal" in line or "rice" in line
+    assert "country=" not in line and "planting_year=" not in line
 
 
 def test_bq_citation_uses_faostat_when_table_is_definitive() -> None:
@@ -147,7 +145,7 @@ def test_bq_citation_uses_faostat_when_table_is_definitive() -> None:
     )
     line = _format_source_citation(item)
     assert line is not None
-    assert line.startswith("[FAOSTAT]")
+    assert line.startswith("FAOSTAT — ")
     assert "[Structured data]" not in line
     assert "stg_faostat" not in line
 
@@ -158,7 +156,7 @@ def test_bq_citation_uses_domain_when_table_id_is_generic() -> None:
     item["metadata"]["source_domain"] = "fews_net"
     line = _format_source_citation(item)
     assert line is not None
-    assert line.startswith("[FEWS NET]")
+    assert line.startswith("FEWS NET — ")
     assert "[Structured data]" not in line
 
 
@@ -171,10 +169,10 @@ def test_bq_citation_uses_fews_from_source_name_on_agg_production() -> None:
     item["metadata"]["year"] = 2022
     line = _format_source_citation(item)
     assert line is not None
-    assert line.startswith("[FEWS NET]")
+    assert line.startswith("FEWS NET — ")
     assert "yield_raw_data" not in line
     assert "[Structured data]" not in line
-    assert "Nigeria" in line
+    assert "country_name=" not in line
 
 
 def _bq_error_item() -> dict:
@@ -435,7 +433,7 @@ def test_generate_empty_context_fallback_includes_decomposition_hints() -> None:
 
 def test_call_llama_default_temperature() -> None:
     """
-    Sprint 1: default set to 0.7 for response variety across similar queries.
+    Default synthesis temperature is 0.6.
     Synthesis-on-gaps protection is provided by code guardrails (fallback path,
     hardened ungrounded prompt, chunk filtering), not by low temperature.
     """
@@ -447,7 +445,7 @@ def test_call_llama_default_temperature() -> None:
 
             _call_llama([{"role": "user", "content": "hi"}])
         _, kwargs = mock_complete.call_args
-        assert kwargs["temperature"] == 0.7
+        assert kwargs["temperature"] == 0.6
 
 
 def test_call_llama_temperature_env_override_respected() -> None:
@@ -1214,22 +1212,19 @@ def _ghana_rice_bq_item() -> dict:
     }
 
 
-def test_dedupe_bq_context_items_collapses_same_source_id() -> None:
+def test_deduplication_collapses_repeated_warehouse_observations() -> None:
     item = _ghana_rice_bq_item()
     dupes = [dict(item) for _ in range(7)]
-    deduped = dedupe_bq_context_items(dupes + [_news_item()])
+    deduped = dedupe_context_items(dupes + [_news_item()])
     assert len(deduped) == 2
     assert sum(1 for x in deduped if x.get("_context_kind") == "bigquery") == 1
 
 
-def test_build_context_block_registers_bq_when_body_truncated() -> None:
-    """Citations must survive tight budgets that leave no room for chunk body."""
+def test_build_context_block_does_not_register_bq_with_no_room_for_evidence() -> None:
     items = [_ghana_rice_bq_item()]
-    block, registry = _build_context_block(items, budget=120, chunk_cap=120)
-    assert len(registry) == 1
-    assert registry[0].citation_line is not None
-    assert "country_name=Ghana" in registry[0].citation_line
-    assert block == "" or "[Source 1]" not in block or len(block) <= 120
+    block, registry = _build_context_block(items, budget=20, chunk_cap=20)
+    assert block == ""
+    assert registry == []
 
 
 def test_registry_from_context_items_builds_citable_refs() -> None:
@@ -1242,9 +1237,7 @@ def test_registry_from_context_items_builds_citable_refs() -> None:
 
 def test_ghana_rice_pack_finalize_non_empty_citations_and_acf() -> None:
     items = [_ghana_rice_bq_item()]
-    _, registry = _build_context_block(items, budget=120, chunk_cap=120)
-    if not registry:
-        registry = _registry_from_context_items(items)
+    _, registry = _build_context_block(items, budget=600, chunk_cap=600)
     with mock.patch("ml.rag.chatbot.generator.observed_span") as mock_span:
         mock_span.return_value.__enter__ = mock.Mock(return_value=None)
         mock_span.return_value.__exit__ = mock.Mock(return_value=False)

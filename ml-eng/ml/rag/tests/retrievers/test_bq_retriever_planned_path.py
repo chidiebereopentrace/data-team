@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ml.rag.chatbot.bq_table_schema_yaml import intent_pattern_for_query
+from ml.rag.chatbot.mart_coverage import Coverage, CoverageEntry
 from ml.rag.retrievers.bq_retriever import BQRetriever, _format_query_constraints, _load_dotenv
 
 
@@ -256,3 +257,80 @@ def test_price_template_keeps_other_requested_warehouse_indicators() -> None:
         if item.get("metadata", {}).get("job_id")
     }
     assert {"template", "bind_compiler"}.issubset(sources)
+
+
+@pytest.mark.parametrize("crop", ["beans", "maize", "rice"])
+def test_current_price_keeps_requested_scope_and_ignores_companion_table(crop, monkeypatch) -> None:
+    food_balance = "agg_food_balance_country_year"
+    coverage = Coverage(entries=[
+        CoverageEntry(food_balance, "country_iso3", "NGA", "Nigeria", "NGA", 1961, 2023),
+    ])
+    monkeypatch.setattr("ml.rag.chatbot.mart_coverage.load_coverage", lambda: coverage)
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=True)
+    client = MagicMock()
+    client.query.return_value.result.return_value = [{"country_iso3": "NGA", "avg_price": 100}]
+
+    with (
+        patch.object(retriever, "_get_client", return_value=client),
+        patch.object(retriever, "_nl_to_sql_queries") as nl2sql_fn,
+        patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None),
+    ):
+        items = retriever.retrieve(
+            f"How much is a kilo of {crop} in Nigeria now?",
+            selected_tables=[food_balance, "fct_prices"],
+            bind_contracts={food_balance: {
+                "table_id": food_balance,
+                "required_filters_sql": "country_iso3 = 'NGA' AND year = 2023",
+                "measure_columns": ["value"],
+            }},
+            primary_measures=["market_price"],
+            entities=[crop],
+            geo_country="Nigeria",
+            time_start="2026-01-02",
+            time_end="2026-04-02",
+            task_mode="fact_lookup",
+            plan_source="class_engine",
+        )
+
+    nl2sql_fn.assert_not_called()
+    client.query.assert_called_once()
+    sql = client.query.call_args.args[0]
+    assert "fct_prices" in sql and food_balance not in sql
+    assert "as_of_date >= DATE '2026-01-02'" in sql
+    assert "as_of_date <= DATE '2026-04-02'" in sql
+    assert "QUALIFY" in sql
+    assert any(item.get("metadata", {}).get("sql_source") == "template" for item in items)
+
+
+def test_empty_annual_lookup_does_not_retry_another_year(monkeypatch) -> None:
+    table = "agg_production_country_year"
+    coverage = Coverage(entries=[
+        CoverageEntry(table, "country_iso3", "KEN", "Kenya", "KEN", 1961, 2024),
+    ])
+    monkeypatch.setattr("ml.rag.chatbot.mart_coverage.load_coverage", lambda: coverage)
+    monkeypatch.setattr("ml.rag.retrievers.bq_retriever.load_coverage", lambda: coverage)
+    retriever = BQRetriever(project_id="proj", nl2sql_enabled=False)
+    client = MagicMock()
+    client.query.return_value.result.return_value = []
+    sql = (
+        "SELECT production_qty FROM `proj.mart_dev.agg_production_country_year` "
+        "WHERE country_iso3 = 'KEN' AND year = 2026 LIMIT 10"
+    )
+    with (
+        patch.object(retriever, "_get_client", return_value=client),
+        patch("ml.rag.retrievers.bq_retriever.dry_run_sql", return_value=None),
+    ):
+        items = retriever.retrieve(
+            "How much did Kenya produce this year?",
+            sql=sql,
+            selected_tables=[table],
+            primary_measures=["production"],
+            geo_country="Kenya",
+            time_start="2026-01-01",
+            time_end="2026-12-31",
+        )
+
+    client.query.assert_called_once()
+    assert "year = 2026" in client.query.call_args.args[0]
+    assert items[0]["metadata"]["status"] == "empty_result"
+    assert items[0]["metadata"]["covered_years"][0]["max_year"] == 2024

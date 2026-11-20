@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_measures
+from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, explicit_measure_ids, resolve_measures
 from ml.rag.chatbot.class_corpus_policy import corpora_for_classes
 from ml.rag.chatbot.intent_bundles import (
     MatchedBundle,
@@ -70,17 +70,21 @@ def _classes_from_named_measures(
     measure_hit: MeasureHit | None,
 ) -> tuple[str | None, list[str], str]:
     """Every named measure is its own class/series on the same place and years."""
+    named = explicit_measure_ids(query)
     hits = resolve_measures(query, decomposition, top_k=4)
-    if measure_hit is not None and all(h.measure.id != measure_hit.measure.id for h in hits):
+    if named:
+        ranked = [hit.measure.id for hit in hits if hit.measure.id in named]
+        named = list(dict.fromkeys([*ranked, *named]))
+    if not named and measure_hit is not None and all(h.measure.id != measure_hit.measure.id for h in hits):
         hits = [measure_hit, *hits]
     ordered: list[str] = []
     names: list[str] = []
-    for hit in hits:
-        for code in hit.measure.indicator_classes:
+    for measure_id in named or [hit.measure.id for hit in hits]:
+        for code in MEASURES[measure_id].indicator_classes:
             upper = str(code).strip().upper()
             if upper and upper not in ordered:
                 ordered.append(upper)
-        names.append(hit.measure.id)
+        names.append(measure_id)
     if not ordered:
         return _classes_from_measure_hit(measure_hit)
     return ordered[0], ordered[1:], f"measures={','.join(names)}→{','.join(ordered)}"
@@ -195,7 +199,11 @@ def compile_supervisor_plan(
                 secondary = list(p_secondary)
                 rationale_parts.append(p_rationale)
 
+    named = explicit_measure_ids(q)
+    named_classes = {code for mid in named for code in MEASURES[mid].indicator_classes}
     scored = class_for_query(q)
+    if named:
+        scored = [code for code in scored if code in named_classes]
     # HDI only when the question asks for HDI / human development.
     if not re.search(r"\b(hdi|human\s+development)\b", q, re.I):
         scored = [c for c in scored if c != "HDI"]
@@ -207,6 +215,8 @@ def compile_supervisor_plan(
             secondary.append(code)
     if pm_list and len(pm_list) > 1:
         for mid in pm_list:
+            if named and mid not in named:
+                continue
             spec = MEASURES.get(mid)
             if spec is None:
                 continue

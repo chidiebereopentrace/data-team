@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 from threading import Event
+from types import SimpleNamespace
 from unittest import mock
 
+import pytest
 from ml.rag.chatbot import graph
 from ml.rag.chatbot.generator import SourceRef, _finalize_generation_result, generate
-from ml.rag.chatbot.stage_budget import request_budget, stage_budget_seconds
+from ml.rag.chatbot.stage_budget import (
+    remaining_seconds,
+    request_budget,
+    stage_budget_seconds,
+)
 from ml.rag.llm_chat import llm_chat_complete
 from ml.rag.rerank_client import DEFAULT_RERANK_MODEL_ID, rerank_model_id
 
@@ -14,6 +20,21 @@ from ml.rag.rerank_client import DEFAULT_RERANK_MODEL_ID, rerank_model_id
 def test_stage_budget_uses_configured_seconds(monkeypatch) -> None:
     monkeypatch.setenv("RAG_STAGE_RETRIEVE_BUDGET_S", "2")
     assert stage_budget_seconds("RAG_STAGE_RETRIEVE_BUDGET_S", default_s=12.0) == 2.0
+
+
+@pytest.mark.parametrize("configured,expected", [(None, 120), (40, 40)])
+def test_pipeline_budget_allows_long_generation_and_honours_override(monkeypatch, configured, expected):
+    if configured is None:
+        monkeypatch.delenv("RAG_REQUEST_TIMEOUT_S", raising=False)
+    else:
+        monkeypatch.setenv("RAG_REQUEST_TIMEOUT_S", str(configured))
+
+    def invoke(initial, config):
+        assert expected - 1 < remaining_seconds() <= expected
+        return {"answer": "done", "citations": []}
+
+    monkeypatch.setattr(graph, "_get_compiled_graph", lambda: SimpleNamespace(invoke=invoke))
+    assert graph.run_rag("test")["answer"] == "done"
 
 
 def test_generate_distinguishes_incomplete_document_search_from_empty_results(monkeypatch) -> None:
@@ -33,7 +54,7 @@ def test_openrouter_rerank_default_is_multilingual(monkeypatch) -> None:
     assert rerank_model_id() == "cohere/rerank-multilingual-v3.0"
 
 
-def test_generate_returns_source_text_when_model_times_out() -> None:
+def test_generate_does_not_dump_source_text_when_model_times_out() -> None:
     item = {
         "content": "Maize prices in Kenya rose through the 2024 season.",
         "source": "news",
@@ -51,8 +72,9 @@ def test_generate_returns_source_text_when_model_times_out() -> None:
             task_mode="chat",
             decomposition={"geography": ["Kenya"]},
         )
-    assert "Kenya maize brief" in result.answer or "Maize prices in Kenya" in result.answer
-    assert result.citations
+    assert "could not complete a reliable answer" in result.answer
+    assert "Kenya maize brief" not in result.answer
+    assert result.citations == []
 
 
 def test_warehouse_stall_preserves_completed_document_leg(monkeypatch) -> None:

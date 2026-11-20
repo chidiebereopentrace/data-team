@@ -1,4 +1,4 @@
-"""Shared request field resolution for POST /query and POST /v1/chat."""
+"""Shared request field resolution for POST /query."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -95,7 +95,7 @@ def resolve_request_context(
     plan_type and category come from user_profile when present. When omitted, fall back to
     the owner's loaded session blob (category, plan_type, country).
 
-    injected_plan_type: when set (by plan-scoped routes such as POST /v1/chat/farmers),
+    injected_plan_type: when set (by plan-scoped routes such as POST /query/farmers),
         overrides any plan_type in user_profile. The route owns the tier; the payload
         cannot escalate it.
     """

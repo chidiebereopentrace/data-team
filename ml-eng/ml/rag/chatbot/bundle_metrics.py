@@ -6,6 +6,7 @@ from typing import Any
 
 from ml.rag.chatbot.bq_table_schema_yaml import match_product_samples
 from ml.rag.chatbot.intent_bundles import MatchedBundle, has_bundle, match_intent_bundles
+from ml.rag.chatbot.query_normalize import indicator_query_text
 
 AGRI_ACTIVITIES_STAPLES: tuple[str, ...] = (
     "Maize",
@@ -72,7 +73,7 @@ def default_fvc_trade_metrics_for_panel() -> list[str]:
 
 def food_price_basket(query: str) -> bool:
     """Use the staple basket for food prices without a named crop."""
-    text = query or ""
+    text = indicator_query_text(query)
     if not _FOOD_PRICE_RE.search(text):
         return False
     found = match_product_samples("fct_production", text)
