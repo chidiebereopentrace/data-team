@@ -10,7 +10,7 @@ AskADZA's own app is the `web-frontend` tenant (`plan_slug: integrated` in `ml-e
 
 ## Authentication
 
-Public unauthenticated paths are `GET /`, `GET /health`, and `GET /ready`. Every other request must include a tenant API key:
+Public unauthenticated paths are `GET /`, `GET /health`, `GET /ready`, `GET /docs`, `GET /redoc`, and `GET /openapi.json`. Every other request must include a tenant API key:
 
 ```http
 X-API-Key: <your-api-key>

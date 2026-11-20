@@ -175,8 +175,10 @@ def test_running_query_does_not_block_liveness(client: TestClient, calls: list, 
     asyncio.run(probe())
 
 
-def test_docs_require_key(client: TestClient) -> None:
-    assert client.get("/openapi.json").status_code == 401
+def test_docs_are_public(client: TestClient) -> None:
+    for path in ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+        assert client.get(path).status_code == 200
+    assert client.post("/query", json={"query": "hi"}).status_code == 401
 
 
 def test_session_delete_requires_key(client: TestClient) -> None:

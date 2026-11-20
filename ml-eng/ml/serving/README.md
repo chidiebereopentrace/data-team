@@ -8,7 +8,7 @@
 | `enterprise/auth.py` | `EnterpriseAuthMiddleware`: 401 without a valid key, 403 on another tenant's `/query/{plan}` route, and monthly quotas. Per-user rpm is counted in the query handler from `user_id` |
 | `enterprise/metering.py` | Per-tenant monthly query/token/export counters (Redis when `RAG_REDIS_URL` is set) |
 
-Public routes: `/`, `/health`, `/ready`. Everything else (including `/docs`) needs `X-API-Key` or `Authorization: Bearer`.
+Public routes: `/`, `/health`, `/ready`, `/docs`, `/redoc`, and `/openapi.json`. Every other request needs `X-API-Key` or `Authorization: Bearer`.
 
 Tenant fields: `tenant_id`, `name`, `api_key_sha256`, `plan_slug`, `environment`, `monthly_query_quota`, `monthly_token_quota`, `rate_limit_rpm`, `allow_trace`, `active`. See [`config/enterprise_tenants.example.json`](../../config/enterprise_tenants.example.json).
 

@@ -400,7 +400,7 @@ Root metadata includes corpus counts, `empty_retrieval`, BQ soft-fail flags, `we
    Set **`RAG_CORS_ORIGINS`** to your frontend origin(s), comma-separated (e.g. `https://yourapp.com`). Default allows no browser origin.
 
 5. **API keys**  
-   Every route except `/`, `/health` and `/ready` requires `X-API-Key` (or `Authorization: Bearer`). Set **`ENTERPRISE_TENANTS_JSON`** with one tenant per client (keys stored as SHA-256 digests); see [`ml/serving/README.md`](../serving/README.md). Use `RAG_API_AUTH=off` only for local development.
+   Every route except `/`, `/health`, `/ready`, `/docs`, `/redoc`, and `/openapi.json` requires `X-API-Key` (or `Authorization: Bearer`). Set **`ENTERPRISE_TENANTS_JSON`** with one tenant per client (keys stored as SHA-256 digests); see [`ml/serving/README.md`](../serving/README.md). Use `RAG_API_AUTH=off` only for local development.
 
 5. **Port**  
    The app listens on **7860** (required by Hugging Face Spaces).
