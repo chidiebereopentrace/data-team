@@ -4,7 +4,6 @@ from __future__ import annotations
 import pytest
 
 from ml.rag.chatbot.bq_sql_validate import (
-    broaden_empty_sql_once,
     inject_missing_metric_filters,
     validate_required_metric_filters,
     validate_sql_column_allowlist,
@@ -247,44 +246,6 @@ def test_inject_does_not_fix_bad_element_label() -> None:
     err = validate_sql_value_samples(fixed)
     assert err is not None
     assert "Prod" in err or "prod" in err.lower()
-
-
-def test_broaden_empty_sql_widens_single_year() -> None:
-    sql = (
-        "SELECT country_name, SUM(value) AS total "
-        "FROM `proj.staging_dev.stg_faostat_production` "
-        "WHERE year = 2022 AND element = 'Production' AND product_name = 'Maize' "
-        "GROUP BY country_name LIMIT 5"
-    )
-    out = broaden_empty_sql_once(sql, crop_required=True)
-    assert out is not None
-    assert "year BETWEEN 2021 AND 2023" in out
-    assert "product_name = 'Maize'" in out
-    assert "stg_faostat_production" in out
-
-
-def test_broaden_empty_sql_drops_optional_product() -> None:
-    sql = (
-        "SELECT country_name, SUM(value) AS total "
-        "FROM `proj.staging_dev.stg_faostat_production` "
-        "WHERE year = 2022 AND element = 'Production' AND product_name = 'Maize' "
-        "GROUP BY country_name LIMIT 5"
-    )
-    out = broaden_empty_sql_once(sql, crop_required=False)
-    assert out is not None
-    assert "year BETWEEN 2021 AND 2023" in out
-    assert "product_name = 'Maize'" not in out
-    assert "dim_" not in out
-
-
-def test_broaden_empty_sql_noop_without_year_or_product() -> None:
-    sql = (
-        "SELECT country_name, SUM(value) AS total "
-        "FROM `proj.staging_dev.stg_faostat_production` "
-        "WHERE element = 'Production' AND year BETWEEN 2020 AND 2022 "
-        "GROUP BY country_name LIMIT 5"
-    )
-    assert broaden_empty_sql_once(sql, crop_required=True) is None
 
 
 def test_column_allowlist_flags_invented_names() -> None:

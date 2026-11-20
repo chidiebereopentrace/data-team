@@ -28,10 +28,10 @@ from ml.rag.chatbot.bq_table_schema_yaml import (
     pack_mart_table_hints,
 )
 from ml.rag.chatbot.fact_bq_plan import build_fact_bq_plan
+from ml.rag.chatbot.continental_scope import CONTINENTAL_RANK_RE
 from ml.rag.chatbot.plan_policy import model_for_plan
 from ml.rag.chatbot.query_decomposer import (
     _AGRI_SCOPE_RE,
-    _RANKING_SCOPE_RE,
     _extract_year_range,
     wants_africa_default_scope,
 )
@@ -572,7 +572,7 @@ def _heuristic_faostat_production_rank(
     if "fct_production" not in known:
         return None
     q = query or ""
-    if not _RANKING_SCOPE_RE.search(q):
+    if not CONTINENTAL_RANK_RE.search(q):
         return None
     africa_default = bool(decomposition.get("africa_default")) or wants_africa_default_scope(q)
     if not (_AGRI_SCOPE_RE.search(q) or africa_default):

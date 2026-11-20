@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -18,9 +16,6 @@ from ml.serving.enterprise.tenant_registry import EnterpriseTenant
 logger = logging.getLogger(__name__)
 
 _METER_PREFIX = "enterprise:meter"
-_RATE_PREFIX = "enterprise:rate"
-_lock = threading.Lock()
-_rate_windows: dict[str, list[float]] = {}
 
 
 @dataclass(frozen=True)
@@ -85,30 +80,6 @@ def check_tenant_quotas(tenant: EnterpriseTenant) -> None:
                 f"{tenant.monthly_token_quota} tokens allowed."
             ),
         )
-
-
-def check_tenant_rate_limit(tenant: EnterpriseTenant) -> None:
-    limit = tenant.rate_limit_rpm
-    if limit <= 0:
-        return
-
-    now = time.time()
-    window_start = now - 60.0
-    key = f"{tenant.tenant_id}"
-
-    with _lock:
-        timestamps = _rate_windows.setdefault(key, [])
-        timestamps[:] = [ts for ts in timestamps if ts >= window_start]
-        if len(timestamps) >= limit:
-            raise HTTPException(
-                status_code=429,
-                detail=(
-                    f"Rate limit exceeded for tenant {tenant.tenant_id}: "
-                    f"{limit} requests per minute allowed."
-                ),
-                headers={"Retry-After": "60", "X-RateLimit-Limit": str(limit)},
-            )
-        timestamps.append(now)
 
 
 def record_usage(

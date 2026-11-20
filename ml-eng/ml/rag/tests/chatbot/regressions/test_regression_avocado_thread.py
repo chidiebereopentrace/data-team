@@ -60,7 +60,6 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(api_mod, "rag_trace_context", _fake_trace)
     monkeypatch.setattr(api_mod, "get_current_trace_id", lambda: None)
     monkeypatch.setattr(api_mod, "flush_langfuse", lambda: None)
-    monkeypatch.setattr(api_mod, "check_plan_rate_limit", lambda _slug, _req: None)
     session_store.clear_fallback_for_tests()
     return TestClient(api_mod.app)
 

@@ -64,6 +64,13 @@ def crop_satisfied(
         return True
     if multi_measure_panel:
         return True
+    if any(fact.enumerate_members for fact in contract.facts):
+        return True
+    if measure.id == "market_price":
+        from ml.rag.chatbot.bundle_metrics import food_price_basket
+
+        if food_price_basket(query):
+            return True
     if query_has_crop_or_commodity(query, decomposition):
         return True
     if CROP_ENTITY_RE.search(query or ""):

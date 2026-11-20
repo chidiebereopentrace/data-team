@@ -11,14 +11,15 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-
-from ml.rag import rate_limiter, session_store
+from ml.rag import session_store
 from ml.rag.app import api as api_mod
 from ml.rag.session_store import clear_fallback_for_tests
 from ml.serving.enterprise.metering import get_usage
 from ml.serving.enterprise.tenant_registry import hash_api_key, reload_tenants
 
 WEB_KEY = "web-key"
+WEB_APP_KEY = "web-app-key"
+AGRI_KEY = "agri-key"
 INSPECTOR_KEY = "inspector-key"
 RESEARCH_KEY = "research-key"
 
@@ -66,6 +67,19 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
                         "allow_trace": False,
                     },
                     {
+                        "tenant_id": "web-frontend",
+                        "api_key_sha256": hash_api_key(WEB_APP_KEY),
+                        "plan_slug": "integrated",
+                        "allow_trace": False,
+                        "rate_limit_rpm": 0,
+                    },
+                    {
+                        "tenant_id": "olam",
+                        "api_key_sha256": hash_api_key(AGRI_KEY),
+                        "plan_slug": "agribusinesses",
+                        "allow_trace": False,
+                    },
+                    {
                         "tenant_id": "inspector",
                         "api_key_sha256": hash_api_key(INSPECTOR_KEY),
                         "plan_slug": "integrated",
@@ -87,11 +101,9 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(session_store, "_redis_client", None)
     monkeypatch.setenv("ENTERPRISE_METERING_ENABLED", "1")
     clear_fallback_for_tests()
-    rate_limiter._windows.clear()
     reload_tenants()
     yield TestClient(api_mod.app)
     clear_fallback_for_tests()
-    rate_limiter._windows.clear()
     monkeypatch.delenv("ENTERPRISE_TENANTS_JSON", raising=False)
     reload_tenants()
 
@@ -100,6 +112,37 @@ def test_query_without_key_is_401(client: TestClient, calls: list) -> None:
     resp = client.post("/query", json={"query": "maize prices"})
     assert resp.status_code == 401
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("plan", "category", "country"),
+    [
+        ("Integrated", "", ""), ("", "Government", ""), ("", "", "Nigeria"),
+        ("Integrated", "", "Nigeria"), ("", "Farmers", "Nigeria"),
+        ("", "", ""), ("Integrated", "Government", "Nigeria"),
+    ],
+)
+def test_inspector_optional_profile_choices_reach_authenticated_api(client, calls, monkeypatch, plan, category, country):
+    from urllib.parse import urlsplit
+
+    from ml.rag.chatbot.qa_run_kwargs import build_run_kwargs
+    from ml.rag.chatbot.streamlit_inspector import query_via_http_api
+
+    kwargs = build_run_kwargs(
+        news_top_k=10, academic_top_k=10, bq_top_k=8, ota_top_k=10, rerank_top_k=14,
+        plan_type=plan, category=category, profile_country=country, t_start="", t_end="",
+        prior_summary="", prior_recent=[],
+    )
+
+    def post(url, *, json, headers, timeout):
+        return client.post(urlsplit(url).path, json=json, headers=headers)
+
+    monkeypatch.setenv("RAG_API_KEY", INSPECTOR_KEY)
+    monkeypatch.setattr("ml.rag.chatbot.streamlit_inspector.requests.post", post)
+    result = query_via_http_api("http://testserver", "hi", kwargs=kwargs)
+    assert result["answer"] == "ok"
+    assert calls[0]["plan_type"] == (plan or "Integrated")
+    assert calls[0].get("category") == (category or None)
 
 
 def test_health_is_public(client: TestClient) -> None:
@@ -157,6 +200,27 @@ def test_bare_query_uses_tenant_plan(client: TestClient, calls: list) -> None:
     assert calls[0]["export_enabled"] is False
 
 
+def test_optional_profile_plan_cannot_escalate_access(client: TestClient, calls: list) -> None:
+    resp = client.post(
+        "/query/free",
+        json={"query": "hi", "user_profile": {"plan_type": "Integrated", "category": None}},
+        headers={"X-API-Key": WEB_KEY},
+    )
+    assert resp.status_code == 200
+    assert calls[0]["plan_type"] == "Free"
+    assert calls[0]["export_enabled"] is False
+
+
+@pytest.mark.parametrize("field", ["category", "plan_type"])
+def test_optional_profile_fields_still_reject_unknown_values(client: TestClient, calls: list, field: str) -> None:
+    resp = client.post(
+        "/query/integrated", json={"query": "hi", "user_profile": {field: "invalid-value"}},
+        headers={"X-API-Key": INSPECTOR_KEY},
+    )
+    assert resp.status_code == 422
+    assert calls == []
+
+
 def test_trace_stripped_for_tenant_without_allow_trace(client: TestClient, calls: list) -> None:
     resp = client.post(
         "/query/free",
@@ -207,13 +271,121 @@ def test_500_hides_exception_text(
     assert "mart_dev" not in resp.json()["detail"]
 
 
-def test_per_ip_rate_limit(client: TestClient, calls: list, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(rate_limiter._PLAN_LIMITS, "free", 2)
+def test_per_user_rate_limit(client: TestClient, calls: list, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "ENTERPRISE_TENANTS_JSON",
+        json.dumps(
+            {
+                "tenants": [
+                    {
+                        "tenant_id": "web",
+                        "api_key_sha256": hash_api_key(WEB_KEY),
+                        "plan_slug": "free",
+                        "allow_trace": False,
+                        "rate_limit_rpm": 2,
+                    }
+                ]
+            }
+        ),
+    )
+    reload_tenants()
+    clear_fallback_for_tests()
     headers = {"X-API-Key": WEB_KEY}
     for _ in range(2):
+        assert client.post(
+            "/query/free", json={"query": "q", "user_id": "alice"}, headers=headers
+        ).status_code == 200
+    limited = client.post("/query/free", json={"query": "q", "user_id": "alice"}, headers=headers)
+    assert limited.status_code == 429
+    assert limited.headers["retry-after"] == "60"
+    assert limited.headers["x-ratelimit-limit"] == "2"
+    assert client.post(
+        "/query/free", json={"query": "q", "user_id": "bob"}, headers=headers
+    ).status_code == 200
+    for _ in range(2):
         assert client.post("/query/free", json={"query": "q"}, headers=headers).status_code == 200
-    resp = client.post("/query/free", json={"query": "q"}, headers=headers)
-    assert resp.status_code == 429
+    anonymous = client.post("/query/free", json={"query": "q"}, headers=headers)
+    assert anonymous.status_code == 429
+
+
+def _web_app_body(**overrides: Any) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "query": "maize in Kenya",
+        "user_id": "acct-1",
+        "session_id": "conv-1",
+        "user_profile": {"plan_type": "Integrated", "category": "Farmers", "country": "NGA"},
+    }
+    body.update(overrides)
+    return body
+
+
+def test_web_frontend_rejects_incomplete_body(client: TestClient, calls: list) -> None:
+    headers = {"X-API-Key": WEB_APP_KEY}
+    cases = [
+        _web_app_body(session_id=None),
+        _web_app_body(user_id=None),
+        _web_app_body(user_profile=None),
+        _web_app_body(user_profile={"plan_type": "Integrated"}),
+        _web_app_body(user_profile={"category": "Farmers"}),
+        _web_app_body(chat_history=[{"role": "user", "content": "earlier"}]),
+        _web_app_body(conversation_history=[{"role": "user", "content": "earlier"}]),
+    ]
+    for body in cases:
+        resp = client.post("/query/integrated", json=body, headers=headers)
+        assert resp.status_code == 422, body
+        assert "detail" in resp.json()
+    assert calls == []
+
+
+def test_web_frontend_session_is_loaded_on_the_next_turn(client: TestClient, calls: list) -> None:
+    headers = {"X-API-Key": WEB_APP_KEY}
+    first = client.post("/query/integrated", json=_web_app_body(), headers=headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["session_found"] is False
+    assert first.json()["session_id"] == "conv-1"
+    assert calls[0]["session_id"] == "conv-1"
+    assert calls[0]["category"] == "Farmers"
+    assert calls[0]["user_profile"]["plan_type"] == "Integrated"
+    second = client.post(
+        "/query/integrated",
+        json=_web_app_body(query="and last year"),
+        headers=headers,
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["session_found"] is True
+    assert second.json()["session_id"] == "conv-1"
+    assert calls[1]["recent_turns"]
+
+
+def test_agribusiness_tenant_may_omit_session_and_profile(client: TestClient, calls: list) -> None:
+    resp = client.post(
+        "/query/agribusinesses",
+        json={"query": "cocoa in Ghana"},
+        headers={"X-API-Key": AGRI_KEY},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["session_id"]
+    assert calls[0]["plan_type"] == "Agribusinesses"
+
+
+def test_explicit_export_intent_is_forwarded(client: TestClient, calls: list) -> None:
+    resp = client.post(
+        "/query/free",
+        json={"query": "What are maize yields in Kenya?", "export_intent": "csv"},
+        headers={"X-API-Key": WEB_KEY},
+    )
+    assert resp.status_code == 200, resp.text
+    assert calls[0]["export_intent"] == "csv"
+
+
+def test_unknown_export_intent_is_422(client: TestClient, calls: list) -> None:
+    resp = client.post(
+        "/query/free",
+        json={"query": "What are maize yields in Kenya?", "export_intent": "spreadsheet"},
+        headers={"X-API-Key": WEB_KEY},
+    )
+    assert resp.status_code == 422
+    assert calls == []
 
 
 @pytest.mark.parametrize("path", ["/query/research", "/query"])

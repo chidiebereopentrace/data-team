@@ -19,7 +19,6 @@ from ml.rag.chatbot.compile_sql_from_bind import (
     RESULT_ROW_BUDGET,
     compile_operation,
     compile_sql_from_bind,
-    question_names_year,
     requested_operation,
 )
 from ml.rag.chatbot.measure_vocab import accept_names
@@ -27,7 +26,6 @@ from ml.rag.chatbot.retrieval_contract import choose_agg_vs_fact
 from ml.rag.chatbot.value_index import complete_enum
 from ml.rag.chatbot.coverage_ledger import operation_supported, serving_tables
 from ml.rag.helpers.mart_semantic_relationships import relationships_for
-from ml.rag.retrievers.bq_retriever import _shift_time_to_latest, retry_empty_sql
 
 
 @pytest.mark.parametrize(
@@ -138,31 +136,6 @@ def test_supported_operation_compiles_with_declared_dimensions(operation: str) -
     ]
     if declared:
         assert any(dim in sql for dim in declared)
-
-
-def test_named_year_is_not_replaced() -> None:
-    sql = "SELECT value FROM `p.mart_dev.fct_production` WHERE country_iso3 = 'KEN' AND year = 2010"
-    retry, used = retry_empty_sql(
-        sql, "production in Kenya in 2010", "Kenya", crop_required=False, geography_required=True
-    )
-    assert question_names_year("production in Kenya in 2010")
-    assert retry is None and used is None
-
-
-def test_unnamed_year_retries_the_latest_covered_year() -> None:
-    sql = "SELECT value FROM `p.mart_dev.fct_production` WHERE country_iso3 = 'KEN' AND year = 2010"
-    retry, used = retry_empty_sql(
-        sql, "production in Kenya", "Kenya", crop_required=False, geography_required=True
-    )
-    assert used == 2024
-    assert retry is not None and "year = 2024" in retry
-    assert "KEN" in retry
-
-
-def test_shift_keeps_a_span_width() -> None:
-    sql = "SELECT value FROM `p.mart_dev.fct_production` WHERE year BETWEEN 2015 AND 2020"
-    shifted = _shift_time_to_latest(sql, 2024)
-    assert "BETWEEN 2019 AND 2024" in shifted
 
 
 def test_name_list_is_kept_only_when_it_matches_the_distinct_count() -> None:

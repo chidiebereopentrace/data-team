@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from ml.rag.chatbot.generator import _build_prompt, _current_date_block
+from ml.rag.chatbot.generation_prompt import _build_prompt, _current_date_block
 
 
 def _system_message(messages: list[dict[str, str]]) -> str:

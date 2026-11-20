@@ -83,6 +83,15 @@ def test_truncation_notice_skips_empty_answer() -> None:
     assert _append_truncation_notice("") == ""
 
 
+def test_french_truncation_notice_stays_in_french() -> None:
+    reset_llm_truncation()
+    record_finish_reason("length")
+    answer = _append_truncation_notice("Analyse partielle.", lang="fr")
+    assert "longueur maximale" in answer
+    assert "fewer countries" not in answer
+    assert _append_truncation_notice(answer, lang="fr") == answer
+
+
 def test_multipart_modes_use_env_ceiling_not_clamped_default() -> None:
     # Regression: analytical was hard-clamped to 1536 even with a higher env
     # ceiling, truncating multi-country comparisons mid-sentence.
@@ -100,3 +109,29 @@ def test_multipart_mode_never_drops_below_its_default() -> None:
     # A low/misconfigured env ceiling must not shrink analytical below 1536.
     with mock.patch.dict(os.environ, {"RAG_GENERATE_MAX_TOKENS": "256"}, clear=False):
         assert _generate_max_tokens("analytical") == 1536
+
+
+def test_decomposition_token_cap_does_not_mark_the_answer_as_truncated() -> None:
+    reset_llm_truncation()
+    from ml.rag.llm_chat import llm_chat_complete
+
+    response = mock.Mock(status_code=200)
+    response.json.return_value = {"choices": [{"finish_reason": "length", "message": {"content": "{}"}}]}
+    with mock.patch.dict(os.environ, {"RAG_LLM_BASE_URL": "https://openrouter.ai/api/v1"}):
+        with mock.patch("ml.rag.llm_chat.requests.post", return_value=response):
+            llm_chat_complete([{"role": "user", "content": "decompose"}], purpose="decompose")
+    assert not answer_was_length_capped()
+    assert length_capped_call_count() == 1
+
+
+def test_deadline_exhaustion_is_recorded_without_an_upstream_call() -> None:
+    from ml.rag.llm_chat import llm_chat_complete
+
+    reset_llm_truncation()
+    with mock.patch.dict(os.environ, {"RAG_LLM_BASE_URL": "https://openrouter.ai/api/v1"}):
+        with mock.patch("ml.rag.llm_chat.remaining_seconds", return_value=0):
+            with mock.patch("ml.rag.llm_chat._HTTP_WORKERS.try_submit") as submit:
+                assert llm_chat_complete([{"role": "user", "content": "Explain soil health"}], purpose="generate") == ""
+    submit.assert_not_called()
+    assert last_finish_reason() == "budget_exhausted"
+    assert not answer_was_length_capped()

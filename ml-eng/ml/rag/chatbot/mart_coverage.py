@@ -69,10 +69,6 @@ class Coverage:
         held = {item.table_id for item in self.entries if item.iso3 == code}
         return [t for t in tables if t.split(".")[-1].lower() in held]
 
-    def latest_year(self, table_id: str, iso3: str) -> int | None:
-        hit = self.entry(table_id, iso3)
-        return hit.max_year if hit else None
-
     def shape_admitted(self, table_id: str, signature: str) -> bool:
         shapes = self.admitted_shapes.get(table_id.split(".")[-1].lower())
         if shapes is None:
@@ -90,16 +86,6 @@ def route_tables(tables: list[str] | set[str], iso3: str | None) -> list[str]:
         return ordered
     held = cov.tables_holding(iso3, ordered)
     return held or ordered
-
-
-def clamp_year(table_id: str, iso3: str | None, year: int | None) -> int | None:
-    """Cap a requested year to the newest year the table holds for the country."""
-    if year is None or not iso3:
-        return year
-    latest = load_coverage().latest_year(table_id, iso3)
-    if latest is None:
-        return year
-    return min(year, latest)
 
 
 def _country_fields(column: str, value: str) -> tuple[str, str]:
@@ -274,7 +260,6 @@ __all__ = [
     "Coverage",
     "CoverageEntry",
     "build_coverage",
-    "clamp_year",
     "load_coverage",
     "route_tables",
     "write_coverage",

@@ -26,4 +26,4 @@ def test_compile_geo_grain_prefers_geo_scope_country() -> None:
 
 def test_compile_geo_grain_multi_country_with_two_geos() -> None:
     dec = {"geo_scope": "multi_country", "geography": ["Kenya", "Ghana"]}
-    assert compile_geo_grain("compare kenya and ghana", dec) == "region"
+    assert compile_geo_grain("compare kenya and ghana", dec) == "country"

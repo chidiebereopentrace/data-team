@@ -40,3 +40,13 @@ def test_gap_answer_names_place_indicator_and_period_without_internals() -> None
     assert "production" in answer
     for internal in ("compiler", "validation", "SELECT", "mart_"):
         assert internal not in answer
+
+
+def test_named_document_gap_does_not_become_a_numeric_rainfall_question() -> None:
+    answer = gap_answer(
+        "What does Kenya's National Climate Change Action Plan 2023–2027 say about agricultural adaptation?",
+        {"geography": ["Kenya"]}, TurnContract(measure_id="climate"), incomplete_source="documents",
+    )
+    assert "requested document" in answer
+    assert "rainfall" not in answer and "figures" not in answer
+    assert "does not establish whether" in answer

@@ -5,23 +5,31 @@ import re
 from typing import Any
 
 from ml.rag.chatbot.agri_measure_ontology import (
-    MEASURES, MeasureHit, MeasureSpec, explicit_measure_ids, query_locks_production,
+    MEASURES,
+    MeasureHit,
+    MeasureSpec,
+    explicit_measure_ids,
+    query_locks_production,
 )
-from ml.rag.chatbot.analytical_intent import asks_about_causal_effect, requests_document_content
+from ml.rag.chatbot.analytical_intent import (
+    asks_about_causal_effect,
+    requests_document_content,
+)
+from ml.rag.chatbot.continental_scope import (
+    CONTINENTAL_COUNT_RE,
+    decomposition_has_africa_scope,
+    is_continental_rank_query,
+)
+from ml.rag.chatbot.decompose_context import JOB_ALLOWED
+from ml.rag.chatbot.geo_iso3 import infer_country_iso3_from_query, name_to_iso3
 from ml.rag.chatbot.intent_bundles import (
     MatchedBundle,
     bundle_primary_measure,
     bundle_required_measures,
     bundles_block_primary,
 )
-from ml.rag.chatbot.decompose_context import JOB_ALLOWED
-from ml.rag.chatbot.continental_scope import (
-    CONTINENTAL_COUNT_RE,
-    decomposition_has_africa_scope,
-    is_continental_rank_query,
-)
-from ml.rag.chatbot.query_decomposer import _CROP_ENTITY_RE
-from ml.rag.chatbot.geo_iso3 import infer_country_iso3_from_query, name_to_iso3
+from ml.rag.chatbot.request_requirements import compile_fact_requirements
+from ml.rag.chatbot.slot_validator import validate_turn_slots
 from ml.rag.chatbot.time_resolver import (
     TimeWindow,
     parse_iso_date,
@@ -29,11 +37,9 @@ from ml.rag.chatbot.time_resolver import (
     retrieval_envelope,
     utc_today,
 )
-from ml.rag.chatbot.slot_validator import validate_turn_slots
 from ml.rag.chatbot.turn_contract import (
     BreakdownDim,
     DocumentRequirement,
-    FactRequirement,
     GeoGrain,
     Job,
     TimeGrain,
@@ -95,6 +101,13 @@ _ECF_RE = re.compile(
     re.IGNORECASE,
 )
 _DAIRY_POP_RE = re.compile(r"\b(smallholder\s+dairy|dairy\s+herd|dairy\s+cattle|dairy\s+farm)\b", re.IGNORECASE)
+
+
+_CITED_EXPLANATION_RE = re.compile(
+    r"\b(?:use|using|cite|citing|based on)\b[^.!?]*\b(?:evaluations?|research|studies|assessments?|reports?)\b"
+    r"[^.!?]*\b(?:explain|assess|evaluate|discuss|affected|influenced)\b",
+    re.IGNORECASE,
+)
 
 
 def compile_time_spec(query: str, decomposition: dict[str, Any] | None) -> TimeSpec:
@@ -174,9 +187,6 @@ def compile_geo_grain(query: str, decomposition: dict[str, Any] | None) -> GeoGr
     if geo_scope == "region":
         return "region"
     if geo_scope == "multi_country":
-        geo = dec.get("geography")
-        if isinstance(geo, list) and len(geo) >= 2:
-            return "region"
         return "country"
     if geo_scope == "country":
         return "country"
@@ -192,7 +202,7 @@ def compile_geo_grain(query: str, decomposition: dict[str, Any] | None) -> GeoGr
         return "admin1"
     geo = dec.get("geography")
     if isinstance(geo, list) and len(geo) >= 2:
-        return "region"
+        return "country" if all(name_to_iso3(str(place)) for place in geo) else "region"
     return "country"
 
 
@@ -297,7 +307,7 @@ def compile_measure(
     if _PREVALENCE_RE.search(q) or _ECF_RE.search(q):
         return "disease_prevalence", sector
     if re.search(r"\b(rainfall|rainfall anomaly|precipitation)\b", q, re.I):
-        return "rainfall", sector
+        return "climate", sector
     if _EMPLOYMENT_SHARE_RE.search(q) or (
         _AGRICULTURE_SECTOR_RE.search(q) and re.search(r"\b(employment|share|workers?|labou?r)\b", q, re.I)
     ):
@@ -421,6 +431,7 @@ def compile_turn_contract(
             measure_id = requested[0]
     asks_for_documents = (
         requests_document_content(query) or asks_about_causal_effect(query)
+        or _CITED_EXPLANATION_RE.search(query)
         or re.search(r"\b(?:assessments?|studies|reports|evidence)\b", query, re.I)
         or (
             re.search(r"\b(?:explain|contribut\w+|impacts?)\b", query, re.I)
@@ -432,7 +443,9 @@ def compile_turn_contract(
         topics_raw = dec.get("evidence_topics")
         if isinstance(topics_raw, list):
             topics = [topic.strip() for topic in topics_raw if isinstance(topic, str) and topic.strip()]
-        topics = topics or [query]
+        if not topics:
+            sentences = re.split(r"(?<=[.!?])\s+", query)
+            topics = [sentence for sentence in sentences if _CITED_EXPLANATION_RE.search(sentence)] or [query]
 
     plan_type: str = "numeric"
     if job in ("diagnose", "brief", "outlook"):
@@ -454,9 +467,13 @@ def compile_turn_contract(
         pathogen_id=pathogen_id,
         population=population,
         original_question=original,
-        facts=[FactRequirement(mid) for mid in requested],
         documents=[DocumentRequirement(topic) for topic in dict.fromkeys(topics)],
     )
+    contract.facts = compile_fact_requirements(contract, query, dec)
+    if any(fact.enumerate_members for fact in contract.facts):
+        # Suggested regional breakdowns in enrichment do not replace the
+        # dimensions the user actually requested.
+        contract.breakdown = compile_breakdown(original)
 
     measure_spec = MEASURES.get(measure_id) if measure_id else None
     if measure_hit is not None and measure_spec is None:

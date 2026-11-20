@@ -6,6 +6,9 @@ from unittest.mock import Mock
 import pytest
 
 from ml.rag.chatbot.capability_registry import resolve_capability
+from ml.rag.chatbot.answer_language import detect_answer_language
+from ml.rag.chatbot.generator import generate
+from ml.rag.chatbot.graph import _bq_planning_query
 from ml.rag.chatbot.price_sql import plan_price_template
 from ml.rag.chatbot.price_vocab import names_price_product, price_sql_vocab_errors
 from ml.rag.chatbot.sql_ast_validate import parse_select
@@ -59,6 +62,35 @@ def test_wholesale_question_filters_wholesale() -> None:
     assert "price_type = 'Wholesale'" in sql
 
 
+def test_price_list_binds_each_requested_crop_and_renders_missing_years(monkeypatch) -> None:
+    query = "You fit find me price list for yam, rice, onions and maize for Nigeria since 2015?"
+    hit = _plan(query, ["Nigeria"])
+    assert hit["price_list_products"] == ["yam", "rice", "onion", "maize"]
+    assert all(f"THEN '{crop}'" in hit["sql"] for crop in hit["price_list_products"])
+    assert price_sql_vocab_errors(hit["sql"]) == []
+    assert detect_answer_language(query) == "pcm"
+    assert _bq_planning_query({
+        "query": query,
+        "language_enrich": "List prices for yam, cassava, onion and maize in Nigeria since 2015.",
+    }) == query
+
+    llm = Mock(side_effect=AssertionError("the price list should render from warehouse rows"))
+    monkeypatch.setattr("ml.rag.chatbot.generator._call_llama", llm)
+    row = {"source": "bigquery", "metadata": {"raw_row": {
+        "requested_product": "yam", "country_iso3": "NGA", "year": 2016,
+        "latest_date": "2016-12-01", "product_name": "Yam", "price_type": "Retail",
+        "price_source": "wfp", "currency": "NGN", "unit": "KG", "avg_price": 175,
+    }}}
+    answer = generate(query, [{"content": "Unrelated crop production excerpt"}], price_list_rows=[row], decomposition={
+        "geography": ["Nigeria"], "primary_measures": ["market_price"],
+        "time_start": "2015-01-01", "time_end": "2016-12-31",
+    }).answer
+    assert "| 2015 | — | — | — | — |" in answer
+    assert "| 2016 | 175.00 | — | — | — |" in answer
+    assert "NGN per kg" in answer and "Na the yearly average prices" in answer
+    assert "Unrelated" not in answer
+
+
 def test_rwanda_rice_can_plan_the_requested_year() -> None:
     hit = _plan("What was the price of rice in Rwanda in 2025?", ["Rwanda"], "2025")
     assert hit["template"] == "mart_price"
@@ -81,6 +113,25 @@ def test_multi_country_multi_year_groups_by_year() -> None:
     assert "country_iso3 IN ('KEN', 'UGA')" in sql
     assert "year BETWEEN 2020 AND 2026" in sql
     assert "b.year" in sql
+
+
+def test_food_price_report_keeps_country_histories_and_food_indices():
+    hit = plan_price_template(
+        query="Food price changes in Nigeria and Cameroon since 2020 till now",
+        blob="Food price changes in Nigeria and Cameroon since 2020 till now",
+        country_labels=["Nigeria", "Cameroon"], time_start="2020-01-01", time_end="2026-11-18",
+        project_id="proj", dataset="mart_dev",
+    )
+    assert hit and hit.get("price_report")
+    assert "annual_prices" in hit["sql"] and "first_year" in hit["sql"]
+    assert "change_pct" in hit["sql"] and "change_percentage_points" in hit["sql"]
+    assert "PARTITION BY country_iso3, requested_product" in hit["sql"]
+    assert "Food price inflation" in hit["product_names"]
+    assert "Consumer Prices, Food Indices (2015 = 100)" in hit["product_names"]
+    assert "LIMIT 60" not in hit["sql"]
+    assert price_sql_vocab_errors(hit["sql"]) == []
+    _, error = parse_select(hit["sql"])
+    assert error is None
 
 
 @pytest.mark.parametrize("wording", ["the price of food", "food prices"])
@@ -124,10 +175,10 @@ def test_source_follows_requested_years() -> None:
     assert hit["widened"] == ""
 
 
-def test_year_outside_coverage_widens_to_latest_with_note() -> None:
+def test_year_outside_vocabulary_coverage_does_not_query_a_different_year() -> None:
     hit = _plan("Average millet price in Niger in 1950", ["Niger"], "1950")
-    assert "QUALIFY" in hit["sql"]
-    assert "1950" in hit["widened"]
+    assert "year = 1950" in hit["sql"]
+    assert "QUALIFY" not in hit["sql"]
 
 
 def test_product_not_held_fails_closed_with_closest() -> None:

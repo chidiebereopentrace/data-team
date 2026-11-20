@@ -94,8 +94,9 @@ def test_next_year_is_a_forecast() -> None:
     assert window.forecast is True
 
 
-def test_prices_now_are_ninety_days() -> None:
-    window = _one("maize prices right now")
+@pytest.mark.parametrize("query", ["maize prices right now", "how much is a kilo of beans in Nigeria now?"])
+def test_prices_now_are_ninety_days(query: str) -> None:
+    window = _one(query)
     assert window.start == date(2026, 7, 16)
     assert window.end == R
     assert window.strict is False
@@ -120,7 +121,11 @@ def test_this_season_in_kenya_is_the_short_rains(kenya_seasons: None) -> None:
     assert window.end == date(2026, 12, 31)
 
 
-def test_this_season_without_a_country_is_six_months() -> None:
+def test_this_season_without_a_country_is_six_months(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected_warehouse_lookup():
+        pytest.fail("A season question without a country must not load the warehouse calendar")
+
+    monkeypatch.setattr("ml.rag.chatbot.time_resolver._season_rows", unexpected_warehouse_lookup)
     window = _one("this season")
     assert window.start == date(2026, 4, 14)
     assert window.end == R

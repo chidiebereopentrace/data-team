@@ -166,7 +166,8 @@ def build_rag_document() -> None:
             "A tenant may call /query/{its plan} only (integrated tenants: any plan); bare /query "
             "uses the tenant's plan. Wrong plan route: HTTP 403. Missing/invalid key: HTTP 401.",
             "include_trace is honoured only for tenants with allow_trace=true.",
-            "Per-IP rate limits per plan (FREE_RATE_LIMIT_RPM etc.) default to 10-60 rpm; HTTP 429.",
+            "rate_limit_rpm is requests per minute for one user_id (0 disables it). "
+            "HTTP 429 carries Retry-After and X-RateLimit-Limit.",
             "CORS allows no origins unless RAG_CORS_ORIGINS lists them; credentials are disabled.",
             "RAG_API_AUTH=off disables auth for local development only.",
         ],

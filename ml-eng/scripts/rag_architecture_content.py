@@ -34,7 +34,7 @@ DIAGRAM_FILES: Sequence[str] = (
 # PDF section order: vector stack before BQ (locked by architecture plan).
 DIAGRAM_SECTIONS: Sequence[tuple[str, str, str]] = (
     ("system_context", "System context", "Actors, LangGraph, and external services — Qdrant and BigQuery as peer retrieval backends."),
-    ("entry_points", "Entry points", "CLI, FastAPI, Chatbot v1, and Streamlit routes into run_rag / LangGraph."),
+    ("entry_points", "Entry points", "CLI, FastAPI POST /query, and Streamlit routes into run_rag / LangGraph."),
     ("runtime_graph", "Full LangGraph (E2E)", "Start-to-finish graph with vector and BQ retrieval legs into merge."),
     ("control_plane", "Control plane", "Enricher → decompose → Africa scope → measure ontology → task_mode → route."),
     ("measure_ontology", "Measure ontology (BQ aid)", "resolve_measure → reasoner_scope → LLM reasoner retries → ontology fallback last resort."),
@@ -75,19 +75,14 @@ ENTRY_POINTS_FLOWCHART: Sequence[str] = (
     "┌─────────────────────────────────────────────────────────────────┐",
     "│                        Entry points                              │",
     "└─────────────────────────────────────────────────────────────────┘",
-    "  CLI (ml/rag/run.py)              FastAPI POST /query",
-    "         │                                  │",
-    "         └──────────────┬───────────────────┘",
-    "                        ▼",
-    "                   run_rag(query, **kwargs)",
-    "                        │",
-    "  Chatbot v1 POST /v1/chat          Streamlit QA",
-    "         │                                  │",
-    "         ▼                                  │",
-    "  execute_chat_turn(...) ──────────────────┘",
-    "         │",
-    "         ▼",
-    "  LangGraph compiled graph (chatbot/graph.py)",
+    "  CLI (ml/rag/run.py)     FastAPI POST /query     Streamlit QA",
+    "         │                        │                    │",
+    "         └────────────────────────┼────────────────────┘",
+    "                                  ▼",
+    "                         run_rag(query, **kwargs)",
+    "                                  │",
+    "                                  ▼",
+    "               LangGraph compiled graph (chatbot/graph.py)",
 )
 
 FULL_GRAPH_FLOWCHART: Sequence[str] = (
@@ -378,8 +373,8 @@ INFRA_ERD_ENTITIES: Sequence[tuple[str, Sequence[Sequence[str]]]] = (
     (
         "FastAPI",
         (
-            ("service", "str", "RAG API / Chatbot v1 / Streamlit"),
-            ("endpoint", "str", "POST /query, /v1/chat, …"),
+            ("service", "str", "RAG API / Streamlit"),
+            ("endpoint", "str", "POST /query"),
         ),
     ),
     (
@@ -473,7 +468,7 @@ BQ_SUBFLOW_CHART: Sequence[str] = (
     "        └─ maybe_attach_ranking_trend (Production+Yield Y-1 vs Y+1)",
     "        │",
     "        ▼",
-    "  trim_bq_result_contents (byte budget)",
+    "  retain bounded results (generation owns text budgets)",
     "        │",
     "        ▼",
     "  cache_entry_from_bq_results → structured_ranking_cache",
@@ -566,7 +561,7 @@ RAG_STATE_FIELDS: Sequence[Sequence[str]] = (
     ("answer_lang", "str|null", "Detected answer language tag"),
     ("session_id", "str|null", "Server session id"),
     ("export_enabled", "bool|null", "Allow artifact generation"),
-    ("export_intent", "str|null", "csv|chart|docx|pdf|multi detected in query"),
+    ("export_intent", "str|null", "csv|geojson|chart|docx|pdf|multi; explicit field wins, else detected in query"),
     ("artifacts", "list", "Downloadable export descriptors"),
 )
 
@@ -741,7 +736,7 @@ NODE_SPECS: list[dict[str, Any]] = [
             "Execute against BigQuery; project_bq_row_acf on rows.",
             "enrich_bq_results: semantics prose, ranked_table consolidation.",
             "Stamp ACF metadata; FAOSTAT trend companion (Y-1 vs Y+1).",
-            "trim_bq_result_contents; save ranking cache entry.",
+            "Retain bounded results; save ranking cache entry. Generation owns text budgets.",
         ],
         "llm": "Yes (NL2SQL; templates without LLM when matched)",
         "external": "BigQuery, optional Redis (schema cache)",

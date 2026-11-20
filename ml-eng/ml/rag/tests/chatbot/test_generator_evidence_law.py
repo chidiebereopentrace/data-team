@@ -44,6 +44,9 @@ def test_prompt_distinguishes_policy_programme_gedsi_and_source_quality() -> Non
         "respect the requested geographic level",
         "state the year of historical figures",
         "current date supplied in context",
+        "tonnes measure production",
+        "hectares measure area",
+        "never label a tonne observation as harvested or planted area",
     ):
         assert phrase in system
 

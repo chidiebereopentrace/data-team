@@ -14,6 +14,32 @@ import time
 from datetime import date
 from typing import Any
 
+from ml.rag.chatbot.agri_entities import CROP_ENTITY_RE as _CROP_ENTITY_RE
+from ml.rag.chatbot.agri_measure_ontology import MEASURES
+from ml.rag.chatbot.continental_scope import (
+    wants_africa_default_scope as _continental_wants_default,
+)
+from ml.rag.chatbot.continental_scope import (
+    wants_africa_panel_scope as _continental_wants_panel,
+)
+from ml.rag.chatbot.decompose_context import (
+    DECOMPOSE_MEASURE_HINTS,
+    GEO_SCOPE_ALLOWED,
+    INTENT_ALLOWED,
+    JOB_ALLOWED,
+    DecomposeContext,
+    format_decompose_system_prompt,
+    format_decompose_user_prompt,
+)
+from ml.rag.chatbot.geo_iso3 import (
+    countries_named_in_text,
+    infer_country_iso3_from_query,
+    iso3_to_canonical_name,
+    name_to_iso3,
+)
+from ml.rag.chatbot.geo_regions import all_non_country_geo_labels
+from ml.rag.chatbot.query_normalize import normalize_query_text
+from ml.rag.chatbot.request_requirements import grounded_fact_phrases
 from ml.rag.chatbot.time_resolver import (
     TimeWindow,
     parse_iso_date,
@@ -21,28 +47,7 @@ from ml.rag.chatbot.time_resolver import (
     retrieval_envelope,
     utc_today,
 )
-
 from ml.rag.llm_chat import llm_chat_complete, llm_model_id
-from ml.rag.chatbot.decompose_context import (
-    DECOMPOSE_MEASURE_HINTS,
-    DecomposeContext,
-    GEO_SCOPE_ALLOWED,
-    INTENT_ALLOWED,
-    JOB_ALLOWED,
-    format_decompose_system_prompt,
-    format_decompose_user_prompt,
-)
-from ml.rag.chatbot.query_normalize import normalize_query_text
-from ml.rag.chatbot.agri_entities import CROP_ENTITY_RE as _CROP_ENTITY_RE
-from ml.rag.chatbot.agri_measure_ontology import MEASURES
-from ml.rag.chatbot.continental_scope import (
-    CONTINENTAL_PANEL_RE as _AFRICA_PANEL_RE,
-    CONTINENTAL_RANK_RE as _RANKING_SCOPE_RE,
-    wants_africa_default_scope as _continental_wants_default,
-    wants_africa_panel_scope as _continental_wants_panel,
-)
-from ml.rag.chatbot.geo_iso3 import infer_country_iso3_from_query
-from ml.rag.chatbot.geo_regions import all_non_country_geo_labels
 from ml.rag.observability import trace_elapsed_ms
 
 # Re-export for callers that imported from here historically.
@@ -251,6 +256,12 @@ def _extract_countries(text: str) -> list[str]:
         if re.search(rf"\b{re.escape(key)}\b", q):
             if canonical not in found:
                 found.append(canonical)
+    codes = {name_to_iso3(place) for place in found}
+    for name in sorted(countries_named_in_text(text)):
+        code = name_to_iso3(name)
+        if code and code not in codes:
+            found.append(iso3_to_canonical_name(code) or name)
+            codes.add(code)
     return found
 
 
@@ -331,6 +342,9 @@ def _facet_grounded_in_query(value: str, query: str) -> bool:
     v = (value or "").strip()
     if not v or not q:
         return False
+    code = name_to_iso3(v)
+    if code and code in {name_to_iso3(place) for place in countries_named_in_text(query)}:
+        return True
     vl = v.lower()
     if vl in q:
         return True
@@ -722,6 +736,9 @@ def _merge_llm_decompose(
     measure_hints = _normalize_measure_hints(llm.get("primary_measure_hints"))
     if measure_hints:
         out["primary_measure_hints"] = measure_hints
+    requirements = grounded_fact_phrases(llm.get("fact_requirements"), query)
+    if requirements:
+        out["fact_requirements"] = [{"measure_id": mid, "question": phrase} for mid, phrase in requirements]
     topics = llm.get("evidence_topics")
     if isinstance(topics, list):
         phrases = [

@@ -435,7 +435,6 @@ _LATEST_RE = re.compile(
     r"\b(latest|most\s+recent|current|right\s+now|as\s+of\s+now)\b",
     re.IGNORECASE,
 )
-_NAMED_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 
 
 def requested_operation(query: str) -> Operation:
@@ -453,10 +452,6 @@ def requested_operation(query: str) -> Operation:
         return "latest"
     return "lookup"
 
-
-def question_names_year(query: str) -> bool:
-    """True when the question itself names a calendar year."""
-    return bool(_NAMED_YEAR_RE.search(query or ""))
 
 # Operation -> (job, pattern) understood by compile_sql_from_bind.
 _OPERATION_SHAPE: dict[Operation, tuple[str, str]] = {
@@ -536,6 +531,5 @@ __all__ = [
     "compile_operation",
     "compile_sql_from_bind",
     "operation_for",
-    "question_names_year",
     "requested_operation",
 ]

@@ -213,7 +213,7 @@ def build_document() -> Document:
     _add_body(doc, "Integration pattern:", bold=True)
     _add_code(
         doc,
-        """Olam application  →  POST /v1/chat/agribusinesses  →  OpenTrace intelligence engine
+        """Olam application  →  POST /query/agribusinesses  →  OpenTrace intelligence engine
                      (API key in header)              →  Answer + citations + ACF + optional exports""",
     )
     _add_body(doc, "Authentication: Send your API key on every request:", bold=True)
@@ -447,27 +447,25 @@ def build_document() -> Document:
         doc,
         ["Method", "Endpoint", "Purpose"],
         [
-            ["GET", "/v1/health", "Service health"],
-            ["GET", "/v1/meta", "Plan types, categories, rate limits"],
-            ["GET", "/v1/usage", "Current tenant usage (authenticated)"],
-            ["POST", "/v1/sessions", "Create conversation session"],
-            ["GET", "/v1/sessions/{id}", "Session status"],
-            ["POST", "/v1/chat/agribusinesses", "Primary endpoint — Q&A with exports"],
-            ["POST", "/v1/feedback", "Optional quality feedback (when tracing enabled)"],
+            ["GET", "/health", "Service health"],
+            ["POST", "/query/agribusinesses", "Primary endpoint — Q&A with exports (send X-API-Key)"],
+            ["DELETE", "/session/{id}", "Clear a conversation session"],
+            ["GET", "/artifacts/{id}/url", "Re-sign an export download URL"],
+            ["POST", "/feedback", "Optional quality feedback (when tracing enabled)"],
         ],
     )
     _add_body(doc, "Request body (minimal):", bold=True)
     _add_code(
         doc,
         """{
-  "message": "Compare cocoa production in Ghana and Côte d'Ivoire over the last 3 years",
+  "query": "Compare cocoa production in Ghana and Côte d'Ivoire over the last 3 years",
   "session_id": "optional-for-multi-turn"
 }""",
     )
     _add_body(
         doc,
-        "Response includes: assistant_message, citations[], acf, usage, artifacts[] "
-        "(when export requested), session_id, request_id",
+        "Response includes: answer, citations[], acf, usage, artifacts[] "
+        "(when export requested), session_id, langfuse_trace_id",
     )
 
     # Appendix B

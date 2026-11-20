@@ -69,8 +69,10 @@ def test_insufficient_renderer_leads_with_miss() -> None:
         job="fact",
     )
     text = render_insufficient(contract)
-    assert "Cannot ground" in text
-    assert "admin2" in text.lower() or "admin2" in text
+    assert "could not verify" in text
+    assert "Uganda" in text
+    assert "admin2" not in text
+    assert "does not establish" in text
 
 
 def test_generation_plan_sets_output_type_for_served_production() -> None:
@@ -245,4 +247,5 @@ def test_insufficient_persona_rephrase() -> None:
         job="compare",
     )
     text = render_insufficient(contract, category="Agribusinesses")
-    assert "calendar window" in text.lower()
+    assert "Kenya, Tanzania, Uganda" in text
+    assert "does not establish" in text

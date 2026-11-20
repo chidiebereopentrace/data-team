@@ -8,75 +8,37 @@ import logging
 import os
 import re
 import time
-from concurrent.futures import TimeoutError as FuturesTimeoutError, wait
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from concurrent.futures import wait
 from dataclasses import dataclass, field, replace
-from typing import Any, TypedDict, cast
+from typing import Any, Literal, cast
 
-from ml.rag.chatbot.acf_scoring import ACFState, acf_result_to_state, curated_product_acf, no_evidence_acf
-from ml.rag.chatbot.answer_language import (
-    detect_answer_language,
-    detect_language_with_confidence,
-    language_unclear_answer,
+from ml.rag.chatbot.acf_scoring import (
+    ACFState,
+    acf_result_to_state,
+    curated_product_acf,
+    no_evidence_acf,
 )
-from ml.rag.chatbot.language_enrich import enrich_query_to_english
-from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
-from ml.rag.chatbot.assistant_identity import is_meta_query
-from ml.rag.chatbot.ofia import infer_source_tier
-from ml.rag.chatbot.export_intent import EXPORT_UPGRADE_MESSAGE, ExportKind, detect_export_intent
-from ml.rag.chatbot.geo_regions import expand_regions_in_decomposition
-from ml.rag.chatbot.export_runner import run_exports
-from ml.rag.chatbot.geo_policy import (
-    apply_profile_geography_default,
-    clear_profile_ui_retrieval_scope,
-    effective_geo_override,
-    sanitize_profile_country,
-)
-from ml.rag.chatbot.plan_policy import (
-    apply_plan_decomposition_gates,
-)
-from ml.rag.chatbot.task_mode import clarify_answer, resolve_task_mode
 from ml.rag.chatbot.active_request import (
     add_decomposed_slots,
     fill_decomposition,
     resolve_turn,
     resolved_request_text,
 )
-from ml.rag.chatbot.query_views import build_detail_rewrite, build_query_views
-from ml.rag.chatbot.agri_measure_ontology import MEASURES, MeasureHit, resolve_measures, resolve_recency_tier
-from ml.rag.chatbot.product_knowledge import is_help_query, is_product_query
-from ml.rag.chatbot.query_gate import (
-    classify_social_query,
-    early_non_rag_route,
-    generate_social_answer,
-    is_greeting_query,
-    is_out_of_scope_query,
+from ml.rag.chatbot.agri_measure_ontology import (
+    MEASURES,
+    MeasureHit,
+    resolve_measures,
+    resolve_recency_tier,
 )
-from ml.rag.chatbot.bq_byte_budget import trim_bq_result_contents
+from ml.rag.chatbot.answer_language import (
+    detect_answer_language,
+    detect_language_with_confidence,
+    language_unclear_answer,
+)
+from ml.rag.chatbot.answer_outcome import decide_outcome, gap_answer
+from ml.rag.chatbot.assistant_identity import is_meta_query
 from ml.rag.chatbot.bq_context_enrich import enrich_bq_results
-from ml.rag.chatbot.bq_ranking_cache import (
-    bq_results_from_cache,
-    cache_entry_from_bq_results,
-    is_ranking_follow_up,
-)
-from ml.rag.chatbot.bq_plan import normalize_bq_plan
-from ml.rag.chatbot.query_ir import compile_early_query_ir, compile_query_ir
-from ml.rag.chatbot.bq_sql_reasoner import reason_bq_sql_plan, _slot_reasoner_active
-from ml.rag.chatbot.class_engine_runner import engine_results_to_bq_plan, run_class_engines
-from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
-from ml.rag.chatbot.evidence_requirements import (
-    fact_requirement_coverage, is_fact_comparison, matches_bound_fact, plan_fact_comparison,
-)
-from ml.rag.chatbot.document_evidence import document_requirement_coverage, requirement_document_candidates
-from ml.rag.chatbot.class_supervisor import SupervisorPlan, compile_supervisor_plan, corpora_for_supervisor_plan, tables_for_supervisor_plan
-from ml.rag.chatbot.context_diversity import diversify_context_pack
-from ml.rag.chatbot.evidence_kinds import is_warehouse_item
-from ml.rag.chatbot.corpus_catalog import (
-    CORPUS_CATALOG, CorpusSelection, comparison_document_corpora, formation_doc_kinds, select_corpora,
-)
-from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
-from ml.rag.chatbot.facet_compiler import compile_turn_contract, compile_breakdown
-from ml.rag.chatbot.intent_bundles import bundle_primary_measures, bundle_required_measures, match_intent_bundles
-from ml.rag.chatbot.capability_registry import apply_reasoner_to_turn, resolve_capability
 from ml.rag.chatbot.bq_execute_state import (
     bq_execute_flags,
     collect_pre_queries,
@@ -85,22 +47,99 @@ from ml.rag.chatbot.bq_execute_state import (
     plan_indicates_warehouse_attempt,
     warehouse_was_attempted,
 )
+from ml.rag.chatbot.bq_plan import normalize_bq_plan
+from ml.rag.chatbot.bq_ranking_cache import (
+    bq_results_from_cache,
+    cache_entry_from_bq_results,
+    is_ranking_follow_up,
+)
 from ml.rag.chatbot.bq_sql_diagnostics import (
     sql_attempts_for_diagnostics,
     sql_statements_for_diagnostics,
 )
-from ml.rag.chatbot.time_retrieval import sync_decomposition_time, time_fallback_enabled, time_kwargs_from_contract
-from ml.rag.chatbot.turn_contract import TurnContract
-from ml.rag.chatbot.typed_pack import PackResult, typed_context_pack
-from ml.rag.chatbot.answer_outcome import decide_outcome, gap_answer
-from ml.rag.chatbot.stage_budget import RetrievalWorkers, remaining_seconds, request_budget, stage_budget_seconds
-from ml.rag.chatbot.generation_plan import build_generation_plan
-from ml.rag.chatbot.global_reasoner import compile_reasoner_plan, reasoner_plan_to_bq_plan
+from ml.rag.chatbot.bq_sql_reasoner import _slot_reasoner_active, reason_bq_sql_plan
+from ml.rag.chatbot.capability_registry import (
+    apply_reasoner_to_turn,
+    resolve_capability,
+)
+from ml.rag.chatbot.class_engine_runner import (
+    engine_results_to_bq_plan,
+    run_class_engines,
+)
+from ml.rag.chatbot.class_supervisor import (
+    SupervisorPlan,
+    compile_supervisor_plan,
+    corpora_for_supervisor_plan,
+    tables_for_supervisor_plan,
+)
 from ml.rag.chatbot.composer import (
     composer_addendum,
     composer_context_block,
     partition_bq_by_subquestion,
 )
+from ml.rag.chatbot.context_diversity import diversify_context_pack
+from ml.rag.chatbot.corpus_catalog import (
+    CORPUS_CATALOG,
+    CorpusSelection,
+    comparison_document_corpora,
+    formation_doc_kinds,
+    select_corpora,
+)
+from ml.rag.chatbot.decompose_context import DecomposeContext
+from ml.rag.chatbot.document_evidence import (
+    document_requirement_coverage,
+    requirement_document_candidates,
+)
+from ml.rag.chatbot.evidence_kinds import is_document_item, is_warehouse_item
+from ml.rag.chatbot.evidence_requirements import (
+    fact_gap_description,
+    fact_requirement_coverage,
+    is_fact_comparison,
+    matches_bound_fact,
+    plan_fact_requirements,
+    prioritize_bound_facts,
+)
+from ml.rag.chatbot.export_intent import (
+    EXPORT_UPGRADE_MESSAGE,
+    ExportKind,
+    resolve_export_intent,
+)
+from ml.rag.chatbot.export_runner import run_exports
+from ml.rag.chatbot.facet_compiler import compile_breakdown, compile_turn_contract
+from ml.rag.chatbot.facet_enrich import enrich_decomposition_facets
+from ml.rag.chatbot.generation_plan import build_generation_plan
+from ml.rag.chatbot.generator import (
+    _generate_max_tokens,
+    drop_geo_conflicting,
+    drop_price_off_topic,
+    filter_context_items,
+    generate,
+    is_comparative_bq_query,
+    is_mergeable_bq_evidence,
+    is_numeric_data_query,
+    is_usable_context_item,
+    is_usable_structured_bq_row,
+    pin_bq_context_first,
+    should_elevate_bq_context,
+)
+from ml.rag.chatbot.geo_policy import (
+    apply_profile_geography_default,
+    clear_profile_ui_retrieval_scope,
+    effective_geo_override,
+    sanitize_profile_country,
+)
+from ml.rag.chatbot.geo_regions import expand_regions_in_decomposition
+from ml.rag.chatbot.global_reasoner import (
+    compile_reasoner_plan,
+    reasoner_plan_to_bq_plan,
+)
+from ml.rag.chatbot.intent_bundles import (
+    bundle_primary_measures,
+    bundle_required_measures,
+    match_intent_bundles,
+)
+from ml.rag.chatbot.language_enrich import enrich_query_to_english
+from ml.rag.chatbot.memory_relevance import memory_relevant_for_query
 from ml.rag.chatbot.metacog import (
     MetacogPlan,
     MetacogVerify,
@@ -116,25 +155,14 @@ from ml.rag.chatbot.metacog import (
     propose_metacog_revise,
     verify_metacog_evidence,
 )
-from ml.rag.chatbot.reasoner_plan import ReasonerPlan
-from ml.rag.chatbot.qdrant_planner import plan_vector_corpora_for_reasoner
-from ml.rag.chatbot.generator import (
-    _generate_max_tokens,
-    drop_geo_conflicting,
-    drop_price_off_topic,
-    filter_context_items,
-    generate,
-    is_comparative_bq_query,
-    is_mergeable_bq_evidence,
-    is_numeric_data_query,
-    is_usable_context_item,
-    is_usable_structured_bq_row,
-    pin_bq_context_first,
-    should_elevate_bq_context,
-)
+from ml.rag.chatbot.ofia import infer_source_tier
 from ml.rag.chatbot.ontology_context import sanitize_decomposition_for_bq
-from ml.rag.chatbot.retrieval_contract import build_corpus_routing_contract
-from ml.rag.chatbot.decompose_context import DecomposeContext
+from ml.rag.chatbot.plan_policy import (
+    apply_plan_decomposition_gates,
+)
+from ml.rag.chatbot.price_sql import requested_price_list_products
+from ml.rag.chatbot.product_knowledge import is_help_query, is_product_query
+from ml.rag.chatbot.qdrant_planner import plan_vector_corpora_for_reasoner
 from ml.rag.chatbot.query_decomposer import (
     _extract_countries,
     decompose_query,
@@ -142,33 +170,71 @@ from ml.rag.chatbot.query_decomposer import (
     normalize_geography_for_filter,
     resolve_retrieval_geographies,
 )
-from ml.rag.chatbot.time_resolver import parse_iso_date, resolve_relative_time, utc_today
+from ml.rag.chatbot.query_gate import (
+    classify_social_query,
+    early_non_rag_route,
+    generate_social_answer,
+    is_greeting_query,
+    is_out_of_scope_query,
+)
+from ml.rag.chatbot.query_ir import compile_early_query_ir, compile_query_ir
 from ml.rag.chatbot.query_normalize import normalize_query_text
-from ml.rag.chatbot.routing_plan import RoutingPlan, Source, SourceSelection, build_routing_plan, select_sources
+from ml.rag.chatbot.query_views import build_detail_rewrite, build_query_views
+from ml.rag.chatbot.reasoner_plan import ReasonerPlan
 from ml.rag.chatbot.reranker import last_rerank_mode, rerank
-from ml.rag.retrievers.bq_retriever import BQRetriever
-from ml.rag.retrievers.vector_retriever import VectorRetriever
+from ml.rag.chatbot.retrieval_contract import build_corpus_routing_contract
+from ml.rag.chatbot.routing_plan import (
+    RoutingPlan,
+    Source,
+    SourceSelection,
+    build_routing_plan,
+    select_sources,
+)
+from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
+from ml.rag.chatbot.stage_budget import (
+    RetrievalWorkers,
+    remaining_seconds,
+    request_budget,
+    stage_budget_seconds,
+)
+from ml.rag.chatbot.task_mode import clarify_answer, resolve_task_mode
+from ml.rag.chatbot.time_resolver import (
+    parse_iso_date,
+    resolve_relative_time,
+    utc_today,
+)
+from ml.rag.chatbot.time_retrieval import (
+    sync_decomposition_time,
+    time_fallback_enabled,
+    time_kwargs_from_contract,
+)
+from ml.rag.chatbot.turn_contract import TurnContract
+from ml.rag.chatbot.typed_pack import PackResult, typed_context_pack
 from ml.rag.llm_chat import (
     get_llm_usage,
     length_capped_call_count,
+    last_finish_reason,
     reset_llm_truncation,
     reset_llm_usage,
 )
-from ml.rag.retrievers.web_retriever import (
-    warehouse_blocks_web,
-    format_web_chunk_for_context,
-    needs_web_fallback,
-    retrieve_web_fallback_detailed,
-    route_after_rerank,
-)
-
-from ml.rag.text_processors.preprocess.bibliographic_metadata import format_academic_citation
 from ml.rag.observability import (
     build_rag_invoke_config,
     observed_span,
     run_with_tracing_context,
     trace_elapsed_ms,
     update_current_span_metadata,
+)
+from ml.rag.retrievers.bq_retriever import BQRetriever
+from ml.rag.retrievers.vector_retriever import VectorRetriever
+from ml.rag.retrievers.web_retriever import (
+    format_web_chunk_for_context,
+    needs_web_fallback,
+    retrieve_web_fallback_detailed,
+    route_after_rerank,
+    warehouse_blocks_web,
+)
+from ml.rag.text_processors.preprocess.bibliographic_metadata import (
+    format_academic_citation,
 )
 
 logger = logging.getLogger(__name__)
@@ -736,6 +802,8 @@ class RAGGraphState(ACFState, total=False):
     # English enrich shadow for bind/retrieve (original stays in query/user_query)
     language_enrich: str | None
     language_enrich_applied: bool | None
+    language_enrich_source: str | None
+    language_enrich_subject_guard: bool | None
     # Session context — Sprint 1, Week 2 (session isolation)
     session_id: str | None
     # Export / enriched outputs (Agribusinesses + Integrated routes only)
@@ -813,6 +881,7 @@ class RAGGraphState(ACFState, total=False):
     generate_max_tokens: int | None
     generate_input_chars: int | None
     generate_length_capped_calls: int | None
+    generate_finish_reason: str | None
 
 
 def _reasoner_from_state(state: RAGGraphState) -> ReasonerPlan | None:
@@ -827,10 +896,14 @@ def _slot_path_active(state: RAGGraphState) -> bool:
     return rp is not None and bool(rp.bq_subquestions())
 
 
-def _early_route_decompose_state(raw_q: str, route: str) -> RAGGraphState:
+def _early_route_decompose_state(
+    raw_q: str,
+    route: str,
+    explicit_export: str | None = None,
+) -> RAGGraphState:
     """Build decompose output for early non-RAG short-circuit on raw user text."""
     answer_lang = detect_answer_language(raw_q)
-    export_intent = detect_export_intent(raw_q)
+    export_intent = resolve_export_intent(raw_q, explicit_export)
     base: dict[str, Any] = {
         "decomposition": {},
         "is_meta_query": route == "meta",
@@ -858,7 +931,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
     
     route = early_non_rag_route(raw_q)
     if route:
-        early = _early_route_decompose_state(raw_q, route)
+        early = _early_route_decompose_state(raw_q, route, state.get("export_intent"))
         with observed_span(
             "decompose",
             input_data={"query": raw_q[:200], "enriched": False, "early_short_circuit": True},
@@ -867,7 +940,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
                 {
                     "route_candidate": route,
                     "answer_lang": early.get("answer_lang"),
-                    "export_intent": detect_export_intent(raw_q),
+                    "export_intent": early.get("export_intent"),
                     "early_short_circuit": True,
                     "skipped_decompose_llm": True,
                     "skipped_retrieval": True,
@@ -896,16 +969,25 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
     # Detect language and capture confidence value for enrichment decisions
     answer_lang_user, confidence = detect_language_with_confidence(raw_q)
 
-    lang_enr = enrich_query_to_english(
-        raw_q,
-        answer_lang=answer_lang_user,
-        confidence=confidence,
-    )
-    # Prefer model-detected lang from enrich when present (same detection).
-    if lang_enr.answer_lang:
-        answer_lang_user = lang_enr.answer_lang
-    language_enrich = (lang_enr.english_query or "").strip()
-    language_enrich_applied = bool(lang_enr.needs_enrich and language_enrich)
+    price_list_products = requested_price_list_products(raw_q)
+    language_enrich = ""
+    language_enrich_applied = False
+    language_enrich_source = "none"
+    language_subject_guard = False
+    language_subjects: tuple[str, ...] = ()
+    if not price_list_products:
+        lang_enr = enrich_query_to_english(
+            raw_q,
+            answer_lang=answer_lang_user,
+            confidence=confidence,
+        )
+        if lang_enr.answer_lang:
+            answer_lang_user = lang_enr.answer_lang
+        language_enrich = (lang_enr.english_query or "").strip()
+        language_enrich_applied = bool(lang_enr.needs_enrich and language_enrich)
+        language_enrich_source = lang_enr.enrich_source
+        language_subject_guard = lang_enr.subject_guard_applied
+        language_subjects = lang_enr.subjects
     views0 = build_query_views(
         raw_q,
         active=active_turn,
@@ -940,6 +1022,12 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         dec_raw.pop("_decompose_llm_used", None)
         dec_raw.pop("_legacy_would_skip_llm", None)
         dec = dec_raw
+        if language_subject_guard:
+            # Facets from a rejected subject replacement are not persisted as
+            # user intent. Search still retains the complete original wording.
+            dec = {**dec, "entities": list(language_subjects), "domains": list(language_subjects),
+                   "primary_measure_hints": list(language_subjects), "primary_measures": list(language_subjects),
+                   "evidence_topics": [], "fact_requirements": []}
         profile = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else None
         raw_country = str((profile or {}).get("country") or "").strip() or None
         country = sanitize_profile_country(raw_country)
@@ -956,8 +1044,12 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
         dec = apply_profile_geography_default(dec, country)
         # UI / API scopes must land in decomp so clarify, BQ plans, and retrieval agree.
         dec = _apply_ui_scope_overrides(dec, state)
+        if price_list_products:
+            dec["entities"] = price_list_products
         add_decomposed_slots(active_turn, dec)
         dec = fill_decomposition(dec, active_turn)
+        if price_list_products:
+            dec["entities"] = price_list_products
         # Grounded entity/domain enrich → multi-measure retrieval contract tags.
         dec = enrich_decomposition_facets(q, dec)
         matched_bundles = match_intent_bundles(q, dec, breakdown=compile_breakdown(q))
@@ -1058,7 +1150,7 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             route_candidate = "clarify"
         else:
             route_candidate = "full_rag"
-        export_intent = detect_export_intent(q)
+        export_intent = resolve_export_intent(q, state.get("export_intent"))
         update_current_span_metadata(
             {
                 "route_candidate": route_candidate,
@@ -1101,6 +1193,8 @@ def node_decompose(state: RAGGraphState) -> RAGGraphState:
             "answer_lang": answer_lang,
             "language_enrich": language_enrich or None,
             "language_enrich_applied": language_enrich_applied,
+            "language_enrich_source": language_enrich_source,
+            "language_enrich_subject_guard": language_subject_guard,
             "export_intent": export_intent,
             "task_mode": task_mode,
             "analytical_mode": analytical,
@@ -2032,8 +2126,8 @@ def _build_bq_sql_plan(
         selected = {
             item["requirement"] for item in sources["bigquery"]["requirements"] if item["selected"]
         }
-        turn = replace(turn, facts=[fact for fact in turn.facts if fact.measure_id in selected])
-    requirement_plan = plan_fact_comparison(turn, query=q, facets=dec)
+        turn = replace(turn, facts=[fact for fact in turn.facts if fact.key in selected])
+    requirement_plan = plan_fact_requirements(turn, query=q, facets=dec)
     if requirement_plan is not None:
         return normalize_bq_plan(requirement_plan, plan_source="turn_requirements")
 
@@ -2096,12 +2190,15 @@ def _build_bq_sql_plan(
 
 
 def _bq_planning_query(state: RAGGraphState) -> str:
-    """NL question for warehouse planning: English enrich when present, else resolved request."""
+    """Keep explicit price lists intact, otherwise prefer the enriched query."""
+    original = str(state.get("user_query") or state.get("query") or "").strip()
+    if requested_price_list_products(original):
+        return original
     lang_en = str(state.get("language_enrich") or "").strip()
     if lang_en:
         return lang_en
     resolved = str(state.get("resolved_request") or "").strip()
-    return resolved or str(state.get("user_query") or state.get("query") or "").strip()
+    return resolved or original
 
 
 def _fp_equal(a: Any, b: Any) -> bool:
@@ -2172,11 +2269,20 @@ def node_bq_reason(state: RAGGraphState) -> RAGGraphState:
                     "metadata": {"table_name": tid, "source": "mart_yaml"},
                 }
             )
-    return {
+    out: RAGGraphState = {
         "bq_sql_plan": plan,
         "bq_table_candidates_inspector": cands,
         "value_hits": plan.get("value_hits"),
     }
+    if plan.get("plan_source") == "turn_requirements" and plan.get("bind_contracts"):
+        # A capability miss for one indicator cannot erase proven sibling binds.
+        # Individual gaps remain in requirement coverage.
+        contract = replace(
+            contract, serve_status="served", serve_reason="", skip_bq=False,
+            contract_sql_only=True, sql_plan={},
+        )
+        out["turn_contract"] = contract.to_dict()
+    return out
 
 
 def aggregate_bq_sql_debug(results: list[dict[str, Any]]) -> tuple[list[str], list[dict[str, Any]]]:
@@ -2233,7 +2339,7 @@ def aggregate_bq_sql_debug(results: list[dict[str, Any]]) -> tuple[list[str], li
             row_debug["nl2sql_model"] = meta.get("nl2sql_model")
         if meta.get("nl2sql_raw"):
             row_debug["nl2sql_raw"] = str(meta.get("nl2sql_raw"))[:500]
-        for key in ("job_id", "bq_ms", "bytes_processed", "row_count", "class_code", "table_id", "value_hits"):
+        for key in ("job_id", "bq_ms", "bytes_processed", "row_count", "class_code", "table_id", "value_hits", "requirement_id"):
             if meta.get(key) is not None:
                 row_debug[key] = meta.get(key)
         bq_sql_debug.append(row_debug)
@@ -2591,9 +2697,6 @@ def node_bq_retrieve(state: RAGGraphState) -> RAGGraphState:
         plan=plan,
         decomposition=dec,
     )
-    results, ctx_truncated = trim_bq_result_contents(results)
-    if ctx_truncated:
-        update_current_span_metadata({"bq_context_truncated": True})
     if engine_execute_only and pre_queries:
         bq_sql_queries, bq_sql_debug = reconcile_engine_bq_debug(
             execute_debug=bq_sql_debug,
@@ -2858,10 +2961,16 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
         if isinstance(active_raw, list):
             active_corpora = len(active_raw)
     structured = [item for item in merged if is_warehouse_item(item)]
+    bq_plan = state.get("bq_sql_plan")
+    if isinstance(bq_plan, dict) and bq_plan.get("plan_source") == "turn_requirements":
+        structured = prioritize_bound_facts(structured, contract, bq_plan)
     documents = [item for item in merged if not is_warehouse_item(item)]
-    scoped_documents = _has_explicit_document_requirements(state, contract)
+    scoped_documents = _has_explicit_document_requirements(contract) or any(f.enumerate_members for f in contract.facts)
+    document_scope_dropped = 0
     if scoped_documents:
-        documents = requirement_document_candidates(contract, documents)
+        admitted = requirement_document_candidates(contract, documents)
+        document_scope_dropped = len(documents) - len(admitted)
+        documents = admitted
     if not scoped_documents and len(documents) <= 8 and active_corpora <= 1:
         packed = diversify_context_pack(list(documents), top_k=None, task_mode=task_mode)
         pack = typed_context_pack(
@@ -2894,7 +3003,7 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
     comparative_query = is_comparative_bq_query(str(query), dec)
     def _rank() -> tuple[list[dict[str, Any]], str]:
         ranked = rerank(
-            "\n".join(doc.question for doc in contract.documents) if scoped_documents else query,
+            ("\n".join(doc.question for doc in contract.documents) or query) if scoped_documents else query,
             documents,
             top_k=score_k,
             numeric_query=numeric_query,
@@ -2919,6 +3028,8 @@ def node_rerank(state: RAGGraphState) -> RAGGraphState:
         [*structured, *packed], contract, top_k=top_k if top_k > 0 else None
     )
     items, dropped = _pack_fields(pack)
+    if document_scope_dropped:
+        dropped["document_scope"] = document_scope_dropped
     return {
         "reranked_context": items,
         "evidence_drops": _with_place_drops(dropped, place_dropped),
@@ -3057,11 +3168,20 @@ def node_insufficient_context(state: RAGGraphState) -> RAGGraphState:
     answer_lang = str(state.get("answer_lang") or detect_answer_language(query))
     dec = state.get("decomposition")
     tc_raw = state.get("turn_contract")
+    warehouse_failed = any(state.get(flag) for flag in (
+        "structured_bq_validation_failed", "structured_bq_compile_error",
+        "structured_bq_never_executed", "structured_bq_timed_out", "structured_bq_execution_failed",
+    ))
+    documents_failed = bool(state.get("retrieval_partial"))
+    incomplete: Literal["warehouse", "documents", "both"] | None = (
+        "both" if warehouse_failed and documents_failed else
+        "warehouse" if warehouse_failed else "documents" if documents_failed else None
+    )
     answer = gap_answer(
         query,
         dec if isinstance(dec, dict) else None,
         TurnContract.from_dict(tc_raw if isinstance(tc_raw, dict) else None),
-        incomplete_source="documents" if state.get("retrieval_partial") else None,
+        incomplete_source=incomplete,
     )
     with observed_span(
         "insufficient_context",
@@ -3139,6 +3259,8 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         "task_mode": task_mode,
         "retrieval_partial": bool(state.get("retrieval_partial")),
     }
+    if not turn.documents and not state.get("export_intent"):
+        gkw["price_list_rows"] = usable_bq
     if analytical:
         gkw["analytical_mode"] = True
     cs = state.get("conversation_summary")
@@ -3272,7 +3394,7 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         document_requirement_coverage(
             turn, context, corpus_results=corpus_results if isinstance(corpus_results, dict) else None,
         )
-        if _has_explicit_document_requirements(state, turn) else []
+        if _has_explicit_document_requirements(turn) else []
     )
     if topics:
         gkw["composer_addendum"] = (
@@ -3292,12 +3414,29 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         )
         if missing_documents:
             instructions += " State these document evidence gaps: " + "; ".join(missing_documents)
+            if len(missing_documents) == len(document_coverage):
+                instructions += (
+                    " No accepted passage supports the requested explanation. Report the verified comparison and "
+                    "explain the limits on attribution. Omit any proposed causes or intervention recommendations."
+                )
         gkw["composer_addendum"] += "\n\n" + instructions
     if requirement_plan:
         # Use only rows that actually reach generation and carry their original observation dates.
         numeric_context = [item for item in context if is_usable_structured_bq_row(item)]
         fact_coverage = fact_requirement_coverage(turn, plan_dict, numeric_context, bq_debug)
+        gkw["fact_requirement_coverage"] = fact_coverage
+        if not turn.documents and fact_coverage and all(entry["status"] == "satisfied" for entry in fact_coverage):
+            context = numeric_context
     gaps = [entry for entry in fact_coverage if entry["status"] != "satisfied"]
+    if any(fact.enumerate_members for fact in turn.facts):
+        # Numeric discovery still admits matching reported figures. Unrelated
+        # passages cannot turn a query that never ran into a claim of absence.
+        context = [item for item in context if is_warehouse_item(item)] + requirement_document_candidates(turn, context)
+        if not context:
+            gen_plan = replace(gen_plan, evidence_tier="empty", answer_shape="gap_ack", has_usable_spine=False)
+            gkw["generation_plan"] = gen_plan.to_dict()
+        elif any(is_document_item(item) for item in context):
+            gkw["require_document_citations"] = True
     onto_for_gen = state.get("ontology_plan")
     if isinstance(onto_for_gen, dict):
         gkw["ontology_plan"] = onto_for_gen
@@ -3353,20 +3492,37 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
             "Explain relationships with cited assessments and distinguish causation from association. "
             "Do not treat partial rows as complete series or average across sources or scales.",
         ]
+        gkw["comparison_plan"] = plan_dict
         if gaps:
             requirements.append(
-                "State separately where comparable data is unavailable: "
-                + "; ".join(
-                    f"{g['measure']} in {g['geo']} for {', '.join(map(str, g['missing_years']))} "
-                    f"({g['status'].replace('_', ' ')})" for g in gaps
-                )
-                + ". Keep and cite the findings that are supported."
+                "Explain these limits briefly in the user's language: "
+                + " ".join(fact_gap_description(gap) for gap in gaps)
+                + " Keep and cite the supported findings. A query failure or missing mapping is not evidence of data absence."
             )
         if document_coverage:
             requirements.append("Verify the exact indicator, place, period and unit of any figure cited from a document.")
         gkw["composer_addendum"] = "\n\n".join(filter(None, (
             gkw.get("composer_addendum"), " ".join(requirements),
         )))
+    if any((item.get("metadata") or {}).get("price_report") for item in usable_bq):
+        report_guidance = (
+            "This is a multi-year food-price report. Present an analytical report with an annual comparison "
+            "table for each requested country. Use annual_prices for the historical figures. Separate national "
+            "food indices and inflation rates from the sampled commodity prices. The commodity averages are "
+            "unweighted market observations, not a cost-of-living index or constant-market panel. "
+            "Report each series' actual ending year and missing baseline or intermediate years. "
+            "Partial current-year averages are not full-year comparisons. Use the SQL change_pct or "
+            "change_percentage_points only for their stated first_year and year, with inline citations. "
+            "Retain the provided units and currencies; compare relative changes across currencies, not nominal levels. "
+            "Explain drivers or give recommendations only when a cited document supports them."
+        )
+        if not any(is_document_item(item) for item in context):
+            report_guidance += (
+                " Document retrieval did not complete; attribution could not be verified in this run."
+                if state.get("retrieval_partial") else
+                " No verified document explains the drivers; report this limit without inventing causes."
+            )
+        gkw["composer_addendum"] = "\n\n".join(filter(None, (gkw.get("composer_addendum"), report_guidance)))
     gen_t0 = time.perf_counter()
     gen_result = generate(query, context, **gkw)
     draft_answer = str(gen_result.answer or "")
@@ -3432,20 +3588,14 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         # ML-054: how many LLM calls this request stopped on the max_tokens
         # ceiling. Surfaced to Langfuse so truncation frequency is measurable
         # instead of invisible; tune RAG_GENERATE_MAX_TOKENS from real data.
-        "generate_length_capped_calls": length_capped_call_count(),
+        "generate_length_capped_calls": length_capped_call_count(purpose="generate"),
+        "generate_finish_reason": last_finish_reason(purpose="generate"),
         **acf_result_to_state(acf),
         **{k: True for k in exec_flags if exec_flags.get(k)},
     }
     if self_check.verdict != "skip":
         out_gen["metacog_self_check"] = self_check.to_dict()
         out_gen["metacog_self_check_verdict"] = self_check.verdict
-    
-    # Back-translate answer to user's language for multi-lingual vector embeddings
-    from ml.rag.chatbot.hybrid_translation import translate_to_user_language
-    if state.get("answer_lang") and str(state.get("answer_lang")).strip().lower() not in ("en", "unknown", "mixed"):
-        english_answer = final_answer or ""
-        back_translated = translate_to_user_language(english_answer, str(state.get("answer_lang"))[:2])
-        out_gen["answer"] = back_translated
     
     return RAGGraphState(**out_gen)
 
@@ -3653,7 +3803,7 @@ def _retrieve_selected_legs(state: RAGGraphState) -> RAGGraphState:
     future = None
     if remaining_seconds() != 0:
         future = _WAREHOUSE_LEGS.try_submit(run_with_tracing_context(_bq_leg))
-    docs = node_parallel_retrieve(state) if docs_selected else {
+    docs: RAGGraphState = node_parallel_retrieve(state) if docs_selected else {
         "vector_results": [],
         "corpus_selection": {"active": [], "boosts": {}, "rationale": "source_selection"},
         "vector_ms": 0.0,
@@ -3683,11 +3833,8 @@ def _source_selected(state: RAGGraphState, source: Source) -> bool:
     return sources is None or sources[source]["selected"]
 
 
-def _has_explicit_document_requirements(state: RAGGraphState, turn: TurnContract) -> bool:
-    sources = state.get("source_selection")
-    return bool(turn.documents) and (
-        is_fact_comparison(turn) or bool(sources and sources["qdrant"]["reason"] == "document_content_requested")
-    )
+def _has_explicit_document_requirements(turn: TurnContract) -> bool:
+    return bool(turn.documents)
 
 
 def _route_after_evidence(state: RAGGraphState) -> str:
@@ -4028,6 +4175,8 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
         initial["recent_turns"] = kwargs["recent_turns"]  # type: ignore[assignment]
     if kwargs.get("export_enabled"):
         initial["export_enabled"] = True  # type: ignore[assignment]
+    if kwargs.get("export_intent"):
+        initial["export_intent"] = kwargs["export_intent"]  # type: ignore[assignment]
     session_id = kwargs.get("session_id")
     trace_tags = kwargs.get("trace_tags")
     extra_tags = list(trace_tags) if isinstance(trace_tags, list) else None
@@ -4038,7 +4187,7 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
         category=str(kwargs.get("category") or "").strip() or None,
         tags=extra_tags,
     )
-    timeout = stage_budget_seconds("RAG_REQUEST_TIMEOUT_S", default_s=45.0)
+    timeout = stage_budget_seconds("RAG_REQUEST_TIMEOUT_S", default_s=120.0)
     with request_budget(timeout):
         result = graph.invoke(initial, config=cfg)
     out = dict(result)

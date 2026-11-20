@@ -14,15 +14,36 @@ import os
 import time
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
-
 from ml.rag import session_store as ss
 
 
 def _clear():
     ss.clear_fallback_for_tests()
+
+
+def test_redis_outage_is_probed_once_then_recovers_after_cooldown(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr(ss, "time", SimpleNamespace(monotonic=lambda: clock[0], time=time.time))
+    monkeypatch.setattr(ss, "_REDIS_URL", "redis://test.invalid:6379/0")
+    monkeypatch.setattr(ss, "_redis_client", None)
+    monkeypatch.setattr(ss, "_redis_retry_at", 0.0, raising=False)
+    client = MagicMock()
+    client.ping.side_effect = TimeoutError("connect timed out")
+    factory = MagicMock(return_value=client)
+    monkeypatch.setattr(ss, "redis", SimpleNamespace(Redis=SimpleNamespace(from_url=factory)))
+    for _ in range(10):
+        assert ss._get_client() is None
+    assert factory.call_count == 1
+    clock[0] += 31
+    client.ping.side_effect = None
+    assert ss._get_client() is client
+    assert factory.call_count == 2
+    assert ss._get_client() is client
+    assert factory.call_count == 2
 
 
 def test_memory_backend_basic():

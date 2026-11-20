@@ -21,8 +21,9 @@ import traceback
 import uuid
 from asyncio import to_thread, wrap_future
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 # Use the single, authoritative environment loader for the entire RAG stack.
 # This ensures config/.env (and RAG_* vars) are respected, and the service works
@@ -58,7 +59,12 @@ from ml.rag.chatbot.capability_registry import registry_version
 from ml.rag.chatbot.compile_sql_from_bind import RESULT_ROW_BUDGET
 from ml.rag.chatbot.coverage_ledger import load_ledger
 from ml.rag.chatbot.mart_indicator_classes import taxonomy_version
-from ml.rag.chatbot.plan_policy import PLAN_ROUTE_SLUGS, allows_export
+from ml.rag.chatbot.plan_policy import (
+    PLAN_ROUTE_SLUGS,
+    allows_export,
+    is_valid_category,
+    is_valid_plan_type,
+)
 from ml.rag.chatbot.sql_compiler import sql_compiler_enabled
 from ml.rag.chatbot.time_policy import trend_years
 from ml.rag.chatbot.time_resolver import utc_today
@@ -71,7 +77,6 @@ from ml.rag.observability import (
     record_trace_score,
     tracing_release,
 )
-from ml.rag.rate_limiter import check_plan_rate_limit
 from ml.rag.chatbot.stage_budget import RetrievalWorkers
 from ml.rag.request_context import resolve_request_context
 from ml.rag.retrievers.web_retriever import web_fallback_enabled
@@ -79,6 +84,7 @@ from ml.rag.retrievers.vector_retriever import warmup_query_embeddings
 from ml.rag.session_store import (
     delete_session,
     get_idempotent_response,
+    incr_counter,
     redis_status,
     save_idempotent_response,
     session_ttl_seconds,
@@ -171,23 +177,44 @@ class QueryRequest(BaseModel):
     )
     session_id: str | None = Field(
         None,
-        description="Omit to start a new session; reuse for multi-turn chat (server-side memory)",
+        description=(
+            "Conversation id. The web-frontend tenant must send the id the app minted "
+            "and reuse it for that thread. Other tenants may omit it to start a session."
+        ),
     )
     user_id: str | None = Field(
         None,
-        description="Optional product user id for Langfuse user analytics (client-supplied until auth).",
+        description=(
+            "Signed-in account id. Required for the web-frontend tenant. "
+            "The per-user rate limit counts this id. "
+            "Another tenant that omits it shares that tenant's anonymous bucket."
+        ),
+    )
+    export_intent: Literal["csv", "geojson", "chart", "docx", "pdf", "multi"] | None = Field(
+        None,
+        description=(
+            "Optional export format. When set, it overrides export wording in the question. "
+            "Omit it and ask in the question for a person."
+        ),
     )
     chat_history: list[ChatMessage] | None = Field(
         None,
-        description="Prior turns for this request (canonical). Server session is not updated when set.",
+        description=(
+            "Prior turns for this request. The web-frontend tenant must not send this field; "
+            "the server loads the thread from the session id. When any other tenant sets it, "
+            "the server session is neither read nor written."
+        ),
     )
     conversation_history: list[ChatMessage] | None = Field(
         None,
-        description="Deprecated alias for chat_history.",
+        description="Deprecated alias for chat_history. The web-frontend tenant must not send it.",
     )
     user_profile: UserProfile | None = Field(
         None,
-        description="User profile: country, plan_type (access/geo), category (generation persona).",
+        description=(
+            "Required for the web-frontend tenant, with plan_type and category. "
+            "country is an optional African ISO3. plan_type does not grant route access."
+        ),
     )
     time_start_override: str | None = None
     time_end_override: str | None = None
@@ -435,11 +462,64 @@ def _augment_http_500_detail(detail: str, *, debug: bool) -> str:
     return _GENERIC_500_DETAIL
 
 
-def _plan_slug_for(plan_type: str | None) -> str:
-    for slug, name in PLAN_ROUTE_SLUGS.items():
-        if name == plan_type:
-            return slug
-    return "free"
+_USER_RATE_TTL_S = 120
+_WEB_FRONTEND_TENANT_ID = "web-frontend"
+
+
+def _require_web_frontend_body(tenant: Any, request: QueryRequest) -> None:
+    """The product app sends the account, the conversation id, and the profile."""
+    if tenant is None or getattr(tenant, "tenant_id", None) != _WEB_FRONTEND_TENANT_ID:
+        return
+    if request.chat_history is not None or request.conversation_history is not None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "web-frontend must not send chat_history or conversation_history; "
+                "the server loads the session from Redis"
+            ),
+        )
+    missing: list[str] = []
+    if not (request.user_id or "").strip():
+        missing.append("user_id")
+    if not (request.session_id or "").strip():
+        missing.append("session_id")
+    profile = request.user_profile
+    if profile is None:
+        missing.append("user_profile")
+    else:
+        plan = (profile.plan_type or "").strip()
+        category = (profile.category or "").strip()
+        if not plan or not is_valid_plan_type(plan):
+            missing.append("user_profile.plan_type")
+        if not category or not is_valid_category(category):
+            missing.append("user_profile.category")
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail="web-frontend requires " + ", ".join(missing),
+        )
+
+
+def _enforce_user_rate_limit(tenant: Any, user_id: str | None) -> None:
+    """Count one request for this tenant user. No tenant, or a limit of 0, is unlimited."""
+    if tenant is None:
+        return
+    limit = int(getattr(tenant, "rate_limit_rpm", 0) or 0)
+    if limit <= 0:
+        return
+    actor = (user_id or "").strip() or "anonymous"
+    minute = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+    key = f"enterprise:rate:{tenant.tenant_id}:{actor}:{minute}"
+    count = incr_counter(key, ttl_s=_USER_RATE_TTL_S)
+    if count > limit:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Rate limit exceeded for tenant {tenant.tenant_id}: "
+                f"{limit} requests per minute allowed."
+            ),
+            headers={"Retry-After": "60", "X-RateLimit-Limit": str(limit)},
+        )
 
 
 async def _run_query(
@@ -453,6 +533,8 @@ async def _run_query(
     Without a plan route, an authenticated tenant's own plan applies.
     """
     tenant = get_request_tenant(http_request)
+    _require_web_frontend_body(tenant, request)
+    _enforce_user_rate_limit(tenant, request.user_id)
     if injected_plan_type is None and tenant is not None:
         injected_plan_type = PLAN_ROUTE_SLUGS[tenant.plan_slug]
     owner = _session_owner(http_request)
@@ -464,7 +546,11 @@ async def _run_query(
     langfuse_trace_id: str | None = None
     try:
         client_history = request.chat_history is not None or request.conversation_history is not None
-        session_id = (request.session_id or "").strip() or uuid.uuid4().hex
+        supplied_session_id = (request.session_id or "").strip()
+        if tenant is not None and tenant.tenant_id == _WEB_FRONTEND_TENANT_ID:
+            session_id = supplied_session_id
+        else:
+            session_id = supplied_session_id or uuid.uuid4().hex
         if client_history:
             loaded, session_found = empty_session_blob(), False
         else:
@@ -479,8 +565,6 @@ async def _run_query(
             )
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
-
-        check_plan_rate_limit(_plan_slug_for(ctx.plan_type), http_request)
 
         logger.info(
             "query request received (len=%d, has_history=%s, plan_type=%s, category=%s)",
@@ -513,6 +597,8 @@ async def _run_query(
         if ctx.category:
             kwargs["category"] = ctx.category
         kwargs["export_enabled"] = allows_export(ctx.plan_type)
+        if request.export_intent:
+            kwargs["export_intent"] = request.export_intent
         kwargs["session_id"] = session_id
         kwargs["trace_tags"] = ["api"]
         kwargs["reference_date"] = utc_today().isoformat()
@@ -563,7 +649,6 @@ async def _run_query(
                 "vector_news_count": len(result.get("vector_news_results") or []),
                 "vector_academic_papers_count": len(result.get("vector_academic_papers_results") or []),
                 "vector_policies_count": len(result.get("vector_policies_results") or []),
-                "vector_policies_count": len(result.get("vector_policies_results") or []),
                 "vector_public_reports_count": len(result.get("vector_public_reports_results") or []),
                 "vector_formation_count": len(result.get("vector_formation_results") or []),
                 "vector_academic_count": len(result.get("vector_academic_results") or []),
@@ -596,10 +681,22 @@ async def _run_query(
                 "retrieval_partial": result.get("retrieval_partial"),
                 "rerank_ms": result.get("rerank_ms"),
                 "generate_ms": result.get("generate_ms"),
+                "generate_max_tokens": result.get("generate_max_tokens"),
+                "generate_length_capped_calls": result.get("generate_length_capped_calls"),
+                "generate_finish_reason": result.get("generate_finish_reason"),
                 "supervisor_plan": result.get("supervisor_plan"),
                 "value_hits": result.get("value_hits")
                 or (result.get("bq_sql_plan") or {}).get("value_hits"),
                 "user_query": result.get("user_query") or request.query,
+                "language_enrich": result.get("language_enrich"),
+                "language_enrich_applied": result.get("language_enrich_applied"),
+                "language_enrich_source": result.get("language_enrich_source"),
+                "language_enrich_subject_guard": result.get("language_enrich_subject_guard"),
+                "query_views": result.get("query_views"),
+                "task_mode": result.get("task_mode"),
+                "generation_plan": result.get("generation_plan"),
+                "retrieval_stage_counts": result.get("retrieval_stage_counts"),
+                "evidence_drops": result.get("evidence_drops"),
                 "context_rewrite": result.get("context_rewrite"),
                 "detail_rewrite": result.get("detail_rewrite"),
                 "context_applied": result.get("context_applied"),

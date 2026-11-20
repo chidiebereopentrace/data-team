@@ -55,6 +55,10 @@ RAG_LLM_API_KEY=<OPENROUTER_API_KEY>
 RAG_LLM_MODEL_ID=qwen/qwen3-30b-a3b-instruct-2507
 RAG_SUMMARY_MODEL_ID=qwen/qwen3-30b-a3b-instruct-2507
 RAG_LLM_TIMEOUT_S=300
+RAG_GENERATE_MAX_TOKENS=8192
+RAG_GENERATE_TEMPERATURE=0.6
+RAG_REQUEST_TIMEOUT_S=120
+# The token budget permits longer analytical answers; the request deadline still applies.
 # BQ table planner + SQL generation (dedicated; keep chat on Qwen)
 RAG_BQ_REASONER_MODEL_ID=deepseek/deepseek-v4-flash-0731
 RAG_BQ_NL2SQL_MODEL_ID=deepseek/deepseek-v4-flash-0731
@@ -95,8 +99,8 @@ Unset or align per-plan vars so they do not override chat to a larger model:
 Research & Academia uses `POST /query/research` and the canonical profile value
 `Research` for both plan and category. Provision its paid tenant with
 `plan_slug: "research"`; Free/Integrated users may select the Research category
-without changing plan permissions. `RESEARCH_RATE_LIMIT_RPM` defaults to 30
-requests/minute per IP. Research uses the existing artifact storage configuration
+without changing plan permissions. `rate_limit_rpm` on the tenant is requests
+per minute for one `user_id` (`0` disables it). Research uses the existing artifact storage configuration
 for CSV, GeoJSON and shared report exports; configure S3/GCS for reachable download
 URLs. No separate LLM provider or vector collection is required.
 
@@ -216,7 +220,6 @@ RAG_CLASS_ENGINE_CONCURRENCY=4
 # RAG_SLOT_REASONER=off
 RAG_BQ_HINT_MAX_BYTES=8000
 RAG_BQ_REASONER_INDEX_MAX_BYTES=12000
-RAG_BQ_CONTEXT_MAX_BYTES=6000
 ```
 
 ### Vector retrieval (corpus router + constraints)

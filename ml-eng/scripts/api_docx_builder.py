@@ -233,7 +233,7 @@ def add_architecture_diagram(doc: Document) -> None:
 Client
   |
   v
-RAG API (POST /query)  OR  Chatbot API v1 (POST /v1/chat)
+RAG API (POST /query)
   |
   v
 execute_chat_turn()

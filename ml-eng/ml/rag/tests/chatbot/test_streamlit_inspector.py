@@ -1,5 +1,7 @@
-"""Unit tests for streamlit_inspector route inference (no Streamlit UI)."""
+"""Tests for Streamlit inspector rendering and route inference."""
 from __future__ import annotations
+
+from streamlit.testing.v1 import AppTest
 
 from ml.rag.chatbot.streamlit_inspector import (
     _retrieval_count,
@@ -7,6 +9,27 @@ from ml.rag.chatbot.streamlit_inspector import (
     infer_pipeline_route,
     normalize_query_response,
 )
+
+
+def test_pipeline_inspector_renders_sql_details_and_raw_json() -> None:
+    app = AppTest.from_string("""
+from ml.rag.chatbot.streamlit_inspector import render_pipeline_inspector
+
+render_pipeline_inspector({"is_greeting_query": True})
+render_pipeline_inspector({
+    "bq_sql_debug": [{
+        "status": "ok", "sql": "SELECT 1", "nl2sql_raw": "Raw SQL response",
+        "value_hits": {"product_name": ["Rice"]},
+    }],
+    "vector_news_results": [{"content": "Retrieved source text"}],
+})
+""").run()
+
+    assert not app.exception
+    labels = [expander.label for expander in app.expander]
+    assert labels.count("Raw inspector JSON") == 2
+    assert "BQ SQL (1 attempt(s))" in labels
+    assert any(element.value == "Raw SQL response" for element in app.code)
 
 
 def test_http_metrics_show_returned_counts_and_mark_missing_counts() -> None:
@@ -79,6 +102,9 @@ def test_normalize_query_response_maps_sql_trace() -> None:
         "langfuse_trace_id": "trace-abc",
         "trace": {
             "decomposition": {"geography": ["Kenya"]},
+            "answer_lang": "fr",
+            "generate_max_tokens": 8192,
+            "generate_length_capped_calls": 0,
             "vector_news_count": 4,
             "bq_sql_queries": ["SELECT 1"],
             "bq_sql_debug": [{"sql": "SELECT 1", "status": "ok", "sql_source": "nl2sql"}],
@@ -100,6 +126,9 @@ def test_normalize_query_response_maps_sql_trace() -> None:
     out = normalize_query_response(payload, latency_ms=50.0, query="q", kwargs=kwargs)
 
     assert out["answer"] == "Kenya maize data."
+    assert out["answer_lang"] == "fr"
+    assert out["generate_max_tokens"] == 8192
+    assert out["generate_length_capped_calls"] == 0
     assert out["_backend_mode"] == "http_api"
     assert out["bq_sql_queries"] == ["SELECT 1"]
     assert out["bq_sql_debug"][0]["sql_source"] == "nl2sql"

@@ -92,6 +92,17 @@ def test_osikapa_enriches_when_tagged_en_low_confidence(
     assert "rice" in out.english_query.lower()
 
 
+@pytest.mark.parametrize("country", ["Kenya", "Rwanda"])
+def test_current_igbo_rice_price_keeps_its_original_crop_and_place(monkeypatch, country):
+    monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
+    with mock.patch("ml.rag.chatbot.language_enrich.llm_chat_complete") as llm:
+        out = enrich_query_to_english(
+            f"Kedu ego ole ka ana-ele osikapa na {country} ugbu a?", answer_lang="ig", confidence=0.9,
+        )
+    llm.assert_not_called()
+    assert out.english_query == f"What is the current market price of rice in {country}?"
+
+
 def test_akpu_cassava_enriches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RAG_LANG_ENRICH", raising=False)
     q = "kedu ihe mere ka mmeputa akpu n'obodo niajiria gbawe kemgbe afo ise ugbua?"

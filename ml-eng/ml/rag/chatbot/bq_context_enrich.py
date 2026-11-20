@@ -22,6 +22,7 @@ from ml.rag.chatbot.generator import (
     is_usable_context_item,
 )
 from ml.rag.chatbot.price_unit_convert import convert_price_row
+from ml.rag.chatbot.time_resolver import parse_iso_date
 
 _YEAR_SQL_RE = re.compile(r"\byear\s*=\s*(\d{4})\b", re.IGNORECASE)
 _ELEMENT_SQL_RE = re.compile(r"\belement\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
@@ -73,7 +74,6 @@ _BQ_PROVENANCE_KEYS = frozenset(
         "trend_mixed",
         "trend_companion_sql",
         "coverage_strength",
-        "bq_context_truncated",
         "table_id",
         "table_description",
         "source_domain",
@@ -207,8 +207,16 @@ def _row_coherent_with_decomposition(
         ):
             return False
 
-    ts = str(decomposition.get("time_start") or "")[:4]
-    te = str(decomposition.get("time_end") or "")[:4]
+    start = str(decomposition.get("time_start") or "")
+    end = str(decomposition.get("time_end") or "")
+    if "market_price" in pm and raw.get("latest_date"):
+        start_date, end_date = parse_iso_date(start), parse_iso_date(end)
+        latest = parse_iso_date(_s(raw["latest_date"]))
+        earliest = parse_iso_date(_s(raw.get("period_start"))) or latest
+        if start_date and end_date and earliest and latest and not start_date <= earliest <= latest <= end_date:
+            return False
+
+    ts, te = start[:4], end[:4]
     if ts.isdigit() and te.isdigit():
         row_year = raw.get("year") or raw.get("time_key") or raw.get("observation_year")
         if row_year is not None:
@@ -733,11 +741,11 @@ def _resolve_observation_date(
     decomposition: dict[str, Any] | None,
 ) -> tuple[int | None, str | None]:
     """Return (year, as_of_date ISO) from row keys, SQL year filter, or decomposition."""
-    raw_as_of_date = _s(row.get("as_of_date"))
-    if raw_as_of_date:
-        match = re.match(r"(\d{4}-\d{2}-\d{2})", raw_as_of_date)
-        if match:
-            return int(match.group(1)[:4]), match.group(1)
+    observed = parse_iso_date(_s(row.get("latest_date")))
+    if observed is None and _s(row.get("as_of_date_basis")) != "loaded_at":
+        observed = parse_iso_date(_s(row.get("as_of_date")))
+    if observed is not None:
+        return observed.year, observed.isoformat()
 
     for key in _TIME_KEYS:
         raw = row.get(key)
@@ -1071,7 +1079,6 @@ def _consolidate_ranking_batch(
             }
         )
 
-    not_this = head_sem.get("not_this") or []
     header = format_row_prose(
         head_sem,
         sql_source=sql_source,
@@ -1151,6 +1158,29 @@ def _enrich_single_item(
         magnitude=meta.get("magnitude"),
         coverage_note=_s(meta.get("coverage_note")),
     )
+    if raw.get("requested_product"):
+        content = (
+            f"{raw.get('product_name')} ({raw.get('price_type')}, {raw.get('price_source')}), "
+            f"{semantics['geo']}, {semantics['period']}: {semantics['measure_value']} "
+            f"{raw.get('currency', '')} per {raw.get('unit', '')}."
+        )
+    if meta.get("price_report"):
+        unit = " ".join(str(raw.get(key) or "") for key in ("currency", "unit")).strip()
+        if not unit and "(2015 = 100)" in str(raw.get("product_name")):
+            unit = "index (2015 = 100)"
+        content = (
+            f"{semantics['geo']}: {raw.get('requested_product')} — {raw.get('product_name')}; "
+            f"{raw.get('price_type')}, {raw.get('price_source')}, unit: {unit or 'not recorded'}.\n"
+            f"Annual averages: {raw.get('annual_prices')}.\n"
+            f"First available year: {raw.get('first_year')}; last available year: {raw.get('year')}.\n"
+            f"Observed from {raw.get('period_start')} through {raw.get('latest_date')}.\n"
+        )
+        for column, label in (("change_pct", "Change over these available years (%)"),
+                              ("change_percentage_points", "Change over these available years (percentage points)")):
+            if raw.get(column) is not None:
+                content += f"{label}: {_format_number(raw[column])}.\n"
+        if meta.get("coverage_note"):
+            content += str(meta["coverage_note"])
     return {**item, "content": content, "metadata": meta}
 
 
@@ -1158,6 +1188,8 @@ def _apply_price_unit_convert(item: dict[str, Any], *, query: str) -> dict[str, 
     """Rewrite known weight units on warehouse price rows before generation packing."""
     raw_meta = item.get("metadata")
     meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
+    if meta.get("price_report"):
+        return item
     table = _s(meta.get("table_id") or meta.get("table") or "").split(".")[-1].lower()
     sql = _s(meta.get("sql"))
     if "fct_prices" not in table and "agg_prices" not in table and "fct_prices" not in sql:
@@ -1194,6 +1226,11 @@ def enrich_bq_results(
     dec = decomposition if isinstance(decomposition, dict) else None
     selected = [str(t).strip().split(".")[-1].lower() for t in (plan.get("selected_tables") or []) if str(t).strip()]
 
+    def item_scope(item: dict[str, Any]) -> dict[str, Any] | None:
+        requirement = (item.get("metadata") or {}).get("requirement_id")
+        binding = (plan.get("bind_contracts") or {}).get(requirement) or {}
+        return binding.get("request_scope") or dec
+
     usable: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
     for item in items or []:
@@ -1206,13 +1243,13 @@ def enrich_bq_results(
         kept: list[dict[str, Any]] = []
         for item in usable:
             raw = _raw_row_from_item(item)
-            if _row_coherent_with_decomposition(raw, dec):
+            if _row_coherent_with_decomposition(raw, item_scope(item)):
                 kept.append(item)
             else:
                 diagnostics.append(
                     _reject_incoherent_item(
                         item,
-                        reason="row outside decomposition geo/measure/year",
+                        reason="row outside requested place, measure or period",
                     )
                 )
         usable = kept
@@ -1225,13 +1262,14 @@ def enrich_bq_results(
 
     enriched: list[dict[str, Any]] = []
     for sql, group in by_sql.items():
+        group_scope = item_scope(group[0])
         table_id = table_from_sql(sql if sql != "__no_sql__" else "")
         if not table_id and selected:
             table_id = selected[0]
         consolidated = _consolidate_point_fact_batch(
             group,
             table_id=table_id,
-            decomposition=dec,
+            decomposition=group_scope,
             task_mode=str(plan.get("task_mode") or "").strip().lower(),
         )
         if consolidated:
@@ -1241,13 +1279,13 @@ def enrich_bq_results(
             group,
             query=query,
             table_id=table_id,
-            decomposition=dec,
+            decomposition=group_scope,
         )
         if consolidated:
             enriched.append(consolidated)
             continue
         for item in group:
-            enriched.append(_enrich_single_item(item, table_id=table_id, decomposition=dec))
+            enriched.append(_enrich_single_item(item, table_id=table_id, decomposition=group_scope))
 
     return enriched
 

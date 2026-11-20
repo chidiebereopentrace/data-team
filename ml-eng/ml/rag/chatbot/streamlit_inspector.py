@@ -250,6 +250,9 @@ def normalize_query_response(
         "acf_claim_level": acf.get("claim_level"),
         "acf_question_type": acf.get("question_type"),
         "decomposition": trace.get("decomposition") if trace else {},
+        "answer_lang": trace.get("answer_lang"),
+        "generate_max_tokens": trace.get("generate_max_tokens"),
+        "generate_length_capped_calls": trace.get("generate_length_capped_calls"),
         "bq_sql_plan": bq_sql_plan,
         "comparison_gaps": trace.get("comparison_gaps") if trace else None,
         "fact_requirement_coverage": trace.get("fact_requirement_coverage") if trace else None,
@@ -262,6 +265,16 @@ def normalize_query_response(
         "bq_nl2sql_ms": trace.get("bq_nl2sql_ms") if trace else None,
         "bq_execute_ms": trace.get("bq_execute_ms") if trace else None,
         "user_query": trace.get("user_query") if trace else query,
+        "language_enrich": trace.get("language_enrich"),
+        "language_enrich_applied": trace.get("language_enrich_applied"),
+        "language_enrich_source": trace.get("language_enrich_source"),
+        "language_enrich_subject_guard": trace.get("language_enrich_subject_guard"),
+        "generate_finish_reason": trace.get("generate_finish_reason"),
+        "query_views": trace.get("query_views"),
+        "task_mode": trace.get("task_mode"),
+        "generation_plan": trace.get("generation_plan"),
+        "retrieval_stage_counts": trace.get("retrieval_stage_counts"),
+        "evidence_drops": trace.get("evidence_drops"),
         "context_rewrite": trace.get("context_rewrite") if trace else None,
         "detail_rewrite": trace.get("detail_rewrite") if trace else None,
         "context_applied": trace.get("context_applied") if trace else None,
@@ -751,8 +764,8 @@ def render_sql_panel(result: dict[str, Any]) -> None:
                         if isinstance(hits, dict):
                             vh = {**vh, **hits}
             if vh:
-                with st.expander("Value hits (resolved labels)", expanded=False):
-                    st.json(vh)
+                st.caption("Value hits (resolved labels)")
+                st.json(vh, expanded=False)
         if debug_rows:
             for i, entry in enumerate(debug_rows, start=1):
                 status = str(entry.get("status") or "unknown")
@@ -765,8 +778,8 @@ def render_sql_panel(result: dict[str, Any]) -> None:
                     st.warning("No SQL generated for this attempt.")
                 raw = str(entry.get("nl2sql_raw") or "").strip()
                 if raw:
-                    with st.expander("NL2SQL raw output", expanded=False):
-                        st.code(raw, language="text")
+                    st.caption("NL2SQL raw output")
+                    st.code(raw, language="text")
                 prep = entry.get("prep_error")
                 if prep:
                     st.error(f"prep_error: {prep}")
@@ -909,7 +922,8 @@ def render_pipeline_inspector(
 ) -> None:
     """Full pipeline inspector panel for the last query."""
     route = infer_pipeline_route(result)
-    with st.expander("Pipeline inspector (last run)", expanded=True):
+    with st.container():
+        st.header("Pipeline inspector (last run)")
         render_flow_strip(route, result)
         render_request_context(
             result,
@@ -926,6 +940,9 @@ def render_pipeline_inspector(
                 "user_query": result.get("user_query") or query,
                 "language_enrich": lang_en or None,
                 "language_enrich_applied": bool(result.get("language_enrich_applied")),
+                "language_enrich_source": result.get("language_enrich_source"),
+                "language_enrich_subject_guard": result.get("language_enrich_subject_guard"),
+                "generate_finish_reason": result.get("generate_finish_reason"),
                 "answer_lang": result.get("answer_lang"),
                 "context_rewrite": result.get("context_rewrite"),
                 "detail_rewrite": result.get("detail_rewrite"),

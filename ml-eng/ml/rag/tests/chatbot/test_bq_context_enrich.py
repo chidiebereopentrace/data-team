@@ -1,12 +1,14 @@
 """Tests for YAML-driven BQ context enrichment."""
 from __future__ import annotations
 
+import pytest
+
 from ml.rag.chatbot.bq_context_enrich import (
-    _table_from_sql,
     enrich_bq_results,
     format_row_prose,
     resolve_row_semantics,
     _resolve_unit,
+    table_from_sql,
 )
 from ml.rag.chatbot.bq_table_schema_yaml import (
     column_description,
@@ -339,6 +341,15 @@ def test_format_row_prose_includes_trend_line() -> None:
     assert "Trend: increasing (+20% change)" in prose
 
 
+@pytest.fixture
+def no_trend_companion(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ml.rag.chatbot.bq_trend_companion.fetch_mart_production_trend_companion",
+        lambda **kwargs: None,
+    )
+
+
+@pytest.mark.usefixtures("no_trend_companion")
 def test_ranking_consolidation() -> None:
     sql = (
         "SELECT country_name, SUM(value) AS total "
@@ -367,6 +378,7 @@ def test_ranking_consolidation() -> None:
     assert "1. South Africa" in content
 
 
+@pytest.mark.usefixtures("no_trend_companion")
 def test_ranking_consolidation_stamps_acf_metadata() -> None:
     sql = (
         "SELECT country_name, SUM(value) AS total "
@@ -530,7 +542,7 @@ def test_table_from_sql_detects_mart() -> None:
         "FROM `opentrace-prod-5ga4.mart_dev.fct_production` "
         "WHERE production_grain = 'physical' AND year = 2020"
     )
-    assert _table_from_sql(sql) == "fct_production"
+    assert table_from_sql(sql) == "fct_production"
 
 
 def test_fct_production_element_semantics() -> None:
@@ -625,6 +637,7 @@ def test_enrich_consolidates_duplicate_point_fact_rows() -> None:
     assert "tonnes" in out[0]["content"].lower()
 
 
+@pytest.mark.usefixtures("no_trend_companion")
 def test_rank_consolidation_uses_country_iso3() -> None:
     sql = (
         "SELECT country_iso3, SUM(value) AS total "

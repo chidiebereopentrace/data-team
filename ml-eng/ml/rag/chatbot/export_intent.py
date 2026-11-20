@@ -63,6 +63,14 @@ def requested_export_kinds(query: str) -> list[ExportKind]:
     return kinds
 
 
+def resolve_export_intent(query: str, explicit: str | None = None) -> ExportKind | None:
+    """A caller-supplied kind wins. Otherwise detect one from the question text."""
+    chosen = (explicit or "").strip().lower()
+    if chosen in {"csv", "geojson", "chart", "docx", "pdf", "multi"}:
+        return chosen  # type: ignore[return-value]
+    return detect_export_intent(query)
+
+
 def detect_export_intent(query: str) -> ExportKind | None:
     """Return the primary export kind requested, or None if no export intent."""
     q = (query or "").strip()
@@ -116,6 +124,7 @@ EXPORT_UPGRADE_MESSAGE = (
 __all__ = [
     "ExportKind",
     "detect_export_intent",
+    "resolve_export_intent",
     "requested_export_kinds",
     "want_inline_citations",
     "EXPORT_UPGRADE_MESSAGE",

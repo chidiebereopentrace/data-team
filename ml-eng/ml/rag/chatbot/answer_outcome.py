@@ -2,8 +2,8 @@
 
 Every exit that used to return a canned refusal now asks ``decide_outcome``.
 A turn is a gap only when neither a warehouse row nor a document survived
-packing. A gap names the place, the indicator, and the period the mart does
-hold, so the user knows what to ask instead.
+packing. A gap names the requested scope and distinguishes incomplete work
+from a completed search that did not verify a finding.
 """
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from ml.rag.chatbot.agri_measure_ontology import MEASURES
+from ml.rag.chatbot.analytical_intent import is_document_lookup
 from ml.rag.chatbot.answer_language import detect_answer_language, insufficient_context_answer
 from ml.rag.chatbot.evidence_kinds import is_document_item, is_warehouse_item
 from ml.rag.chatbot.geo_iso3 import iso3_to_canonical_name, resolve_geography_iso3
-from ml.rag.chatbot.mart_coverage import load_coverage
 from ml.rag.chatbot.turn_contract import TurnContract
 
 OutcomeKind = Literal["rows", "rows_and_documents", "documents_only", "gap"]
@@ -98,21 +98,6 @@ def _requested_places(decomposition: dict[str, Any]) -> tuple[list[str], str]:
     return geography, _FILTER_LABELS.get(str(decomposition.get("geography_source") or ""), "")
 
 
-def _held_span(measure_id: str | None, iso3: str) -> tuple[int, int] | None:
-    spec = MEASURES.get(str(measure_id or ""))
-    if spec is None:
-        return None
-    coverage = load_coverage()
-    spans = [
-        (entry.min_year, entry.max_year)
-        for table in spec.candidate_tables
-        if (entry := coverage.entry(str(table), iso3)) is not None
-    ]
-    if not spans:
-        return None
-    return min(s[0] for s in spans), max(s[1] for s in spans)
-
-
 def gap_answer(
     query: str,
     decomposition: dict[str, Any] | None,
@@ -121,6 +106,16 @@ def gap_answer(
     incomplete_source: Literal["warehouse", "documents", "both"] | None = None,
 ) -> str:
     dec = decomposition if isinstance(decomposition, dict) else {}
+    if is_document_lookup(query):
+        status = (
+            "The document search did not complete."
+            if incomplete_source in ("documents", "both") else
+            "The search did not return a verified passage from that document."
+        )
+        return (
+            "I could not verify the requested document's answer to your question. "
+            + status + " This does not establish whether the document covers or omits the topic."
+        )
     measure_id = (contract.measure_id if contract else None) or next(
         iter(dec.get("primary_measures") or []), None
     )
@@ -139,19 +134,14 @@ def gap_answer(
     period = _requested_period(dec)
     scope = " ".join(part for part in (f"for {place}" if place else "", period) if part)
     if incomplete_source == "both":
-        return lead + f"OpenTrace could not verify evidence {scope} because the warehouse query and document search did not complete."
+        return lead + f"OpenTrace could not verify evidence {scope} because the data query and document search did not complete."
     if incomplete_source:
         figures = f"{indicator} figures" if measure_id else "the requested figures"
         detail = f"{figures} {scope}".strip()
-        check = "warehouse query" if incomplete_source == "warehouse" else "document search"
+        check = "data query" if incomplete_source == "warehouse" else "document search"
         return lead + f"OpenTrace could not verify {detail} because the {check} did not complete."
-    lines = [f"OpenTrace has no {indicator} figures {scope}, and no report in the library covers it.".replace("  ", " ")]
-    held = [(code, span) for code in iso3s[:3] if (span := _held_span(measure_id, code))]
-    for code, (y0, y1) in held:
-        name = iso3_to_canonical_name(code) or code
-        lines.append(f"The warehouse holds {indicator} for {name} from {y0} to {y1}. Ask for a year in that span.")
-    if iso3s and not held and measure_id in MEASURES and MEASURES[measure_id].candidate_tables:
-        lines.append(f"The warehouse holds no {indicator} series for {place}.")
+    lines = [f"I could not verify {indicator} figures {scope} from the completed searches in this run.".replace("  ", " ")]
+    lines.append("This does not establish that the underlying data is unavailable.")
     return lead + " ".join(lines)
 
 

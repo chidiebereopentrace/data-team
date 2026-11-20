@@ -329,6 +329,8 @@ def resolve_task_mode(
     # Panels / numbers-only exports beat analytical "past N years" report detection.
     if is_data_export_only_query(q, decomposition):
         return "data_export_only"
+    if str((decomposition or {}).get("job") or "") in ("diagnose", "report", "synthesis"):
+        return "analytical"
     if is_analytical_query(q, decomposition) or (
         hit
         and hit.measure.default_task_mode == "analytical"

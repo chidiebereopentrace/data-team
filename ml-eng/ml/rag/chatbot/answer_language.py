@@ -167,7 +167,7 @@ _MARKER_LANG: Final[dict[str, str]] = {
 _NON_EN_MARKERS: Final[frozenset[str]] = frozenset(_MARKER_LANG.keys())
 
 _PCM_PHRASE_RE = re.compile(
-    r"\b(?:wetin\s+be|who\s+you\s+be|wetin\s+your\s+name|how\s+far|abeg\s+|una\s+dey|e\s+dey)\b",
+    r"\b(?:wetin\s+be|who\s+you\s+be|wetin\s+your\s+name|how\s+far|abeg\s+|una\s+dey|e\s+dey|you\s+fit\s+(?:find|show|give|tell|help|check|get))\b",
     re.IGNORECASE,
 )
 _FR_PHRASE_RE = re.compile(
@@ -614,56 +614,33 @@ def language_instruction(lang: str, *, inline_citations: bool = False) -> str:
     )
 
 
-# ML-055: Sprint 2 P0 -- local language handling (Swahili/French especially)
-# produced incoherent, looping, repetitive text -- the same phrase repeated up
-# to five times with no coherent answer. The underlying generation model
-# sometimes degenerates this way when writing in a non-English language; this
-# is a cheap, deterministic post-generation gate so that failure mode is caught
-# and replaced with a clean message instead of shipped to the user.
-_REPEAT_MIN_PHRASE_WORDS = 4
-_REPEAT_MIN_OCCURRENCES = 3
-
-
 def looks_like_degenerate_repetition(text: str) -> bool:
-    """
-    True when the same phrase (4+ words) repeats 3+ times in the answer.
-
-    Catches the exact Sprint 2 failure mode -- a short phrase looping instead
-    of a coherent answer -- without needing a language-specific model or an
-    extra LLM call. Deliberately conservative: normal prose that happens to
-    reuse a short connector word will not trip this.
-    """
-    t = (text or "").strip()
-    if not t:
-        return False
-    words = t.split()
-    if len(words) < _REPEAT_MIN_PHRASE_WORDS * _REPEAT_MIN_OCCURRENCES:
-        return False
-    n = _REPEAT_MIN_PHRASE_WORDS
-    seen: dict[str, int] = {}
-    for i in range(len(words) - n + 1):
-        phrase = " ".join(w.lower() for w in words[i : i + n])
-        seen[phrase] = seen.get(phrase, 0) + 1
-        if seen[phrase] >= _REPEAT_MIN_OCCURRENCES:
-            return True
+    """Reject a dominant consecutive text loop, rather than repeated report terminology."""
+    prose = re.sub(r"```[\s\S]*?```", "", text or "")
+    prose = "\n".join(line for line in prose.splitlines() if line.count("|") < 2)
+    prose = re.sub(r"\[(?:Source\s+)?\d+(?:\s*[,;]\s*\d+)*\]", "", prose, flags=re.IGNORECASE)
+    words = re.findall(r"\w+(?:['’]\w+)*", prose.casefold())
+    for period in range(4, min(32, len(words) // 3) + 1):
+        repeated = 0
+        for index in range(period, len(words)):
+            repeated = repeated + 1 if words[index] == words[index - period] else 0
+            if repeated >= 2 * period and repeated + period >= 0.65 * len(words):
+                return True
     return False
 
 
-def language_not_yet_supported_answer(lang: str) -> str:
-    """
-    Clean fallback when generation degenerates for a named non-English language.
-
-    Sprint 2 P0: 'Either fix the underlying model or return a clean
-    not-yet-supported message' -- this is that message. Always answers in
-    English so the user gets something readable regardless of which language
-    generation degenerated in.
-    """
-    display = _LANG_DISPLAY.get((lang or "").strip().lower(), lang or "that language")
-    return (
-        f"Ask ADZA is not yet able to give a fully reliable answer in {display}. "
-        "Please rephrase your question in English, or try again -- support for "
-        "this language is still being improved."
-    )
+def generation_failure_answer(lang: str) -> str:
+    """A transient generation failure does not establish that a language is unsupported."""
+    messages = {
+        "en": "I could not complete a reliable answer in this run. Please try again.",
+        "fr": "Je n’ai pas pu terminer une réponse fiable cette fois-ci. Veuillez réessayer.",
+        "sw": "Sikuweza kukamilisha jibu la kuaminika katika jaribio hili. Tafadhali jaribu tena.",
+        "pcm": "I no fit finish a reliable answer this time. Abeg try again.",
+        "pt": "Não consegui concluir uma resposta fiável desta vez. Por favor, tente novamente.",
+        "ar": "لم أتمكن من إكمال إجابة موثوقة هذه المرة. يرجى المحاولة مجددًا.",
+        "ig": "Enweghị m ike mezue azịza a pụrụ ịtụkwasị obi n'oge a. Biko nwaa ọzọ.",
+    }
+    return messages.get((lang or "").strip().lower(), messages["en"])
 
 
 def language_unclear_answer() -> str:
@@ -705,7 +682,7 @@ __all__ = [
     "detect_answer_language",
     "detect_language_with_confidence",
     "looks_like_degenerate_repetition",
-    "language_not_yet_supported_answer",
+    "generation_failure_answer",
     "detect_canned_insufficient_lang",
     "is_english_answer_lang",
     "language_instruction",

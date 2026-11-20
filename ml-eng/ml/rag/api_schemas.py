@@ -117,11 +117,13 @@ class ArtifactItem(BaseModel):
 
 
 class UserProfile(BaseModel):
+    """Optional request context; the authenticated route determines access to the plan."""
+
     model_config = ConfigDict(extra="forbid")
 
     country: str | None = None
-    plan_type: PlanType
-    category: Category
+    plan_type: PlanType | None = None
+    category: Category | None = None
 
 
 class UsageStats(BaseModel):

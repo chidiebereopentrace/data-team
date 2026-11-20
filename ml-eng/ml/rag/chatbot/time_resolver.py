@@ -54,8 +54,11 @@ _RELATIVE_HINT = re.compile(
 )
 _YEAR_RE = re.compile(rf"\b({_YEAR})\b")
 _SINCE_RE = re.compile(r"\b(?:since|depuis|desde)\b", re.IGNORECASE)
+DAILY_RECENCY_DAYS = 90
 _DAILY_SUBJECT = re.compile(
-    r"\b(?:prices?|news|weather|rainfall|temperature|market)\b",
+    r"\b(?:prices?|news|weather|rainfall|temperature|market)\b"
+    r"|\bhow\s+much\s+(?:is|for)\s+(?:(?:a|one|1)\s+)?"
+    r"(?:kg|kilos?|kilograms?|pounds?|bags?|lit(?:er|re)s?|tonnes?)\b",
     re.IGNORECASE,
 )
 _REPORT_SUBJECT = re.compile(
@@ -121,7 +124,7 @@ def resolve_relative_time(
     """Windows named by the question. Empty when the question names no time."""
     raw = text or ""
     # "between 2020 and 2024" is one span. "in 2024 and last month" is two windows.
-    if not re.search(r"\b(?:between|from|entre)\b", raw, re.IGNORECASE):
+    if _between(raw, ref_date) is None:
         for left, right in _comparison_sides(raw):
             first = _resolve_one(left, ref_date, country_iso3)
             second = _resolve_one(right, ref_date, country_iso3)
@@ -452,7 +455,7 @@ def _recency(text: str, ref: date, phrase: str) -> TimeWindow:
             from_report=True,
         )
     if _DAILY_SUBJECT.search(text):
-        return _window(ref - timedelta(days=90), ref, "range", phrase, strict=False)
+        return _window(ref - timedelta(days=DAILY_RECENCY_DAYS), ref, "range", phrase, strict=False)
     return _window(date(ref.year, 1, 1), ref, "year", phrase, strict=False)
 
 
@@ -581,7 +584,7 @@ def _pick_season(rows: list[SeasonRow]) -> SeasonRow:
 
 def _season(ref: date, country_iso3: str | None, phrase: str) -> TimeWindow:
     iso = (country_iso3 or "").strip().upper()
-    rows = [row for row in _season_rows() if row.country_iso3 == iso]
+    rows = [row for row in _season_rows() if row.country_iso3 == iso] if iso else []
     if not rows:
         return _window(_shift_months(ref, -6), ref, "range", phrase, strict=False)
     containing = [row for row in rows if _month_in_season(ref.month, row)]
