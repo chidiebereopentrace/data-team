@@ -16,7 +16,15 @@ from ml.serving.enterprise.tenant_registry import (
     resolve_tenant,
 )
 
-_PUBLIC_PATHS = frozenset({"/", "/health", "/ready"})
+_PUBLIC_PATHS = frozenset({
+    "/",
+    "/health",
+    "/ready",
+    "/docs",
+    "/docs/oauth2-redirect",
+    "/redoc",
+    "/openapi.json",
+})
 _PLAN_QUERY_RE = re.compile(r"^/query/(?P<slug>[a-z]+)$")
 
 
