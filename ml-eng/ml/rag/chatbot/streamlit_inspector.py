@@ -861,9 +861,9 @@ def render_raw_json(result: dict[str, Any]) -> None:
 
 
 def render_artifacts(result: dict[str, Any]) -> None:
-    """Render export artifacts (CSV / chart / DOCX / PDF) with download links.
+    """Render export artifacts (CSV / GeoJSON / chart / DOCX / PDF) with download links.
 
-    Artifacts are only present on Agribusinesses and Integrated plan responses
+    Artifacts are only present on Agribusinesses, Research and Integrated plan responses
     (ML-030). Each ArtifactItem has: id, kind, filename, mime_type, url,
     summary, citation_ids, byte_size.
 

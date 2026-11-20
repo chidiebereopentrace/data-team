@@ -30,6 +30,7 @@ PLAN_TYPES = [
     ("NGOs", "Government-tier depth + multi-region overlap framing"),
     ("Agribusinesses", "Cross-country comparison allowed; market/volatility framing; exports enabled"),
     ("Integrated", "No artificial plan caps beyond category persona; exports enabled"),
+    ("Research", "Research & Academia: evidence synthesis, methods and cross-country analysis; CSV and GeoJSON exports enabled"),
 ]
 
 CATEGORIES = [
@@ -37,12 +38,13 @@ CATEGORIES = [
     ("NGOs", "Foundations, NGOs & Development Partners"),
     ("Agribusinesses", "Agribusinesses & Financial Institutions"),
     ("Farmers", "Farmers, Cooperatives & Communities"),
+    ("Research", "Research & Academia"),
 ]
 
 SHARED_TYPES_USER_PROFILE = [
     ("country", "string | null", "No", "Retrieval geo filter only when plan_type is Farmers"),
-    ("plan_type", "string", "Yes (if profile sent)", "One of: Free, Farmers, Government, NGOs, Agribusinesses, Integrated"),
-    ("category", "string", "Yes (if profile sent)", "One of: Government, NGOs, Agribusinesses, Farmers"),
+    ("plan_type", "string", "Yes (if profile sent)", "One of: Free, Farmers, Government, NGOs, Agribusinesses, Integrated, Research"),
+    ("category", "string", "Yes (if profile sent)", "One of: Government, NGOs, Agribusinesses, Farmers, Research"),
 ]
 
 SHARED_TYPES_CHAT_MESSAGE = [

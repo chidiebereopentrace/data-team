@@ -78,6 +78,7 @@ PlanType = Literal[
     "NGOs",
     "Agribusinesses",
     "Integrated",
+    "Research",
 ]
 
 Category = Literal[
@@ -85,6 +86,7 @@ Category = Literal[
     "NGOs",
     "Agribusinesses",
     "Farmers",
+    "Research",
 ]
 
 
@@ -95,11 +97,11 @@ class CitationItem(BaseModel):
     url: str | None = None
 
 
-ArtifactKind = Literal["csv", "chart", "docx", "pdf", "html"]
+ArtifactKind = Literal["csv", "geojson", "chart", "docx", "pdf", "html"]
 
 
 class ArtifactItem(BaseModel):
-    """Downloadable export produced on Agribusinesses / Integrated chat routes."""
+    """Downloadable export produced on export-enabled paid chat routes."""
 
     id: str = Field(..., description="Stable artifact id for this response")
     kind: ArtifactKind = Field(..., description="Export format")

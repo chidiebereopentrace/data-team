@@ -7,9 +7,10 @@ import time
 from typing import Any
 
 from ml.rag.chatbot.artifact_storage import mime_type_for_filename, upload_artifact
-from ml.rag.chatbot.export_intent import ExportKind
+from ml.rag.chatbot.export_intent import ExportKind, requested_export_kinds
 from ml.rag.chatbot.exports.chart_builder import build_chart
 from ml.rag.chatbot.exports.csv_builder import build_csv
+from ml.rag.chatbot.exports.geojson_builder import build_geojson
 from ml.rag.chatbot.exports.docx_builder import build_docx
 from ml.rag.chatbot.exports.pdf_builder import build_pdf
 from ml.rag.chatbot.exports.tabular import report_topic, rows_from_bq_results
@@ -44,7 +45,7 @@ def export_substantive_enough(
         return False
 
     usable_rows = [r for r in rows if _row_is_exportable(r)]
-    if export_kind in {"csv", "chart", "multi"} and not usable_rows:
+    if export_kind in {"csv", "geojson", "chart", "multi"} and not usable_rows:
         return False
     geo = decomposition.get("geography") if isinstance(decomposition, dict) else None
     multi_geo = isinstance(geo, list) and len([g for g in geo if str(g).strip()]) >= 3
@@ -164,9 +165,11 @@ def _expand_export_kinds(
     rows: list[dict[str, Any]],
     analytical: bool,
     data_export_only: bool = False,
+    query: str = "",
 ) -> list[ExportKind]:
     if export_kind == "multi":
-        kinds: list[ExportKind] = ["csv", "chart", "pdf"]
+        requested = requested_export_kinds(query)
+        kinds: list[ExportKind] = requested if len(requested) > 1 else list(dict.fromkeys(["csv", "chart", "pdf", *requested]))
     else:
         kinds = [export_kind]
 
@@ -174,12 +177,12 @@ def _expand_export_kinds(
         # Ensure data package accompanies narrative / caption reports.
         if "csv" not in kinds:
             kinds.insert(0, "csv")
-        if "chart" not in kinds and export_kind in ("pdf", "docx", "multi", "chart"):
+        if "chart" not in kinds and any(k in ("pdf", "docx", "chart") for k in kinds):
             kinds.insert(1 if kinds and kinds[0] == "csv" else 0, "chart")
     if data_export_only and rows:
         # Prefer tabular delivery; keep pdf/docx as caption-only when requested.
         preferred: list[ExportKind] = []
-        for k in ("csv", "chart", "pdf", "docx"):
+        for k in ("csv", "geojson", "chart", "pdf", "docx"):
             if k in kinds and k not in preferred:
                 preferred.append(k)
         for k in kinds:
@@ -212,7 +215,7 @@ def run_exports(
     analytical = bool(state.get("analytical_mode"))
     task_mode = str(state.get("task_mode") or ("analytical" if analytical else "chat"))
     data_export_only = task_mode == "data_export_only"
-    data_export = export_kind in {"csv", "chart", "multi"} or data_export_only
+    data_export = export_kind in {"csv", "geojson", "chart", "multi"} or data_export_only
     if not export_substantive_enough(
         query=query,
         answer=answer,
@@ -237,6 +240,7 @@ def run_exports(
         rows=rows,
         analytical=analytical,
         data_export_only=data_export_only,
+        query=query,
     )
 
     artifacts: list[dict[str, Any]] = []
@@ -251,6 +255,9 @@ def run_exports(
                         continue
                     data, fname = build_csv(rows, filename=f"{base}.csv")
                     summary = f"CSV export ({len(rows)} rows)"
+                elif kind == "geojson":
+                    data, fname = build_geojson(rows, filename=f"{base}.geojson")
+                    summary = f"GeoJSON export ({len(rows)} records; geometry is null where unavailable)"
                 elif kind == "chart":
                     if len(rows) < 2:
                         continue

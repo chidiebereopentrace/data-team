@@ -555,7 +555,7 @@ RAG_STATE_FIELDS: Sequence[Sequence[str]] = (
     ("is_greeting_query", "bool|null", "Route to generate_social"),
     ("is_out_of_scope_query", "bool|null", "Route to generate_social"),
     ("is_language_unknown", "bool|null", "Route to generate_language_help"),
-    ("plan_type", "str|null", "Free|Farmers|Government|NGOs|Agribusinesses|Integrated"),
+    ("plan_type", "str|null", "Free|Farmers|Government|NGOs|Agribusinesses|Integrated|Research"),
     ("category", "str|null", "Generation persona"),
     ("user_profile", "dict|null", "country, plan_type, category"),
     ("acf_band", "str|null", "ACF confidence band"),

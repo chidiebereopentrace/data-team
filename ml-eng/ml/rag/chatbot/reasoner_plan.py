@@ -16,6 +16,7 @@ GLOBAL_REASONER_PLAN_TYPES = frozenset(
         "agribusiness",
         "agribusinesses",
         "integrated",
+        "research",
     }
 )
 

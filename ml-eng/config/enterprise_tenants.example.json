@@ -23,6 +23,18 @@
       "rate_limit_rpm": 30,
       "allow_trace": false,
       "active": true
+    },
+    {
+      "tenant_id": "research-sandbox",
+      "name": "Research & Academia (Sandbox)",
+      "api_key_sha256": "<sha256 of the research partner key>",
+      "plan_slug": "research",
+      "environment": "sandbox",
+      "monthly_query_quota": 5000,
+      "monthly_token_quota": 2000000,
+      "rate_limit_rpm": 30,
+      "allow_trace": false,
+      "active": true
     }
   ]
 }

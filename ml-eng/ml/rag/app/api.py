@@ -238,8 +238,8 @@ class QueryResponse(BaseModel):
     artifacts: list[ArtifactItem] = Field(
         default_factory=list,
         description=(
-            "Downloadable exports (CSV/chart/DOCX/PDF). Populated on Agribusinesses and "
-            "Integrated plans when the query requests an export and builders succeed; "
+            "Downloadable exports (CSV/GeoJSON/chart/DOCX/PDF). Populated on Agribusinesses, "
+            "Integrated and Research plans when the query requests an export and builders succeed; "
             "otherwise empty. Signed URL TTL defaults to 86400s — refresh via "
             "GET /artifacts/{artifact_id}/url."
         ),
@@ -715,6 +715,12 @@ async def query_agribusinesses(request: QueryRequest, http_request: Request):
 async def query_integrated(request: QueryRequest, http_request: Request):
     """Integrated tier — full access; category lens per message. Path locks plan_type."""
     return await _run_query(request, http_request, injected_plan_type="Integrated")
+
+
+@app.post("/query/research", response_model=QueryResponse, summary="Query (Research & Academia plan)")
+async def query_research(request: QueryRequest, http_request: Request):
+    """Research & Academia — evidence synthesis and downloadable data. Path locks plan_type."""
+    return await _run_query(request, http_request, injected_plan_type="Research")
 
 
 @app.delete("/session/{session_id}")

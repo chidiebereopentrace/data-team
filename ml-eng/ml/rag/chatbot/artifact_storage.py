@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 _MIME_BY_EXT = {
     ".csv": "text/csv",
+    ".geojson": "application/geo+json",
     ".png": "image/png",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pdf": "application/pdf",

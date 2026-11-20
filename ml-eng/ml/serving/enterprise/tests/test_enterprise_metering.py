@@ -44,6 +44,7 @@ def _reset_state(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setenv("ENTERPRISE_TENANTS_PATH", str(tenants_file))
+    monkeypatch.delenv("ENTERPRISE_TENANTS_JSON", raising=False)
     monkeypatch.setenv("ENTERPRISE_METERING_ENABLED", "1")
     monkeypatch.setattr(session_store, "_REDIS_URL", "")
     monkeypatch.setattr(session_store, "_redis_client", None)

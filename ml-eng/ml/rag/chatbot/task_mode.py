@@ -267,7 +267,7 @@ def is_data_export_only_query(query: str, decomposition: dict[str, Any] | None =
         return False
     if _EXPORT_ONLY_RE.search(q):
         return True
-    if export in ("csv", "chart") and not re.search(
+    if export in ("csv", "geojson", "chart") and not re.search(
         r"\b(explain|analy[sz]e|report|compar|why|brief)\b", q, re.IGNORECASE
     ):
         return True

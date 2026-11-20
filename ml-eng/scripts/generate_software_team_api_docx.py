@@ -31,6 +31,7 @@ PLAN_ROUTES = [
     ("ngos", "NGOs", "Government-tier depth + multi-region program framing"),
     ("agribusinesses", "Agribusinesses", "Cross-country comparison; market/volatility framing"),
     ("integrated", "Integrated", "Full access; category persona per message"),
+    ("research", "Research", "Research & Academia; evidence synthesis, methods; CSV/GeoJSON exports"),
 ]
 
 CATEGORIES = [
@@ -38,6 +39,7 @@ CATEGORIES = [
     ("NGOs", "Foundations, NGOs & Development Partners"),
     ("Agribusinesses", "Agribusinesses & Financial Institutions"),
     ("Farmers", "Farmers, Cooperatives & Communities"),
+    ("Research", "Research & Academia"),
 ]
 
 
@@ -112,7 +114,7 @@ def build() -> None:
             "Reuse session_id from the previous response for multi-turn chat.",
             "Omit chat_history to use server-side memory; send chat_history for client-owned history.",
             "Every successful response includes acf (confidence band, score 0–100, explanation).",
-            "Agribusinesses and Integrated return artifacts[] (CSV/chart/DOCX/PDF URLs) when the "
+            "Agribusinesses, Research and Integrated return artifacts[] (CSV/GeoJSON/chart/DOCX/PDF URLs) when the "
             "user asks for an export and structured data is available. Production: set "
             "AWS_S3_BUCKET_NAME + AWS_ENDPOINT_URL (Railway neat-icebox) or RAG_ARTIFACT_GCS_BUCKET.",
         ],
@@ -197,7 +199,7 @@ def build() -> None:
 
     add_heading(doc, "cURL examples (all plans)", level=1)
     for slug, plan, _gates in PLAN_ROUTES:
-        category = plan if plan in {"Farmers", "Government", "NGOs", "Agribusinesses"} else "Government"
+        category = plan if plan in {"Farmers", "Government", "NGOs", "Agribusinesses", "Research"} else "Government"
         country = "Kenya" if plan == "Farmers" else None
         add_json_example(doc, f"POST /query/{slug}", _curl_plan(slug, plan, category, country=country))
 

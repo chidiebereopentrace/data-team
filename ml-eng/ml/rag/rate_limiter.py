@@ -26,6 +26,7 @@ _PLAN_LIMITS: dict[str, int] = {
     "ngos": int(os.environ.get("NGOS_RATE_LIMIT_RPM", "30") or 0),
     "agribusinesses": int(os.environ.get("AGRIBUSINESSES_RATE_LIMIT_RPM", "30") or 0),
     "integrated": int(os.environ.get("INTEGRATED_RATE_LIMIT_RPM", "60") or 0),
+    "research": int(os.environ.get("RESEARCH_RATE_LIMIT_RPM", "30") or 0),
 }
 
 # Sliding window storage: {window_key: deque[timestamp]}

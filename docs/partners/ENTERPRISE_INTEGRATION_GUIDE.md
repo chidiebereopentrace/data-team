@@ -45,7 +45,7 @@ X-API-Key: <your-api-key>
 | `citations[]` | Structured source list mapped to footnote numbers |
 | `acf` | Confidence band, score, and explanation |
 | `usage` | Token usage for this request |
-| `artifacts[]` | Export files (CSV, chart, DOCX, PDF) when requested |
+| `artifacts[]` | Export files (CSV, GeoJSON, chart, DOCX, PDF) when requested |
 | `session_id` | Reuse for multi-turn conversations |
 | `langfuse_trace_id` | Support reference for this request |
 
@@ -65,8 +65,39 @@ Enterprise tenants are provisioned with a plan slug. Use the matching route:
 |-----------|-------|---------|
 | `agribusinesses` | `POST /query/agribusinesses` | Yes |
 | `integrated` | `POST /query/integrated` | Yes |
+| `research` | `POST /query/research` | Yes — CSV, GeoJSON and shared report formats |
 
 Integrated tenants may call any plan route.
+
+### Research & Academia
+
+The canonical API value is `Research` for both `user_profile.plan_type` and
+`user_profile.category`. Display it as **Research & Academia**. A Research tenant
+can use `/query/research` or `/query`; the authenticated route owns the plan tier.
+Free and Integrated users can select `"category": "Research"` without changing
+their subscription permissions. The perspective emphasizes methods, provenance,
+comparability and limits to inference.
+
+```json
+{
+  "query": "Compare maize yields in Kenya and Tanzania since 2020, discuss comparability, and export the observations as CSV and GeoJSON",
+  "user_profile": {"plan_type": "Research", "category": "Research"}
+}
+```
+
+Send that body to `POST /query/research` with a Research or Integrated tenant key.
+Inspect `artifacts[]` for the download URLs. GeoJSON artifacts use the `geojson`
+kind, `.geojson` extension and `application/geo+json` MIME type. Verified WGS84
+geometries or longitude/latitude pairs become feature geometries. Observations
+without coordinates remain features with `geometry: null`; country names are
+not geocoded into invented locations or boundaries. Units, periods and source
+attributes present in the retrieved observations are retained in properties.
+
+Provision Research accounts with `plan_slug: "research"` in the server-side
+tenant registry. Category selection alone does not authorize paid exports.
+The same export storage settings and URL refresh endpoint apply to Research.
+For deployed downloads, configure the existing S3 or GCS artifact storage; the
+local `file://` development storage is only accessible on the server machine.
 
 ## Error codes
 

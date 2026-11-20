@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-# Public catalog for GET /v1/meta (id, label, description).
+# Shared audience catalog for inspector controls and API documentation.
 CATEGORIES: list[dict[str, str]] = [
     {
         "id": "Government",
@@ -42,12 +42,27 @@ CATEGORIES: list[dict[str, str]] = [
             "avoid raw tables and jargon; favor plain language and actionable takeaways."
         ),
     },
+    {
+        "id": "Research",
+        "label": "Research & Academia",
+        "description": "Methods, reproducible evidence, comparable indicators and research gaps for researchers and academic institutions.",
+    },
 ]
 
 _CATEGORY_IDS = frozenset(c["id"] for c in CATEGORIES)
 
 # Compact instructions appended to the generator system prompt.
 _CATEGORY_INSTRUCTIONS: dict[str, str] = {
+    "Research": (
+        "Audience: Research & Academia — researchers, universities and academic institutions. "
+        "Lead with the research finding, then data and methods, interpretation and limitations. "
+        "Name indicators, units, observation periods, spatial resolution, sources and coverage. "
+        "Assess comparability, selection bias, missing observations and conflicting evidence. "
+        "Distinguish descriptive associations from identified causal effects. Attribute findings "
+        "to supporting sources; do not invent publications, methods, confidence intervals, significance "
+        "tests or causal findings. Suggest reproducible analyses or research gaps when useful, "
+        "without presenting proposed analyses as completed results."
+    ),
     "Government": (
         "Audience: government and public institutions (ministries, planners, agencies). "
         "Preferred framing: policy synthesis for planning and resource allocation — "
@@ -163,7 +178,12 @@ def instruction_for_stakeholder(stakeholder_type: str | None) -> str:
 
 CategorySource = Literal["explicit", "query", "plan_type", "none"]
 
-_PERSONA_PLAN_TYPES = frozenset({"Farmers", "NGOs", "Government", "Agribusinesses"})
+_PERSONA_PLAN_TYPES = frozenset({"Farmers", "NGOs", "Government", "Agribusinesses", "Research"})
+
+_RESEARCH_CUES = re.compile(
+    r"\b(?:academia|researcher|academic audience|literature review|for research|methodology|"
+    r"replication study|identification strategy|causal inference)\b", re.I,
+)
 
 _FARMER_CUES = re.compile(
     r"\b("
@@ -228,6 +248,7 @@ def infer_category_from_query(
         "NGOs": len(_NGO_CUES.findall(blob)),
         "Government": len(_GOV_CUES.findall(blob)),
         "Agribusinesses": len(_AGB_CUES.findall(blob)),
+        "Research": len(_RESEARCH_CUES.findall(blob)),
     }
     _intent_boost(decomposition, scores)
     best_id = max(scores, key=lambda k: scores[k])
@@ -259,7 +280,7 @@ def resolve_effective_category(
 
 
 StatDensity = Literal["low", "medium", "high"]
-VocabularyLevel = Literal["plain", "operational", "policy", "market"]
+VocabularyLevel = Literal["plain", "operational", "policy", "market", "academic"]
 
 
 @dataclass(frozen=True)
@@ -274,6 +295,11 @@ class PersonaProseRegister:
 
 
 _REGISTER_BY_CATEGORY: dict[str, PersonaProseRegister] = {
+    "Research": PersonaProseRegister(
+        vocabulary="academic", stat_density="high", allow_markdown_tables=True,
+        prefer_inline_source_refs=True, translate_numbers_to_everyday=False,
+        name_indicators_explicitly=True, use_bullet_layout=False,
+    ),
     "Government": PersonaProseRegister(
         vocabulary="policy",
         stat_density="high",
@@ -367,6 +393,12 @@ def prose_register_addendum(
 
 
 _SECTION_TITLE_MAP: dict[str, dict[str, str]] = {
+    "Research": {
+        "Key findings": "Research findings", "Executive summary": "Research findings",
+        "Lead findings": "Research findings", "Comparison": "Comparative findings",
+        "Drivers": "Interpretation and identification limits", "Data notes": "Data and methods",
+        "Confidence and data notes": "Evidence quality and limitations", "Monitoring": "Research priorities",
+    },
     "Government": {
         "Key findings": "Planning takeaway",
         "Executive summary": "Planning takeaway",

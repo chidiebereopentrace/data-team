@@ -116,7 +116,7 @@
         "type": "object"
       },
       "ArtifactItem": {
-        "description": "Downloadable export produced on Agribusinesses / Integrated chat routes.",
+        "description": "Downloadable export produced on export-enabled paid chat routes.",
         "properties": {
           "byte_size": {
             "description": "Artifact size in bytes",
@@ -145,6 +145,7 @@
             "description": "Export format",
             "enum": [
               "csv",
+              "geojson",
               "chart",
               "docx",
               "pdf",
@@ -461,7 +462,7 @@
             "type": "string"
           },
           "artifacts": {
-            "description": "Downloadable exports (CSV/chart/DOCX/PDF). Populated on Agribusinesses and Integrated plans when the query requests an export and builders succeed; otherwise empty. Signed URL TTL defaults to 86400s \u2014 refresh via GET /artifacts/{artifact_id}/url.",
+            "description": "Downloadable exports (CSV/GeoJSON/chart/DOCX/PDF). Populated on Agribusinesses, Integrated and Research plans when the query requests an export and builders succeed; otherwise empty. Signed URL TTL defaults to 86400s \u2014 refresh via GET /artifacts/{artifact_id}/url.",
             "items": {
               "$ref": "#/components/schemas/ArtifactItem"
             },
@@ -614,7 +615,8 @@
               "Government",
               "NGOs",
               "Agribusinesses",
-              "Farmers"
+              "Farmers",
+              "Research"
             ],
             "title": "Category",
             "type": "string"
@@ -637,7 +639,8 @@
               "Government",
               "NGOs",
               "Agribusinesses",
-              "Integrated"
+              "Integrated",
+              "Research"
             ],
             "title": "Plan Type",
             "type": "string"
@@ -1092,6 +1095,45 @@
           }
         },
         "summary": "Query (NGOs plan)"
+      }
+    },
+    "/query/research": {
+      "post": {
+        "description": "Research & Academia \u2014 evidence synthesis and downloadable data. Path locks plan_type.",
+        "operationId": "query_research_query_research_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query (Research & Academia plan)"
       }
     },
     "/ready": {

@@ -284,6 +284,10 @@ def answer_subtopics(
 
 
 _PERSONA_IMPLICATIONS: dict[str, str] = {
+    "Research": (
+        "4–8 lines on interpretation, comparability, methods and limitations — use the same "
+        "verified figures; distinguish association from causal identification."
+    ),
     "Government": (
         "4–8 lines on planning, fiscal, or monitoring implications — same spine numbers only; "
         "no new statistics."
@@ -302,6 +306,10 @@ _PERSONA_IMPLICATIONS: dict[str, str] = {
 }
 
 _COMPARE_PERSONA_IMPLICATIONS: dict[str, str] = {
+    "Research": (
+        "4–8 lines on comparability of definitions, periods and spatial grain across the "
+        "comparison — same table figures only; identify limits to inference."
+    ),
     "Government": (
         "4–8 lines on policy or fiscal implications from the comparison table — "
         "same figures only."
@@ -319,6 +327,7 @@ _COMPARE_PERSONA_IMPLICATIONS: dict[str, str] = {
 }
 
 _INSUFFICIENT_REPHRASE: dict[str, str] = {
+    "Research": "Identify the indicator, study geography and observation period needed for a reproducible analysis.",
     "Government": (
         "Try national grain with a single year, or ask for IPC phase at country level."
     ),

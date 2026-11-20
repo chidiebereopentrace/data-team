@@ -90,6 +90,15 @@ RAG_BQ_NL2SQL_MODEL_ID=deepseek/deepseek-v4-flash-0731
 Unset or align per-plan vars so they do not override chat to a larger model:
 
 - `RAG_LLM_MODEL_FREE`, `RAG_LLM_MODEL_FARMERS`, `RAG_LLM_MODEL_GOVERNMENT`, etc.
+- `RAG_LLM_MODEL_RESEARCH` optionally overrides the shared OpenRouter model for Research & Academia.
+
+Research & Academia uses `POST /query/research` and the canonical profile value
+`Research` for both plan and category. Provision its paid tenant with
+`plan_slug: "research"`; Free/Integrated users may select the Research category
+without changing plan permissions. `RESEARCH_RATE_LIMIT_RPM` defaults to 30
+requests/minute per IP. Research uses the existing artifact storage configuration
+for CSV, GeoJSON and shared report exports; configure S3/GCS for reachable download
+URLs. No separate LLM provider or vector collection is required.
 
 **Never use `openrouter/*` router models** (e.g. `openrouter/owl-alpha`) in production — OpenRouter resolves them to arbitrary backends (Llama 70B may appear in logs). Set explicit slugs above.
 
