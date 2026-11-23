@@ -8,11 +8,14 @@ as validators, provisional hints, and fallbacks for time ranges and geo groundin
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import time
 from datetime import date
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from ml.rag.chatbot.agri_entities import CROP_ENTITY_RE as _CROP_ENTITY_RE
 from ml.rag.chatbot.agri_measure_ontology import MEASURES
@@ -710,6 +713,7 @@ def _call_llama_decompose(
             purpose="decompose",
         )
         if not raw:
+            logger.warning("decompose_query: empty LLM response (model=%s)", decompose_model_id())
             return None
         if "```" in raw:
             m = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
@@ -717,6 +721,7 @@ def _call_llama_decompose(
                 raw = m.group(1).strip()
         return json.loads(raw)
     except Exception:
+        logger.warning("decompose_query: failed to parse LLM response", exc_info=True)
         return None
 
 
