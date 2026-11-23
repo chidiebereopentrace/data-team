@@ -729,7 +729,8 @@ async def _run_query(
         raw_artifacts = result.get("artifacts") or []
         artifacts = [ArtifactItem.model_validate(a) for a in raw_artifacts if isinstance(a, dict)]
         usage = UsageStats.from_usage_dict(result.get("usage") if isinstance(result.get("usage"), dict) else None)
-        if tenant is not None:
+        run_error = result.get("error")
+        if tenant is not None and not run_error:
             record_usage(
                 tenant,
                 input_tokens=usage.input_tokens,
@@ -737,6 +738,8 @@ async def _run_query(
                 total_tokens=usage.total_tokens,
                 export_count=len(artifacts),
             )
+        elif tenant is not None:
+            logger.info("skipping usage billing for tenant=%s: run failed (error=%s)", tenant.tenant_id, run_error)
 
         acf = acf_signal_from_result(result)
 
@@ -753,7 +756,7 @@ async def _run_query(
             session_found=session_found,
             session_ttl_seconds=session_ttl_seconds(),
             usage=usage,
-            error=result.get("error"),
+            error=run_error,
             trace=trace,
             langfuse_trace_id=langfuse_trace_id,
             artifacts=artifacts,

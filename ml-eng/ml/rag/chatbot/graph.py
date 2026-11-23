@@ -3590,6 +3590,7 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         # instead of invisible; tune RAG_GENERATE_MAX_TOKENS from real data.
         "generate_length_capped_calls": length_capped_call_count(purpose="generate"),
         "generate_finish_reason": last_finish_reason(purpose="generate"),
+        "error": getattr(revised_result, "error", None),
         **acf_result_to_state(acf),
         **{k: True for k in exec_flags if exec_flags.get(k)},
     }

@@ -346,6 +346,7 @@ class GenerationResult:
     acf: ACFResult | None = None
     generate_input_chars: int | None = None
     cited_document_requirements: tuple[str, ...] = ()
+    error: str | None = None
 
 
 EvidenceTier = Literal["strong", "partial", "empty"]
@@ -1755,6 +1756,7 @@ def _finalize_generation_result(
             answer=guarded, citations=[],
             acf=no_evidence_acf(explanation="Generation produced a repetitive answer; no claims were delivered."),
             generate_input_chars=generate_input_chars,
+            error="generation_failed",
         )
     answer = guarded
     answer = _prepend_time_gap(answer, decomposition)
@@ -2374,6 +2376,7 @@ def generate(
             answer=generation_failure_answer(language),
             citations=[], acf=no_evidence_acf(explanation="Generation stopped before a verified answer was completed."),
             generate_input_chars=input_chars,
+            error="generation_failed",
         )
     if llm_configured():
         hint = (
@@ -2388,4 +2391,5 @@ def generate(
         citations=[],
         acf=no_evidence_acf(explanation="Generation stopped with no packed evidence."),
         generate_input_chars=input_chars,
+        error="generation_failed",
     )
