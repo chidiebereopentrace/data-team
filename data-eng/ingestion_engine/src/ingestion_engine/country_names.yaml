@@ -166,7 +166,7 @@ countries:
   - {name: North Korea, iso2: KP, iso3: PRK, aliases: ["Democratic People's Republic of Korea", "Korea, North", "Korea, Democratic People's Republic of"]}
   - {name: North Macedonia, iso2: MK, iso3: MKD}
   - {name: Northern Mariana Islands, iso2: MP, iso3: MNP}
-  - {name: Norway, iso2: NO, iso3: NOR}
+  - {name: Norway, iso2: "NO", iso3: NOR}
   - {name: Oman, iso2: OM, iso3: OMN}
   - {name: Pakistan, iso2: PK, iso3: PAK}
   - {name: Palau, iso2: PW, iso3: PLW}
@@ -220,7 +220,7 @@ countries:
   - {name: Syria, iso2: SY, iso3: SYR, aliases: ["Syrian Arab Republic"]}
   - {name: Taiwan, iso2: TW, iso3: TWN, aliases: ["Taiwan, Province of China"]}
   - {name: Tajikistan, iso2: TJ, iso3: TJK}
-  - {name: Tanzania, iso2: TZ, iso3: TZA, aliases: ["United Republic of Tanzania"]}
+  - {name: Tanzania, iso2: TZ, iso3: TZA, aliases: ["United Republic of Tanzania", "Tanzania, United Republic of"]}
   - {name: Thailand, iso2: TH, iso3: THA}
   - {name: Timor-Leste, iso2: TL, iso3: TLS}
   - {name: Togo, iso2: TG, iso3: TGO}

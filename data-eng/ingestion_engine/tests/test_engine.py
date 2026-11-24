@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import csv
+import gzip
 import io
 import json
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -15,14 +16,14 @@ from openpyxl import Workbook
 from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 
-from ingestion_engine.bq import attempted_source_ids, landing_destination, report_load_config, run_history, source_cursor
+from ingestion_engine.bq import landing_destination, landing_load_config, report_load_config, run_history, source_attempts
 from ingestion_engine.cli import clear_staged, main, materialize_service_account, paired_raw_dataset
 from ingestion_engine.countries import Countries, load_africa, load_countries
 from ingestion_engine.fetch import parse_csv
 from ingestion_engine.http import HttpError, request_bytes
 from ingestion_engine.mail import send_report
 from ingestion_engine.manifest import load_manifests
-from ingestion_engine.run import run_manifests
+from ingestion_engine.run import Cursor, read_cursor, run_manifests
 
 COLUMNS = ["country", "market", "observed", "commodity", "price", "currency"]
 HEADER = ",".join([
@@ -88,6 +89,10 @@ def _clock() -> datetime:
     return datetime(2026, 11, 2, 3, 0, tzinfo=timezone.utc)
 
 
+def _loaded(source_id: str, days_ago: int) -> Cursor:
+    return Cursor(loaded={source_id: _clock() - timedelta(days=days_ago)})
+
+
 def _csv_body() -> bytes:
     return (
         "country,market,observed,commodity,price,currency\n"
@@ -124,7 +129,7 @@ def test_csv_run_lands_good_rows_and_reports_the_bad_date(tmp_path: Path) -> Non
         return _csv_body()
 
     code = run_manifests(manifests, out, get=get, env={}, countries=_places(), clock=_clock)
-    assert code == 1
+    assert code == 0
     landing = [json.loads(line) for line in next((out / "landing").glob("*/*.jsonl")).read_text(encoding="utf-8").splitlines()]
     prepared = [json.loads(line) for line in next((out / "prepared").glob("*/*.jsonl")).read_text(encoding="utf-8").splitlines()]
     assert len(landing) == 2
@@ -187,7 +192,7 @@ def test_disabled_row_is_skipped(tmp_path: Path) -> None:
     assert sources[0]["owner"] == "data-eng"
 
 
-def test_already_done_source_is_not_fetched(tmp_path: Path) -> None:
+def test_loaded_source_without_refresh_is_current_and_not_fetched(tmp_path: Path) -> None:
     manifests = tmp_path / "manifests"
     _write_manifest(manifests, "prices.csv", [
         _row(),
@@ -211,18 +216,21 @@ def test_already_done_source_is_not_fetched(tmp_path: Path) -> None:
         ).encode()
 
     code = run_manifests(
-        manifests, tmp_path / "out", get=get, env={}, countries=places, clock=_clock, done={"ng_prices"},
+        manifests, tmp_path / "out", get=get, env={}, countries=places, clock=_clock, cursor=_loaded("ng_prices", 400),
     )
     assert code == 0
     assert fetched == ["https://example.test/ke.csv"]
     summary = json.loads((tmp_path / "out" / "reports" / "run.json").read_text(encoding="utf-8"))
-    assert summary["sources_already_done"] == 1
+    assert summary["sources_current"] == 1
+    assert summary["sources_fetched"] == 1
     assert summary["status"] == "FINISHED"
-    sources = list(csv.DictReader((tmp_path / "out" / "reports" / "ingest_sources.csv").open(encoding="utf-8")))
-    assert [row["source_id"] for row in sources] == ["ke_prices"]
+    sources = _loaded_rows(tmp_path / "out")
+    assert [(row["source_id"], row["status"]) for row in sources] == [("ng_prices", "CURRENT"), ("ke_prices", "LOADED")]
+    assert sources[0]["last_loaded_at"].startswith("2025-09-28")
+    assert sources[1]["last_loaded_at"] == _clock().isoformat()
 
 
-def test_run_finishes_when_every_source_is_already_done(tmp_path: Path) -> None:
+def test_run_finishes_when_every_source_is_current(tmp_path: Path) -> None:
     manifests = tmp_path / "manifests"
     _write_manifest(manifests, "prices.csv", [_row()])
 
@@ -230,11 +238,11 @@ def test_run_finishes_when_every_source_is_already_done(tmp_path: Path) -> None:
         raise AssertionError("already ingested source must not be fetched")
 
     code = run_manifests(
-        manifests, tmp_path / "out", get=get, env={}, countries=_places(), clock=_clock, done={"ng_prices"},
+        manifests, tmp_path / "out", get=get, env={}, countries=_places(), clock=_clock, cursor=_loaded("ng_prices", 1),
     )
     assert code == 0
     summary = json.loads((tmp_path / "out" / "reports" / "run.json").read_text(encoding="utf-8"))
-    assert summary["sources_already_done"] == 1
+    assert summary["sources_current"] == 1
     assert summary["sources_ingested"] == 0
     assert summary["status"] == "FINISHED"
 
@@ -332,7 +340,7 @@ def test_started_source_is_closed_without_a_download(tmp_path: Path) -> None:
         env={},
         countries=places,
         clock=_clock,
-        stopped={"ng_prices"},
+        cursor=Cursor(stopped=frozenset({"ng_prices"})),
     )
     assert code == 1
     assert fetched == ["https://example.test/ke.csv"]
@@ -343,45 +351,82 @@ def test_started_source_is_closed_without_a_download(tmp_path: Path) -> None:
     ]
 
 
-def test_missing_report_table_has_no_attempted_sources() -> None:
+def test_missing_source_table_has_no_attempts() -> None:
     class Missing:
         def query(self, query: str) -> object:
             raise NotFound("ingest_sources")
 
-    assert attempted_source_ids(Missing(), "opentrace.landing_dev.ingest_sources") == set()
+    assert source_attempts(Missing(), "opentrace.landing_dev.ingest_sources") == []
 
 
-def test_cursor_keeps_finished_sources_and_names_unfinished_starts() -> None:
+def test_source_attempts_read_id_status_and_run() -> None:
     class Row:
-        def __init__(self, source_id: str, status: str) -> None:
+        def __init__(self, source_id: str, status: str, run_id: str) -> None:
             self.source_id = source_id
             self.status = status
+            self.run_id = run_id
 
     class Client:
         def query(self, query: str) -> "Client":
-            assert "STARTED" in query
+            assert "run_id" in query
             return self
 
         def result(self) -> list[Row]:
-            return [
-                Row("ng_prices", "STARTED"),
-                Row("ng_prices", "LOADED"),
-                Row("ke_prices", "STARTED"),
-                Row("gh_prices", "FAILED"),
-                Row("", "STARTED"),
-            ]
+            return [Row("ng_prices", "LOADED", "20261026T020000Z-aaaa")]
 
-    finished, started = source_cursor(Client(), "opentrace.landing_dev.ingest_sources")
-    assert finished == {"ng_prices", "gh_prices"}
-    assert started == {"ke_prices"}
+    assert source_attempts(Client(), "t") == [("ng_prices", "LOADED", "20261026T020000Z-aaaa")]
 
 
-def test_missing_source_table_has_no_cursor() -> None:
-    class Missing:
-        def query(self, query: str) -> object:
-            raise NotFound("ingest_sources")
+def test_cursor_keeps_the_latest_load_and_names_unfinished_starts() -> None:
+    cursor = read_cursor([
+        ("ng_prices", "STARTED", "20261019T020000Z-aaaa"),
+        ("ng_prices", "LOADED", "20261019T020000Z-aaaa"),
+        ("ng_prices", "PARTIAL", "20261026T020000Z-bbbb"),
+        ("ke_prices", "LOADED", "20261019T020000Z-aaaa"),
+        ("ke_prices", "STARTED", "20261026T020000Z-bbbb"),
+        ("gh_prices", "FAILED", "20261026T020000Z-bbbb"),
+        ("", "STARTED", "20261026T020000Z-bbbb"),
+    ])
+    assert cursor.loaded["ng_prices"] == datetime(2026, 10, 26, 2, 0, tzinfo=timezone.utc)
+    assert cursor.loaded["ke_prices"] == datetime(2026, 10, 19, 2, 0, tzinfo=timezone.utc)
+    assert "gh_prices" not in cursor.loaded
+    assert cursor.stopped == frozenset({"ke_prices"})
 
-    assert source_cursor(Missing(), "opentrace.landing_dev.ingest_sources") == (set(), set())
+
+def test_failed_source_is_fetched_again(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "prices.csv", [_row()])
+    fetched: list[str] = []
+
+    def get(url: str, params: dict[str, str], headers: dict[str, str]) -> bytes:
+        fetched.append(url)
+        return _csv_body()
+
+    cursor = read_cursor([("ng_prices", "FAILED", "20261026T020000Z-aaaa")])
+    run_manifests(manifests, tmp_path / "out", get=get, env={}, countries=_places(), clock=_clock, cursor=cursor)
+    assert fetched == ["https://example.test/prices.csv"]
+
+
+def test_refresh_days_fetches_a_loaded_source_again_when_due(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "prices.csv", [_row(refresh_days="7")])
+    fetched: list[str] = []
+
+    def get(url: str, params: dict[str, str], headers: dict[str, str]) -> bytes:
+        fetched.append(url)
+        return _csv_body()
+
+    run_manifests(manifests, tmp_path / "a", get=get, env={}, countries=_places(), clock=_clock, cursor=_loaded("ng_prices", 6))
+    assert fetched == []
+    assert _loaded_rows(tmp_path / "a")[0]["status"] == "CURRENT"
+    run_manifests(manifests, tmp_path / "b", get=get, env={}, countries=_places(), clock=_clock, cursor=_loaded("ng_prices", 7))
+    assert fetched == ["https://example.test/prices.csv"]
+
+
+def test_refresh_days_must_be_a_non_negative_integer(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, "sources.csv", [_row(refresh_days="weekly")])
+    _sources, problems, _skipped = load_manifests(tmp_path)
+    assert problems[0].error == "refresh_days must be a non-negative integer"
 
 
 def test_missing_run_table_has_no_history() -> None:
@@ -681,7 +726,7 @@ def test_blank_measure_stays_in_landing_and_out_of_raw(tmp_path: Path) -> None:
         ).encode()
 
     code = run_manifests(manifests, tmp_path / "out", get=get, env={}, countries=_places(), clock=_clock)
-    assert code == 1
+    assert code == 0
     landing = [json.loads(line) for line in next((tmp_path / "out" / "landing").glob("*/*.jsonl")).read_text().splitlines()]
     prepared = [json.loads(line) for line in next((tmp_path / "out" / "prepared").glob("*/*.jsonl")).read_text().splitlines()]
     assert len(landing) == 2
@@ -917,7 +962,7 @@ def test_report_email_states_sources_rows_and_coverage(
     body = message.get_body(preferencelist=("plain",)).get_content()
     assert "Weekly Data Ingestion Report" in body
     assert "Rows added: 1" in body
-    assert "Success rate: 50.0%" in body
+    assert "Success rate: 100.0%" in body
     assert "ng_prices" in body
     assert "data-eng" in body
     page = (out / "reports" / "ingest_report.html").read_text(encoding="utf-8")
@@ -933,11 +978,14 @@ def test_report_email_states_sources_rows_and_coverage(
     assert "ng_prices" in html_body
     jobs = (out / "reports" / "ingest_jobs.html").read_text(encoding="utf-8")
     assert "ng_prices" in jobs
-    assert "50.0%" in jobs
+    assert "100.0%" in jobs
     assert 'data-filter="status"' in jobs
     assert 'data-coverage="class"' in jobs
     assert "NGA" in jobs
-    assert "Not measured" in jobs
+    assert "Not measured" not in jobs
+    assert "data-name" not in jobs
+    assert "DATA_QUALITY" in jobs
+    assert "Manifest prices.csv" in jobs
     attachments = list(message.iter_attachments())
     assert any(part.get_filename() == "ingest_jobs.html" for part in attachments)
     pdf = next(part.get_payload(decode=True) for part in attachments if part.get_filename() == "ingest_report.pdf")
@@ -992,8 +1040,8 @@ def test_execute_records_started_before_the_next_fetch(tmp_path: Path, monkeypat
             class Answer:
                 def result(self) -> list[object]:
                     return [
-                        type("Row", (), {"source_id": "ng_prices", "status": "LOADED"})(),
-                        type("Row", (), {"source_id": "ke_prices", "status": "STARTED"})(),
+                        type("Row", (), {"source_id": "ng_prices", "status": "LOADED", "run_id": "20261026T020000Z-aaaa"})(),
+                        type("Row", (), {"source_id": "ke_prices", "status": "STARTED", "run_id": "20261026T020000Z-aaaa"})(),
                     ]
 
             return Answer()
@@ -1195,3 +1243,272 @@ def test_row_filter_drops_other_values_without_quarantine(tmp_path: Path) -> Non
     row = _loaded_rows(tmp_path / "out")[0]
     assert row["rows_loaded"] == "1"
     assert row["rows_quarantined"] == "0"
+
+
+def test_landing_append_and_partition_loads_may_add_a_column() -> None:
+    schema = [bigquery.SchemaField("price", "STRING")]
+    assert bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION in landing_load_config(schema, "WRITE_APPEND", partition=False).schema_update_options
+    assert bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION in landing_load_config(schema, "WRITE_TRUNCATE", partition=True).schema_update_options
+    assert not landing_load_config(schema, "WRITE_TRUNCATE", partition=False).schema_update_options
+
+
+def test_nan_and_infinite_values_are_not_numeric(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "prices.csv", [_row()])
+    body = (
+        "country,market,observed,commodity,price,currency\n"
+        "Nigeria,Lagos,2024-05-01,Maize,NaN,NGN\n"
+        "Nigeria,Lagos,2024-05-02,Maize,inf,NGN\n"
+        "Nigeria,Lagos,2024-05-03,Maize,5,NGN\n"
+    ).encode()
+    run_manifests(manifests, tmp_path / "out", get=lambda *_args: body, env={}, countries=_places(), clock=_clock)
+    row = _loaded_rows(tmp_path / "out")[0]
+    assert row["rows_loaded"] == "1"
+    assert row["quarantine_reasons"] == "value is not numeric=2"
+    prepared = next((tmp_path / "out" / "prepared").glob("*/*.jsonl")).read_text(encoding="utf-8")
+    assert "NaN" not in prepared and "Infinity" not in prepared
+
+
+def test_csv_with_bytes_outside_windows_1252_reads_as_latin_1() -> None:
+    assert parse_csv(b"unit\nx\x81y\n", ("unit",)) == [{"unit": "x\x81y"}]
+
+
+def test_utf16_csv_reads_by_its_byte_order_mark() -> None:
+    body = "unit\nkg\n".encode("utf-16")
+    assert parse_csv(body, ("unit",)) == [{"unit": "kg"}]
+
+
+def test_credentials_are_not_sent_to_another_host_on_redirect() -> None:
+    sent: list[tuple[str, dict[str, str] | None]] = []
+
+    class Session:
+        def get(self, url: str, headers: dict[str, str] | None = None, **_kwargs: object) -> _FakeResponse:
+            sent.append((url, headers))
+            if url == "https://api.example.test/data":
+                return _FakeResponse(302, {"Location": "/moved"})
+            if url == "https://api.example.test/moved":
+                return _FakeResponse(302, {"Location": "https://cdn.example.test/file"})
+            return _FakeResponse(200, {}, b"ok")
+
+    body = request_bytes("https://api.example.test/data", headers={"Authorization": "Bearer secret"}, session=Session())
+    assert body == b"ok"
+    assert sent[1] == ("https://api.example.test/moved", {"Authorization": "Bearer secret"})
+    assert sent[2] == ("https://cdn.example.test/file", None)
+
+
+def test_packaged_countries_resolve_publisher_spellings() -> None:
+    places = load_countries()
+    assert places.resolve("Tanzania, United Republic of", "name") == "TZA"
+    assert places.resolve("Côte dIvoire", "name") == "CIV"
+    assert places.resolve("NO", "iso2") == "NOR"
+    assert places.resolve("KE", "iso2") == "KEN"
+    assert places.resolve("Kenya", "iso2") is None
+
+
+def test_country_file_rejects_values_yaml_reads_as_booleans(tmp_path: Path) -> None:
+    path = tmp_path / "countries.yaml"
+    path.write_text("countries:\n  - {name: Norway, iso2: NO, iso3: NOR}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="must be text"):
+        load_countries(path)
+
+
+def test_report_names_the_manifest_file_when_a_whole_file_fails(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    row = _row()
+    del row["auth_ref"]
+    _write_manifest(manifests, "broken.csv", [row])
+    out = tmp_path / "out"
+    code = run_manifests(manifests, out, get=lambda *_args: b"", env={}, countries=_places(), clock=_clock)
+    assert code == 1
+    sources = _loaded_rows(out)
+    assert sources[0]["manifest_file"] == "broken.csv"
+    assert sources[0]["error"] == "missing columns: auth_ref"
+    from ingestion_engine.report_doc import write_report
+
+    _summary, _pdf, jobs_path = write_report(out / "reports")
+    jobs = jobs_path.read_text(encoding="utf-8")
+    assert "broken.csv" in jobs
+    assert "MANIFEST (1)" in jobs
+    assert "0.0%" in jobs
+
+
+def test_report_shows_current_sources_with_their_last_load(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "prices.csv", [_row()])
+    out = tmp_path / "out"
+    run_manifests(manifests, out, get=lambda *_args: b"", env={}, countries=_places(), clock=_clock, cursor=_loaded("ng_prices", 3))
+    from ingestion_engine.report_doc import letter_text, write_report
+
+    _summary, _pdf, jobs_path = write_report(out / "reports")
+    jobs = jobs_path.read_text(encoding="utf-8")
+    assert 'data-status="CURRENT"' in jobs
+    assert "Last loaded 30 Oct 2026" in jobs
+    summary = json.loads((out / "reports" / "run.json").read_text(encoding="utf-8"))
+    letter = letter_text(summary, _loaded_rows(out))
+    assert "Sources current: 1" in letter
+    assert "No source was due this run." in letter
+    assert "Success rate: n/a" in letter
+
+
+def _prepared(out: Path) -> list[dict[str, object]]:
+    return [json.loads(line) for line in next((out / "prepared").glob("*/*.jsonl")).read_text(encoding="utf-8").splitlines()]
+
+
+def test_semicolon_csv_with_decimal_commas(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "prices.csv", [_row(delimiter=";", decimal_mark=",")])
+    body = (
+        "country;market;observed;commodity;price;currency\n"
+        "Nigeria;Lagos;2024-05-01;Maize;1.234,5;NGN\n"
+        "Nigeria;Lagos;2024-05-02;Maize;1 250,75;NGN\n"
+        "Nigeria;Lagos;2024-05-03;Maize;1.5;NGN\n"
+    ).encode()
+    run_manifests(manifests, tmp_path / "out", get=lambda *_args: body, env={}, countries=_places(), clock=_clock)
+    assert sorted(row["value_num"] for row in _prepared(tmp_path / "out")) == [1234.5, 1250.75]
+    assert _loaded_rows(tmp_path / "out")[0]["quarantine_reasons"] == "value is not numeric=1"
+
+
+def test_tab_separated_csv_parses() -> None:
+    assert parse_csv(b"unit\tvalue\nkg\t5\n", ("unit", "value"), delimiter="\t") == [{"unit": "kg", "value": "5"}]
+
+
+def test_delimiter_and_decimal_mark_are_checked(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, "sources.csv", [
+        _row(source_id="a", delimiter="#", decimal_mark=""),
+        _row(source_id="b", contract_type="xlsx", delimiter=";", decimal_mark=""),
+        _row(source_id="c", delimiter="", decimal_mark="'"),
+    ])
+    _sources, problems, _skipped = load_manifests(tmp_path)
+    assert [problem.error for problem in problems] == [
+        "delimiter must be blank, ',', ';', '|', or tab",
+        "delimiter is only used with csv",
+        "decimal_mark must be blank, '.', or ','",
+    ]
+
+
+def test_gzip_csv_and_gzip_inside_a_zip_are_read(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "prices.csv", [
+        _row(source_id="gz", endpoint="https://example.test/prices.csv.gz", table_name="gz_prices"),
+        _row(source_id="zipped", endpoint="https://example.test/pack.zip", table_name="zip_prices"),
+    ])
+    packed = gzip.compress(TABLE)
+    payloads = {"https://example.test/prices.csv.gz": packed, "https://example.test/pack.zip": _zip_bytes({"prices.csv.gz": packed})}
+    code = run_manifests(
+        manifests, tmp_path / "out", get=lambda url, *_args: payloads[url], env={}, countries=_places(), clock=_clock,
+    )
+    assert code == 0
+    assert [row["rows_loaded"] for row in _loaded_rows(tmp_path / "out")] == ["1", "1"]
+
+
+def test_ods_workbook_and_ods_inside_a_zip_use_the_declared_columns(tmp_path: Path) -> None:
+    book = (Path(__file__).parent / "fixtures" / "sample.ods").read_bytes()
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "files.csv", [
+        _row(source_id="ods", endpoint="https://example.test/book.ods", contract_type="ods", table_name="ods_prices", sheet_name="Prices"),
+        _row(source_id="ods_zip", endpoint="https://example.test/pack.zip", contract_type="ods", table_name="ods_zip_prices"),
+    ])
+    payloads = {"https://example.test/book.ods": book, "https://example.test/pack.zip": _zip_bytes({"data/sample.ods": book})}
+    code = run_manifests(
+        manifests, tmp_path / "out", get=lambda url, *_args: payloads[url], env={}, countries=_places(), clock=_clock,
+    )
+    assert code == 0
+    assert [row["rows_loaded"] for row in _loaded_rows(tmp_path / "out")] == ["1", "1"]
+
+
+def test_json_columns_read_nested_fields(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "api.csv", [_row(
+        contract_type="json_api",
+        endpoint="https://example.test/arcgis/query",
+        records_path="features",
+        column_names=",".join(f"{name}=attributes.{name}" for name in COLUMNS),
+    )])
+    feature = {"attributes": {"country": "Nigeria", "market": "Lagos", "observed": "2024-01-01", "commodity": "Maize", "price": 10, "currency": "NGN"}}
+    missing = {"attributes": {"country": "Nigeria", "market": "Kano"}}
+    body = json.dumps({"features": [feature, missing]}).encode()
+    run_manifests(manifests, tmp_path / "out", get=lambda *_args: body, env={}, countries=_places(), clock=_clock)
+    prepared = _prepared(tmp_path / "out")
+    assert [(row["market"], row["price"]) for row in prepared] == [("Lagos", "10")]
+    assert _loaded_rows(tmp_path / "out")[0]["rows_quarantined"] == "1"
+
+
+def test_renamed_column_reads_the_publisher_header(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    names = ["Site_Country=Site.Country" if name == "country" else name for name in COLUMNS]
+    _write_manifest(manifests, "prices.csv", [_row(column_names=",".join(names), geo_country_column="Site_Country")])
+    body = TABLE.replace(b"country,", b"Site.Country,", 1)
+    code = run_manifests(manifests, tmp_path / "out", get=lambda *_args: body, env={}, countries=_places(), clock=_clock)
+    assert code == 0
+    assert _prepared(tmp_path / "out")[0]["Site_Country"] == "Nigeria"
+
+
+def test_column_name_bigquery_rejects_must_be_renamed(tmp_path: Path) -> None:
+    names = ["Site.Country" if name == "country" else name for name in COLUMNS]
+    _write_manifest(tmp_path, "sources.csv", [_row(column_names=",".join(names), geo_country_column="Site.Country")])
+    _sources, problems, _skipped = load_manifests(tmp_path)
+    assert problems[0].error == "BigQuery cannot name a column Site.Country; rename it as name=publisher column"
+
+
+def test_accept_header_is_sent_and_follows_a_redirect_without_credentials(tmp_path: Path) -> None:
+    manifests = tmp_path / "manifests"
+    _write_manifest(manifests, "sdmx.csv", [_row(accept="application/vnd.sdmx.data+csv;version=1.0.0")])
+    seen: list[dict[str, str]] = []
+
+    def get(url: str, params: dict[str, str], headers: dict[str, str]) -> bytes:
+        seen.append(headers)
+        return TABLE
+
+    assert run_manifests(manifests, tmp_path / "out", get=get, env={}, countries=_places(), clock=_clock) == 0
+    assert seen == [{"Accept": "application/vnd.sdmx.data+csv;version=1.0.0"}]
+
+    sent: list[dict[str, str] | None] = []
+
+    class Session:
+        def get(self, url: str, headers: dict[str, str] | None = None, **_kwargs: object) -> _FakeResponse:
+            sent.append(headers)
+            if url == "https://api.example.test/data":
+                return _FakeResponse(302, {"Location": "https://cdn.example.test/file"})
+            return _FakeResponse(200, {}, b"ok")
+
+    request_bytes("https://api.example.test/data", headers={"Authorization": "Bearer secret", "Accept": "text/csv"}, session=Session())
+    assert sent == [{"Authorization": "Bearer secret", "Accept": "text/csv"}, {"Accept": "text/csv"}]
+
+
+def test_blank_enabled_is_rejected(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, "sources.csv", [_row(enabled="")])
+    _sources, problems, skipped = load_manifests(tmp_path)
+    assert skipped == []
+    assert problems[0].error == "enabled must be true or false"
+
+
+def test_duplicate_table_name_fails_every_copy(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, "week1.csv", [_row(source_id="first")])
+    _write_manifest(tmp_path, "week2.csv", [_row(source_id="second")])
+    _write_manifest(tmp_path, "draft.csv", [_row(source_id="third", enabled="false")])
+    sources, problems, _skipped = load_manifests(tmp_path)
+    assert sources == []
+    assert [(item.manifest_file, item.error) for item in problems] == [
+        ("week1.csv", "duplicate table_name across manifests"),
+        ("week2.csv", "duplicate table_name across manifests"),
+    ]
+
+
+def test_check_reports_every_problem_without_fetching(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_manifest(tmp_path, "good.csv", [_row()])
+    _write_manifest(tmp_path, "bad.csv", [_row(source_id="bad", table_name="bad_prices", contract_type="pdf")])
+    (tmp_path / "broken.csv").write_text("source_id,endpoint\nx,https://example.test\n", encoding="utf-8")
+    assert main(["--check", "--manifests", str(tmp_path)]) == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "ERROR\tbad.csv\tbad\tcontract_type must be json_api, csv, xlsx, xls, xlsb, ods, or html_table"
+    assert lines[1].startswith("ERROR\tbroken.csv\t(whole file)\tmissing columns: source_name")
+    assert lines[-1] == "1 enabled rows valid, 0 disabled, 2 problems"
+
+
+def test_check_passes_clean_manifests(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, "good.csv", [_row()])
+    assert main(["--check", "--manifests", str(tmp_path)]) == 0
+
+
+def test_shipped_manifests_pass_the_check() -> None:
+    assert main(["--check", "--manifests", str(Path(__file__).resolve().parents[1] / "manifests")]) == 0

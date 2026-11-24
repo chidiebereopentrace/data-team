@@ -6,7 +6,7 @@ import os
 import tempfile
 import time
 from collections.abc import Callable
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -57,14 +57,19 @@ def request_bytes(
     session: requests.Session | None = None,
     sleep_fn: Callable[[float], None] = time.sleep,
 ) -> bytes:
-    """GET url, retry network errors and 429/5xx, and follow HTTPS redirects."""
+    """GET url, retry network errors and 429/5xx, and follow HTTPS redirects.
+
+    Headers carry credentials, so only Accept follows a redirect to another host.
+    """
     if max_bytes is None:
         max_bytes = max_response_bytes()
     sess = session or requests.Session()
     if session is None:
         sess.headers["User-Agent"] = USER_AGENT
     current = url
+    origin = urlsplit(url).netloc
     sent_params = params
+    sent_headers = headers
     for _hop in range(6):
         if not current.startswith("https://"):
             raise HttpError("only https URLs are fetched")
@@ -75,7 +80,7 @@ def request_bytes(
                 response = sess.get(
                     current,
                     params=sent_params,
-                    headers=headers,
+                    headers=sent_headers,
                     timeout=timeout,
                     allow_redirects=False,
                     stream=True,
@@ -107,6 +112,9 @@ def request_bytes(
                 location = response.headers.get("Location") or ""
                 current = urljoin(current, location)
                 sent_params = None
+                if urlsplit(current).netloc != origin:
+                    # Credentials stay with the first host. The requested format still applies.
+                    sent_headers = {key: value for key, value in (headers or {}).items() if key.lower() == "accept"} or None
                 continue
             if response.status_code >= 400:
                 raise HttpError(f"HTTP {response.status_code}", status_code=response.status_code)
