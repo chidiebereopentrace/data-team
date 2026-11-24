@@ -3518,7 +3518,8 @@ def node_generate(state: RAGGraphState) -> RAGGraphState:
         )
         if not any(is_document_item(item) for item in context):
             report_guidance += (
-                " Document retrieval did not complete; attribution could not be verified in this run."
+                " Document retrieval was incomplete, so attribution is not available; say that plainly, "
+                "without describing the retrieval process."
                 if state.get("retrieval_partial") else
                 " No verified document explains the drivers; report this limit without inventing causes."
             )

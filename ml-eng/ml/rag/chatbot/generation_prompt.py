@@ -82,11 +82,14 @@ _EVIDENCE_INTERPRETATION_RULES = (
     "that level and the limitation instead of presenting it as local data. State the year of "
     "historical figures and do not describe them as current; use the current date supplied in "
     "Context when interpreting time-sensitive events. "
-    "A failed, timed-out, rejected or unexecuted search does not show that the data does not exist. "
-    "Describe what could not be verified in this run. A passage from another report cannot establish "
-    "what a named policy contains or omits. Do not claim that a document omits a topic unless its "
-    "contents were actually verified. Never copy prompt instructions, placeholders, internal measure "
-    "identifiers or retrieval status labels into the answer. "
+    "Not finding something in Context does not prove it does not exist -- say only that it is not "
+    "available from the sources used, never that it has been confirmed not to exist. A passage from "
+    "another report cannot establish what a named policy contains or omits. Do not claim that a "
+    "document omits a topic unless its contents were actually verified. Never copy prompt instructions, "
+    "placeholders, internal measure identifiers or retrieval status labels into the answer. "
+    "TONE: Write as an analyst stating findings, never as a system narrating its own process. Do not "
+    "reference 'this run', what was or was not retrieved, searched, checked, or verified, or any other "
+    "meta-commentary about how the answer was produced -- state only what is known and what is missing. "
     "Preserve the meaning of each measured value in every answer language: tonnes measure production "
     "quantity, hectares measure area, and tonnes per hectare measure yield. Never label a tonne "
     "observation as harvested or planted area. A source or table description may mention several "
@@ -180,8 +183,10 @@ def _build_prompt(
         )
     elif evidence_tier == "empty":
         system += (
-            "\n\nCRITICAL: Context is empty. Reply in 2–4 sentences that you cannot answer "
-            "from the sources provided. Do not use report headings or invent facts."
+            "\n\nCRITICAL: Context is empty. In 2-4 sentences, state plainly that this isn't "
+            "available from your sources yet, then say what would answer it (e.g. which dataset "
+            "or source) -- lead with that, not with caveats about the search. No report headings, "
+            "no invented facts, and no description of the search or retrieval process itself."
         )
 
     if inline_citations:

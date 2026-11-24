@@ -2329,9 +2329,9 @@ def generate(
     )
     if comparison_narrative_unavailable:
         cleaned = (
-            "The documentary evidence could not be assessed in this run."
+            "The documentary evidence does not support an assessment here."
             if document_ids and not llama_answer else
-            "A document-based explanation of these changes could not be verified in this run."
+            "No document-based explanation of these changes is available from the sources used."
         )
     report_narrative_unavailable = False
     if verified_report:
@@ -2341,7 +2341,7 @@ def generate(
             or not (document_ids & extract_referenced_source_ids(cleaned))
         )
         if report_narrative_unavailable:
-            cleaned = "The numerical report above is complete. I could not complete a verified explanation of the drivers in this run."
+            cleaned = "The numerical report above is complete. A verified explanation of the drivers is not available from the sources used."
     if (cleaned or verified_comparison) and cleaned.rstrip("?!. ").casefold() != query.strip().rstrip("?!. ").casefold():
         if (
             task_mode == "fact_lookup" and contract.facts and not require_document_citations

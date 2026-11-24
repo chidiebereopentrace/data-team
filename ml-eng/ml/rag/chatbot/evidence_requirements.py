@@ -313,7 +313,7 @@ def render_verified_facts(
             lines.append(f"| {geo} | {label} | {'; '.join(cells)} | {change} |")
             missing = sorted(years - {row[0] for row in observed})
             if missing and coverage is None:
-                notes.append(f"{geo}, {label.lower()}: figures could not be verified for {', '.join(map(str, missing))} in this run.")
+                notes.append(f"{geo}, {label.lower()}: no figures available for {', '.join(map(str, missing))}.")
     if len(lines) == 2:
         return ""
     if coverage is not None:
@@ -449,4 +449,4 @@ def fact_gap_description(gap: dict[str, Any]) -> str:
         "no_match": "the completed query did not verify all requested years",
     }.get(str(gap.get("status") or ""), "the requested figures could not be verified")
     member = f" ({gap['member']})" if gap.get("member") else ""
-    return f"{label}{member} in {gap['geo']} ({gap['start'][:4]}–{gap['end'][:4]}): {reason} in this run."
+    return f"{label}{member} in {gap['geo']} ({gap['start'][:4]}–{gap['end'][:4]}): not available -- {reason}."

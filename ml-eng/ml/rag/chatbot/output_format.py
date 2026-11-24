@@ -158,11 +158,11 @@ SLOT_TEMPLATES: dict[OutputType, OutputSlots] = {
         allow_headings=frozenset(),
     ),
     "insufficient": OutputSlots(
-        lead="In plain language, say which requested finding could not be verified in this run and why.",
+        lead="State plainly which requested finding is not available from the sources used, as a finding, not as a description of the search.",
         spine="Present any relevant verified findings. Never copy template instructions or internal status labels.",
         interpretation=None,
         implications=None,
-        limits="A failed, rejected or incomplete search does not establish that data is absent. Cite only evidence used.",
+        limits="Say only that the data is not available here, never that its absence has been established. Cite only evidence used.",
         allow_headings=frozenset(),
     ),
     "export": OutputSlots(
@@ -466,12 +466,12 @@ def render_insufficient(
     elif ts.grain == "latest":
         time_part = "latest"
 
-    lead_parts = ["I could not verify the requested findings"]
+    lead_parts = ["The requested findings are not available"]
     if place:
         lead_parts.append(f"for {place}")
     if time_part:
         lead_parts.append(f"during {time_part}")
-    lead = " ".join(lead_parts) + " in this run."
+    lead = " ".join(lead_parts) + " from the sources used."
 
     if contract.measure_id == "disease_prevalence" and contract.serve_status == "unsupported_grain":
         pathogen = contract.pathogen_id or "this pathogen"
