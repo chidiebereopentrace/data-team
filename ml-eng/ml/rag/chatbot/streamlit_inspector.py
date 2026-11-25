@@ -911,6 +911,96 @@ def render_artifacts(result: dict[str, Any]) -> None:
                 st.caption(f"URL: {url or '(none)'}")
 
 
+def _ms(value: Any) -> str:
+    return f"{float(value) / 1000:.1f}s" if isinstance(value, (int, float)) else "—"
+
+
+def render_rarr_panel(result: dict[str, Any]) -> None:
+    """RARR stage by stage: draft, evidence after retrieval, revision, final score."""
+    trace = _as_dict(result.get("rarr"))
+    if not trace:
+        return
+    st.subheader("RARR stages")
+    if trace.get("status") != "revised":
+        st.info(f"RARR stood aside: {trace.get('reason') or 'unknown'}. The answer above is the normal pipeline answer.")
+        if trace.get("draft"):
+            with st.expander("Draft that was not used"):
+                st.markdown(str(trace["draft"]))
+        return
+
+    cols = st.columns(4)
+    cols[0].metric("1 · Draft", _ms(trace.get("draft_ms")), help="Ran in parallel with retrieval")
+    cols[1].metric("2 · Retrieval (graph)", _ms(trace.get("graph_ms")))
+    cols[2].metric("3 · Revision", _ms(trace.get("revise_ms")))
+    cols[3].metric("Final ACF", f"{result.get('acf_score')} · {result.get('acf_band')}")
+
+    with st.expander("Stage 1 — Draft from model knowledge (before any retrieval)", expanded=True):
+        st.markdown(str(trace.get("draft") or ""))
+
+    sources = [x for x in trace.get("evidence_sources") or [] if isinstance(x, dict)]
+    with st.expander(
+        f"Stage 2 — Retrieval complete: {len(sources)} evidence sources handed to the reviser "
+        f"({trace.get('evidence_chars') or 0} chars)",
+        expanded=True,
+    ):
+        if not sources:
+            st.warning("No usable evidence (or the pipeline asked for clarification), so the draft is the answer, scored 0 with a no-evidence source note.")
+        for src in sources:
+            st.markdown(f"**[Source {src.get('id')}]** `{src.get('kind') or '?'}` — {src.get('citation') or ''}")
+            if src.get("preview"):
+                st.caption(str(src["preview"]))
+
+    rows = [x for x in trace.get("statements") or [] if isinstance(x, dict)]
+    verified = sum(1 for r in rows if r.get("verified"))
+    with st.expander(
+        f"Stage 3 — Revision against evidence: {verified} of {len(rows)} statements cite evidence",
+        expanded=True,
+    ):
+        if not trace.get("revise_called"):
+            st.caption("Reviser not called (no evidence).")
+        else:
+            st.caption(f"Reviser attempts: {trace.get('revise_attempts') or 1}")
+        st.dataframe(
+            [
+                {
+                    "#": i,
+                    "verified": "yes" if r.get("verified") else "no",
+                    "sources": ", ".join(str(x) for x in r.get("sources") or []),
+                    "unknown sources": ", ".join(str(x) for x in r.get("unknown_sources") or []),
+                    "labelled estimate": "yes" if r.get("estimate") else "",
+                    "statement": r.get("text"),
+                }
+                for i, r in enumerate(rows, start=1)
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+        unknown = sorted({x for r in rows for x in r.get("unknown_sources") or []})
+        if unknown:
+            st.error(f"Reviser cited sources that were not in the evidence: {unknown}")
+        with st.expander("Raw reviser output"):
+            st.markdown(str(trace.get("revise_raw") or "_(empty)_"))
+
+    with st.expander("Stage 4 — Final output and score", expanded=True):
+        coverage = trace.get("coverage")
+        st.markdown(
+            f"Evidence strength **{trace.get('evidence_score', 0) or 0}** "
+            f"({trace.get('evidence_band') or 'none'}) × statement coverage "
+            f"**{coverage if coverage is not None else 0}** = **{result.get('acf_score')}** "
+            f"→ {result.get('acf_band_label') or result.get('acf_band')}"
+        )
+        st.caption(str(result.get("acf_explanation") or ""))
+        st.markdown("**Final answer (shown to the user)**")
+        st.markdown(str(result.get("answer") or ""))
+
+    evidence_acf = _as_dict(trace.get("evidence_acf"))
+    with st.expander(
+        f"Compare: evidence-only pipeline answer (ACF {evidence_acf.get('acf_score')} · {evidence_acf.get('acf_band')})"
+    ):
+        st.markdown(str(trace.get("evidence_answer") or ""))
+        st.caption(str(evidence_acf.get("acf_explanation") or ""))
+
+
 def render_pipeline_inspector(
     result: dict[str, Any],
     *,
@@ -925,6 +1015,7 @@ def render_pipeline_inspector(
     with st.container():
         st.header("Pipeline inspector (last run)")
         render_flow_strip(route, result)
+        render_rarr_panel(result)
         render_request_context(
             result,
             query=query or str(result.get("_query") or ""),

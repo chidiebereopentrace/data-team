@@ -253,6 +253,19 @@ with st.sidebar:
         )
     t_start = st.text_input("Time start YYYY-MM-DD (optional)", placeholder="2020-01-01")
     t_end = st.text_input("Time end YYYY-MM-DD (optional)", placeholder="2025-12-31")
+    answer_mode_labels = ["Evidence only", "RARR: draft, then revise against evidence"]
+    answer_mode_choice = st.radio(
+        "Answer mode",
+        answer_mode_labels,
+        index=1 if os.environ.get("RAG_ANSWER_MODE", "").strip().lower() == "rarr" else 0,
+        help=(
+            "RARR drafts from model knowledge beside the pipeline, then revises the draft "
+            "against the retrieved evidence. The inspector shows draft, revised and evidence-only answers. "
+            "In-process only; the HTTP API has no RARR mode."
+        ),
+    )
+    if answer_mode_choice == answer_mode_labels[1] and backend_mode != "in_process":
+        st.warning("In HTTP mode the API server's RAG_ANSWER_MODE decides; this switch applies to In-process runs.")
     show_debug = st.checkbox("Show pipeline inspector (last run)", value=debug_default_enabled())
 
 if backend_mode == "in_process" and os.environ.get("QDRANT_URL") and os.environ.get("QDRANT_API_KEY"):
@@ -298,6 +311,8 @@ if prompt:
         active_request=sess.get("active_request") if backend_mode == "in_process" else None,
         preset_overrides=preset_overrides if isinstance(preset_overrides, dict) else None,
     )
+    if backend_mode == "in_process":
+        kwargs["answer_mode"] = "rarr" if answer_mode_choice == answer_mode_labels[1] else "evidence"
 
     with st.spinner("Running pipeline…"):
         try:
