@@ -6,6 +6,8 @@ status: accepted
 
 The OTA job is a daily collect-and-export. Its history is files on disk, and BigQuery loading is a separate first load that will not accept a second day. An earlier map sent the human summary by email and treated that mail as the notification.
 
-The ingestion engine runs once a week. It reads every manifest CSV in a directory. `source_id` is unique across those files. After the loads, it appends three tables in the report dataset: one row for the run, coverage counts of prepared rows by indicator class, country, and year, and one row for each manifest row that did not fully load. The report is written before the process exits. A failed or partial ref makes the exit non-zero and does not erase the other rows or the report.
+The ingestion engine runs once a week. It reads every manifest CSV in a directory. `source_id` is unique across those files. After the loads, it appends three tables in the report dataset: one row for the run, coverage counts of prepared rows by indicator class, country, and year, and one row for each manifest row that did not fully load. The report is written before the process exits. A failed ref makes the exit non-zero and does not erase the other rows or the report. A partial ref reached raw, so it does not fail the exit; its quarantine counts are in the report. Most publishers send some rows that cannot be prepared, and an exit that fails every week stops meaning anything.
+
+The report covers every enabled row, including the ones that were not due this run ([ADR 0006](0006-sources-refresh-on-a-declared-cadence.md)). Those show as `CURRENT` with the date they last loaded, so a quiet week does not read as an empty or broken one. A manifest file that fails as a whole is named by its file.
 
 Email is not the record of the run. The report tables are.

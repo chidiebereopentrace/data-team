@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,7 +12,12 @@ INDICATOR_CLASSES = frozenset({
     "EL", "GYI", "FVC", "FS", "PROD", "PRC", "CLIM", "SOIL",
     "AH", "VEG", "ENV", "INP", "HDI", "BIO", "RES",
 })
-CONTRACTS = frozenset({"json_api", "csv", "xlsx", "xls", "html_table"})
+CONTRACTS = frozenset({"json_api", "csv", "xlsx", "xls", "xlsb", "ods", "html_table"})
+TABULAR = frozenset({"csv", "xlsx", "xls", "xlsb", "ods"})
+DELIMITERS = {"": ",", ",": ",", ";": ";", "|": "|", "tab": "\t"}
+DECIMAL_MARKS = frozenset({"", ".", ","})
+# BigQuery rejects these characters in a column name. A publisher header that uses one is renamed with name=header.
+COLUMN_NAME_FORBIDDEN = frozenset('!"$()*,./;?@[\\]^`{}~')
 GEO_GRAINS = frozenset({"country", "admin1", "admin2", "market", "point"})
 TEMPORAL_GRAINS = frozenset({"day", "month", "quarter", "season", "year"})
 CODE_STANDARDS = frozenset({"iso2", "iso3", "name"})
@@ -43,6 +49,7 @@ class Source:
     contract_type: str
     column_count: int
     column_names: tuple[str, ...]
+    column_sources: tuple[str, ...]
     geo_grain: str
     geo_country_column: str
     geo_country_columns: tuple[str, ...]
@@ -62,6 +69,7 @@ class Source:
     class_columns: tuple[str, ...]
     measure_kind: str
     freshness_days: int | None
+    refresh_days: int | None
     load_mode: str
     natural_key: tuple[str, ...]
     owner: str
@@ -84,6 +92,9 @@ class Source:
     record_layout: str
     file_name: str
     row_filter: str = ""
+    delimiter: str = ","
+    decimal_mark: str = "."
+    accept: str = ""
 
 
 @dataclass(frozen=True)
@@ -109,6 +120,17 @@ def _cell(row: dict[str, str], name: str) -> str:
 
 def _split(value: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
+def _columns(value: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Split column_names into landing names and publisher columns. `name=header` renames one column."""
+    names: list[str] = []
+    sources: list[str] = []
+    for part in _split(value):
+        name, _, origin = part.partition("=")
+        names.append(name.strip())
+        sources.append(origin.strip() if origin else name.strip())
+    return tuple(names), tuple(sources)
 
 
 def _bool(value: str) -> bool | None:
@@ -153,6 +175,8 @@ def _validate(row: dict[str, str]) -> str | None:
         return "missing columns: " + ", ".join(missing)
     if not SOURCE_ID.fullmatch(_cell(row, "source_id")):
         return "source_id must start with a letter or digit and use only letters, digits, dot, underscore, or hyphen"
+    if _bool(_cell(row, "enabled")) is None:
+        return "enabled must be true or false"
     if not _cell(row, "source_name") or not _cell(row, "owner"):
         return "source_name and owner are required"
     if not _cell(row, "source_url").startswith("https://") or not _cell(row, "endpoint").startswith("https://"):
@@ -163,18 +187,29 @@ def _validate(row: dict[str, str]) -> str | None:
         return "unknown indicator class"
     contract = _cell(row, "contract_type")
     if contract not in CONTRACTS:
-        return "contract_type must be json_api, csv, xlsx, xls, or html_table"
+        return "contract_type must be json_api, csv, xlsx, xls, xlsb, ods, or html_table"
     file_name = _cell(row, "file_name")
     if file_name and ("/" in file_name or "\\" in file_name or file_name in {".", ".."}):
         return "file_name must be a single file name"
-    if file_name and contract not in {"csv", "xlsx", "xls"}:
-        return "file_name is only used with csv, xlsx, or xls"
-    names = _split(_cell(row, "column_names"))
+    if file_name and contract not in TABULAR:
+        return "file_name is only used with csv, xlsx, xls, xlsb, or ods"
+    if _cell(row, "delimiter") not in DELIMITERS:
+        return "delimiter must be blank, ',', ';', '|', or tab"
+    if _cell(row, "delimiter") and contract != "csv":
+        return "delimiter is only used with csv"
+    if _cell(row, "decimal_mark") not in DECIMAL_MARKS:
+        return "decimal_mark must be blank, '.', or ','"
+    names, origins = _columns(_cell(row, "column_names"))
     count = _int(_cell(row, "column_count"))
     if count is None or count != len(names) or count < 1:
         return "column_count must equal the number of column_names"
+    if any(not name or not origin for name, origin in zip(names, origins)):
+        return "column_names entries are name or name=publisher column"
     if len(set(names)) != len(names):
         return "column_names contains a duplicate"
+    illegal = [name for name in names if set(name) & COLUMN_NAME_FORBIDDEN]
+    if illegal:
+        return "BigQuery cannot name a column " + ", ".join(illegal) + "; rename it as name=publisher column"
     filter_error = _check_row_filter(_cell(row, "row_filter"), set(names))
     if filter_error:
         return filter_error
@@ -260,6 +295,9 @@ def _validate(row: dict[str, str]) -> str | None:
     freshness = _int(_cell(row, "freshness_days")) if _cell(row, "freshness_days") else None
     if _cell(row, "freshness_days") and (freshness is None or freshness < 0):
         return "freshness_days must be a non-negative integer"
+    refresh = _int(_cell(row, "refresh_days")) if _cell(row, "refresh_days") else None
+    if _cell(row, "refresh_days") and (refresh is None or refresh < 0):
+        return "refresh_days must be a non-negative integer"
     header_row = _int(_cell(row, "header_row")) if _cell(row, "header_row") else 0
     if header_row is None or header_row < 0:
         return "header_row must be a non-negative integer"
@@ -306,6 +344,7 @@ def _query(value: str) -> dict[str, str] | None:
 def _source(path: str, row: dict[str, str]) -> Source:
     freshness = _int(_cell(row, "freshness_days")) if _cell(row, "freshness_days") else None
     page_size = _int(_cell(row, "page_size")) if _cell(row, "page_size") else None
+    refresh = _int(_cell(row, "refresh_days")) if _cell(row, "refresh_days") else None
     return Source(
         manifest_file=path,
         source_id=_cell(row, "source_id"),
@@ -316,7 +355,8 @@ def _source(path: str, row: dict[str, str]) -> Source:
         indicator_class=_cell(row, "indicator_class"),
         contract_type=_cell(row, "contract_type"),
         column_count=int(_cell(row, "column_count")),
-        column_names=_split(_cell(row, "column_names")),
+        column_names=_columns(_cell(row, "column_names"))[0],
+        column_sources=_columns(_cell(row, "column_names"))[1],
         geo_grain=_cell(row, "geo_grain"),
         geo_country_column=_cell(row, "geo_country_column"),
         geo_country_columns=_split(_cell(row, "geo_country_columns")),
@@ -336,6 +376,7 @@ def _source(path: str, row: dict[str, str]) -> Source:
         class_columns=_split(_cell(row, "class_columns")),
         measure_kind=_cell(row, "measure_kind"),
         freshness_days=freshness,
+        refresh_days=refresh,
         load_mode=_cell(row, "load_mode"),
         natural_key=_split(_cell(row, "natural_key")),
         owner=_cell(row, "owner"),
@@ -358,6 +399,9 @@ def _source(path: str, row: dict[str, str]) -> Source:
         record_layout=_cell(row, "record_layout"),
         file_name=_cell(row, "file_name"),
         row_filter=_cell(row, "row_filter"),
+        delimiter=DELIMITERS[_cell(row, "delimiter")],
+        decimal_mark=_cell(row, "decimal_mark") or ".",
+        accept=_cell(row, "accept"),
     )
 
 
@@ -389,7 +433,7 @@ def _read_csv(path: Path) -> tuple[list[Source], list[ManifestProblem], list[Man
 
 
 def load_manifests(directory: Path) -> tuple[list[Source], list[ManifestProblem], list[ManifestProblem]]:
-    """Load every CSV in a directory. Duplicate source ids fail every copy."""
+    """Load every CSV in a directory. A source_id or table_name used by two enabled rows fails every copy."""
     files = sorted(path for path in directory.glob("*.csv") if path.is_file())
     if not files:
         return [], [ManifestProblem(
@@ -405,12 +449,16 @@ def load_manifests(directory: Path) -> tuple[list[Source], list[ManifestProblem]
         sources.extend(found)
         problems.extend(failed)
         skipped.extend(inactive)
-    counts: dict[str, int] = {}
-    for source in sources:
-        counts[source.source_id] = counts.get(source.source_id, 0) + 1
+    ids = Counter(source.source_id for source in sources)
+    tables = Counter(source.table_name for source in sources)
     unique: list[Source] = []
     for source in sources:
-        if counts[source.source_id] > 1:
+        error = ""
+        if ids[source.source_id] > 1:
+            error = "duplicate source_id across manifests"
+        elif tables[source.table_name] > 1:
+            error = "duplicate table_name across manifests"
+        if error:
             problems.append(ManifestProblem(
                 manifest_file=source.manifest_file,
                 source_id=source.source_id,
@@ -423,7 +471,7 @@ def load_manifests(directory: Path) -> tuple[list[Source], list[ManifestProblem]
                 auth_required="true" if source.auth_required else "false",
                 auth_type=source.auth_type,
                 owner=source.owner,
-                error="duplicate source_id across manifests",
+                error=error,
             ))
         else:
             unique.append(source)

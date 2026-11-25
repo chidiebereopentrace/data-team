@@ -12,10 +12,19 @@ from pathlib import Path
 
 from google.cloud import bigquery
 
-from ingestion_engine.bq import append_report, load_jsonl, run_history, source_cursor
+from ingestion_engine.bq import append_report, load_jsonl, run_history, source_attempts
 from ingestion_engine.mail import send_report
-from ingestion_engine.manifest import Source
-from ingestion_engine.run import Begin, Finish, SourceResult, run_manifests, source_row, started_row
+from ingestion_engine.manifest import Source, load_manifests
+from ingestion_engine.run import (
+    Begin,
+    Cursor,
+    Finish,
+    SourceResult,
+    read_cursor,
+    run_manifests,
+    source_row,
+    started_row,
+)
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 DEV_DATASETS = ("landing_dev", "raw_dev")
@@ -209,18 +218,35 @@ def _past_runs() -> list[dict[str, object]]:
         return []
 
 
+def check_manifests(directory: Path) -> int:
+    """Validate every manifest together without fetching. Exit 1 on any problem."""
+    sources, problems, skipped = load_manifests(directory)
+    for problem in problems:
+        label = problem.source_id or "(whole file)"
+        print(f"ERROR\t{problem.manifest_file}\t{label}\t{problem.error}", flush=True)
+    print(
+        f"{len(sources)} enabled rows valid, {len(skipped)} disabled, {len(problems)} problems",
+        flush=True,
+    )
+    return 1 if problems else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     load_env_file(PACKAGE_ROOT / ".env")
-    materialize_service_account()
     parser = argparse.ArgumentParser(description="Load manifest CSVs into landing and raw, and write the weekly report.")
     parser.add_argument("--manifests", type=Path, default=None, help="Directory of manifest CSV files")
     parser.add_argument("--out", type=Path, default=None, help="Local directory for raw files, landing JSONL, and reports")
     parser.add_argument("--execute", action="store_true", help="Also load landing_dev, raw_dev, and the report tables in BigQuery")
+    parser.add_argument("--check", action="store_true", help="Only validate the manifests together; fetch nothing")
     args = parser.parse_args(argv)
     manifests = args.manifests or _resolve(os.environ.get("INGEST_MANIFESTS", "manifests"), PACKAGE_ROOT)
+    if args.check:
+        if args.execute:
+            parser.error("--check fetches nothing and cannot be combined with --execute")
+        return check_manifests(manifests)
+    materialize_service_account()
     out = args.out or _resolve(os.environ.get("INGEST_OUT", "out"), PACKAGE_ROOT)
-    done: set[str] = set()
-    stopped: set[str] = set()
+    cursor = Cursor()
     on_begin: Begin | None = None
     on_done: Finish | None = None
     client: bigquery.Client | None = None
@@ -229,13 +255,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.execute:
         project, dataset, raw_dataset, report_dataset = _datasets()
         client = bigquery.Client(project=project)
-        done, stopped = source_cursor(client, _report_table("ingest_sources"))
+        cursor = read_cursor(source_attempts(client, _report_table("ingest_sources")))
         on_begin, on_done = _bind_cursor(client, project, dataset, raw_dataset, _report_table("ingest_sources"), out)
     code = run_manifests(
         manifests,
         out,
-        done=done,
-        stopped=stopped,
+        cursor=cursor,
         on_begin=on_begin,
         on_done=on_done,
     )
@@ -253,3 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     if uploaded:
         clear_staged(out)
     return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

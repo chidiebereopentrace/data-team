@@ -1,0 +1,46 @@
+name: data-eng-ingestion-engine
+
+# Engineers add manifest files every week. This gate checks every manifest together and runs the
+# engine tests before a change merges, so a bad row fails its own PR instead of the Sunday run.
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - "data-eng/ingestion_engine/**"
+      - ".github/workflows/data-eng-ingestion-engine.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  manifests-and-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: data-eng/ingestion_engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: data-eng/ingestion_engine/pyproject.toml
+      - name: Install package
+        run: pip install -e ".[dev]"
+      - name: Check manifests
+        run: |
+          set +e
+          ingestion-engine --check --manifests manifests > check.txt
+          code=$?
+          cat check.txt
+          {
+            echo "### Manifest check"
+            echo '```'
+            cat check.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+      - name: Pytest
+        if: ${{ !cancelled() }}
+        run: pytest tests -q

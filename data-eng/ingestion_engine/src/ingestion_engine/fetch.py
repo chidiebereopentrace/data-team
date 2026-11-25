@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import gzip
 import io
 import json
 import re
@@ -14,10 +15,10 @@ from urllib.parse import urlsplit
 
 from openpyxl import load_workbook
 from python_calamine import WorksheetNotFound
-from python_calamine import load_workbook as load_xls_workbook
+from python_calamine import load_workbook as load_calamine_workbook
 
 from ingestion_engine.http import max_response_bytes, request_bytes
-from ingestion_engine.manifest import Source
+from ingestion_engine.manifest import TABULAR, Source
 
 Get = Callable[[str, dict[str, str], dict[str, str]], bytes]
 
@@ -58,7 +59,14 @@ def _text(value: object) -> str:
     return str(value).strip()
 
 
-def _as_records(header: list[str], rows: list[list[object]], expected: tuple[str, ...]) -> list[dict[str, str]]:
+def _as_records(
+    header: list[str],
+    rows: list[list[object]],
+    expected: tuple[str, ...],
+    names: tuple[str, ...] | None = None,
+) -> list[dict[str, str]]:
+    """Match the publisher header to `expected` and key each row by the landing `names`."""
+    names = names or expected
     if header != list(expected):
         raise FetchError(
             f"header mismatch: expected {', '.join(expected)}; got {', '.join(header)}",
@@ -68,9 +76,9 @@ def _as_records(header: list[str], rows: list[list[object]], expected: tuple[str
     for row in rows:
         values = [_text(cell) for cell in row]
         if len(values) != len(expected):
-            records.append({**{name: "" for name in expected}, "_width_error": f"expected {len(expected)} columns, got {len(values)}"})
+            records.append({**{name: "" for name in names}, "_width_error": f"expected {len(expected)} columns, got {len(values)}"})
             continue
-        records.append(dict(zip(expected, values, strict=True)))
+        records.append(dict(zip(names, values, strict=True)))
     return records
 
 
@@ -86,22 +94,29 @@ def _unwrap_csv_row(row: list[str]) -> list[str]:
 
 
 def _decode_csv(body: bytes) -> str:
-    """Read CSV text. UTF-8 first, then Windows-1252 for bytes such as the micro sign."""
-    try:
-        return body.decode("utf-8-sig")
-    except UnicodeDecodeError:
+    """Read CSV text: UTF-16 by its byte-order mark, else UTF-8, Windows-1252, then Latin-1."""
+    if body.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return body.decode("utf-16")
+    for encoding in ("utf-8-sig", "cp1252"):
         try:
-            return body.decode("cp1252")
-        except UnicodeDecodeError as exc:
-            raise FetchError("csv is not UTF-8 or Windows-1252 text", stage="shape") from exc
+            return body.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return body.decode("latin-1")
 
 
-def parse_csv(body: bytes, expected: tuple[str, ...]) -> list[dict[str, str]]:
+def parse_csv(
+    body: bytes,
+    expected: tuple[str, ...],
+    *,
+    names: tuple[str, ...] | None = None,
+    delimiter: str = ",",
+) -> list[dict[str, str]]:
     text = _decode_csv(body)
     lines = text.splitlines()
     if len(lines) >= 2 and lines[1].lstrip().startswith("#"):
         del lines[1]
-    reader = csv.reader(io.StringIO("\n".join(lines)))
+    reader = csv.reader(io.StringIO("\n".join(lines)), delimiter=delimiter)
     header = next(reader, None)
     if header is None:
         raise FetchError("csv has no header", stage="shape")
@@ -110,7 +125,7 @@ def parse_csv(body: bytes, expected: tuple[str, ...]) -> list[dict[str, str]]:
     if header and not header[0].strip():
         header = header[1:]
         rows = [row[1:] if row else row for row in rows]
-    return _as_records([cell.strip() for cell in header], rows, expected)
+    return _as_records([cell.strip() for cell in header], rows, expected, names)
 
 
 def filter_records(records: list[dict[str, str]], row_filter: str) -> list[dict[str, str]]:
@@ -144,11 +159,12 @@ def parse_xlsx(body: bytes, source: Source) -> list[dict[str, str]]:
         raise FetchError("header_row is past the end of the sheet", stage="shape")
     header = [_text(cell) for cell in grid[source.header_row]]
     data = [row for row in grid[source.header_row + 1:] if any(_text(cell) for cell in row)]
-    return _as_records(header, data, source.column_names)
+    return _as_records(header, data, source.column_sources, source.column_names)
 
 
-def parse_xls(body: bytes, source: Source) -> list[dict[str, str]]:
-    workbook = load_xls_workbook(io.BytesIO(body))
+def parse_calamine(body: bytes, source: Source) -> list[dict[str, str]]:
+    """Read an xls, xlsb, or ods workbook. Calamine tells the formats apart by their bytes."""
+    workbook = load_calamine_workbook(io.BytesIO(body))
     try:
         try:
             sheet = workbook.get_sheet_by_name(source.sheet_name) if source.sheet_name else workbook.get_sheet_by_index(0)
@@ -161,7 +177,7 @@ def parse_xls(body: bytes, source: Source) -> list[dict[str, str]]:
         raise FetchError("header_row is past the end of the sheet", stage="shape")
     header = [_text(cell) for cell in grid[source.header_row]]
     data = [row for row in grid[source.header_row + 1:] if any(_text(cell) for cell in row)]
-    return _as_records(header, data, source.column_names)
+    return _as_records(header, data, source.column_sources, source.column_names)
 
 
 class _Tables(HTMLParser):
@@ -211,7 +227,7 @@ def parse_html_table(body: bytes, source: Source) -> list[dict[str, str]]:
     if not table:
         raise FetchError("html table is empty", stage="shape")
     header, *data = table
-    return _as_records(header, data, source.column_names)
+    return _as_records(header, data, source.column_sources, source.column_names)
 
 
 def _at(payload: object, path: str) -> object:
@@ -308,14 +324,29 @@ def _json_records(body: bytes, source: Source) -> tuple[list[dict[str, str]], ob
             melted.extend(_melt_commodities(row))
         return melted, payload, len(rows)
     records: list[dict[str, str]] = []
-    expected = list(source.column_names)
+    columns = list(zip(source.column_names, source.column_sources))
     for row in rows:
-        missing = [name for name in expected if name not in row]
-        if missing:
-            records.append({name: _text(row.get(name)) for name in expected} | {"_width_error": "columns differ from contract"})
-            continue
-        records.append({name: _text(row[name]) for name in expected})
+        found = {name: _field(row, path) for name, path in columns}
+        record = {name: _text(value) for name, (_present, value) in found.items()}
+        if not all(present for present, _value in found.values()):
+            record["_width_error"] = "columns differ from contract"
+        records.append(record)
     return records, payload, len(rows)
+
+
+_MISSING = object()
+
+
+def _field(row: dict[str, object], path: str) -> tuple[bool, object]:
+    """Read a key, or a dotted path into nested objects such as attributes.price."""
+    if path in row:
+        return True, row[path]
+    current: object = row
+    for key in path.split("."):
+        current = current.get(key, _MISSING) if isinstance(current, dict) else _MISSING
+        if current is _MISSING:
+            return False, None
+    return True, current
 
 
 def _same_host(origin: str, target: str) -> str:
@@ -331,11 +362,25 @@ def _basename(name: str) -> str:
 
 
 def _table_bytes(body: bytes, source: Source, *, get: Get, headers: dict[str, str]) -> bytes:
-    """Return the CSV or workbook bytes, following a file list or a ZIP when needed."""
+    """Return the CSV or workbook bytes, following a file list, a gzip, or a ZIP when needed."""
     link = _file_link(body, source)
     if link is not None:
         body = get(link, {}, headers)
-    return _member_bytes(body, source.file_name)
+    return _gunzip(_member_bytes(_gunzip(body), source.file_name))
+
+
+def _gunzip(body: bytes) -> bytes:
+    if not body.startswith(b"\x1f\x8b"):
+        return body
+    limit = max_response_bytes()
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(body)) as handle:
+            data = handle.read(limit + 1)
+    except (OSError, EOFError) as exc:
+        raise FetchError("response is not a readable gzip file") from exc
+    if len(data) > limit:
+        raise FetchError("response exceeds the size limit")
+    return data
 
 
 def _file_link(body: bytes, source: Source) -> str | None:
@@ -435,7 +480,8 @@ def _member_bytes(body: bytes, file_name: str) -> bytes:
         raise FetchError("response is not a zip archive") from exc
     with archive:
         names = archive.namelist()
-        if "[Content_Types].xml" in names and not file_name:
+        # An xlsx or xlsb workbook has [Content_Types].xml and an ods has mimetype: the archive is the file.
+        if ("[Content_Types].xml" in names or "mimetype" in names) and not file_name:
             return body
         members = [info for info in archive.infolist() if not info.is_dir()]
         chosen = _choose_member(members, file_name)
@@ -452,13 +498,13 @@ def _choose_member(members: list[zipfile.ZipInfo], file_name: str) -> zipfile.Zi
         return matches[0]
     tables = [
         info for info in members
-        if _basename(info.filename).lower().endswith((".csv", ".xlsx", ".xls"))
+        if _basename(info.filename).lower().endswith((".csv", ".csv.gz", ".xlsx", ".xls", ".xlsb", ".ods"))
     ]
     if len(tables) == 1:
         return tables[0]
     if len(tables) > 1:
         raise FetchError("zip contains multiple files; set file_name")
-    raise FetchError("zip has no csv or xlsx or xls")
+    raise FetchError("zip has no csv, xlsx, xls, xlsb, or ods")
 
 
 def _read_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
@@ -475,17 +521,21 @@ def _read_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
 def iter_pages(source: Source, *, get: Get, env: dict[str, str]) -> Iterator[tuple[list[dict[str, str]], bytes]]:
     """Yield each fetched page as records plus the response body."""
     headers, params = auth_material(source, env)
+    if source.accept:
+        headers["Accept"] = source.accept
     if source.query:
         for key, value in _static_query(source.query).items():
             params.setdefault(key, value)
-    if source.contract_type in {"csv", "xlsx", "xls"}:
+    if source.contract_type in TABULAR:
         body = _table_bytes(get(source.endpoint, params, headers), source, get=get, headers=headers)
         if source.contract_type == "csv":
-            records = parse_csv(body, source.column_names)
+            records = parse_csv(
+                body, source.column_sources, names=source.column_names, delimiter=source.delimiter,
+            )
         elif source.contract_type == "xlsx":
             records = parse_xlsx(body, source)
         else:
-            records = parse_xls(body, source)
+            records = parse_calamine(body, source)
         yield filter_records(records, source.row_filter), body
         return
     if source.contract_type == "html_table":
@@ -496,15 +546,6 @@ def iter_pages(source: Source, *, get: Get, env: dict[str, str]) -> Iterator[tup
         yield from _iter_json(source, get=get, headers=headers, params=params)
         return
     raise FetchError(f"unsupported contract {source.contract_type}")
-
-
-def fetch_records(source: Source, *, get: Get, env: dict[str, str]) -> tuple[list[dict[str, str]], bytes]:
-    records: list[dict[str, str]] = []
-    pages: list[bytes] = []
-    for page_records, body in iter_pages(source, get=get, env=env):
-        records.extend(page_records)
-        pages.append(body)
-    return records, b"\n".join(pages)
 
 
 def _iter_json(

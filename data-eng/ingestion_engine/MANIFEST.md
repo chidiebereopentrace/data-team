@@ -33,9 +33,9 @@ What happens to one enabled row:
 flowchart TD
     row[Manifest row] --> validate{Row passes validation?}
     validate -->|no| failManifest["FAILED at stage manifest"]
-    validate -->|yes| done{source_id already attempted?}
-    done -->|yes| skipDone["ALREADY_DONE, not fetched"]
-    done -->|no| fetch["Fetch endpoint, follow file list or ZIP"]
+    validate -->|yes| due{"Never loaded, last attempt failed, or refresh_days passed?"}
+    due -->|no| current["CURRENT, not fetched"]
+    due -->|yes| fetch["Fetch endpoint, follow file list or ZIP"]
     fetch --> parse["Parse contract, check header"]
     parse --> filter["Apply row_filter"]
     filter --> dedupe["Drop repeats of natural_key"]
@@ -134,7 +134,7 @@ Add to an existing manifest if the source belongs to that collection. Otherwise 
 Start from this header. Column order does not matter to the loader, but keeping this order makes rows easier to compare across files. The first 23 columns must be present in every manifest. The rest are optional and may be left out entirely if no row in the file uses them.
 
 ```text
-source_id,source_name,source_url,endpoint,table_name,indicator_class,contract_type,column_count,column_names,geo_grain,geo_country_column,geo_code_standard,temporal_grain,temporal_column,temporal_format,value_column,load_mode,natural_key,enabled,owner,auth_required,auth_type,auth_ref,geo_country_constant,geo_country_columns,geo_admin1_column,geo_admin2_column,geo_market_column,geo_lat_column,geo_lon_column,class_columns,measure_kind,unit_column,unit_constant,freshness_days,file_name,row_filter,sheet_name,header_row,xlsx_layout,html_table_selector,records_path,pagination,page_param,page_size,size_param,next_path,query,record_layout,auth_header,auth_query_param
+source_id,source_name,source_url,endpoint,table_name,indicator_class,contract_type,column_count,column_names,geo_grain,geo_country_column,geo_code_standard,temporal_grain,temporal_column,temporal_format,value_column,load_mode,natural_key,enabled,owner,auth_required,auth_type,auth_ref,geo_country_constant,geo_country_columns,geo_admin1_column,geo_admin2_column,geo_market_column,geo_lat_column,geo_lon_column,class_columns,measure_kind,unit_column,unit_constant,freshness_days,refresh_days,file_name,row_filter,sheet_name,header_row,xlsx_layout,html_table_selector,records_path,pagination,page_param,page_size,size_param,next_path,query,record_layout,auth_header,auth_query_param,delimiter,decimal_mark,accept
 ```
 
 Edit manifests in a text editor or VS Code, not Excel. Excel rewrites quoting, changes the encoding, turns `2020-01` into a date, and drops leading zeros. If you must use a spreadsheet, export as **CSV UTF-8** and check the diff before you commit.
@@ -143,7 +143,7 @@ Edit manifests in a text editor or VS Code, not Excel. Excel rewrites quoting, c
 
 `endpoint` must be the URL that returns the data bytes, and it must start with `https://`. Paste it into a browser or run `curl -I <url>` and check that you get the file, not an HTML landing page. A page that needs a click, a cookie, or a login form cannot be fetched.
 
-Also check that the URL works before you enable the row. An endpoint that returns an HTTP error, redirects to plain `http://`, or exceeds the size limit currently stops the whole run rather than failing just that source.
+Also check that the URL works before you enable the row. An endpoint that returns an HTTP error, redirects to plain `http://`, or exceeds the size limit fails that source, and the job exits non-zero. The other sources still run. A failed source is fetched again on the next run.
 
 ### Step 3: Choose the contract
 
@@ -154,7 +154,11 @@ Also check that the URL works before you enable the row. An endpoint that return
 | A CSV file | `csv` | blank |
 | An `.xlsx` workbook | `xlsx` | blank |
 | An `.xls` workbook | `xls` | blank |
-| A ZIP with exactly one CSV or workbook inside | the type of that file | blank, or the file name |
+| An `.xlsb` binary workbook | `xlsb` | blank |
+| An `.ods` OpenDocument spreadsheet | `ods` | blank |
+| A `.gz` file holding one of the above | the type of the file inside | blank |
+| SDMX data from a statistics API | `csv`, with `accept` set | not used |
+| A ZIP with exactly one CSV, `.csv.gz`, or workbook inside | the type of that file | blank, or the file name |
 | A ZIP with several files | the type of the file you want | the file name inside the ZIP |
 | A Dataverse dataset API response | the type of the file you want | the file name as Dataverse lists it |
 | A Zenodo record API response | the type of the file you want | the file `key` |
@@ -165,8 +169,9 @@ Also check that the URL works before you enable the row. An endpoint that return
 
 Download the file and copy the header row into `column_names`, comma-separated, in the same order, with the same spelling, case, spaces, and punctuation. Then count them and put the number in `column_count`.
 
-- For `csv`, `xlsx`, `xls`, and `html_table`, the parsed header must equal `column_names` exactly. List every column in the file, not just the ones you need. One extra, missing, renamed, or reordered column fails the whole source with `header mismatch`.
+- For `csv`, `xlsx`, `xls`, `xlsb`, `ods`, and `html_table`, the parsed header must equal `column_names` exactly. List every column in the file, not just the ones you need. One extra, missing, renamed, or reordered column fails the whole source with `header mismatch`.
 - For `json_api`, each object must have every listed key. Extra keys in the response are ignored. An object missing a key is quarantined.
+- When a publisher column name has a character BigQuery rejects, such as `.` or `(`, write `name=publisher column`: `Site_Key=Site.Key`. The engine reads `Site.Key` from the file and lands it as `Site_Key`. Every other field, such as `value_column` or `row_filter`, uses the new name. See [Pitfalls](#10-pitfalls).
 
 Wrap `column_names` in double quotes in the CSV, because it contains commas:
 
@@ -196,7 +201,15 @@ Follow [section 7](#7-testing-a-manifest-locally). Only set `enabled=true` once 
 
 ### Step 10: Open a PR
 
-Commit the manifest change. Fill in the [checklist](#12-checklist-before-you-enable-a-row) in the PR description. The weekly cron (Sunday 02:00 UTC on Railway) picks up new `source_id`s on its next run.
+Run the manifest check from `data-eng/ingestion_engine` first:
+
+```powershell
+ingestion-engine --check
+```
+
+It validates every manifest file together, as the weekly run reads them, and fetches nothing. It prints one `ERROR` line per problem and exits 1 if there is any. Fix them all before pushing.
+
+Commit the manifest change. Fill in the [checklist](#12-checklist-before-you-enable-a-row) in the PR description. The `data-eng-ingestion-engine` check runs the same validation and the engine tests on the PR, and a failure blocks the merge. Its result is on the PR's checks page, with every manifest error listed in the job summary. The weekly cron (Sunday 02:00 UTC on Railway) picks up new `source_id`s on its next run.
 
 ---
 
@@ -209,17 +222,24 @@ The endpoint returns the CSV. Leave `file_name` blank.
 The CSV reader handles these publisher quirks for you:
 
 - a UTF-8 byte-order mark
-- Windows-1252 text, such as files with a `µ` sign
+- Windows-1252 text, such as files with a `µ` sign, and Latin-1 text when Windows-1252 cannot decode a byte
+- UTF-16 text that starts with a byte-order mark
 - a second line starting with `#`, which is an HDX HXL tag row and is dropped
 - a blank first header cell, as written by pandas `to_csv` with an index, which is dropped along with that column
 - lines where the whole row was wrapped in one quoted field
 - blank lines
 
-Anything else, such as a title line above the header or a `;` delimiter, is not handled. The header check will fail.
+Other separators and number styles are declared on the row:
+
+- `delimiter` is `;`, `|`, or `tab` when the file is not comma-separated. Blank means `,`.
+- `decimal_mark=,` reads `1.234,5` and `1 234,5` as 1234.5, as French- and Portuguese-language publishers write them. Under it, a value such as `1.5` whose dot is not a thousands group is quarantined as `value is not numeric`, not read as 15.
+- A gzip file (`.csv.gz`) is unpacked first, including one inside a ZIP.
+
+A title line above the header is not handled. The header check will fail.
 
 Example: `harveststat_africa_1`, `ng_wfp_prices` in [`sources.example.csv`](manifests/sources.example.csv).
 
-### Excel workbook (`xlsx` or `xls`)
+### Spreadsheet (`xlsx`, `xls`, `xlsb`, or `ods`)
 
 - `sheet_name` picks the sheet. Blank uses the first sheet. The name must match exactly, including spaces.
 - `header_row` is the zero-based row of the header. Use it when the publisher puts a title or notes above the table. If the header is on Excel row 4, set `header_row=3`.
@@ -230,7 +250,7 @@ Example: `harveststat_africa_1`, `ng_wfp_prices` in [`sources.example.csv`](mani
 
 If the endpoint returns a ZIP, the engine opens it.
 
-- With one CSV or workbook inside, leave `file_name` blank, or name the file to be explicit.
+- With one CSV, `.csv.gz`, or workbook inside, leave `file_name` blank, or name the file to be explicit.
 - With several, set `file_name` to the file's name inside the ZIP. Use the bare name without folders: `GROW-Africa_Regional.xlsx`, not `data/GROW-Africa_Regional.xlsx`. The name must be unique in the archive.
 
 Example: the nine `grow_africa_*` rows share one Zenodo ZIP (`.../files/GROW-Africa-Database.zip/content`) and each picks a workbook with `file_name`.
@@ -279,7 +299,7 @@ Example: the ERA rows keep only `Outcode=101` (crop yield outcomes), and use `Me
 
 - `contract_type=json_api`
 - `records_path` is the dot path to the list of records in the response, such as `data` or `result.items`. Blank means the response itself is the list. A single object at that path is treated as one record.
-- `column_names` lists the keys to keep. Each record must be a flat object. A nested value is stored as its text form.
+- `column_names` lists the keys to keep. A key inside a nested object is a dot path: an ArcGIS feature service returns `features[].attributes`, so set `records_path=features` and list `country=attributes.country,price=attributes.price,...`. A GeoJSON file is the same with `properties`. A key whose own name contains a dot is matched first. A value that is itself an object or list is stored as its text form.
 - `query` adds fixed query parameters, written as `key=value&key2=value2`. Example: `DATABASE_ID=WB_HCP`.
 
 Pagination:
@@ -294,6 +314,17 @@ Pagination:
 Page mode starts at 1 and adds 1 each time. Offset mode starts at 0 and adds the number of records returned. Both stop when a page is empty or has fewer records than `page_size`. A next link must be HTTPS on the same host as `endpoint`.
 
 Examples: `wb_rtfp` (offset with `limit`) and `wb_hcp` (offset with `skip` and `top`) in [`sources.example.csv`](manifests/sources.example.csv).
+
+### SDMX statistics API
+
+FAO, the IMF, ILO, AfDB, UNdata, and many national statistics offices publish SDMX. Ask for the data as CSV and treat it as a `csv` row:
+
+- `contract_type=csv`
+- `accept=application/vnd.sdmx.data+csv;version=1.0.0`, or the CSV media type the API documents. The engine sends it as the `Accept` header.
+- `endpoint` is the data query URL, such as `https://<api>/rest/data/<dataflow>/<key>`. `query` adds fixed parameters such as `startPeriod=2015`.
+- Copy the CSV header (`DATAFLOW,REF_AREA,FREQ,TIME_PERIOD,OBS_VALUE,...`) into `column_names`. `REF_AREA` is usually an ISO3 or ISO2 code. `OBS_VALUE` is the value.
+
+Some APIs take the format as a query parameter instead, such as `format=csv`. Use `query` for those and leave `accept` blank.
 
 ### HTML table
 
@@ -332,7 +363,7 @@ If a publisher needs a different reshaping, raise it with data-eng rather than b
 ### Identity and ownership
 
 **`source_id`** (required)
-Stable ID for this source. Letters, digits, `.`, `_`, and `-`, starting with a letter or digit. Must be unique across every manifest file. If two rows share an ID, both fail. Once a source has been attempted under an ID, that ID is never fetched again ([section 9](#9-re-running-a-source)).
+Stable ID for this source. Letters, digits, `.`, `_`, and `-`, starting with a letter or digit. Must be unique across every manifest file. If two rows share an ID, both fail. Load history is kept by this ID, so a loaded ID is not fetched again unless `refresh_days` says so ([section 9](#9-re-running-a-source)).
 Convention: `<publisher>_<dataset>_<measure>`, for example `grow_africa_point_yield`.
 
 **`source_name`** (required)
@@ -351,21 +382,27 @@ The BigQuery table for both landing and raw. Letters, digits, and `_`, starting 
 The person or team who answers for this source. It appears in the weekly report and failure email.
 
 **`enabled`** (required)
-`true`, `1`, or `yes` runs the row. `false`, `0`, or `no` skips it without validating it. Any other value, including blank, is treated as enabled and validated. Use `false` for drafts.
+`true`, `1`, or `yes` runs the row. `false`, `0`, or `no` skips it without validating it. Any other value, including blank, fails validation. Use `false` for drafts and research rows that are not ready.
 
 ### Contract and columns
 
 **`contract_type`** (required)
-`csv`, `xlsx`, `xls`, `json_api`, or `html_table`. See [step 3](#step-3-choose-the-contract).
+`csv`, `xlsx`, `xls`, `xlsb`, `ods`, `json_api`, or `html_table`. See [step 3](#step-3-choose-the-contract).
 
 **`column_names`** (required)
-Every column in the file, comma-separated, in file order, spelled exactly as published. No duplicates.
+Every column in the file, comma-separated, in file order, spelled exactly as published. No duplicates. An entry may be `name=publisher column` to land the column under another name, and for `json_api` the publisher column may be a dot path into a nested object. A landing name may not contain any of ``!"$()*,./;?@[\]^`{}~``.
 
 **`column_count`** (required)
 The number of names in `column_names`, at least 1.
 
-**`file_name`** (optional, `csv`/`xlsx`/`xls` only)
+**`file_name`** (optional, `csv`/`xlsx`/`xls`/`xlsb`/`ods` only)
 A single file name with no `/` or `\`. Picks the file from a Dataverse or Zenodo record, or the member from a ZIP.
+
+**`delimiter`** (optional, `csv` only)
+`;`, `|`, or `tab`. Blank means `,`.
+
+**`accept`** (optional)
+Sent as the `Accept` request header, for an API that returns several formats. It follows a redirect to another host, unlike credentials.
 
 **`row_filter`** (optional)
 `Column=value` clauses joined by `&`, with `|` between alternative values. See [One file, a subset of rows](#one-file-a-subset-of-rows).
@@ -439,8 +476,8 @@ The country to use when the file has no country column, or when the cell is empt
 **`geo_code_standard`** (required)
 How to read the country value:
 - `iso3`: an exact three-letter code such as `KEN`.
-- `iso2`: a two-letter code such as `KE`.
-- `name`: a country name. Matching ignores case, accents, and extra spaces, and also accepts ISO codes and the aliases in [`country_names.yaml`](src/ingestion_engine/country_names.yaml), such as `Ivory Coast` and `DRC`.
+- `iso2`: a two-letter code such as `KE`. Names do not resolve under `iso2`.
+- `name`: a country name. Matching ignores case, accents, apostrophes, and extra spaces, and also accepts ISO codes and the aliases in [`country_names.yaml`](src/ingestion_engine/country_names.yaml), such as `Ivory Coast` and `DRC`.
 
 If a publisher spells a country in a way that does not resolve, add the spelling as an alias in `country_names.yaml` in the same PR. Do not change the publisher's data.
 
@@ -478,10 +515,16 @@ Any other value is a Python `strptime` format, and it must match the whole cell.
 **`freshness_days`** (optional)
 If set, observations older than this many days before the run date are quarantined as `stale observation`. Leave blank for historical datasets.
 
+**`refresh_days`** (optional)
+How often to fetch a source again after it has loaded. A run fetches it when at least this many calendar days have passed since the run that last loaded it. The cron is weekly, so `7` means every run and `30` means about once a month. `0` fetches it on every run. Leave it blank for a file that does not change, such as a versioned release; it loads once and then shows as `CURRENT`. A source whose last attempt failed is fetched on the next run whatever this says. Set it for feeds the publisher keeps adding to, and pair it with `replace_table` when the publisher republishes the full history.
+
 ### Value and unit
 
 **`value_column`** (required)
-The numeric value. Commas used as thousands separators are removed. Anything else that is not a number, such as `n/a`, `-`, or `<0.1`, is quarantined as `value is not numeric`.
+The numeric value. Commas used as thousands separators are removed, unless `decimal_mark=,`. Anything else that is not a number, such as `n/a`, `-`, or `<0.1`, is quarantined as `value is not numeric`.
+
+**`decimal_mark`** (optional)
+`,` when the publisher writes `12,5` for twelve and a half. It applies to `value_column` and to point coordinates. Blank means `.`.
 
 **`unit_column`** (optional)
 A column whose cell is the unit. If set, it is used instead of `unit_constant`.
@@ -556,9 +599,7 @@ Copy-Item "ingestion_engine/manifests/my_source.csv" scratch/manifests/
 ingestion-engine --manifests scratch/manifests --out scratch/out
 ```
 
-Without `--execute`, nothing is written to BigQuery and nothing is recorded as attempted. You can run it as often as you like. Do not commit `scratch/`.
-
-The run reads the report table in BigQuery to find sources that were already attempted. A `source_id` that is already there prints `ALREADY_DONE` and is not fetched, even locally. To test a changed row, see [section 9](#9-re-running-a-source).
+Without `--execute`, nothing is read from or written to BigQuery, so every enabled row in the folder is fetched, whatever earlier uploaded runs did. You can run it as often as you like. Do not commit `scratch/`.
 
 **Look at the output:**
 
@@ -568,7 +609,7 @@ The run reads the report table in BigQuery to find sources that were already att
 - `scratch/out/quarantine/<source_id>/<run_id>.jsonl` holds rejected rows, each with `_quarantine_reason`.
 - `scratch/out/reports/ingest_sources.csv` has one line per source with counts and quarantine reasons.
 
-**Upload only when it is right.** `--execute` loads `landing_dev` and `raw_dev` and records the source as attempted. In normal practice the weekly cron does this, so you do not need to run `--execute` yourself. Production datasets (`landing`, `raw`) are refused unless `INGEST_ALLOW_PROD=1`.
+**Upload only when it is right.** `--execute` loads `landing_dev` and `raw_dev` and records the attempt in `ingest_sources`. In normal practice the weekly cron does this, so you do not need to run `--execute` yourself. Production datasets (`landing`, `raw`) are refused unless `INGEST_ALLOW_PROD=1`.
 
 ---
 
@@ -579,12 +620,14 @@ The run reads the report table in BigQuery to find sources that were already att
 | Status | Meaning | Fails the job? |
 | --- | --- | --- |
 | `LOADED` | every landed row reached raw | no |
-| `PARTIAL` | some rows reached raw, some were quarantined | yes |
-| `FAILED` | the row was invalid, the fetch or parse failed, or no row reached raw | yes |
+| `PARTIAL` | some rows reached raw, some were quarantined | no |
+| `FAILED` | the row or its manifest file was invalid, the fetch, parse, or upload failed, or no row reached raw | yes |
+| `CURRENT` | loaded in an earlier run and not due again under `refresh_days` | no |
 | `SKIPPED` | `enabled=false` | no |
-| `ALREADY_DONE` | attempted in an earlier run, so not fetched (console only) | no |
 
-The job exits non-zero when any enabled source is `FAILED` or `PARTIAL`. Rows outside Africa do not make a source partial.
+The job exits non-zero when any enabled source is `FAILED`. Rows outside Africa do not make a source partial. When a whole manifest file fails, for example because a required column is missing from its header, the report names the file instead of a source.
+
+The success rate in the report is the share of fetched sources whose rows reached raw (`LOADED` or `PARTIAL`). It is `n/a` when no source was due. Each card's error category is `DATA_QUALITY` for a partial source, and for a failed one it follows the stage: `MANIFEST`, `AUTH`, `NETWORK`, `PUBLISH`, `SCHEMA` for a header or parse failure, or `DATA_QUALITY` when every row was quarantined.
 
 ### Quarantine reasons
 
@@ -611,23 +654,29 @@ After every run, `out/reports/` has `ingest_runs.csv`, `ingest_sources.csv`, `in
 
 ## 9. Re-running a source
 
-A source is fetched once. After an uploaded run records a `source_id` as `LOADED`, `PARTIAL`, or `FAILED` in `ingest_sources`, later runs skip it. This includes a row that failed validation in an uploaded run.
+Each uploaded run reads `ingest_sources` and fetches a source when:
 
-To fetch a source again, for example after fixing a row or when the publisher releases a new version, change its `source_id` in place rather than adding a second row. A version suffix works well: `harveststat_africa_1` becomes `harveststat_africa_1_v2`. Keep `table_name` the same if the new data should replace the old table.
+- it has never been recorded as `LOADED` or `PARTIAL`,
+- its last attempt `FAILED`, including a row that failed validation, or
+- `refresh_days` is set and at least that many days have passed since the run that last loaded it.
 
-Because a failed upload marks the ID as attempted, test locally first ([section 7](#7-testing-a-manifest-locally)) so the first uploaded attempt succeeds.
+Everything else is `CURRENT` and is not fetched. A fixed row is picked up on the next run on its own, because its failed attempt makes it due.
+
+A run that dies mid-source leaves that source `STARTED`. The next run records it as `FAILED` ("stopped before finish") without fetching it, so one source that crashes the service does not take down every run. The run after that fetches it again.
+
+To load a version of a dataset whose URL or content changed without a refresh cadence, for example a new versioned release, change its `source_id` in place rather than adding a second row. A version suffix works well: `harveststat_africa_1` becomes `harveststat_africa_1_v2`. Keep `table_name` the same if the new data should replace the old table.
 
 ---
 
 ## 10. Pitfalls
 
-**Column names BigQuery rejects.** Publisher column names go to BigQuery unchanged. BigQuery does not allow some characters in column names, including `.`, `,`, `(`, `)`, `/`, `$`, `?`, `@`, `[`, `]`, and `!`. A source whose header uses them parses and passes locally, then fails at upload. The upload step stops at that table, so tables after it and the report tables are not written either. Check headers before enabling. The ERA headers (`Site.Key`, `ISO.3166.1.alpha.3`, ...) have this problem.
+**Column names BigQuery rejects.** BigQuery does not allow any of ``!"$()*,./;?@[\]^`{}~`` in a column name. A row that would land such a name fails validation. Rename the column in `column_names` as `name=publisher column`, for example `Site_Key=Site.Key` or `Wheat_tonnes_per_hectare=Wheat (tonnes per hectare)`, and use the new name in every other field. The ERA and OWID rows do this.
 
 **Header drift.** Publishers add, rename, or reorder columns between releases. The source then fails with `header mismatch`, and the error shows the expected and actual headers. Update `column_names` and `column_count`, and re-run under a new `source_id`.
 
 **A natural key that is too short.** Duplicates are dropped silently, with no count in the report. Check the key against the file.
 
-**Two rows, one table.** Give each row its own `table_name`. Rows sharing a table with `replace_table` overwrite each other.
+**Two rows, one table.** Give each row its own `table_name`. Two enabled rows with the same `table_name`, in the same file or in different files, both fail validation, because they would overwrite or mix each other's data.
 
 **Non-African rows disappear.** A row whose subject country resolves to a non-African country is not written anywhere. It is only counted in `rows_outside_africa`. That is expected for global files, but a high count on an Africa-only file means `geo_country_column` or `geo_code_standard` is wrong.
 
@@ -647,15 +696,21 @@ These are the validation errors for a manifest row. They appear in the console a
 | --- | --- |
 | `missing columns: ...` | the manifest header is missing one of the 23 required columns |
 | `source_id must start with a letter or digit ...` | use only letters, digits, `.`, `_`, `-` |
-| `duplicate source_id across manifests` | the ID is used in more than one row or file; rename one |
+| `duplicate source_id across manifests` | the ID is used by more than one enabled row, in any file; rename one. Both copies fail, including a row that loaded before |
+| `duplicate table_name across manifests` | two enabled rows write the same table; give one a new `table_name` |
+| `enabled must be true or false` | set `enabled`; use `false` for drafts |
 | `source_name and owner are required` | fill both |
 | `source_url and endpoint must be https URLs` | both must start with `https://` |
 | `table_name is not a legal BigQuery table name` | letters, digits, `_`; start with a letter or `_` |
 | `unknown indicator class` | use a code from the indicator class table |
-| `contract_type must be ...` | use one of the five contracts |
+| `contract_type must be ...` | use one of the seven contracts |
 | `file_name must be a single file name` | remove folders from `file_name` |
-| `file_name is only used with csv, xlsx, or xls` | clear `file_name` for JSON or HTML |
+| `file_name is only used with csv, xlsx, xls, xlsb, or ods` | clear `file_name` for JSON or HTML |
+| `delimiter must be ...` / `delimiter is only used with csv` | use `;`, `\|`, or `tab` on a `csv` row, or clear it |
+| `decimal_mark must be blank, '.', or ','` | fix or clear it |
 | `column_count must equal the number of column_names` | recount; check the quoting around `column_names` |
+| `column_names entries are name or name=publisher column` | an entry has an empty side of `=` |
+| `BigQuery cannot name a column ...; rename it as name=publisher column` | rename each listed column; see [Pitfalls](#10-pitfalls) |
 | `column_names contains a duplicate` | the publisher repeats a header, so this source cannot be described as is; raise it with data-eng |
 | `row_filter must be Column=value pairs separated by &` | fix the filter syntax |
 | `row_filter columns not in column_names: ...` | the filter names a column that is not in the header |
@@ -683,6 +738,7 @@ These are the validation errors for a manifest row. They appear in the console a
 | `pagination must be none, page, offset, or next_link` | fix the value |
 | `page and offset pagination need page_param and a positive page_size` | set both |
 | `freshness_days must be a non-negative integer` | fix or clear it |
+| `refresh_days must be a non-negative integer` | fix or clear it |
 | `header_row must be a non-negative integer` | fix or clear it |
 | `html_table_selector must be the zero-based table index` | use a number |
 | `query must be key=value pairs separated by &` | fix the syntax |
@@ -698,7 +754,8 @@ Errors after validation, at the fetch or shape stage:
 | `file_name was not in the dataset` / `was not in the zip` | copy the exact name from the API response or the ZIP listing |
 | `file_name matched more than one file` | the name is not unique; pick a different endpoint |
 | `zip contains multiple files; set file_name` | set `file_name` |
-| `zip has no csv or xlsx or xls` | the ZIP holds another format, which is not supported |
+| `zip has no csv, xlsx, xls, xlsb, or ods` | the ZIP holds another format, which is not supported |
+| `response is not a readable gzip file` | the file starts like gzip but is damaged or cut short |
 | `header_row is past the end of the sheet` | wrong sheet or row number |
 | `sheet_name was not in the workbook` | copy the sheet name exactly |
 | `response is not JSON` / `JSON path is missing: ...` | check the endpoint and `records_path` |
@@ -716,7 +773,7 @@ Copy this into the PR description.
 - [ ] `endpoint` downloads the data in a browser or with `curl`, over HTTPS, under 512 MB.
 - [ ] `column_names` was copied from the actual file, and `column_count` matches.
 - [ ] No column name contains `.`, `,`, `(`, `)`, `/`, or another character BigQuery rejects.
-- [ ] `source_id` and `table_name` are new and unique.
+- [ ] `ingestion-engine --check` passes, so `source_id` and `table_name` are unique across every manifest.
 - [ ] Each measure in a multi-measure file has its own row and table.
 - [ ] `natural_key` has no duplicates in the file.
 - [ ] The country column and `geo_code_standard` resolve. A local run shows few or no `unresolved country` rows.
