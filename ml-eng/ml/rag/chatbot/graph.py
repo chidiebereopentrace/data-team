@@ -3,16 +3,20 @@ RAG graph: query → decompose → (Qdrant ‖ BQ reason+retrieve) → merge →
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from concurrent.futures import wait
 from dataclasses import dataclass, field, replace
+from datetime import date
 from typing import Any, Literal, cast
 
+from ml.rag.chatbot import rarr
 from ml.rag.chatbot.acf_scoring import (
     ACFState,
     acf_result_to_state,
@@ -4190,10 +4194,117 @@ def run_rag(query: str, **kwargs: Any) -> dict[str, Any]:
         tags=extra_tags,
     )
     timeout = stage_budget_seconds("RAG_REQUEST_TIMEOUT_S", default_s=120.0)
-    with request_budget(timeout):
-        result = graph.invoke(initial, config=cfg)
-    out = dict(result)
+    if _answer_mode(kwargs) == "rarr":
+        out = _run_rarr(query, graph, initial, cfg, timeout, kwargs)
+    else:
+        with request_budget(timeout):
+            result = graph.invoke(initial, config=cfg)
+        out = dict(result)
     out.setdefault("citations", [])
     out.setdefault("artifacts", [])
     out["usage"] = get_llm_usage().to_dict()
+    return out
+
+
+def _answer_mode(kwargs: dict[str, Any]) -> str:
+    """Caller's answer_mode wins; otherwise RAG_ANSWER_MODE (evidence or rarr, default evidence)."""
+    raw = kwargs.get("answer_mode") or os.environ.get("RAG_ANSWER_MODE", "")
+    return "rarr" if str(raw).strip().lower() == "rarr" else "evidence"
+
+
+_RARR_MIN_REVISE_S = 1.0
+
+
+def _timed_draft(**kw: Any) -> tuple[str, float]:
+    started = time.perf_counter()
+    text = rarr.draft_answer(**kw)
+    return text, round((time.perf_counter() - started) * 1000.0, 1)
+
+
+def _draft_and_retrieve(
+    query: str,
+    graph: Any,
+    initial: RAGGraphState,
+    cfg: Any,
+    kwargs: dict[str, Any],
+    reference_date: date,
+    stages: dict[str, Any],
+) -> dict[str, Any]:
+    """Run the draft beside the unchanged graph. Fills stages; returns the graph state."""
+    recent = kwargs.get("recent_turns")
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rarr-draft")
+    try:
+        pending = pool.submit(
+            contextvars.copy_context().run,
+            _timed_draft,
+            query=query,
+            plan_type=kwargs.get("plan_type"),
+            conversation_summary=str(kwargs.get("conversation_summary") or ""),
+            recent_turns=recent if isinstance(recent, list) else None,
+            reference_date=reference_date,
+        )
+        started = time.perf_counter()
+        out = dict(graph.invoke(initial, config=cfg))
+        stages["graph_ms"] = round((time.perf_counter() - started) * 1000.0, 1)
+        # Meta, product, social and language-help routes answer without retrieval and keep
+        # their answer; the unused draft finishes in the background. A clarify route would
+        # leave the user without an answer, so RARR answers it from the draft instead.
+        if not out.get("answer_outcome") and out.get("task_mode") != "clarify":
+            stages["skip"] = "route did not retrieve evidence"
+            return out
+        try:
+            stages["draft"], stages["draft_ms"] = pending.result(timeout=remaining_seconds(None))
+        except Exception:
+            logger.exception("rarr draft failed or ran out of time")
+        return out
+    finally:
+        pool.shutdown(wait=False)
+
+
+def _run_rarr(
+    query: str,
+    graph: Any,
+    initial: RAGGraphState,
+    cfg: Any,
+    timeout: float,
+    kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Draft beside the unchanged graph, then revise the draft against the graph's evidence.
+
+    One budget covers the whole request, so draft, graph and revision together never exceed
+    RAG_REQUEST_TIMEOUT_S. The draft and graph run with RAG_RARR_REVISE_RESERVE_S held back,
+    so the revision keeps that time however long retrieval takes.
+    """
+    reference_date = date.fromisoformat(str(initial["reference_date"]))
+    stages: dict[str, Any] = {"draft": "", "draft_ms": None, "graph_ms": None}
+    reserve = min(stage_budget_seconds("RAG_RARR_REVISE_RESERVE_S", default_s=40.0), timeout / 2)
+    with request_budget(timeout):
+        with request_budget(None, reserve_s=reserve):
+            out = _draft_and_retrieve(query, graph, initial, cfg, kwargs, reference_date, stages)
+        skip = stages.pop("skip", "")
+        if not skip and not stages["draft"]:
+            skip = "draft failed, empty, or out of time"
+        left = remaining_seconds(None)
+        if not skip and left is not None and left < _RARR_MIN_REVISE_S:
+            skip = f"only {left:.1f}s left for revision"
+        if skip:
+            out["rarr"] = {**stages, "status": "skipped", "reason": skip}
+            return out
+        with observed_span("rarr_revise"):
+            try:
+                revision = rarr.revise_with_evidence(
+                    query,
+                    stages["draft"],
+                    out,
+                    plan_type=kwargs.get("plan_type"),
+                    reference_date=reference_date,
+                )
+            except Exception as exc:
+                logger.exception("rarr revise failed")
+                out["rarr"] = {**stages, "status": "skipped", "reason": f"revise failed: {exc}"}
+                return out
+    if revision is None:
+        out["rarr"] = {**stages, "status": "skipped", "reason": "reviser returned nothing after retries; evidence answer kept"}
+        return out
+    rarr.apply_revision(out, stages, revision)
     return out
