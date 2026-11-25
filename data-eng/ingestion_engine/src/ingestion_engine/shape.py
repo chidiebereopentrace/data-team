@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import date, datetime, timedelta
 
@@ -13,14 +14,25 @@ def _blank(value: str) -> bool:
     return not value or not value.strip()
 
 
-def _number(value: str) -> float | None:
-    text = value.strip().replace(",", "")
+_COMMA_DECIMAL = re.compile(r"[-+]?(\d{1,3}(\.\d{3})+|\d+)(,\d+)?")
+
+
+def _number(value: str, decimal_mark: str = ".") -> float | None:
+    if decimal_mark == ",":
+        # 1.234,5 and 1 234,5 are 1234.5. A dot that is not a thousands group, as in 1.5, is not read as a number.
+        text = re.sub(r"\s", "", value)
+        if not _COMMA_DECIMAL.fullmatch(text):
+            return None
+        text = text.replace(".", "").replace(",", ".")
+    else:
+        text = value.strip().replace(",", "")
     if not text:
         return None
     try:
-        return float(text)
+        number = float(text)
     except ValueError:
         return None
+    return number if math.isfinite(number) else None
 
 
 def _observation(value: str, fmt: str) -> date | None:
@@ -84,11 +96,11 @@ def prepare_row(
         return None, "missing market"
     latitude = longitude = None
     if source.geo_grain == "point":
-        latitude = _number(record.get(source.geo_lat_column, ""))
-        longitude = _number(record.get(source.geo_lon_column, ""))
+        latitude = _number(record.get(source.geo_lat_column, ""), source.decimal_mark)
+        longitude = _number(record.get(source.geo_lon_column, ""), source.decimal_mark)
         if latitude is None or longitude is None:
             return None, "unparsed coordinates"
-    value = _number(record.get(source.value_column, ""))
+    value = _number(record.get(source.value_column, ""), source.decimal_mark)
     if value is None:
         return None, "value is not numeric"
     for column in source.class_columns:

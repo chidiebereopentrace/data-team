@@ -12,16 +12,21 @@ DEFAULT_COUNTRY_FILE = Path(__file__).with_name("country_names.yaml")
 AFRICA_FILE = Path(__file__).with_name("africa_iso3.txt")
 
 
+APOSTROPHES = str.maketrans("", "", "'‘’ʼ`´")
+
+
 def norm_key(value: str) -> str:
+    """Fold case, accents, apostrophes, and spacing so publisher spellings meet."""
     text = unicodedata.normalize("NFKD", value)
     text = "".join(char for char in text if not unicodedata.combining(char))
-    return " ".join(text.casefold().split())
+    return " ".join(text.translate(APOSTROPHES).casefold().split())
 
 
 @dataclass
 class Countries:
     to_iso3: dict[str, str] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
+    iso2: dict[str, str] = field(default_factory=dict)
 
     def resolve(self, value: str, standard: str) -> str | None:
         key = norm_key(value)
@@ -33,7 +38,7 @@ class Countries:
                 return code
             return None
         if standard == "iso2":
-            return self.to_iso3.get(key)
+            return self.iso2.get(value.strip().upper())
         if standard == "name":
             return self.to_iso3.get(key)
         return None
@@ -58,13 +63,16 @@ def load_countries(path: Path | None = None) -> Countries:
     data = yaml.safe_load(file.read_text(encoding="utf-8")) or {}
     countries = Countries()
     for row in data.get("countries") or []:
-        name = str(row["name"]).strip()
-        iso2 = str(row["iso2"]).strip().upper()
-        iso3 = str(row["iso3"]).strip().upper()
+        aliases = row.get("aliases") or []
+        values = [row["name"], row["iso2"], row["iso3"], *aliases]
+        if any(not isinstance(value, str) for value in values):
+            raise ValueError(f"country entry must be text; quote values such as \"NO\": {row}")
+        name = row["name"].strip()
+        iso2 = row["iso2"].strip().upper()
+        iso3 = row["iso3"].strip().upper()
         countries.names[iso3] = name
-        labels = [name, iso2, iso3, *[str(alias) for alias in row.get("aliases") or []]]
-        for label in labels:
-            if not str(label).strip():
-                continue
-            countries.to_iso3[norm_key(label)] = iso3
+        countries.iso2[iso2] = iso3
+        for label in (name, iso2, iso3, *aliases):
+            if label.strip():
+                countries.to_iso3[norm_key(label)] = iso3
     return countries

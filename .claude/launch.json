@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rag-streamlit",
+      "runtimeExecutable": "C:/Users/chidi/projects/openTrace/data-team/ml-eng/venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-X",
+        "utf8",
+        "-c",
+        "import sys; sys.path.insert(0, r'C:/Users/chidi/projects/openTrace/data-team/ml-eng'); sys.argv = ['streamlit', 'run', r'C:/Users/chidi/projects/openTrace/data-team/ml-eng/ml/rag/chatbot/streamlit_app.py', '--server.port', '8510', '--server.headless', 'true']; from streamlit.web.cli import main; main()"
+      ],
+      "port": 8510,
+      "autoPort": false
+    }
+  ]
+}

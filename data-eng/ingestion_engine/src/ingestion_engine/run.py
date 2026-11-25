@@ -7,11 +7,10 @@ import hashlib
 import json
 import os
 import uuid
-from collections import defaultdict
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Callable
 
 from ingestion_engine.countries import Countries, load_africa, load_countries
 from ingestion_engine.fetch import AuthError, FetchError, default_get, iter_pages
@@ -21,6 +20,56 @@ from ingestion_engine.shape import prepare_row, subject_iso3
 
 Get = Callable[[str, dict[str, str], dict[str, str]], bytes]
 Clock = Callable[[], datetime]
+RUN_ID_TIME = "%Y%m%dT%H%M%SZ"
+
+
+@dataclass(frozen=True)
+class Cursor:
+    """What earlier uploaded runs recorded in ingest_sources.
+
+    `loaded` holds the start of the latest run that loaded or partly loaded each source.
+    `stopped` holds sources whose latest attempt was left STARTED by a run that died.
+    """
+
+    loaded: dict[str, datetime] = field(default_factory=dict)
+    stopped: frozenset[str] = frozenset()
+
+
+def run_time(run_id: str) -> datetime | None:
+    """Return the UTC start encoded at the front of a run id."""
+    try:
+        return datetime.strptime(run_id[:16], RUN_ID_TIME).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def read_cursor(attempts: Iterable[tuple[str, str, str]]) -> Cursor:
+    """Build the cursor from (source_id, status, run_id) rows."""
+    loaded: dict[str, datetime] = {}
+    latest: dict[str, tuple[str, bool]] = {}
+    for source_id, status, run_id in attempts:
+        if not source_id or not run_id:
+            continue
+        finished = status != "STARTED"
+        if status in {"LOADED", "PARTIAL"}:
+            when = run_time(run_id)
+            if when is not None and (source_id not in loaded or when > loaded[source_id]):
+                loaded[source_id] = when
+        prior = latest.get(source_id)
+        if prior is None or run_id > prior[0] or (run_id == prior[0] and finished):
+            latest[source_id] = (run_id, finished)
+    stopped = frozenset(source_id for source_id, (_run, finished) in latest.items() if not finished)
+    return Cursor(loaded=loaded, stopped=stopped)
+
+
+def is_due(source: Source, cursor: Cursor, today: date) -> bool:
+    """Fetch a source that never loaded, whose last attempt failed, or whose refresh has come round."""
+    last = cursor.loaded.get(source.source_id)
+    if last is None:
+        return True
+    if source.refresh_days is None:
+        return False
+    return (today - last.date()).days >= source.refresh_days
 
 
 @dataclass
@@ -43,18 +92,16 @@ class SourceResult:
     rows_quarantined: int = 0
     rows_outside_africa: int = 0
     quarantine_reasons: dict[str, int] = field(default_factory=dict)
-    good: list[dict[str, object]] = field(default_factory=list)
-    quarantine: list[dict[str, object]] = field(default_factory=list)
     load_mode: str = ""
     coverage: dict[tuple[str, str, str, int], int] = field(default_factory=dict)
+    last_loaded_at: str = ""
 
 
 Begin = Callable[[str, Source], None]
 Finish = Callable[[str, SourceResult], None]
 
 
-def _halted(source: Source) -> SourceResult:
-    """A source left STARTED by a dead run. It is not fetched again."""
+def _from_source(source: Source, status: str, failure_stage: str, error: str) -> SourceResult:
     return SourceResult(
         manifest_file=source.manifest_file,
         source_id=source.source_id,
@@ -67,11 +114,16 @@ def _halted(source: Source) -> SourceResult:
         auth_required=source.auth_required,
         auth_type=source.auth_type,
         owner=source.owner,
-        status="FAILED",
-        failure_stage="fetch",
-        error="stopped before finish",
+        status=status,
+        failure_stage=failure_stage,
+        error=error,
         load_mode=source.load_mode,
     )
+
+
+def _halted(source: Source) -> SourceResult:
+    """A source left STARTED by a dead run. It is skipped once, then retried on the next run."""
+    return _from_source(source, "FAILED", "fetch", "stopped before finish")
 
 
 def _from_problem(problem: ManifestProblem, status: str) -> SourceResult:
@@ -96,18 +148,6 @@ def _from_problem(problem: ManifestProblem, status: str) -> SourceResult:
 def _hash(row: dict[str, object], keys: tuple[str, ...]) -> str:
     parts = [f"{key}={row.get(key, '')}" for key in keys]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
-
-
-def _dedupe(records: list[dict[str, str]], keys: tuple[str, ...]) -> list[dict[str, str]]:
-    seen: set[tuple[str, ...]] = set()
-    unique: list[dict[str, str]] = []
-    for record in records:
-        identity = tuple(record.get(key, "") for key in keys)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        unique.append(record)
-    return unique
 
 
 def _lineage(
@@ -148,23 +188,7 @@ def _process(
     manifest_sha: str,
     out_dir: Path,
 ) -> SourceResult:
-    result = SourceResult(
-        manifest_file=source.manifest_file,
-        source_id=source.source_id,
-        source_name=source.source_name,
-        source_url=source.source_url,
-        endpoint=source.endpoint,
-        table_name=source.table_name,
-        indicator_class=source.indicator_class,
-        contract_type=source.contract_type,
-        auth_required=source.auth_required,
-        auth_type=source.auth_type,
-        owner=source.owner,
-        status="FAILED",
-        failure_stage="fetch",
-        error="",
-        load_mode=source.load_mode,
-    )
+    result = _from_source(source, "FAILED", "fetch", "")
     print(f"fetching\t{source.source_id}", flush=True)
     seen: set[tuple[str, ...]] = set()
     raw_digest = hashlib.sha256()
@@ -291,13 +315,6 @@ def _manifest_sha(directory: Path) -> str:
     return digest.hexdigest()
 
 
-def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
 def _reason_text(reasons: dict[str, int]) -> str:
     return "; ".join(f"{reason}={count}" for reason, count in sorted(reasons.items()))
 
@@ -311,8 +328,9 @@ FAILURE_FIELDS = [
     "error", "rows_loaded", "rows_quarantined", "rows_outside_africa", "quarantine_reasons",
 ]
 SOURCE_FIELDS = [
-    "run_id", "source_id", "source_name", "table_name", "indicator_class", "contract_type", "owner", "status",
-    "failure_stage", "rows_loaded", "rows_quarantined", "rows_outside_africa", "quarantine_reasons", "error",
+    "run_id", "manifest_file", "source_id", "source_name", "table_name", "indicator_class", "contract_type",
+    "owner", "status", "failure_stage", "rows_loaded", "rows_quarantined", "rows_outside_africa",
+    "quarantine_reasons", "error", "last_loaded_at",
 ]
 
 
@@ -397,6 +415,7 @@ def source_row(result: SourceResult, run_id: str) -> dict[str, object]:
     """One ingest_sources row for a finished source."""
     return {
         "run_id": run_id,
+        "manifest_file": result.manifest_file,
         "source_id": result.source_id,
         "source_name": result.source_name,
         "table_name": result.table_name,
@@ -417,6 +436,7 @@ def started_row(source: Source, run_id: str) -> dict[str, object]:
     """One ingest_sources row written before a source is fetched."""
     return {
         "run_id": run_id,
+        "manifest_file": source.manifest_file,
         "source_id": source.source_id,
         "source_name": source.source_name,
         "table_name": source.table_name,
@@ -434,13 +454,17 @@ def started_row(source: Source, run_id: str) -> dict[str, object]:
 
 
 def _sources(results: list[SourceResult], run_id: str) -> list[dict[str, object]]:
-    return [source_row(result, run_id) for result in results]
+    """The local report rows. They add when each source last loaded."""
+    return [source_row(result, run_id) | {"last_loaded_at": result.last_loaded_at} for result in results]
 
 
 def _note(result: SourceResult) -> None:
+    detail = result.error
+    if result.status == "CURRENT":
+        detail = f"last loaded {result.last_loaded_at[:10]}"
     print(
-        f"{result.source_id}\t{result.status}\tloaded={result.rows_loaded}\t"
-        f"quarantined={result.rows_quarantined}\t{result.error}",
+        f"{result.source_id or result.manifest_file}\t{result.status}\tloaded={result.rows_loaded}\t"
+        f"quarantined={result.rows_quarantined}\t{detail}",
         flush=True,
     )
 
@@ -465,48 +489,56 @@ def run_manifests(
     countries: Countries | None = None,
     clock: Clock | None = None,
     africa: frozenset[str] | None = None,
-    done: set[str] | None = None,
-    stopped: set[str] | None = None,
+    cursor: Cursor | None = None,
     on_begin: Begin | None = None,
     on_done: Finish | None = None,
 ) -> int:
-    """Fetch and prepare every enabled manifest row that has not been fetched before."""
+    """Fetch and prepare every enabled manifest row that is due. Exit 1 when any source failed."""
     now = (clock or (lambda: datetime.now(timezone.utc)))()
     today = now.date()
-    run_id = now.strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
+    run_id = now.strftime(RUN_ID_TIME) + "-" + uuid.uuid4().hex[:8]
     fetcher = get or default_get
     secrets = env if env is not None else dict(os.environ)
     place = countries or load_countries()
     african = africa if africa is not None else load_africa()
+    state = cursor or Cursor()
     sources, problems, skipped = load_manifests(directory)
-    done_ids = done or set()
-    stopped_ids = stopped or set()
-    already_done = [source for source in sources if source.source_id in done_ids]
-    halted = [
+
+    def last_loaded(source_id: str) -> str:
+        when = state.loaded.get(source_id)
+        return when.isoformat() if when else ""
+
+    halted = [source for source in sources if source.source_id in state.stopped]
+    current = [
         source for source in sources
-        if source.source_id in stopped_ids and source.source_id not in done_ids
+        if source.source_id not in state.stopped and not is_due(source, state, today)
     ]
-    sources = [
+    due = [
         source for source in sources
-        if source.source_id not in done_ids and source.source_id not in stopped_ids
+        if source.source_id not in state.stopped and is_due(source, state, today)
     ]
-    for source in already_done:
-        print(f"{source.source_id}\tALREADY_DONE\tloaded=0\tquarantined=0\talready ingested", flush=True)
     results = [_from_problem(item, "FAILED") for item in problems]
     results.extend(_from_problem(item, "SKIPPED") for item in skipped)
+    for source in current:
+        result = _from_source(source, "CURRENT", "", "")
+        result.last_loaded_at = last_loaded(source.source_id)
+        results.append(result)
+        _note(result)
     for source in halted:
         result = _halted(source)
+        result.last_loaded_at = last_loaded(source.source_id)
         _close(run_id, result, on_done)
         results.append(result)
         _note(result)
     manifest_sha = _manifest_sha(directory) if directory.is_dir() else ""
-    for source in sources:
+    for source in due:
         if on_begin is not None:
             try:
                 on_begin(run_id, source)
             except Exception as exc:
                 result = _halted(source)
                 result.error = str(exc)
+                result.last_loaded_at = last_loaded(source.source_id)
                 results.append(result)
                 _note(result)
                 continue
@@ -523,6 +555,10 @@ def run_manifests(
             out_dir=out_dir,
         )
         _close(run_id, result, on_done)
+        if result.status in {"LOADED", "PARTIAL"}:
+            result.last_loaded_at = now.isoformat()
+        else:
+            result.last_loaded_at = last_loaded(source.source_id)
         results.append(result)
         _note(result)
 
@@ -536,8 +572,9 @@ def run_manifests(
         "started_at": now.isoformat(),
         "ended_at": datetime.now(timezone.utc).isoformat(),
         "manifest_files": len(list(directory.glob("*.csv"))) if directory.is_dir() else 0,
-        "sources_enabled": len(sources) + len(already_done) + len(halted) + len(problems),
-        "sources_already_done": len(already_done),
+        "sources_enabled": len(sources) + len(problems),
+        "sources_current": len(current),
+        "sources_fetched": len(due),
         "sources_ingested": sum(item.rows_loaded > 0 for item in results),
         "sources_loaded": sum(item.status == "LOADED" for item in results),
         "sources_partial": sum(item.status == "PARTIAL" for item in results),
@@ -546,7 +583,7 @@ def run_manifests(
         "rows_loaded": loaded,
         "rows_quarantined": quarantined,
         "rows_outside_africa": sum(item.rows_outside_africa for item in results),
-        "status": "FAILED" if any(item.status in {"FAILED", "PARTIAL"} for item in results) else "FINISHED",
+        "status": "FAILED" if any(item.status == "FAILED" for item in results) else "FINISHED",
     }
     reports = out_dir / "reports"
     _write_csv(reports / "ingest_runs.csv", [summary])
@@ -560,22 +597,3 @@ def run_manifests(
     print(str(reports), flush=True)
     return 0 if summary["status"] == "FINISHED" else 1
 
-
-def _reload_good(out_dir: Path, results: list[SourceResult], run_id: str) -> list[SourceResult]:
-    """Attach landing rows back onto results so coverage can be counted after files are written."""
-    by_table: dict[str, list[dict[str, object]]] = defaultdict(list)
-    prepared = out_dir / "prepared"
-    if prepared.is_dir():
-        for path in prepared.glob("*/*.jsonl"):
-            rows = []
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    rows.append(json.loads(line))
-            by_table[path.parent.name].extend(rows)
-    revived: list[SourceResult] = []
-    for result in results:
-        rows = [row for row in by_table.get(result.table_name, []) if row.get("_source") == result.source_id]
-        copy = SourceResult(**{field: getattr(result, field) for field in SourceResult.__dataclass_fields__})
-        copy.good = rows
-        revived.append(copy)
-    return revived

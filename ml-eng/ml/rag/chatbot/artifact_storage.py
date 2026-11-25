@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tempfile
 import uuid
 from datetime import timedelta
@@ -10,6 +11,32 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# boto3/botocore validate region_name as a host label: letters, digits, hyphens
+# only, no leading/trailing hyphen, max 63 chars. A value pasted into Railway
+# with surrounding quotes, whitespace, or an underscore fails this and raises
+# InvalidRegionError at client construction time, before any S3 call is made.
+_VALID_REGION_RE = re.compile(r"^(?![0-9]+$)(?!-)[a-zA-Z0-9-]{1,63}(?<!-)$")
+
+
+def _sanitize_region(raw: str) -> str:
+    """Strip accidental quotes/whitespace and fall back to 'auto' on an invalid value."""
+    cleaned = raw.strip().strip("'\"")
+    if not cleaned:
+        return "auto"
+    if not _VALID_REGION_RE.match(cleaned):
+        logger.warning(
+            "artifact_storage: ignoring invalid region_name %r (must be letters/digits/hyphens); "
+            "falling back to 'auto'",
+            raw,
+        )
+        return "auto"
+    return cleaned
+
+
+def _s3_region() -> str:
+    raw = os.environ.get("AWS_DEFAULT_REGION", "").strip() or os.environ.get("AWS_REGION", "").strip()
+    return _sanitize_region(raw) if raw else "auto"
 
 _MIME_BY_EXT = {
     ".csv": "text/csv",
@@ -117,11 +144,7 @@ def _upload_s3(
     import boto3  # pyright: ignore[reportMissingImports]
 
     endpoint = os.environ.get("AWS_ENDPOINT_URL", "").strip()
-    region = (
-        os.environ.get("AWS_DEFAULT_REGION", "").strip()
-        or os.environ.get("AWS_REGION", "").strip()
-        or "auto"
-    )
+    region = _s3_region()
     prefix = _artifact_prefix()
     key = f"{prefix}/{artifact_id}/{filename}"
 
@@ -210,11 +233,7 @@ def refresh_artifact_url(artifact_id: str, filename: str) -> dict[str, Any]:
 
         bucket = _s3_bucket_name()
         endpoint = os.environ.get("AWS_ENDPOINT_URL", "").strip()
-        region = (
-            os.environ.get("AWS_DEFAULT_REGION", "").strip()
-            or os.environ.get("AWS_REGION", "").strip()
-            or "auto"
-        )
+        region = _s3_region()
         client = boto3.client(
             "s3",
             endpoint_url=endpoint,

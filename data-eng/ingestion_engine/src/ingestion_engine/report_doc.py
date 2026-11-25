@@ -13,6 +13,18 @@ from fpdf import FPDF
 
 Bar = tuple[str, int]
 COUNTRY_LIMIT = 12
+ATTEMPTED = frozenset({"LOADED", "PARTIAL", "FAILED"})
+SUMMARY_FIELDS = (
+    ("Sources fetched", "sources_fetched"),
+    ("Sources failed", "sources_failed"),
+    ("Rows added", "rows_loaded"),
+    ("Rows quarantined", "rows_quarantined"),
+    ("Rows outside Africa", "rows_outside_africa"),
+    ("Sources current", "sources_current"),
+    ("Sources skipped", "sources_skipped"),
+)
+STATUSES = ("LOADED", "PARTIAL", "FAILED", "CURRENT", "SKIPPED")
+ERROR_CATEGORIES = ("NONE", "MANIFEST", "SCHEMA", "AUTH", "NETWORK", "DATA_QUALITY", "PUBLISH")
 
 
 def write_report(
@@ -119,7 +131,7 @@ def _html(
         _chart("Rows added by run", runs, "No earlier runs."),
         _chart("Rows added by indicator", classes, "No prepared rows."),
         _chart("Rows added by country", countries, "No prepared rows."),
-        _source_table(sources),
+        _source_table(_attempted(sources)),
         "<p style=\"margin:16px 0 0;font-size:13px;color:#59636e;\">"
         "Coverage is attached as ingest_coverage.csv, one row per indicator class, country, and year."
         "</p>",
@@ -139,13 +151,7 @@ def _status_color(status: str) -> str:
 
 
 def _metrics(summary: dict[str, object]) -> str:
-    fields = (
-        ("Sources ingested", summary.get("sources_ingested", 0)),
-        ("Rows added", summary.get("rows_loaded", 0)),
-        ("Rows quarantined", summary.get("rows_quarantined", 0)),
-        ("Rows outside Africa", summary.get("rows_outside_africa", 0)),
-        ("Sources already ingested", summary.get("sources_already_done", 0)),
-    )
+    fields = [(label, summary.get(key, 0)) for label, key in SUMMARY_FIELDS]
     cells = []
     for label, value in fields:
         cells.append(
@@ -184,9 +190,9 @@ def _chart(title: str, bars: list[Bar], empty: str) -> str:
 
 
 def _source_table(sources: list[dict[str, str]]) -> str:
-    heading = "<h2 style=\"margin:24px 0 8px;font-size:16px;\">Sources</h2>"
+    heading = "<h2 style=\"margin:24px 0 8px;font-size:16px;\">Sources fetched</h2>"
     if not sources:
-        return heading + "<p style=\"margin:0;font-size:14px;\">No sources.</p>"
+        return heading + "<p style=\"margin:0;font-size:14px;\">No source was due this run.</p>"
     header = (
         "<tr>"
         + "".join(
@@ -198,7 +204,7 @@ def _source_table(sources: list[dict[str, str]]) -> str:
     body = []
     for row in sources:
         cells = (
-            row.get("source_id", ""),
+            _label(row),
             row.get("status", ""),
             row.get("owner", ""),
             f"{_count(row.get('rows_loaded')):,}",
@@ -251,24 +257,19 @@ def _pdf(
     pdf.set_font(family, "B", 16)
     pdf.cell(0, 9, text(f"{summary.get('status') or ''}  Ingest {summary.get('run_id') or ''}"), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font(family, "", 11)
-    for label, key in (
-        ("Sources ingested", "sources_ingested"),
-        ("Rows added", "rows_loaded"),
-        ("Rows quarantined", "rows_quarantined"),
-        ("Rows outside Africa", "rows_outside_africa"),
-        ("Sources already ingested", "sources_already_done"),
-    ):
+    for label, key in SUMMARY_FIELDS:
         pdf.cell(0, 6, text(f"{label}: {_count(summary.get(key)):,}"), new_x="LMARGIN", new_y="NEXT")
     _pdf_chart(pdf, family, text, "Rows added by run", runs, "No earlier runs.")
     _pdf_chart(pdf, family, text, "Rows added by indicator", classes, "No prepared rows.")
     _pdf_chart(pdf, family, text, "Rows added by country", countries, "No prepared rows.")
-    heading("Sources")
+    heading("Sources fetched")
     pdf.set_font(family, "", 10)
-    if not sources:
-        pdf.cell(0, 6, text("No sources."), new_x="LMARGIN", new_y="NEXT")
-    for row in sources:
+    attempted = _attempted(sources)
+    if not attempted:
+        pdf.cell(0, 6, text("No source was due this run."), new_x="LMARGIN", new_y="NEXT")
+    for row in attempted:
         line = (
-            f"{row.get('source_id', '')}  {row.get('status', '')}  owner={row.get('owner', '')}  "
+            f"{_label(row)}  {row.get('status', '')}  owner={row.get('owner', '')}  "
             f"loaded={_count(row.get('rows_loaded')):,}  "
             f"quarantined={_count(row.get('rows_quarantined')):,}  "
             f"outside_africa={_count(row.get('rows_outside_africa')):,}"
@@ -367,29 +368,34 @@ def letter_text(
 ) -> str:
     start, end = _period(summary)
     loaded, added, rate = _headline(summary, sources)
+    attempted = _attempted(sources)
     lines = [
         "Weekly Data Ingestion Report",
         f"Period: {start} - {end}",
         "",
         "Executive summary",
-        f"Sources in the run: {len(sources)}",
+        f"Sources fetched: {len(attempted)}",
         f"Sources loaded: {loaded}",
         f"Rows added: {added}",
         f"Success rate: {rate}",
+        f"Sources current: {_count(summary.get('sources_current'))}",
+        f"Sources skipped: {_count(summary.get('sources_skipped'))}",
         "",
-        "Sources",
+        "Sources fetched",
         "Source\tStatus\tOwner\tRows loaded\tRows quarantined",
     ]
-    for row in sources:
+    if not attempted:
+        lines.append("No source was due this run.")
+    for row in attempted:
         lines.append(
-            f"{row.get('source_id', '')}\t{row.get('status', '')}\t{row.get('owner', '')}\t"
+            f"{_label(row)}\t{row.get('status', '')}\t{row.get('owner', '')}\t"
             f"{_count(row.get('rows_loaded'))}\t{_count(row.get('rows_quarantined'))}"
         )
     problems = _problems(sources)
     if problems:
         lines.extend(["", "Failed and partial sources", "Source\tOwner\tError"])
         for row in problems:
-            lines.append(f"{row.get('source_id', '')}\t{row.get('owner', '')}\t{row.get('error', '')}")
+            lines.append(f"{_label(row)}\t{row.get('owner', '')}\t{row.get('error', '')}")
     lines.extend([
         "",
         "The detailed report is attached as ingest_jobs.html. It contains:",
@@ -408,11 +414,13 @@ def letter_text(
 def letter_html(summary: dict[str, object], sources: list[dict[str, str]]) -> str:
     start, end = _period(summary)
     loaded, added, rate = _headline(summary, sources)
+    attempted = _attempted(sources)
     figures = (
-        ("Sources in the run", str(len(sources))),
+        ("Sources fetched", str(len(attempted))),
         ("Sources loaded", str(loaded)),
         ("Rows added", f"{added:,}"),
         ("Success rate", rate),
+        ("Sources current", str(_count(summary.get("sources_current")))),
     )
     cells = "".join(
         "<td style=\"padding:12px 18px 12px 0;vertical-align:top;\">"
@@ -425,7 +433,7 @@ def letter_html(summary: dict[str, object], sources: list[dict[str, str]]) -> st
         + "".join(
             f"<td style=\"padding:6px 10px;border-bottom:1px solid #eef1f4;\">{html.escape(cell)}</td>"
             for cell in (
-                row.get("source_id", ""),
+                _label(row),
                 row.get("status", ""),
                 row.get("owner", ""),
                 f"{_count(row.get('rows_loaded')):,}",
@@ -433,8 +441,8 @@ def letter_html(summary: dict[str, object], sources: list[dict[str, str]]) -> st
             )
         )
         + "</tr>"
-        for row in sources
-    )
+        for row in attempted
+    ) or "<tr><td colspan=\"5\" style=\"padding:6px 10px;\">No source was due this run.</td></tr>"
     problems = _problems(sources)
     problem_block = ""
     if problems:
@@ -442,7 +450,7 @@ def letter_html(summary: dict[str, object], sources: list[dict[str, str]]) -> st
             "<tr>"
             + "".join(
                 f"<td style=\"padding:6px 10px;border-bottom:1px solid #eef1f4;\">{html.escape(cell)}</td>"
-                for cell in (row.get("source_id", ""), row.get("owner", ""), row.get("error", ""))
+                for cell in (_label(row), row.get("owner", ""), row.get("error", ""))
             )
             + "</tr>"
             for row in problems
@@ -469,7 +477,7 @@ def letter_html(summary: dict[str, object], sources: list[dict[str, str]]) -> st
         f"<p style=\"margin:0 0 20px;\">Period: {html.escape(start)} - {html.escape(end)}</p>"
         "<h2 style=\"font-size:18px;\">Executive summary</h2>"
         f"<table cellpadding=\"0\" cellspacing=\"0\"><tr>{cells}</tr></table>"
-        "<h2 style=\"font-size:18px;\">Sources</h2>"
+        "<h2 style=\"font-size:18px;\">Sources fetched</h2>"
         "<table cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse:collapse;width:100%;\">"
         "<tr>"
         + "".join(
@@ -513,7 +521,7 @@ def _coverage_options(payload: list[dict[str, object]], key: str, name: str) -> 
 
 def _jobs_html(summary: dict[str, object], sources: list[dict[str, str]], coverage: list[dict[str, str]]) -> str:
     loaded, added, rate = _headline(summary, sources)
-    active = sum(1 for row in sources if row.get("status") in {"LOADED", "PARTIAL"})
+    counts = {status: sum(1 for row in sources if row.get("status") == status) for status in STATUSES}
     start, end = _period(summary)
     cards = "".join(_job_card(row) for row in sources)
     if not cards:
@@ -538,6 +546,7 @@ def _jobs_html(summary: dict[str, object], sources: list[dict[str, str]], covera
         ".job[data-status=LOADED]{border-left-color:#28a745;background:#f4fbf6;}"
         ".job[data-status=FAILED]{border-left-color:#dc3545;background:#fff5f5;}"
         ".job[data-status=PARTIAL]{border-left-color:#ffc107;background:#fffaf0;}"
+        ".job[data-status=CURRENT]{border-left-color:#3498db;}"
         ".tag{display:inline-block;margin-right:6px;padding:2px 8px;border-radius:999px;background:#eef1f4;font-size:12px;}"
         ".chart{background:#fff;border-radius:10px;padding:12px 16px;margin-bottom:16px;}"
         ".chart table{border-collapse:collapse;width:100%;}"
@@ -554,13 +563,14 @@ def _jobs_html(summary: dict[str, object], sources: list[dict[str, str]], covera
         f" · {html.escape(str(summary.get('status', '')))}</p>"
         f"<p style=\"margin:4px 0 0;\">Period: {html.escape(start)} - {html.escape(end)}</p></div>"
         "<section class=\"cards\">"
-        + _kpi("Sources", str(len(sources)))
+        + _kpi("Sources fetched", str(len(_attempted(sources))))
         + _kpi("Loaded", str(loaded))
+        + _kpi("Partial", str(counts["PARTIAL"]))
+        + _kpi("Failed", str(counts["FAILED"]))
         + _kpi("Success rate", rate)
         + _kpi("Rows added", f"{added:,}")
-        + _kpi("Data volume", "Not measured")
-        + _kpi("Average latency", "Not measured")
-        + _kpi("Active sources", str(active))
+        + _kpi("Current", str(counts["CURRENT"]))
+        + _kpi("Skipped", str(counts["SKIPPED"]))
         + "</section>"
         + _class_rows(sources, coverage)
         + "<section id=\"coverage\" class=\"chart\">"
@@ -579,18 +589,17 @@ def _jobs_html(summary: dict[str, object], sources: list[dict[str, str]], covera
         "</section>"
         "<section class=\"filters\">"
         "<p id=\"shown\"></p>"
-        + _filter_group("Status", "status", ("LOADED", "PARTIAL", "FAILED", "SKIPPED"), sources, "status")
-        + _filter_group("Contract", "contract", ("csv", "xlsx", "xls", "json_api", "html_table"), sources, "contract_type")
+        + _filter_group("Status", "status", STATUSES, sources, "status")
+        + _filter_group("Contract", "contract", ("csv", "xlsx", "xls", "xlsb", "ods", "json_api", "html_table"), sources, "contract_type")
         + _filter_group(
             "Error",
             "error",
-            ("NONE", "SCHEMA", "AUTH", "NETWORK", "DATA_QUALITY"),
+            ERROR_CATEGORIES,
             sources,
             "error_category",
         )
         + "<p><button type=\"button\" class=\"reset\" id=\"reset\">Reset filters</button></p>"
-        "<p>Pipeline: Not measured. To add a filter, put data-name on each card and a checkbox with data-filter=\"name\". "
-        "An empty group shows every source.</p>"
+        "<p>An empty filter group shows every source.</p>"
         "</section>"
         f"<section id=\"jobs\"><h2>{html.escape(start)}</h2>{cards}"
         "<p id=\"empty\" hidden>No sources match these filters.</p></section>"
@@ -672,38 +681,49 @@ def _job_card(row: dict[str, str]) -> str:
     category = _error_category(row)
     contract = row.get("contract_type") or ""
     error = (row.get("error") or "").strip()
-    quality = _quality(row)
+    status = row.get("status", "")
     details = "\n".join([
-        f"status: {row.get('status', '')}",
+        f"status: {status}",
+        f"manifest: {row.get('manifest_file', '')}",
         f"contract: {contract}",
-        f"pipeline: Not measured",
-        f"volume: Not measured",
-        f"latency: Not measured",
-        f"quality: {quality}",
         f"failure_stage: {row.get('failure_stage', '')}",
         f"error_category: {category}",
         f"quarantine: {row.get('quarantine_reasons', '')}",
+        f"last_loaded_at: {row.get('last_loaded_at', '')}",
         f"error: {error}",
     ])
     error_block = ""
-    if error and row.get("status") in {"FAILED", "PARTIAL"}:
+    if error and status in {"FAILED", "PARTIAL"}:
         error_block = (
             "<p style=\"border-left:4px solid #dc3545;padding-left:8px;\">"
             + html.escape(error)
             + "</p>"
         )
+    facts = [f"Owner {row.get('owner', '') or '(none)'}"]
+    for value in (row.get("indicator_class", ""), row.get("table_name", "")):
+        if value:
+            facts.append(value)
+    facts.append(f"Manifest {row.get('manifest_file', '') or '(unknown)'}")
+    rows_line = ""
+    if status in ATTEMPTED:
+        rows_line = (
+            f"<p>Rows loaded {_count(row.get('rows_loaded')):,} · "
+            f"quarantined {_count(row.get('rows_quarantined')):,} · "
+            f"outside Africa {_count(row.get('rows_outside_africa')):,}"
+            f"{_quality(row)}</p>"
+        )
+    last = (row.get("last_loaded_at") or "").strip()
+    last_line = f"<p>Last loaded {html.escape(_day(last))}</p>" if last else ""
     return (
-        f"<article class=\"job\" data-status=\"{html.escape(row.get('status', ''))}\" "
+        f"<article class=\"job\" data-status=\"{html.escape(status)}\" "
         f"data-contract=\"{html.escape(contract)}\" data-error=\"{html.escape(category)}\">"
-        f"<h2 style=\"margin:0 0 6px;font-size:18px;\">{html.escape(row.get('source_id', ''))} "
-        f"<span class=\"tag\">{html.escape(row.get('status', ''))}</span></h2>"
+        f"<h2 style=\"margin:0 0 6px;font-size:18px;\">{html.escape(_label(row))} "
+        f"<span class=\"tag\">{html.escape(status)}</span></h2>"
         f"<p style=\"margin:0 0 8px;\">{html.escape(row.get('source_name', ''))}</p>"
-        f"<p>{_tag(row.get('status', ''))}{_tag(contract)}{_tag(category)}{_tag('Pipeline: Not measured')}</p>"
-        f"<p>Owner {html.escape(row.get('owner', ''))} · {html.escape(row.get('indicator_class', ''))} · "
-        f"{html.escape(row.get('table_name', ''))}</p>"
-        f"<p>Rows loaded {_count(row.get('rows_loaded')):,} · "
-        f"quarantined {_count(row.get('rows_quarantined')):,} · "
-        f"outside Africa {_count(row.get('rows_outside_africa')):,} · quality {html.escape(quality)}</p>"
+        f"<p>{_tag(contract)}{_tag(category if category != 'NONE' else '')}</p>"
+        f"<p>{html.escape(' · '.join(facts))}</p>"
+        f"{rows_line}"
+        f"{last_line}"
         f"{error_block}"
         f"<details><summary>Technical details</summary><pre>{html.escape(details)}</pre></details>"
         "</article>"
@@ -720,25 +740,28 @@ def _problems(sources: list[dict[str, str]]) -> list[dict[str, str]]:
     return [row for row in sources if row.get("status") in {"FAILED", "PARTIAL"}]
 
 
+def _attempted(sources: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [row for row in sources if row.get("status") in ATTEMPTED]
+
+
+def _label(row: dict[str, str]) -> str:
+    """Name a source by its id, or by its manifest file when the whole file failed."""
+    return (row.get("source_id") or "").strip() or (row.get("manifest_file") or "").strip() or "(unnamed)"
+
+
 def _step(row: dict[str, str]) -> float | None:
-    """Score one attempted source. A skipped source is left out of the rate."""
+    """Score one fetched source: 1 when its rows reached raw, 0 when it failed."""
     status = row.get("status") or ""
+    if status in {"LOADED", "PARTIAL"}:
+        return 1.0
     if status == "FAILED":
         return 0.0
-    if status == "LOADED":
-        return 1.0
-    if status != "PARTIAL":
-        return None
-    loaded = _count(row.get("rows_loaded"))
-    total = loaded + _count(row.get("rows_quarantined"))
-    if total == 0:
-        return 0.0
-    return loaded / total
+    return None
 
 
 def _rate(steps: list[float]) -> str:
     if not steps:
-        return "0%"
+        return "n/a"
     return f"{100 * sum(steps) / len(steps):.1f}%"
 
 
@@ -790,24 +813,30 @@ def _class_rows(sources: list[dict[str, str]], coverage: list[dict[str, str]]) -
 
 def _quality(row: dict[str, str]) -> str:
     loaded = _count(row.get("rows_loaded"))
-    quarantined = _count(row.get("rows_quarantined"))
-    total = loaded + quarantined
+    total = loaded + _count(row.get("rows_quarantined"))
     if total == 0:
-        return "Not measured"
-    return f"{100 * loaded / total:.0f}%"
+        return ""
+    return f" · {100 * loaded / total:.0f}% of landed rows reached raw"
 
 
 def _error_category(row: dict[str, str]) -> str:
+    status = row.get("status") or ""
+    if status == "PARTIAL":
+        return "DATA_QUALITY"
+    if status != "FAILED":
+        return "NONE"
     stage = (row.get("failure_stage") or "").strip()
+    if stage == "manifest":
+        return "MANIFEST"
     if stage == "auth":
         return "AUTH"
     if stage == "fetch":
         return "NETWORK"
-    if stage in {"manifest", "shape"}:
-        return "SCHEMA"
-    if row.get("status") == "PARTIAL" and (row.get("quarantine_reasons") or "").strip():
+    if stage == "publish":
+        return "PUBLISH"
+    if _count(row.get("rows_quarantined")) or _count(row.get("rows_outside_africa")):
         return "DATA_QUALITY"
-    return "NONE"
+    return "SCHEMA"
 
 
 def _period(summary: dict[str, object]) -> tuple[str, str]:

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -180,6 +181,38 @@ def llm_uses_hf_router() -> bool:
     return "router.huggingface.co" in url
 
 
+# Claude 5.5 thinks by default (effort=medium) and bills thinking tokens against
+# max_tokens, so a budget sized for a non-reasoning model can come back empty
+# with finish_reason="length" before any visible text is produced. These models
+# also reject any temperature other than 1.
+_REASONING_MODEL_RE = re.compile(r"anthropic/claude-.*-5\.5", re.IGNORECASE)
+
+
+def _env_model_list(name: str) -> frozenset[str]:
+    raw = os.environ.get(name, "")
+    return frozenset(s.strip().lower() for s in raw.split(",") if s.strip())
+
+
+def model_is_reasoning(model_id: str) -> bool:
+    """True for models that think by default and bill thinking tokens against max_tokens."""
+    mid = (model_id or "").strip().lower()
+    if not mid:
+        return False
+    if mid in _env_model_list("RAG_LLM_REASONING_MODELS"):
+        return True
+    return bool(_REASONING_MODEL_RE.search(mid))
+
+
+def model_rejects_temperature(model_id: str) -> bool:
+    """True for models that error on any non-default temperature (e.g. Claude 5.5)."""
+    mid = (model_id or "").strip().lower()
+    if not mid:
+        return False
+    if mid in _env_model_list("RAG_LLM_NO_TEMPERATURE_MODELS"):
+        return True
+    return bool(_REASONING_MODEL_RE.search(mid))
+
+
 @_observe(as_type="generation", name="llm_chat_complete")
 def llm_chat_complete(
     messages: list[dict[str, Any]],
@@ -244,6 +277,21 @@ def llm_chat_complete(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    if llm_uses_openrouter() and model_rejects_temperature(effective_model):
+        payload.pop("temperature", None)
+    if llm_uses_openrouter() and model_is_reasoning(effective_model):
+        effort = ""
+        if purpose:
+            key = "RAG_LLM_REASONING_EFFORT_" + re.sub(r"[.\-\s]+", "_", purpose.strip().upper())
+            effort = os.environ.get(key, "").strip()
+        if not effort:
+            effort = os.environ.get("RAG_LLM_REASONING_EFFORT", "low").strip() or "low"
+        if effort.lower() in ("none", "off", "disabled"):
+            payload["reasoning"] = {"enabled": False}
+        else:
+            payload["reasoning"] = {"effort": effort, "exclude": True}
+        headroom = int(os.environ.get("RAG_LLM_REASONING_HEADROOM_TOKENS", "2048") or 2048)
+        payload["max_tokens"] = max_tokens + headroom
     if openrouter_sessions_enabled() and llm_uses_openrouter():
         run_id = get_openrouter_run_id()
         if run_id:
@@ -277,12 +325,27 @@ def llm_chat_complete(
             return ""
         # ML-054: capture finish_reason so a max_tokens cut-off is no longer
         # silently discarded (multi-part answers were ending mid-sentence).
-        record_finish_reason(choices[0].get("finish_reason"), purpose=purpose or "unspecified")
+        finish_reason = choices[0].get("finish_reason")
+        record_finish_reason(finish_reason, purpose=purpose or "unspecified")
         content = choices[0].get("message", {}).get("content")
-        if content is None:
-            logger.warning("llm_chat_complete: null message content from %s", url)
+        text = str(content).strip() if content is not None else ""
+        if not text:
+            reasoning_tokens = None
+            if isinstance(usage_raw, dict):
+                details = usage_raw.get("completion_tokens_details")
+                if isinstance(details, dict):
+                    reasoning_tokens = details.get("reasoning_tokens")
+            logger.warning(
+                "llm_chat_complete: empty content from %s (model=%s, purpose=%s, "
+                "finish_reason=%s, completion_tokens=%s, reasoning_tokens=%s)",
+                url,
+                payload["model"],
+                purpose,
+                finish_reason,
+                (usage_raw or {}).get("completion_tokens") if isinstance(usage_raw, dict) else None,
+                reasoning_tokens,
+            )
             return ""
-        text = str(content).strip()
         update_current_llm_generation(
             output=text,
             model=effective_model,

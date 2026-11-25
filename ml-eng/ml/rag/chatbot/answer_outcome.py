@@ -140,8 +140,8 @@ def gap_answer(
         detail = f"{figures} {scope}".strip()
         check = "data query" if incomplete_source == "warehouse" else "document search"
         return lead + f"OpenTrace could not verify {detail} because the {check} did not complete."
-    lines = [f"I could not verify {indicator} figures {scope} from the completed searches in this run.".replace("  ", " ")]
-    lines.append("This does not establish that the underlying data is unavailable.")
+    lines = [f"{indicator} figures {scope} are not confirmed by the sources checked.".replace("  ", " ")]
+    lines.append("That does not mean the data does not exist elsewhere.")
     return lead + " ".join(lines)
 
 

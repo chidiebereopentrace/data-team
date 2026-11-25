@@ -72,20 +72,37 @@ def load_jsonl(
         job = client.load_table_from_file(
             handle,
             destination,
-            job_config=bigquery.LoadJobConfig(
-                source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-                schema=schema,
-                write_disposition=disposition,
-            ),
+            job_config=landing_load_config(schema, disposition, partition="$" in destination),
         )
         job.result()
     return int(job.output_rows or 0)
+
+
+def landing_load_config(
+    schema: list[bigquery.SchemaField],
+    disposition: str,
+    *,
+    partition: bool,
+) -> bigquery.LoadJobConfig:
+    """An append or one-day replace keeps the table, so a new publisher column is added to it.
+
+    A whole-table replace takes the new schema as given.
+    """
+    config = bigquery.LoadJobConfig(
+        source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+        schema=schema,
+        write_disposition=disposition,
+    )
+    if disposition == "WRITE_APPEND" or partition:
+        config.schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
+    return config
 
 
 REPORT_INTEGERS = frozenset({
     "year",
     "manifest_files",
     "sources_enabled",
+    "sources_fetched",
     "sources_ingested",
     "sources_loaded",
     "sources_partial",
@@ -94,7 +111,7 @@ REPORT_INTEGERS = frozenset({
     "rows_loaded",
     "rows_quarantined",
     "rows_outside_africa",
-    "sources_already_done",
+    "sources_current",
 })
 
 
@@ -116,34 +133,20 @@ def run_history(client: bigquery.Client, table_id: str) -> list[dict[str, object
     ]
 
 
-def attempted_source_ids(client: bigquery.Client, table_id: str) -> set[str]:
-    """Return source ids that have already been fetched. A missing table means none."""
-    finished, _started = source_cursor(client, table_id)
-    return finished
-
-
-def source_cursor(client: bigquery.Client, table_id: str) -> tuple[set[str], set[str]]:
-    """Return finished source ids, and ids left STARTED with no finished row."""
+def source_attempts(client: bigquery.Client, table_id: str) -> list[tuple[str, str, str]]:
+    """Return (source_id, status, run_id) for every recorded attempt. A missing table means none."""
     query = (
-        f"SELECT source_id, status FROM `{table_id}` "
+        f"SELECT source_id, status, run_id FROM `{table_id}` "
         "WHERE status IN ('LOADED', 'PARTIAL', 'FAILED', 'STARTED')"
     )
     try:
         rows = client.query(query).result()
     except NotFound:
-        return set(), set()
-    finished: set[str] = set()
-    started: set[str] = set()
-    for row in rows:
-        source_id = str(row.source_id or "")
-        if not source_id:
-            continue
-        status = str(row.status or "")
-        if status in {"LOADED", "PARTIAL", "FAILED"}:
-            finished.add(source_id)
-        elif status == "STARTED":
-            started.add(source_id)
-    return finished, started - finished
+        return []
+    return [
+        (str(row.source_id or ""), str(row.status or ""), str(row.run_id or ""))
+        for row in rows
+    ]
 
 
 def report_load_config(fieldnames: list[str]) -> bigquery.LoadJobConfig:
