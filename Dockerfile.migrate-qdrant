@@ -1,7 +1,9 @@
 # One-shot Qdrant Cloud -> self-managed Qdrant migration job (ML-073 cutover).
 # See deploy/RAILWAY_QDRANT_MIGRATION.md for the Railway service setup and env vars.
 #
-# Build from ml-eng/ (Railway root directory should be ml-eng):
+# Build from the repo root (Railway root directory should be left empty / "/" --
+# NOT ml-eng, so this service never picks up ml-eng/railway.toml's dockerfilePath
+# override, which is meant for the rag-api service):
 #   docker build -f Dockerfile.migrate-qdrant -t opentrace-migrate-qdrant:latest .
 #
 # Required env vars:
@@ -21,8 +23,8 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir "qdrant-client>=1.9.0"
 
-COPY ml/rag/ops/migrate_qdrant.py ./ml/rag/ops/migrate_qdrant.py
-COPY ml/rag/ops/__init__.py ./ml/rag/ops/__init__.py
+COPY ml-eng/ml/rag/ops/migrate_qdrant.py ./ml/rag/ops/migrate_qdrant.py
+COPY ml-eng/ml/rag/ops/__init__.py ./ml/rag/ops/__init__.py
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
