@@ -125,8 +125,12 @@ def run() -> int:
     target_api_key = _env("QDRANT_API_KEY")
     verify_only = (os.environ.get("MIGRATE_VERIFY_ONLY") or "").strip() == "1"
 
-    source = QdrantClient(url=source_url, api_key=source_api_key)
-    target = QdrantClient(url=target_url, api_key=target_api_key)
+    # Snapshot creation/recovery on larger collections can take well past the
+    # client's default read timeout (a few seconds) even though the server-side
+    # operation itself succeeds -- give both clients a generous HTTP timeout.
+    http_timeout = float(os.environ.get("MIGRATE_HTTP_TIMEOUT_S", "900") or 900)
+    source = QdrantClient(url=source_url, api_key=source_api_key, timeout=http_timeout)
+    target = QdrantClient(url=target_url, api_key=target_api_key, timeout=http_timeout)
 
     collections = _collections_to_migrate(source)
     if not collections:
